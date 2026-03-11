@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Built frontend served by FastAPI
+src/vibelens/static/*
+!src/vibelens/static/.gitkeep
+
+# OS
+.DS_Store
+Thumbs.db
+
+# uv
+uv.lock
