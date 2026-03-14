@@ -1,10 +1,11 @@
 """Shared test fixtures for VibeLens."""
 
-import tempfile
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+
+from vibelens.app import create_app
 
 
 @pytest.fixture
@@ -18,8 +19,6 @@ def test_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     """Create a FastAPI test client with temporary database."""
     monkeypatch.setenv("VIBELENS_DB_PATH", str(tmp_path / "test.db"))
     monkeypatch.setenv("VIBELENS_CLAUDE_DIR", str(tmp_path / "claude"))
-
-    from vibelens.app import create_app
 
     app = create_app()
     return TestClient(app)
