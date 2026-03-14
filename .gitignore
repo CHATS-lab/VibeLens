@@ -20,6 +20,9 @@ venv/
 # Environment
 .env
 
+# Logs
+logs/
+
 # Testing
 .pytest_cache/
 .coverage

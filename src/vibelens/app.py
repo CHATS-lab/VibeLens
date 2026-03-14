@@ -27,11 +27,7 @@ def create_app() -> FastAPI:
     """Build and return the FastAPI application."""
     from vibelens.api import build_router
 
-    app = FastAPI(
-        title="VibeLens",
-        version=__version__,
-        lifespan=lifespan,
-    )
+    app = FastAPI(title="VibeLens", version=__version__, lifespan=lifespan)
 
     app.add_middleware(
         CORSMiddleware,

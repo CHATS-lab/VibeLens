@@ -1,3 +1,66 @@
+@import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+      'Helvetica Neue', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  pre, code {
+    font-family: 'Geist Mono', 'SF Mono', 'Fira Code', 'Fira Mono',
+      'Roboto Mono', monospace;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgb(63 63 70 / 0.5);
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgb(82 82 91 / 0.7);
+  }
+}
+
+/* Prose overrides for markdown */
+.prose pre {
+  @apply bg-zinc-900 rounded-lg p-3 text-xs overflow-x-auto;
+}
+
+.prose code {
+  @apply text-cyan-300 text-xs;
+}
+
+.prose pre code {
+  @apply text-zinc-300;
+}
+
+.prose a {
+  @apply text-cyan-400 no-underline hover:underline;
+}
+
+.prose p {
+  @apply my-1.5;
+}
+
+.prose ul, .prose ol {
+  @apply my-1.5;
+}
+
+.prose h1, .prose h2, .prose h3, .prose h4 {
+  @apply mt-3 mb-1.5 text-zinc-200;
+}

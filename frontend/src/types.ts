@@ -54,8 +54,12 @@ export interface SessionSummary {
   models: string[];
   first_message: string;
   source_type: DataSourceType;
-  source_name: string;
-  source_host: string;
+  source_name?: string;
+  source_host?: string;
+  total_input_tokens?: number;
+  total_output_tokens?: number;
+  total_cache_read?: number;
+  total_cache_write?: number;
 }
 
 export interface SessionDetail {

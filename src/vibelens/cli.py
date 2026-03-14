@@ -23,11 +23,7 @@ def serve(
     typer.echo(f"VibeLens running at http://{bind_host}:{bind_port}")
 
     uvicorn.run(
-        "vibelens.app:create_app",
-        factory=True,
-        host=bind_host,
-        port=bind_port,
-        reload=False,
+        "vibelens.app:create_app", factory=True, host=bind_host, port=bind_port, reload=False
     )
 
 
