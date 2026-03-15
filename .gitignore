@@ -25,6 +25,9 @@ vibelens.yml
 # Database
 *.db
 
+# Docs (internal reference only)
+docs/
+
 # Datasets
 datasets/
 
