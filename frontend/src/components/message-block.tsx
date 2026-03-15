@@ -1,22 +1,27 @@
 import {
+  Terminal,
+  FileCode,
+  FilePlus2,
+  Search,
+  FolderOpen,
+  Check,
+  X,
+  Lightbulb,
+  Bot,
+  Wrench,
+  Pencil,
   ChevronDown,
   ChevronRight,
-  Terminal,
-  FileEdit,
-  FileText,
-  Search,
-  AlertCircle,
-  CheckCircle2,
-  Brain,
-  Wrench,
 } from "lucide-react";
 import { useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { createTwoFilesPatch } from "diff";
 import type { ContentBlock, Message } from "../types";
 import { sanitizeText } from "../utils";
+import { MarkdownRenderer } from "./markdown-renderer";
+import { CopyButton } from "./copy-button";
 
 const MAX_COLLAPSED_LINES = 8;
+const WRITE_PREVIEW_MAX_CHARS = 500;
 
 interface MessageBlockProps {
   message: Message;
@@ -39,23 +44,22 @@ function UserMessage({ message }: { message: Message }) {
     if (!text) return null;
     return (
       <div className="flex justify-end">
-        <div className="max-w-[80%] bg-indigo-600/80 text-white rounded-2xl rounded-br-md px-4 py-2.5 text-sm whitespace-pre-wrap">
-          {text}
+        <div className="max-w-[85%] bg-indigo-600/80 text-white rounded-2xl rounded-br-md px-4 py-2.5 text-sm">
+          <MarkdownRenderer content={text} className="user-markdown" />
         </div>
       </div>
     );
   }
-  // User messages with tool_result blocks are rendered inline with tool calls
   const textBlocks = (content as ContentBlock[]).filter(
     (b) => b.type === "text" && b.text
   );
   if (textBlocks.length === 0) return null;
+  const combined = textBlocks.map((b) => sanitizeText(b.text || "")).join("\n");
+  if (!combined.trim()) return null;
   return (
     <div className="flex justify-end">
-      <div className="max-w-[80%] bg-indigo-600/80 text-white rounded-2xl rounded-br-md px-4 py-2.5 text-sm whitespace-pre-wrap">
-        {textBlocks.map((b, i) => (
-          <span key={i}>{sanitizeText(b.text || "")}</span>
-        ))}
+      <div className="max-w-[85%] bg-indigo-600/80 text-white rounded-2xl rounded-br-md px-4 py-2.5 text-sm">
+        <MarkdownRenderer content={combined} className="user-markdown" />
       </div>
     </div>
   );
@@ -67,19 +71,29 @@ function AssistantMessage({ message }: { message: Message }) {
       ? [{ type: "text", text: message.content } as ContentBlock]
       : (message.content as ContentBlock[]);
 
+  const textBlocks = blocks.filter((b) => b.type === "text");
+  const toolBlocks = blocks.filter(
+    (b) => b.type === "tool_use" || b.type === "tool_result" || b.type === "thinking"
+  );
+
   return (
-    <div className="space-y-2">
-      {blocks.map((block, i) => (
-        <ContentBlockRenderer key={i} block={block} />
+    <div className="space-y-1">
+      {textBlocks.map((block, i) => (
+        <TextBlock key={`text-${i}`} text={block.text || ""} />
       ))}
+      {toolBlocks.length > 0 && (
+        <div className="flex flex-col gap-1 mt-1.5">
+          {toolBlocks.map((block, i) => (
+            <ContentBlockRenderer key={`tool-${i}`} block={block} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
 function ContentBlockRenderer({ block }: { block: ContentBlock }) {
   switch (block.type) {
-    case "text":
-      return <TextBlock text={block.text || ""} />;
     case "thinking":
       return <ThinkingBlock text={block.thinking || ""} />;
     case "tool_use":
@@ -95,17 +109,8 @@ function TextBlock({ text }: { text: string }) {
   const cleaned = sanitizeText(text);
   if (!cleaned) return null;
   return (
-    <div className="bg-cyan-700/30 text-zinc-100 rounded-2xl rounded-bl-md px-4 py-2.5 text-sm prose prose-invert prose-sm max-w-none break-words">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-          a: ({node, ...props}) => <a {...props} className="text-cyan-300 hover:underline" />,
-          code: ({node, ...props}) => <code {...props} className="bg-zinc-800 px-1.5 py-0.5 rounded text-cyan-200 font-mono text-xs" />,
-          pre: ({node, ...props}) => <pre {...props} className="bg-zinc-800 p-3 rounded overflow-x-auto" />,
-        }}
-      >
-        {cleaned}
-      </ReactMarkdown>
+    <div className="max-w-[85%] text-zinc-100 text-sm break-words">
+      <MarkdownRenderer content={cleaned} />
     </div>
   );
 }
@@ -114,37 +119,51 @@ function ThinkingBlock({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
   if (!text.trim()) return null;
   return (
-    <CollapsiblePill
-      open={open}
-      onToggle={() => setOpen(!open)}
-      icon={<Brain className="w-3.5 h-3.5" />}
-      label="Thinking"
-      className="bg-amber-500/10 border-amber-500/20 text-amber-300"
-    >
-      <pre className="text-xs text-amber-200/80 whitespace-pre-wrap overflow-x-auto p-3">
-        {text}
-      </pre>
-    </CollapsiblePill>
+    <div className="max-w-[85%]">
+      <button
+        onClick={() => setOpen(!open)}
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/15 text-[11px] text-amber-400/90 border border-amber-500/20 transition-colors"
+      >
+        {open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        <Lightbulb className="w-3.5 h-3.5" />
+        <span className="font-medium">Thinking</span>
+      </button>
+      {open && (
+        <div className="mt-1 bg-zinc-900/80 border border-zinc-800 rounded-lg p-3">
+          <pre className="text-xs text-amber-200/80 whitespace-pre-wrap overflow-x-auto">
+            {text}
+          </pre>
+        </div>
+      )}
+    </div>
   );
 }
 
 function ToolUseBlock({ block }: { block: ContentBlock }) {
   const [open, setOpen] = useState(false);
   const name = block.name || "unknown";
-  const icon = getToolIcon(name);
+  const { icon, color } = getToolIconAndColor(name);
   const preview = getToolPreview(name, block.input);
 
   return (
-    <CollapsiblePill
-      open={open}
-      onToggle={() => setOpen(!open)}
-      icon={icon}
-      label={name}
-      preview={preview}
-      className="bg-zinc-800 border-zinc-700 text-zinc-300"
-    >
-      <ToolInputRenderer name={name} input={block.input} />
-    </CollapsiblePill>
+    <div className="max-w-[85%]">
+      <button
+        onClick={() => setOpen(!open)}
+        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] border transition-colors ${color}`}
+      >
+        {open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        {icon}
+        <span className="font-medium">{name}</span>
+        {!open && preview && (
+          <span className="text-zinc-500 truncate max-w-[200px] ml-0.5">{preview}</span>
+        )}
+      </button>
+      {open && (
+        <div className="mt-1">
+          <ToolInputRenderer name={name} input={block.input} />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -154,64 +173,30 @@ function ToolResultBlock({ block }: { block: ContentBlock }) {
   const content = extractResultText(block.content);
   if (!content) return null;
 
-  return (
-    <CollapsiblePill
-      open={open}
-      onToggle={() => setOpen(!open)}
-      icon={
-        isError ? (
-          <AlertCircle className="w-3.5 h-3.5" />
-        ) : (
-          <CheckCircle2 className="w-3.5 h-3.5" />
-        )
-      }
-      label={isError ? "Error" : "Result"}
-      className={
-        isError
-          ? "bg-rose-500/10 border-rose-500/20 text-rose-300"
-          : "bg-teal-500/10 border-teal-500/20 text-teal-300"
-      }
-    >
-      <ToolOutput text={content} isError={isError} />
-    </CollapsiblePill>
-  );
-}
+  const previewSnippet = content.split("\n")[0].slice(0, 80);
 
-function CollapsiblePill({
-  open,
-  onToggle,
-  icon,
-  label,
-  preview,
-  className,
-  children,
-}: {
-  open: boolean;
-  onToggle: () => void;
-  icon: React.ReactNode;
-  label: string;
-  preview?: string;
-  className: string;
-  children: React.ReactNode;
-}) {
   return (
-    <div className={`rounded-lg border ${className} overflow-hidden`}>
+    <div className="max-w-[85%]">
       <button
-        onClick={onToggle}
-        className="flex items-center gap-2 w-full px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+        onClick={() => setOpen(!open)}
+        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] border transition-colors ${
+          isError
+            ? "bg-rose-500/10 hover:bg-rose-500/15 text-rose-300 border-rose-500/20"
+            : "bg-teal-500/10 hover:bg-teal-500/15 text-teal-300 border-teal-500/20"
+        }`}
       >
-        {open ? (
-          <ChevronDown className="w-3 h-3 shrink-0" />
-        ) : (
-          <ChevronRight className="w-3 h-3 shrink-0" />
-        )}
-        {icon}
-        <span className="font-medium">{label}</span>
-        {!open && preview && (
-          <span className="text-zinc-500 truncate ml-1">{preview}</span>
+        {open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        {isError ? <X className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
+        <span className="font-medium">{isError ? "Error" : "Result"}</span>
+        {!open && (
+          <span className="text-zinc-500 truncate max-w-[250px] ml-0.5">{previewSnippet}</span>
         )}
       </button>
-      {open && <div className="border-t border-inherit">{children}</div>}
+      {open && (
+        <div className="mt-1 bg-zinc-900/60 border border-zinc-800 rounded-lg overflow-hidden">
+          <ToolOutput text={content} isError={isError} />
+        </div>
+      )}
     </div>
   );
 }
@@ -226,88 +211,246 @@ function ToolInputRenderer({
   const data = input as Record<string, unknown> | undefined;
   if (!data) return null;
 
-  if (name === "Bash" || name === "bash") {
+  const n = name.toLowerCase();
+
+  if (n === "bash") {
+    return <BashRenderer command={String(data.command || "")} />;
+  }
+
+  if (n === "edit") {
     return (
-      <div className="p-3">
-        <div className="bg-zinc-900 rounded p-2 font-mono text-xs text-green-400">
-          <span className="text-zinc-500">$ </span>
-          {String(data.command || "")}
+      <EditRenderer
+        filePath={String(data.file_path || "")}
+        oldString={String(data.old_string || "")}
+        newString={String(data.new_string || "")}
+      />
+    );
+  }
+
+  if (n === "write") {
+    return (
+      <WriteRenderer
+        filePath={String(data.file_path || "")}
+        content={String(data.content || "")}
+      />
+    );
+  }
+
+  if (n === "read") {
+    const filePath = String(data.file_path || "");
+    const lang = filePath.split(".").pop() || "";
+    return (
+      <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg overflow-hidden">
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800/60 border-b border-zinc-700/40">
+          <FileCode className="w-3.5 h-3.5 text-sky-400" />
+          <span className="text-[11px] font-mono text-zinc-300 truncate flex-1">{filePath}</span>
+          {lang && (
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-700/60 text-zinc-400 uppercase">{lang}</span>
+          )}
+          <CopyButton text={filePath} />
         </div>
       </div>
     );
   }
 
-  if (name === "Edit" || name === "edit") {
+  if (n === "grep") {
     return (
-      <div className="p-3 space-y-1">
-        <div className="text-xs text-zinc-400 font-mono">
-          {String(data.file_path || "")}
-        </div>
-        {Boolean(data.old_string) && (
-          <pre className="text-xs bg-rose-950/30 text-rose-300 rounded p-2 overflow-x-auto">
-            {`- ${String(data.old_string)}`}
-          </pre>
-        )}
-        {Boolean(data.new_string) && (
-          <pre className="text-xs bg-green-950/30 text-green-300 rounded p-2 overflow-x-auto">
-            {`+ ${String(data.new_string)}`}
-          </pre>
-        )}
-      </div>
-    );
-  }
-
-  if (name === "Read" || name === "read") {
-    return (
-      <div className="p-3">
-        <div className="text-xs text-zinc-400 font-mono">
-          {String(data.file_path || "")}
+      <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg overflow-hidden">
+        <div className="flex items-center gap-2 px-3 py-2 bg-zinc-800/60">
+          <Search className="w-3.5 h-3.5 text-amber-400" />
+          <span className="text-[11px] font-mono text-zinc-300">
+            {Boolean(data.pattern) && <span className="text-amber-300">{String(data.pattern)}</span>}
+            {Boolean(data.path) && <span className="text-zinc-500 ml-2">in {String(data.path)}</span>}
+          </span>
         </div>
       </div>
     );
   }
 
-  if (name === "Write" || name === "write") {
+  if (n === "glob") {
     return (
-      <div className="p-3 space-y-1">
-        <div className="text-xs text-zinc-400 font-mono">
-          {String(data.file_path || "")}
+      <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg overflow-hidden">
+        <div className="flex items-center gap-2 px-3 py-2 bg-zinc-800/60">
+          <FolderOpen className="w-3.5 h-3.5 text-cyan-400" />
+          <span className="text-[11px] font-mono text-zinc-300">
+            {Boolean(data.pattern) && <span className="text-cyan-300">{String(data.pattern)}</span>}
+            {Boolean(data.path) && <span className="text-zinc-500 ml-2">in {String(data.path)}</span>}
+          </span>
         </div>
-        {Boolean(data.content) && (
-          <pre className="text-xs bg-zinc-900 text-zinc-300 rounded p-2 overflow-x-auto max-h-48 overflow-y-auto">
-            {String(data.content)}
-          </pre>
-        )}
       </div>
     );
   }
 
-  if (name === "Grep" || name === "grep" || name === "Glob" || name === "glob") {
-    return (
-      <div className="p-3">
-        <div className="text-xs text-zinc-400 font-mono">
-          {Boolean(data.pattern) && <span>pattern: {String(data.pattern)}</span>}
-          {Boolean(data.path) && <span className="ml-2">in: {String(data.path)}</span>}
+  const jsonStr = JSON.stringify(data, null, 2);
+  return (
+    <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg overflow-hidden">
+      <MarkdownRenderer
+        content={`\`\`\`json\n${jsonStr}\n\`\`\``}
+        className="[&>div]:my-0 [&>div]:border-0 [&>div]:rounded-none"
+      />
+    </div>
+  );
+}
+
+function BashRenderer({ command }: { command: string }) {
+  return (
+    <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-zinc-800/60 border-b border-zinc-700/40">
+        <div className="flex items-center gap-1.5">
+          <Terminal className="w-3.5 h-3.5 text-green-400" />
+          <span className="text-[10px] font-medium text-zinc-400 uppercase tracking-wider">Command</span>
         </div>
+        <CopyButton text={command} />
       </div>
-    );
+      <pre className="p-3 overflow-x-auto text-[12px] font-mono text-green-300 leading-relaxed">
+        <span className="text-zinc-500">$ </span>{command}
+      </pre>
+    </div>
+  );
+}
+
+function EditRenderer({
+  filePath,
+  oldString,
+  newString,
+}: {
+  filePath: string;
+  oldString: string;
+  newString: string;
+}) {
+  const fileName = filePath.split("/").pop() || filePath;
+  const addCount = newString ? newString.split("\n").length : 0;
+  const removeCount = oldString ? oldString.split("\n").length : 0;
+
+  let diffLines: string[] = [];
+  if (oldString || newString) {
+    const patch = createTwoFilesPatch(fileName, fileName, oldString, newString, "", "", {
+      context: 3,
+    });
+    diffLines = patch.split("\n").slice(4);
   }
 
   return (
-    <pre className="text-xs text-zinc-400 p-3 overflow-x-auto whitespace-pre-wrap">
-      {JSON.stringify(data, null, 2)}
-    </pre>
+    <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800/60 border-b border-zinc-700/40">
+        <Pencil className="w-3.5 h-3.5 text-blue-400" />
+        <span className="text-[11px] font-mono text-zinc-300 truncate flex-1">{filePath}</span>
+        {addCount > 0 && (
+          <span className="text-[10px] text-emerald-400 font-mono">+{addCount}</span>
+        )}
+        {removeCount > 0 && (
+          <span className="text-[10px] text-rose-400 font-mono">-{removeCount}</span>
+        )}
+      </div>
+      {diffLines.length > 0 && (
+        <div className="overflow-x-auto text-[11px] font-mono leading-[1.6]">
+          {diffLines.map((line, i) => (
+            <DiffLine key={i} line={line} />
+          ))}
+        </div>
+      )}
+    </div>
   );
+}
+
+function DiffLine({ line }: { line: string }) {
+  if (line.startsWith("+")) {
+    return (
+      <div className="px-3 bg-emerald-500/8 text-emerald-300 border-l-2 border-emerald-500/50">
+        {line}
+      </div>
+    );
+  }
+  if (line.startsWith("-")) {
+    return (
+      <div className="px-3 bg-rose-500/8 text-rose-300 border-l-2 border-rose-500/50">
+        {line}
+      </div>
+    );
+  }
+  if (line.startsWith("@@")) {
+    return (
+      <div className="px-3 text-zinc-500 bg-zinc-800/40">
+        {line}
+      </div>
+    );
+  }
+  return <div className="px-3 text-zinc-400">{line}</div>;
+}
+
+function WriteRenderer({
+  filePath,
+  content,
+}: {
+  filePath: string;
+  content: string;
+}) {
+  const lineCount = content ? content.split("\n").length : 0;
+  const previewContent =
+    content.length > WRITE_PREVIEW_MAX_CHARS
+      ? content.slice(0, WRITE_PREVIEW_MAX_CHARS) + "\n..."
+      : content;
+
+  return (
+    <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800/60 border-b border-zinc-700/40">
+        <FilePlus2 className="w-3.5 h-3.5 text-emerald-400" />
+        <span className="text-[11px] font-mono text-zinc-300 truncate flex-1">{filePath}</span>
+        <span className="text-[10px] text-zinc-500">{lineCount} lines</span>
+      </div>
+      {content && (
+        <pre className="p-3 overflow-x-auto text-[11px] font-mono text-zinc-400 max-h-48 overflow-y-auto leading-relaxed">
+          {previewContent}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+function tryFormatJson(text: string): string | null {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return null;
+  try {
+    const parsed = JSON.parse(trimmed);
+    return JSON.stringify(parsed, null, 2);
+  } catch {
+    return null;
+  }
 }
 
 function ToolOutput({ text, isError }: { text: string; isError: boolean }) {
   const [expanded, setExpanded] = useState(false);
-  const lines = text.split("\n");
+  const formattedJson = tryFormatJson(text);
+  const displayText = formattedJson || text;
+  const lines = displayText.split("\n");
   const shouldTruncate = lines.length > MAX_COLLAPSED_LINES;
   const displayed =
     !expanded && shouldTruncate
       ? lines.slice(0, MAX_COLLAPSED_LINES).join("\n") + "\n..."
-      : text;
+      : displayText;
+
+  if (formattedJson) {
+    return (
+      <div className="relative">
+        <div className="flex items-center justify-between px-3 py-1 bg-zinc-800/60 border-b border-zinc-700/40">
+          <span className="text-[10px] font-medium text-zinc-500 uppercase tracking-wider">json</span>
+          <CopyButton text={formattedJson} />
+        </div>
+        <MarkdownRenderer
+          content={`\`\`\`json\n${displayed}\n\`\`\``}
+          className="tool-output-json [&>div]:my-0 [&>div]:border-0 [&>div]:rounded-none [&_pre]:max-h-96 [&_pre]:overflow-y-auto"
+        />
+        {shouldTruncate && !expanded && (
+          <button
+            onClick={() => setExpanded(true)}
+            className="text-[10px] text-zinc-400 hover:text-zinc-200 px-3 pb-2"
+          >
+            Show all ({lines.length} lines)
+          </button>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="relative">
@@ -330,15 +473,54 @@ function ToolOutput({ text, isError }: { text: string; isError: boolean }) {
   );
 }
 
-function getToolIcon(name: string): React.ReactNode {
+function getToolIconAndColor(name: string): { icon: React.ReactNode; color: string } {
   const n = name.toLowerCase();
-  if (n === "bash") return <Terminal className="w-3.5 h-3.5" />;
-  if (n === "edit" || n === "write")
-    return <FileEdit className="w-3.5 h-3.5" />;
-  if (n === "read") return <FileText className="w-3.5 h-3.5" />;
-  if (n === "grep" || n === "glob")
-    return <Search className="w-3.5 h-3.5" />;
-  return <Wrench className="w-3.5 h-3.5" />;
+  if (n === "bash") {
+    return {
+      icon: <Terminal className="w-3.5 h-3.5 text-green-400" />,
+      color: "bg-slate-500/10 hover:bg-slate-500/15 text-slate-300 border-slate-500/20",
+    };
+  }
+  if (n === "edit") {
+    return {
+      icon: <Pencil className="w-3.5 h-3.5 text-blue-400" />,
+      color: "bg-slate-500/10 hover:bg-slate-500/15 text-slate-300 border-slate-500/20",
+    };
+  }
+  if (n === "read") {
+    return {
+      icon: <FileCode className="w-3.5 h-3.5 text-sky-400" />,
+      color: "bg-slate-500/10 hover:bg-slate-500/15 text-slate-300 border-slate-500/20",
+    };
+  }
+  if (n === "write") {
+    return {
+      icon: <FilePlus2 className="w-3.5 h-3.5 text-emerald-400" />,
+      color: "bg-slate-500/10 hover:bg-slate-500/15 text-slate-300 border-slate-500/20",
+    };
+  }
+  if (n === "grep") {
+    return {
+      icon: <Search className="w-3.5 h-3.5 text-amber-400" />,
+      color: "bg-slate-500/10 hover:bg-slate-500/15 text-slate-300 border-slate-500/20",
+    };
+  }
+  if (n === "glob") {
+    return {
+      icon: <FolderOpen className="w-3.5 h-3.5 text-cyan-400" />,
+      color: "bg-slate-500/10 hover:bg-slate-500/15 text-slate-300 border-slate-500/20",
+    };
+  }
+  if (n === "agent" || n.includes("task") || n.includes("agent")) {
+    return {
+      icon: <Bot className="w-3.5 h-3.5 text-violet-400" />,
+      color: "bg-violet-500/10 hover:bg-violet-500/15 text-violet-300 border-violet-500/20",
+    };
+  }
+  return {
+    icon: <Wrench className="w-3.5 h-3.5 text-zinc-400" />,
+    color: "bg-slate-500/10 hover:bg-slate-500/15 text-slate-300 border-slate-500/20",
+  };
 }
 
 function getToolPreview(name: string, input: unknown): string {

@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from vibelens.ingest.base import BaseParser
+from vibelens.ingest.base import BaseParser, _is_meaningful_prompt
 from vibelens.ingest.diagnostics import DiagnosticsCollector
 from vibelens.models.message import (
     ContentBlock,
@@ -29,7 +29,7 @@ from vibelens.models.message import (
     ToolCall,
 )
 from vibelens.models.session import SessionMetadata, SessionSummary
-from vibelens.utils import coerce_to_string, get_logger, parse_ms_timestamp
+from vibelens.utils import coerce_to_string, get_logger, normalize_timestamp
 
 # Sentinel for sorting messages that lack timestamps — placed before all
 # real timestamps so they don't disrupt chronological ordering.
@@ -63,9 +63,7 @@ class ClaudeCodeParser(BaseParser):
             Single-element list of (SessionSummary, messages).
         """
         collector = DiagnosticsCollector()
-        messages, sub_sessions = self.parse_session_with_subagents(
-            file_path, diagnostics=collector
-        )
+        messages, sub_sessions = self.parse_session_with_subagents(file_path, diagnostics=collector)
         if not messages:
             return []
         self.enrich_tool_calls(messages)
@@ -146,9 +144,7 @@ class ClaudeCodeParser(BaseParser):
         return self._parse_single_jsonl(file_path)
 
     def parse_session_with_subagents(
-        self,
-        file_path: Path,
-        diagnostics: DiagnosticsCollector | None = None,
+        self, file_path: Path, diagnostics: DiagnosticsCollector | None = None
     ) -> tuple[list[Message], list[SubAgentSession]]:
         """Parse a session file and its sub-agent conversations separately.
 
@@ -275,7 +271,7 @@ class ClaudeCodeParser(BaseParser):
                 not first_message
                 and msg.role == "user"
                 and isinstance(msg.content, str)
-                and msg.content.strip()
+                and _is_meaningful_prompt(msg.content)
             ):
                 first_message = self.truncate_first_message(msg.content)
 
@@ -297,9 +293,7 @@ class ClaudeCodeParser(BaseParser):
         )
 
     def _parse_single_jsonl(
-        self,
-        file_path: Path,
-        diagnostics: DiagnosticsCollector | None = None,
+        self, file_path: Path, diagnostics: DiagnosticsCollector | None = None
     ) -> list[Message]:
         """Parse a single JSONL file into Message objects.
 
@@ -325,9 +319,9 @@ class ClaudeCodeParser(BaseParser):
             msg = entry.get("message", {})
             uuid = entry.get("uuid", str(uuid4()))
             session_id = entry.get("sessionId", "")
-            parent_uuid = entry.get("parentUuid", "")
+            parent_uuid = entry.get("parentUuid") or ""
             is_sidechain = entry.get("isSidechain", False)
-            timestamp = parse_ms_timestamp(entry.get("timestamp"))
+            timestamp = normalize_timestamp(entry.get("timestamp"))
 
             role = msg.get("role", entry_type)
             model = msg.get("model", "")
@@ -396,9 +390,7 @@ def count_history_entries(claude_dir: Path) -> int:
     return count
 
 
-def _aggregate_history_lines(
-    history_file: Path, since_ms: int
-) -> dict[str, dict]:
+def _aggregate_history_lines(history_file: Path, since_ms: int) -> dict[str, dict]:
     """Read history.jsonl and group entries by session.
 
     Skips entries whose timestamp falls before ``since_ms`` for early
@@ -437,16 +429,19 @@ def _aggregate_history_lines(
                 sessions[session_id] = {
                     "first_timestamp": timestamp_ms,
                     "last_timestamp": timestamp_ms,
-                    "first_message": display,
+                    "first_message": display if _is_meaningful_prompt(display) else "",
                     "project_path": project_path,
                     "message_count": 1,
                 }
             else:
                 sess = sessions[session_id]
                 sess["message_count"] += 1
+                if not sess["first_message"] and _is_meaningful_prompt(display):
+                    sess["first_message"] = display
                 if timestamp_ms < sess["first_timestamp"]:
                     sess["first_timestamp"] = timestamp_ms
-                    sess["first_message"] = display
+                    if _is_meaningful_prompt(display):
+                        sess["first_message"] = display
                 if timestamp_ms > sess["last_timestamp"]:
                     sess["last_timestamp"] = timestamp_ms
     return sessions

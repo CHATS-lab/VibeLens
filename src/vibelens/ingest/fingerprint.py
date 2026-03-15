@@ -22,9 +22,7 @@ _MIN_CONFIDENCE = 0.5
 class FormatMatch(BaseModel):
     """A candidate format match with confidence score."""
 
-    format_name: str = Field(
-        description="Format identifier: claude_code, codex, gemini, dataclaw."
-    )
+    format_name: str = Field(description="Format identifier: claude_code, codex, gemini, dataclaw.")
     confidence: float = Field(description="Confidence from 0.0 to 1.0.")
     parser_class: str = Field(description="Parser class name to instantiate.")
 
@@ -66,9 +64,7 @@ def parse_auto(
     matches = fingerprint_file(file_path)
     if not matches or matches[0].confidence < _MIN_CONFIDENCE:
         best = f"{matches[0].format_name} ({matches[0].confidence:.2f})" if matches else "none"
-        raise ValueError(
-            f"Cannot auto-detect format for {file_path}: best match {best}"
-        )
+        raise ValueError(f"Cannot auto-detect format for {file_path}: best match {best}")
 
     parser = _instantiate_parser(matches[0].parser_class)
     return parser.parse_file(file_path)

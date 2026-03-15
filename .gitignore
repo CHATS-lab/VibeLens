@@ -17,8 +17,13 @@ venv/
 *.swp
 *.swo
 
-# Environment
+# Config (may contain credentials)
 .env
+vibelens.yaml
+vibelens.yml
+
+# Database
+*.db
 
 # Datasets
 datasets/

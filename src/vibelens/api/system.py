@@ -25,17 +25,23 @@ async def get_server_settings() -> dict:
 
 @router.get("/sources")
 async def list_sources() -> list:
-    """List configured data sources.
-
-    Not yet implemented.
-    """
-    return [{"type": "local", "name": "Local Claude Code"}]
+    """List configured data sources."""
+    settings = get_settings()
+    sources = [{"type": "local", "name": "Local Claude Code"}]
+    if settings.mongodb_uri:
+        sources.append({"type": "mongodb", "name": "MongoDB"})
+    if settings.hf_token:
+        sources.append({"type": "huggingface", "name": "HuggingFace"})
+    return sources
 
 
 @router.get("/targets")
 async def list_targets() -> list:
-    """List configured data targets.
-
-    Not yet implemented.
-    """
-    return []
+    """List configured data targets."""
+    settings = get_settings()
+    targets = []
+    if settings.mongodb_uri:
+        targets.append({"type": "mongodb", "name": "MongoDB"})
+    if settings.hf_token:
+        targets.append({"type": "huggingface", "name": "HuggingFace"})
+    return targets

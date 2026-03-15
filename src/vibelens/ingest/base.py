@@ -22,6 +22,17 @@ logger = logging.getLogger(__name__)
 MAX_FIRST_MESSAGE_LENGTH = 200
 
 
+def _is_meaningful_prompt(text: str) -> bool:
+    """Return True if the text is a real user prompt, not a slash command."""
+    stripped = text.strip()
+    if not stripped:
+        return False
+    # Single slash commands like "/permissions", "/compact" are not meaningful
+    is_single_line = "\n" not in stripped and len(stripped.split()) <= 3
+    is_slash_command = stripped.startswith("/") and is_single_line
+    return not is_slash_command
+
+
 class BaseParser(ABC):
     """Abstract base for format-specific session parsers.
 
@@ -87,7 +98,10 @@ class BaseParser(ABC):
         return text[:MAX_FIRST_MESSAGE_LENGTH]
 
     def find_first_user_text(self, messages: list[Message]) -> str:
-        """Extract truncated text of the first user message.
+        """Extract truncated text of the first meaningful user message.
+
+        Skips slash commands (e.g. ``/permissions``, ``/compact``) that
+        are not meaningful conversation starters.
 
         Args:
             messages: Ordered list of parsed Message objects.
@@ -96,7 +110,9 @@ class BaseParser(ABC):
             Truncated first user message, or empty string if none found.
         """
         for msg in messages:
-            if msg.role == "user" and isinstance(msg.content, str) and msg.content.strip():
+            if not (msg.role == "user" and isinstance(msg.content, str)):
+                continue
+            if _is_meaningful_prompt(msg.content):
                 return self.truncate_first_message(msg.content)
         return ""
 

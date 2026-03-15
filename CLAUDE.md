@@ -29,7 +29,10 @@ src/vibelens/
 ├── sources/               # Data source connectors (local, HuggingFace)
 ├── targets/               # Data target connectors (MongoDB, HuggingFace)
 ├── utils/                 # Shared utilities (timestamps, paths, JSON helpers, logging)
-├── config.py              # Pydantic settings
+├── config/                # Configuration package
+│   ├── settings.py        # Pydantic Settings model and load_settings()
+│   ├── loader.py          # YAML config loading and auto-discovery
+│   └── validators.py      # Integration config validators
 ├── db.py                  # SQLite persistence
 ├── cli.py                 # Typer CLI entrypoint
 └── app.py                 # FastAPI app factory
@@ -58,6 +61,13 @@ tests/
 
 Links:
 - [Deep Dive: How Claude Code's /insights Command Works](https://www.zolkos.com/2026/02/04/deep-dive-how-claude-codes-insights-command-works.html)
+
+
+## Reference Repos
+
+- [Claude-Run](/Users/JinghengYe/Documents/Projects/Agent-Guideline/claude-code-monitors/claude-run). Beautiful UI.
+- [CooperBench Website](/Users/JinghengYe/Documents/Projects/Agent-Guideline/claude-code-monitors/website). Many analysis indicator.
+
 
 
 ## General Rules

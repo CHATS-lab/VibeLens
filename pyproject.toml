@@ -1,6 +1,6 @@
 [project]
 name = "vibelens"
-version = "0.2.0"
+version = "0.3.0"
 description = "Agent Trajectory analysis and visualization platform"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -13,6 +13,8 @@ dependencies = [
     "aiosqlite>=0.20.0",
     "watchfiles>=1.0.0",
     "httpx>=0.28.0",
+    "motor>=3.6.0",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
