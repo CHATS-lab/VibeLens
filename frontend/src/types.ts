@@ -62,9 +62,18 @@ export interface SessionSummary {
   total_cache_write?: number;
 }
 
+export interface SubAgentSession {
+  agent_id: string;
+  spawn_index: number | null;
+  spawn_tool_call_id: string;
+  messages: Message[];
+  sub_sessions: SubAgentSession[];
+}
+
 export interface SessionDetail {
   summary: SessionSummary;
   messages: Message[];
+  sub_sessions: SubAgentSession[];
 }
 
 export interface PushResult {

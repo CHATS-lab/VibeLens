@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.3.0] - 2026-03-15
+
+### Added
+- **MongoDB target** (`MongoDBTarget`): Push parsed sessions to a remote MongoDB instance with two-collection design (sessions + messages), batch insert (500/batch), duplicate detection, and index creation.
+- **MongoDB source** (`MongoDBSource`): Query sessions from MongoDB with filtering, pagination, and recursive sub-agent hierarchy reconstruction.
+- **Config package** (`config/`): Refactored single `config.py` into `config/` package with `settings.py` (Pydantic Settings model), `loader.py` (YAML auto-discovery), and `validators.py` (integration config validators).
+- **YAML configuration**: First-class YAML config file support with auto-discovery of `vibelens.yaml` in working directory, nested section structure, and env var overrides.
+- **Push API** (`POST /api/push/mongodb`): Push selected sessions from SQLite to MongoDB with confirmation and result reporting.
+- **System API**: `GET /api/settings`, `GET /api/sources`, `GET /api/targets` endpoints for runtime configuration introspection.
+- **Frontend batch collection UI**: Multi-select checkboxes, select all/partial, confirmation dialog, push result display with error details.
+- **Frontend session viewer**: Full session detail view with metadata pills (duration, turns, tools, models), token statistics grid, two-column layout with prompt navigation sidebar.
+- **Frontend message rendering**: Role-specific message blocks with tool-specific renderers — `BashRenderer` (command + copy), `EditRenderer` (diff with +/- counts), `WriteRenderer` (file preview), `ReadRenderer` (path + language badge), `GrepRenderer`, `GlobRenderer`, and generic JSON fallback.
+- **Frontend extended thinking**: Expandable amber panel for Claude's thinking tokens.
+- **Frontend sub-agent display** (`sub-agent-block.tsx`): Collapsible nested panels for multi-agent cascade hierarchies with violet accent colors.
+- **Frontend prompt navigation** (`prompt-nav-panel.tsx`): Right sidebar showing numbered user turns with scroll-to navigation via IntersectionObserver.
+- **Frontend components**: `collapsible-pill.tsx`, `confirm-dialog.tsx`, `copy-button.tsx`, `markdown-renderer.tsx`.
+- **App icon**: Custom VibeLens icon with transparent background, browser favicons (16px, 32px), and sidebar logo display.
+- **File logging** (`utils/log.py`): Timestamped log files in `logs/` directory with configurable log level.
+- **MongoDB specification document** (`docs/mongodb-target-spec.md`).
+- Tests for MongoDB target and source (`test_targets_mongodb.py`, `test_sources_mongodb.py`), config package (`test_config.py`).
+
+### Changed
+- Config refactored from single `config.py` to `config/` package with YAML-first approach.
+- `.env.example` removed in favor of `vibelens.example.yaml` with inline env var documentation.
+- `deps.py` expanded with lazy-initialized MongoDB target/source singletons.
+- `app.py` lifespan now initializes MongoDB connections and indexes on startup, cleans up on shutdown.
+- `cli.py` enhanced with `--config` / `-c` flag and file logging setup.
+- `db.py` updated with source tracking columns and token usage aggregation.
+- Frontend sidebar enlarged with VibeLens icon (48px) and branding (text-2xl).
+- Session list now supports project filtering, search, and pagination (100 sessions/page).
+- Version bumped to 0.3.0.
+
+### Fixed
+- `vibelens.example.yaml` sanitized to remove hardcoded credentials.
+
 ## [0.2.0] - 2026-03-15
 
 ### Added
@@ -8,7 +43,7 @@
 - **Cross-agent session correlator** (`correlate_sessions`): Match sessions across different agents by overlapping time windows and shared project directories.
 - **Tool normalization** (`tool_normalizers.py`): Unified `categorize_tool()` mapping tool names to semantic categories (file_read, file_write, shell, search, web, agent), `summarize_tool_input()` for one-line input summaries, and `summarize_tool_output()` for output digests.
 - **Parse diagnostics** (`DiagnosticsCollector`): Tracks skipped lines, orphaned tool calls/results, and computes a completeness score. Integrated into all 4 parsers.
-- **Tool call dependency graph** (`tool_graph.py`): `build_tool_graph()` infers causal relationships (read-before-write, search-then-read, error-retry, sequential) and produces a DAG.
+- **Tool call dependency graph** (`tool_graph.py`): `build_tool_graph()` infers causal relationships (read-before-write, search-then-read, error-retry) and produces a DAG.
 - **Session phase detection** (`phase_detector.py`): `detect_phases()` classifies session segments into phases (exploration, implementation, debugging, verification, planning) using sliding-window analysis.
 - **Format auto-detection** (`fingerprint.py`): `fingerprint_file()` probes files and returns ranked format matches with confidence scores. `parse_auto()` selects the right parser automatically.
 - **Parallel multi-file parsing** (`parallel.py`): `parse_files_parallel()` uses `ProcessPoolExecutor` for CPU-bound JSONL parsing across multiple files.

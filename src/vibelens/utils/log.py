@@ -28,6 +28,41 @@ def _module_name_from_path(filepath: str) -> str:
     return ".".join(parts[-3:]) if len(parts) > 3 else ".".join(parts)
 
 
+def setup_file_logging(log_dir: str | Path | None = None) -> Path:
+    """Configure the root logger to write to a timestamped log file.
+
+    Called once at server startup so that all loggers (including
+    third-party ones like uvicorn and fastapi) write to disk.
+
+    Args:
+        log_dir: Directory for log files. Defaults to ``logs/`` next
+            to the project root.
+
+    Returns:
+        Path to the timestamped log file created for this run.
+    """
+    log_dir = Path(log_dir) if log_dir else DEFAULT_LOG_DIR
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    level_name = os.environ.get("LOG_LEVEL", "INFO").upper()
+    log_level = getattr(logging, level_name, logging.INFO)
+
+    formatter = logging.Formatter(fmt=LOG_FORMAT, datefmt=LOG_DATE_FORMAT)
+
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = log_dir / f"vibelens_{ts}.log"
+
+    root = logging.getLogger()
+    root.setLevel(log_level)
+
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setLevel(log_level)
+    file_handler.setFormatter(formatter)
+    root.addHandler(file_handler)
+
+    return log_file
+
+
 def get_logger(
     name: str, filepath: str | None = None, log_dir: str | Path | None = None
 ) -> logging.Logger:

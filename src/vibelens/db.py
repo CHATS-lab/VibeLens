@@ -130,25 +130,29 @@ async def insert_messages(conn: aiosqlite.Connection, messages: list[Message]) -
     for msg in messages:
         usage_json = json.dumps(msg.usage.model_dump()) if msg.usage else None
         tool_calls_json = json.dumps([tc.model_dump() for tc in msg.tool_calls])
-        content_str = msg.content if isinstance(msg.content, str) else json.dumps(
-            [block.model_dump() for block in msg.content]
+        content_str = (
+            msg.content
+            if isinstance(msg.content, str)
+            else json.dumps([block.model_dump() for block in msg.content])
         )
         timestamp_str = format_isoformat(msg.timestamp)
 
-        rows.append((
-            msg.uuid,
-            msg.session_id,
-            msg.parent_uuid,
-            msg.role,
-            msg.type,
-            content_str,
-            msg.thinking,
-            msg.model,
-            timestamp_str,
-            int(msg.is_sidechain),
-            usage_json,
-            tool_calls_json,
-        ))
+        rows.append(
+            (
+                msg.uuid,
+                msg.session_id,
+                msg.parent_uuid,
+                msg.role,
+                msg.type,
+                content_str,
+                msg.thinking,
+                msg.model,
+                timestamp_str,
+                int(msg.is_sidechain),
+                usage_json,
+                tool_calls_json,
+            )
+        )
 
     await conn.executemany(
         """
@@ -229,8 +233,7 @@ async def query_sessions(
 
 
 async def query_session_detail(
-    conn: aiosqlite.Connection,
-    session_id: str,
+    conn: aiosqlite.Connection, session_id: str
 ) -> tuple[SessionSummary | None, list[Message]]:
     """Query a session and its messages by session_id.
 
@@ -305,10 +308,7 @@ async def query_session_detail(
     return summary, messages
 
 
-async def delete_sessions_by_source(
-    conn: aiosqlite.Connection,
-    source_name: str,
-) -> int:
+async def delete_sessions_by_source(conn: aiosqlite.Connection, source_name: str) -> int:
     """Delete all sessions and messages for a given source_name.
 
     Args:

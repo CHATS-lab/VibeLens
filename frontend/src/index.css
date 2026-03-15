@@ -1,4 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&display=swap');
+@import 'highlight.js/styles/github-dark.css';
 
 @tailwind base;
 @tailwind components;
@@ -36,31 +37,30 @@
   }
 }
 
-/* Prose overrides for markdown */
-.prose pre {
-  @apply bg-zinc-900 rounded-lg p-3 text-xs overflow-x-auto;
+/* Override highlight.js background to match our theme */
+.hljs {
+  background: transparent !important;
 }
 
-.prose code {
-  @apply text-cyan-300 text-xs;
+/* User message markdown inherits white text */
+.user-markdown p,
+.user-markdown li,
+.user-markdown td,
+.user-markdown th {
+  color: inherit;
 }
 
-.prose pre code {
-  @apply text-zinc-300;
+.user-markdown strong {
+  color: inherit;
+  font-weight: 600;
 }
 
-.prose a {
-  @apply text-cyan-400 no-underline hover:underline;
+.user-markdown code:not(pre code) {
+  background: rgba(255, 255, 255, 0.15);
+  color: inherit;
 }
 
-.prose p {
-  @apply my-1.5;
-}
-
-.prose ul, .prose ol {
-  @apply my-1.5;
-}
-
-.prose h1, .prose h2, .prose h3, .prose h4 {
-  @apply mt-3 mb-1.5 text-zinc-200;
+/* Hide the duplicate header bar when MarkdownRenderer is used inside tool output containers */
+.tool-output-json > div > div:first-child {
+  display: none;
 }

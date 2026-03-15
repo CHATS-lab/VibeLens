@@ -69,6 +69,18 @@ class SessionSummary(BaseModel):
         default="", description="Name of the data source (e.g. HuggingFace repo id)."
     )
     source_host: str = Field(default="", description="Hostname or URL of the remote data source.")
+    total_input_tokens: int = Field(
+        default=0, description="Sum of input tokens consumed across all turns."
+    )
+    total_output_tokens: int = Field(
+        default=0, description="Sum of output tokens generated across all turns."
+    )
+    total_cache_read: int = Field(
+        default=0, description="Total tokens served from the prompt cache."
+    )
+    total_cache_write: int = Field(
+        default=0, description="Total tokens written into the prompt cache."
+    )
     diagnostics: ParseDiagnostics | None = Field(
         default=None, description="Parse quality diagnostics, if collected."
     )

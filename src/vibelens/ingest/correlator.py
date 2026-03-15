@@ -15,9 +15,7 @@ from vibelens.models.session import SessionSummary
 class CorrelatedSession(BaseModel):
     """A single session participating in a correlated group."""
 
-    source_type: str = Field(
-        description="Data source type (e.g. 'local', 'huggingface')."
-    )
+    source_type: str = Field(description="Data source type (e.g. 'local', 'huggingface').")
     session_id: str = Field(description="Unique session identifier.")
     is_main: bool = Field(
         default=True,

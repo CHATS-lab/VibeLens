@@ -80,12 +80,14 @@ class LocalSource:
         summary.tool_call_count = metadata.tool_call_count
         summary.models = metadata.models
         summary.duration = metadata.duration
-        if metadata.first_message and not summary.first_message:
+        summary.total_input_tokens = metadata.total_input_tokens
+        summary.total_output_tokens = metadata.total_output_tokens
+        summary.total_cache_read = metadata.total_cache_read
+        summary.total_cache_write = metadata.total_cache_write
+        if metadata.first_message:
             summary.first_message = metadata.first_message
 
-        return SessionDetail(
-            summary=summary, messages=messages, sub_sessions=sub_sessions
-        )
+        return SessionDetail(summary=summary, messages=messages, sub_sessions=sub_sessions)
 
     def list_projects(self) -> list[str]:
         """Return all unique project names from the session index.
