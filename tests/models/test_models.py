@@ -11,14 +11,16 @@ from vibelens.models.analysis import (
     UserPreferenceResult,
 )
 from vibelens.models.message import ContentBlock, Message, TokenUsage, ToolCall
-from vibelens.models.session import (
-    DataSourceType,
-    DataTargetType,
+from vibelens.models.requests import (
     PullRequest,
     PullResult,
     PushRequest,
     PushResult,
     RemoteSessionsQuery,
+)
+from vibelens.models.session import (
+    DataSourceType,
+    DataTargetType,
     SessionDetail,
     SessionMetadata,
     SessionSummary,
@@ -158,7 +160,7 @@ class TestPushRequest:
         assert req.target == DataTargetType.MONGODB
 
     def test_missing_required_fields(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError):
             PushRequest()
 
 

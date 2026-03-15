@@ -19,6 +19,14 @@ class ToolCall(BaseModel):
     is_error: bool = Field(
         default=False, description="Whether the tool execution resulted in an error."
     )
+    summary: str = Field(
+        default="", description="Short human-readable summary (e.g. 'src/main.py', 'ls -la')."
+    )
+    category: str = Field(
+        default="",
+        description="Semantic category: file_read, file_write, shell, search, web, agent, other.",
+    )
+    output_digest: str = Field(default="", description="One-line digest of the tool output signal.")
 
 
 class TokenUsage(BaseModel):
@@ -87,3 +95,36 @@ class Message(BaseModel):
     tool_calls: list[ToolCall] = Field(
         default_factory=list, description="Tool invocations extracted from this message."
     )
+
+
+class SubAgentSession(BaseModel):
+    """Sub-agent conversation spawned from a parent session.
+
+    Supports recursive nesting: a sub-agent can itself spawn further
+    sub-agents, forming a cascade hierarchy. The ``spawn_index`` field
+    tells the frontend exactly which parent message triggered this
+    sub-agent, enabling inline expandable display.
+    """
+
+    agent_id: str = Field(
+        description="Sub-agent identifier extracted from filename (e.g. 'agent-abc123')."
+    )
+    spawn_index: int | None = Field(
+        default=None,
+        description="0-based index of the parent message that spawned this sub-agent.",
+    )
+    spawn_tool_call_id: str = Field(
+        default="",
+        description="Tool call ID in the parent message that triggered this sub-agent.",
+    )
+    messages: list[Message] = Field(
+        default_factory=list,
+        description="Ordered messages in this sub-agent's conversation.",
+    )
+    sub_sessions: list["SubAgentSession"] = Field(
+        default_factory=list,
+        description="Nested sub-agent sessions spawned by this sub-agent (cascade).",
+    )
+
+
+SubAgentSession.model_rebuild()

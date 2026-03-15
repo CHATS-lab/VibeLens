@@ -3,7 +3,7 @@
 from fastapi import APIRouter
 
 from vibelens.api.deps import get_db, get_hf_source
-from vibelens.models.session import PullRequest, PullResult
+from vibelens.models.requests import PullRequest, PullResult
 from vibelens.utils import get_logger
 
 logger = get_logger(__name__)

@@ -2,16 +2,27 @@
 
 Parses HuggingFace dataclaw datasets that contain Claude Code conversation
 histories exported as structured JSONL.
+
+Unlike the local CLI parsers (claude_code, codex, gemini) where each file
+holds one session, dataclaw packs **one complete session per JSONL line**.
+Each line is a self-contained JSON object with session metadata, message
+array, and pre-computed stats — so ``parse_file`` can return multiple
+(summary, messages) tuples from a single file.
+
+The format is a third-party export format (dataclaw tool), not a native
+agent format, so field names and structures differ from all three CLI
+agents.  Tool calls use a flat ``tool_uses`` array without result data
+(dataclaw strips tool outputs during privacy scrubbing).
 """
 
-import json
+from collections.abc import Iterator
 from pathlib import Path
-from uuid import uuid4
 
 from vibelens.ingest.base import BaseParser
+from vibelens.ingest.diagnostics import DiagnosticsCollector
 from vibelens.models.message import Message, ToolCall
 from vibelens.models.session import DataSourceType, SessionSummary
-from vibelens.utils import get_logger, parse_iso_timestamp
+from vibelens.utils import coerce_to_string, deterministic_id, get_logger, parse_iso_timestamp
 
 logger = get_logger(__name__)
 
@@ -19,9 +30,7 @@ logger = get_logger(__name__)
 class DataclawParser(BaseParser):
     """Parser for dataclaw-exported conversation datasets."""
 
-    def parse_file(
-        self, file_path: Path
-    ) -> list[tuple[SessionSummary, list[Message]]]:
+    def parse_file(self, file_path: Path) -> list[tuple[SessionSummary, list[Message]]]:
         """Parse a dataclaw conversations.jsonl file.
 
         Args:
@@ -30,53 +39,50 @@ class DataclawParser(BaseParser):
         Returns:
             List of (SessionSummary, messages) tuples, one per session.
         """
-        if not file_path.exists():
-            logger.warning("Dataclaw file not found: %s", file_path)
-            return []
+        return list(self.iter_sessions(file_path))
 
-        results = []
-        with open(file_path, encoding="utf-8") as f:
-            for line_num, line in enumerate(f, start=1):
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    record = json.loads(line)
-                except json.JSONDecodeError:
-                    logger.warning(
-                        "Skipping malformed JSON at line %d", line_num
-                    )
-                    continue
-                try:
-                    result = self.parse_session(record)
-                    results.append(result)
-                except Exception:
-                    logger.warning(
-                        "Failed to parse session at line %d",
-                        line_num,
-                        exc_info=True,
-                    )
-                    continue
+    def iter_sessions(self, file_path: Path) -> Iterator[tuple[SessionSummary, list[Message]]]:
+        """Yield sessions one at a time for constant-memory processing.
 
-        return results
+        Args:
+            file_path: Path to the conversations.jsonl file.
+
+        Yields:
+            (SessionSummary, messages) tuples, one per valid session line.
+        """
+        collector = DiagnosticsCollector()
+        for record in self.iter_jsonl_safe(file_path, diagnostics=collector):
+            try:
+                yield self.parse_session(record, collector)
+            except (KeyError, TypeError, ValueError):
+                logger.warning("Failed to parse dataclaw session", exc_info=True)
+                continue
 
     def parse_session(
-        self, record: dict
+        self, record: dict, diagnostics: DiagnosticsCollector | None = None
     ) -> tuple[SessionSummary, list[Message]]:
         """Parse a single dataclaw session record into models.
 
         Args:
             record: Parsed JSON object from a conversations.jsonl line.
+            diagnostics: Optional collector for parse quality metrics.
 
         Returns:
             Tuple of (SessionSummary, list of Message objects).
         """
-        session_id = record.get("session_id", str(uuid4()))
+        # Dataclaw may omit session_id; derive a deterministic one from
+        # project + start_time so parsing the same file twice yields the same ID.
+        session_id = record.get("session_id") or deterministic_id(
+            "sess", record.get("project", ""), record.get("start_time", "")
+        )
         project = record.get("project", "")
         model = record.get("model", "")
         start_time = parse_iso_timestamp(record.get("start_time"))
         end_time = parse_iso_timestamp(record.get("end_time"))
 
+        # Use pre-computed stats from the export rather than counting
+        # messages ourselves — dataclaw may have filtered or truncated
+        # the raw message array during privacy scrubbing.
         stats = record.get("stats", {})
         user_msg_count = stats.get("user_messages", 0)
         assistant_msg_count = stats.get("assistant_messages", 0)
@@ -89,8 +95,9 @@ class DataclawParser(BaseParser):
 
         raw_messages = record.get("messages", [])
         messages = _build_messages(raw_messages, session_id, model)
+        self.enrich_tool_calls(messages)
 
-        first_message = self._extract_first_user_message(raw_messages)
+        first_message = self.find_first_user_text(messages)
 
         summary = SessionSummary(
             session_id=session_id,
@@ -105,30 +112,21 @@ class DataclawParser(BaseParser):
             source_type=DataSourceType.HUGGINGFACE,
             source_name="",
             source_host="https://huggingface.co",
+            diagnostics=diagnostics.to_diagnostics() if diagnostics else None,
         )
 
         return summary, messages
 
-    def _extract_first_user_message(self, raw_messages: list) -> str:
-        """Extract truncated text of the first user message."""
-        for raw in raw_messages:
-            if not isinstance(raw, dict):
-                continue
-            if raw.get("role") == "user":
-                content = raw.get("content", "")
-                if isinstance(content, str) and content.strip():
-                    return self.truncate_first_message(content)
-        return ""
 
+def _build_messages(raw_messages: list, session_id: str, session_model: str) -> list[Message]:
+    """Convert dataclaw message dicts into Message objects.
 
-def _build_messages(
-    raw_messages: list,
-    session_id: str,
-    session_model: str,
-) -> list[Message]:
-    """Convert dataclaw message dicts into Message objects."""
+    Dataclaw does not include per-message model or token data — the model
+    is session-level and only applied to assistant messages.  Message UUIDs
+    are generated since dataclaw strips original IDs for privacy.
+    """
     messages = []
-    for raw in raw_messages:
+    for idx, raw in enumerate(raw_messages):
         if not isinstance(raw, dict):
             continue
 
@@ -136,16 +134,16 @@ def _build_messages(
         if role not in ("user", "assistant"):
             continue
 
-        content = raw.get("content", "")
+        content = coerce_to_string(raw.get("content", ""))
         thinking = raw.get("thinking") or None
         timestamp = parse_iso_timestamp(raw.get("timestamp"))
 
         raw_tool_uses = raw.get("tool_uses", [])
-        tool_calls = _build_tool_calls(raw_tool_uses)
+        tool_calls = _build_tool_calls(raw_tool_uses, session_id, idx)
 
         messages.append(
             Message(
-                uuid=str(uuid4()),
+                uuid=deterministic_id("msg", session_id, str(idx), role),
                 session_id=session_id,
                 role=role,
                 type=role,
@@ -160,16 +158,23 @@ def _build_messages(
     return messages
 
 
-def _build_tool_calls(raw_tool_uses: list) -> list[ToolCall]:
-    """Convert dataclaw tool_uses into ToolCall objects."""
+def _build_tool_calls(
+    raw_tool_uses: list, session_id: str, msg_idx: int
+) -> list[ToolCall]:
+    """Convert dataclaw tool_uses into ToolCall objects.
+
+    Dataclaw only records tool name and input; outputs are stripped
+    during privacy scrubbing, so ToolCall.output stays None.
+    """
     calls = []
-    for tool in raw_tool_uses:
+    for tc_idx, tool in enumerate(raw_tool_uses):
         if not isinstance(tool, dict):
             continue
+        tool_name = tool.get("tool", "unknown")
         calls.append(
             ToolCall(
-                id=str(uuid4()),
-                name=tool.get("tool", "unknown"),
+                id=deterministic_id("tc", session_id, str(msg_idx), tool_name, str(tc_idx)),
+                name=tool_name,
                 input=tool.get("input"),
             )
         )

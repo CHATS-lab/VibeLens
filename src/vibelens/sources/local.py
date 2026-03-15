@@ -57,7 +57,7 @@ class LocalSource:
             session_id: The session UUID to load.
 
         Returns:
-            SessionDetail with messages, or None if not found.
+            SessionDetail with main messages and sub-agent sessions.
         """
         self._load_index()
 
@@ -66,7 +66,7 @@ class LocalSource:
             return None
 
         summary = self._find_summary(session_id)
-        messages = self._parser.parse_session_jsonl(session_file)
+        messages, sub_sessions = self._parser.parse_session_with_subagents(session_file)
         metadata = self._parser.compute_session_metadata(messages)
 
         if summary is None:
@@ -83,7 +83,9 @@ class LocalSource:
         if metadata.first_message and not summary.first_message:
             summary.first_message = metadata.first_message
 
-        return SessionDetail(summary=summary, messages=messages)
+        return SessionDetail(
+            summary=summary, messages=messages, sub_sessions=sub_sessions
+        )
 
     def list_projects(self) -> list[str]:
         """Return all unique project names from the session index.

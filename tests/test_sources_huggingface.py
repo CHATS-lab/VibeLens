@@ -7,7 +7,8 @@ import pytest
 import pytest_asyncio
 
 from vibelens.db import init_db, query_sessions
-from vibelens.models.session import DataSourceType, RemoteSessionsQuery
+from vibelens.models.requests import RemoteSessionsQuery
+from vibelens.models.session import DataSourceType
 from vibelens.sources.huggingface import HuggingFaceSource
 
 SAMPLE_RECORDS = [

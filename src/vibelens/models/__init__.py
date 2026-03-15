@@ -6,15 +6,18 @@ from vibelens.models.analysis import (
     ToolUsageStat,
     UserPreferenceResult,
 )
-from vibelens.models.message import ContentBlock, Message, TokenUsage, ToolCall
-from vibelens.models.session import (
-    DataSourceType,
-    DataTargetType,
+from vibelens.models.message import ContentBlock, Message, SubAgentSession, TokenUsage, ToolCall
+from vibelens.models.requests import (
     PullRequest,
     PullResult,
     PushRequest,
     PushResult,
     RemoteSessionsQuery,
+)
+from vibelens.models.session import (
+    DataSourceType,
+    DataTargetType,
+    ParseDiagnostics,
     SessionDetail,
     SessionMetadata,
     SessionSummary,
@@ -26,6 +29,7 @@ __all__ = [
     "DataSourceType",
     "DataTargetType",
     "Message",
+    "ParseDiagnostics",
     "PullRequest",
     "PullResult",
     "PushRequest",
@@ -34,6 +38,7 @@ __all__ = [
     "SessionDetail",
     "SessionMetadata",
     "SessionSummary",
+    "SubAgentSession",
     "TimePattern",
     "TokenUsage",
     "ToolCall",

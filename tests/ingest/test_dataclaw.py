@@ -269,3 +269,223 @@ class TestParseFile:
         uuids = [m.uuid for m in messages]
         assert len(uuids) == len(set(uuids))
         path.unlink()
+
+
+class TestIterSessions:
+    """Tests for DataclawParser.iter_sessions lazy generator."""
+
+    def test_iter_yields_same_as_parse_file(self):
+        """iter_sessions and parse_file produce identical results."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+            for sid in ["s1", "s2", "s3"]:
+                f.write(json.dumps(_make_session_record(session_id=sid)) + "\n")
+            path = Path(f.name)
+
+        from_parse = _parser.parse_file(path)
+        from_iter = list(_parser.iter_sessions(path))
+        assert len(from_parse) == len(from_iter) == 3
+        for (ps, pm), (is_, im) in zip(from_parse, from_iter, strict=True):
+            assert ps.session_id == is_.session_id
+            assert len(pm) == len(im)
+        path.unlink()
+
+    def test_iter_skips_malformed(self):
+        """Malformed lines are skipped during iteration."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+            f.write(json.dumps(_make_session_record(session_id="good")) + "\n")
+            f.write("NOT VALID JSON\n")
+            f.write(json.dumps(_make_session_record(session_id="also-good")) + "\n")
+            path = Path(f.name)
+
+        results = list(_parser.iter_sessions(path))
+        assert len(results) == 2
+        path.unlink()
+
+    def test_iter_nonexistent_file(self):
+        """Non-existent file yields nothing."""
+        results = list(_parser.iter_sessions(Path("/tmp/does_not_exist_iter.jsonl")))
+        assert results == []
+
+
+class TestToolCallEnrichment:
+    """Tests for tool category and summary enrichment via parse_session."""
+
+    def test_tool_calls_enriched(self):
+        """Tool calls get category and summary after parse_session."""
+        record = _make_session_record(
+            messages=[
+                {
+                    "role": "assistant",
+                    "content": "Reading file...",
+                    "timestamp": "2025-01-15T10:00:05Z",
+                    "tool_uses": [
+                        {"tool": "Read", "input": "src/main.py"},
+                    ],
+                },
+            ],
+        )
+        _, messages = _parser.parse_session(record)
+        tc = messages[0].tool_calls[0]
+        print(f"  name={tc.name}, category={tc.category}, summary={tc.summary}")
+        assert tc.category == "file_read"
+        assert tc.summary == "src/main.py"
+
+    def test_bash_tool_enriched(self):
+        record = _make_session_record(
+            messages=[
+                {
+                    "role": "assistant",
+                    "content": "Running command...",
+                    "timestamp": "2025-01-15T10:00:05Z",
+                    "tool_uses": [
+                        {"tool": "Bash", "input": {"command": "git status"}},
+                    ],
+                },
+            ],
+        )
+        _, messages = _parser.parse_session(record)
+        tc = messages[0].tool_calls[0]
+        assert tc.category == "shell"
+        assert tc.summary == "git status"
+
+    def test_unknown_tool_gets_other_category(self):
+        record = _make_session_record(
+            messages=[
+                {
+                    "role": "assistant",
+                    "content": "Custom tool...",
+                    "timestamp": "2025-01-15T10:00:05Z",
+                    "tool_uses": [{"tool": "MyPlugin", "input": "data"}],
+                },
+            ],
+        )
+        _, messages = _parser.parse_session(record)
+        tc = messages[0].tool_calls[0]
+        assert tc.category == "other"
+
+    def test_enrichment_in_full_parse_file(self):
+        """parse_file also enriches tool calls."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+            record = _make_session_record(
+                messages=[
+                    {
+                        "role": "assistant",
+                        "content": "Let me grep...",
+                        "timestamp": "2025-01-15T10:00:05Z",
+                        "tool_uses": [{"tool": "Grep", "input": {"pattern": "TODO"}}],
+                    },
+                ],
+            )
+            f.write(json.dumps(record) + "\n")
+            path = Path(f.name)
+
+        results = _parser.parse_file(path)
+        _, messages = results[0]
+        tc = messages[0].tool_calls[0]
+        assert tc.category == "search"
+        assert tc.summary == "TODO"
+        path.unlink()
+
+
+class TestNonDictToolUses:
+    """Tests for graceful handling of non-dict items in tool_uses."""
+
+    def test_non_dict_tool_use_skipped(self):
+        record = _make_session_record(
+            messages=[
+                {
+                    "role": "assistant",
+                    "content": "Tools...",
+                    "timestamp": "2025-01-15T10:00:05Z",
+                    "tool_uses": [
+                        "not a dict",
+                        42,
+                        {"tool": "Read", "input": "valid.py"},
+                    ],
+                },
+            ],
+        )
+        _, messages = _parser.parse_session(record)
+        assert len(messages[0].tool_calls) == 1
+        assert messages[0].tool_calls[0].name == "Read"
+
+    def test_missing_tool_name_defaults_to_unknown(self):
+        record = _make_session_record(
+            messages=[
+                {
+                    "role": "assistant",
+                    "content": "...",
+                    "timestamp": "2025-01-15T10:00:05Z",
+                    "tool_uses": [{"input": "data"}],
+                },
+            ],
+        )
+        _, messages = _parser.parse_session(record)
+        assert messages[0].tool_calls[0].name == "unknown"
+
+
+class TestSessionIdGeneration:
+    """Tests for session_id fallback generation."""
+
+    def test_missing_session_id_generates_uuid(self):
+        record = _make_session_record()
+        del record["session_id"]
+        summary, _ = _parser.parse_session(record)
+        assert summary.session_id != ""
+        assert len(summary.session_id) > 10
+
+    def test_session_id_deterministic(self):
+        """Same record without session_id produces the same generated ID."""
+        record1 = _make_session_record()
+        del record1["session_id"]
+        record2 = _make_session_record()
+        del record2["session_id"]
+        s1, _ = _parser.parse_session(record1)
+        s2, _ = _parser.parse_session(record2)
+        assert s1.session_id == s2.session_id
+
+    def test_session_id_differs_for_different_records(self):
+        """Different records without session_id get different generated IDs."""
+        record1 = _make_session_record(project="/project-a")
+        del record1["session_id"]
+        record2 = _make_session_record(project="/project-b")
+        del record2["session_id"]
+        s1, _ = _parser.parse_session(record1)
+        s2, _ = _parser.parse_session(record2)
+        assert s1.session_id != s2.session_id
+
+
+class TestSourceFields:
+    """Tests for source_type, source_name, and source_host fields."""
+
+    def test_source_type_huggingface(self):
+        record = _make_session_record()
+        summary, _ = _parser.parse_session(record)
+        assert summary.source_type == DataSourceType.HUGGINGFACE
+
+    def test_source_host(self):
+        record = _make_session_record()
+        summary, _ = _parser.parse_session(record)
+        assert summary.source_host == "https://huggingface.co"
+
+    def test_source_name_empty_by_default(self):
+        """source_name is empty until set externally (e.g. by HuggingFaceSource)."""
+        record = _make_session_record()
+        summary, _ = _parser.parse_session(record)
+        assert summary.source_name == ""
+
+
+class TestNonDictMessages:
+    """Tests for graceful handling of non-dict items in messages array."""
+
+    def test_non_dict_messages_skipped(self):
+        record = _make_session_record(
+            messages=[
+                "not a dict",
+                42,
+                {"role": "user", "content": "valid", "timestamp": "2025-01-15T10:00:00Z"},
+            ],
+        )
+        _, messages = _parser.parse_session(record)
+        assert len(messages) == 1
+        assert messages[0].content == "valid"

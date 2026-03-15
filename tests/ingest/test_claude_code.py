@@ -13,6 +13,7 @@ from vibelens.ingest.claude_code import (
     _extract_tool_result_text,
     _parse_content_blocks,
     _parse_usage,
+    count_history_entries,
 )
 from vibelens.models.message import ContentBlock, Message, TokenUsage, ToolCall
 
@@ -858,10 +859,10 @@ class TestComputeSessionMetadata:
         assert meta.total_input_tokens == 0
 
 
-# ─── Subagent parsing
+# ─── Subagent parsing (separated, not merged)
 class TestSubagentParsing:
-    def test_subagent_messages_included(self, tmp_path: Path):
-        """Subagent JSONL files are parsed and appended to main session."""
+    def test_main_session_excludes_subagent_messages(self, tmp_path: Path):
+        """parse_session_jsonl returns only main-session messages."""
         main_file = tmp_path / "session-abc.jsonl"
         _write_session(
             main_file,
@@ -877,29 +878,88 @@ class TestSubagentParsing:
 
         subagent_dir = tmp_path / "session-abc" / "subagents"
         subagent_dir.mkdir(parents=True)
-
-        agent_file = subagent_dir / "agent-001.jsonl"
         _write_session(
-            agent_file,
+            subagent_dir / "agent-001.jsonl",
             [
                 {
                     "type": "assistant",
                     "uuid": "sa-1",
                     "sessionId": "session-abc",
-                    "isSidechain": True,
                     "message": {"role": "assistant", "content": "Subagent response"},
                 }
             ],
         )
 
         result = _parser.parse_session_jsonl(main_file)
-        assert len(result) == 2
+        print(f"  main messages: {len(result)}")
+        print(f"  content: {[m.content for m in result]}")
+        assert len(result) == 1
         assert result[0].content == "Main session message"
-        assert result[1].content == "Subagent response"
-        assert result[1].is_sidechain is True
 
-    def test_multiple_subagent_files(self, tmp_path: Path):
-        """Multiple subagent files are all parsed."""
+    def test_subagents_returned_separately(self, tmp_path: Path):
+        """parse_session_with_subagents returns sub-sessions as separate objects."""
+        main_file = tmp_path / "session-abc.jsonl"
+        _write_session(
+            main_file,
+            [
+                {
+                    "type": "user",
+                    "uuid": "m1",
+                    "sessionId": "session-abc",
+                    "message": {"role": "user", "content": "Main message"},
+                },
+                {
+                    "type": "assistant",
+                    "uuid": "m2",
+                    "sessionId": "session-abc",
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "tool_use",
+                                "id": "tu-agent-1",
+                                "name": "Agent",
+                                "input": {"prompt": "do something"},
+                            }
+                        ],
+                    },
+                },
+            ],
+        )
+
+        subagent_dir = tmp_path / "session-abc" / "subagents"
+        subagent_dir.mkdir(parents=True)
+        _write_session(
+            subagent_dir / "agent-001.jsonl",
+            [
+                {
+                    "type": "assistant",
+                    "uuid": "sa-1",
+                    "sessionId": "session-abc",
+                    "message": {"role": "assistant", "content": "Subagent response"},
+                }
+            ],
+        )
+
+        messages, sub_sessions = _parser.parse_session_with_subagents(main_file)
+        print(f"  main messages: {len(messages)}")
+        print(f"  sub_sessions: {len(sub_sessions)}")
+        for sub in sub_sessions:
+            print(f"    agent_id={sub.agent_id}, spawn_index={sub.spawn_index}")
+            print(f"    spawn_tool_call_id={sub.spawn_tool_call_id}")
+            print(f"    messages: {len(sub.messages)}")
+            for m in sub.messages:
+                print(f"      role={m.role}, sidechain={m.is_sidechain}, content={m.content[:50]}")
+
+        assert len(messages) == 2
+        assert len(sub_sessions) == 1
+        assert sub_sessions[0].agent_id == "agent-001"
+        assert sub_sessions[0].spawn_index == 1
+        assert sub_sessions[0].spawn_tool_call_id == "tu-agent-1"
+        assert sub_sessions[0].messages[0].is_sidechain is True
+
+    def test_multiple_subagent_files_separate(self, tmp_path: Path):
+        """Multiple subagent files produce separate SubAgentSession objects."""
         main_file = tmp_path / "sess.jsonl"
         _write_session(
             main_file,
@@ -917,25 +977,28 @@ class TestSubagentParsing:
         subagent_dir.mkdir(parents=True)
 
         for agent_id in ["agent-aaa", "agent-bbb"]:
-            agent_file = subagent_dir / f"{agent_id}.jsonl"
             _write_session(
-                agent_file,
+                subagent_dir / f"{agent_id}.jsonl",
                 [
                     {
                         "type": "assistant",
                         "uuid": f"sa-{agent_id}",
                         "sessionId": "sess",
-                        "isSidechain": True,
                         "message": {"role": "assistant", "content": f"from {agent_id}"},
                     }
                 ],
             )
 
-        result = _parser.parse_session_jsonl(main_file)
-        assert len(result) == 3
-        subagent_contents = [m.content for m in result if m.is_sidechain]
-        assert "from agent-aaa" in subagent_contents
-        assert "from agent-bbb" in subagent_contents
+        messages, sub_sessions = _parser.parse_session_with_subagents(main_file)
+        print(f"  main messages: {len(messages)}")
+        print(f"  sub_sessions: {len(sub_sessions)}")
+        for sub in sub_sessions:
+            print(f"    agent_id={sub.agent_id}, msgs={len(sub.messages)}")
+
+        assert len(messages) == 1
+        assert len(sub_sessions) == 2
+        agent_ids = {sub.agent_id for sub in sub_sessions}
+        assert agent_ids == {"agent-aaa", "agent-bbb"}
 
     def test_no_subagent_dir(self, tmp_path: Path):
         """No error when subagent directory does not exist."""
@@ -951,11 +1014,13 @@ class TestSubagentParsing:
                 }
             ],
         )
-        result = _parser.parse_session_jsonl(main_file)
-        assert len(result) == 1
+        messages, sub_sessions = _parser.parse_session_with_subagents(main_file)
+        print(f"  main messages: {len(messages)}, sub_sessions: {len(sub_sessions)}")
+        assert len(messages) == 1
+        assert len(sub_sessions) == 0
 
     def test_empty_subagent_dir(self, tmp_path: Path):
-        """Empty subagent directory adds no messages."""
+        """Empty subagent directory produces no sub-sessions."""
         main_file = tmp_path / "session.jsonl"
         _write_session(
             main_file,
@@ -971,5 +1036,276 @@ class TestSubagentParsing:
         subagent_dir = tmp_path / "session" / "subagents"
         subagent_dir.mkdir(parents=True)
 
-        result = _parser.parse_session_jsonl(main_file)
+        messages, sub_sessions = _parser.parse_session_with_subagents(main_file)
+        assert len(messages) == 1
+        assert len(sub_sessions) == 0
+
+
+# ─── Tool enrichment via parse_file
+class TestToolEnrichmentViaParseFile:
+    """Tests that parse_file populates tool category and summary."""
+
+    def test_read_tool_enriched(self, tmp_path: Path, project_dir: Path):
+        f = project_dir / "session.jsonl"
+        _write_session(
+            f,
+            [
+                {
+                    "type": "assistant",
+                    "uuid": "m1",
+                    "sessionId": "s1",
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "tool_use",
+                                "id": "tu-1",
+                                "name": "Read",
+                                "input": {"file_path": "/src/main.py"},
+                            }
+                        ],
+                    },
+                },
+                {
+                    "type": "user",
+                    "uuid": "m2",
+                    "sessionId": "s1",
+                    "message": {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": "tu-1",
+                                "content": "print('hello')",
+                            }
+                        ],
+                    },
+                },
+            ],
+        )
+        results = _parser.parse_file(f)
+        _, messages = results[0]
+        tc = messages[0].tool_calls[0]
+        print(f"  name={tc.name}, category={tc.category}, summary={tc.summary}")
+        assert tc.category == "file_read"
+        assert tc.summary == "/src/main.py"
+
+    def test_bash_tool_enriched(self, tmp_path: Path, project_dir: Path):
+        f = project_dir / "session.jsonl"
+        _write_session(
+            f,
+            [
+                {
+                    "type": "assistant",
+                    "uuid": "m1",
+                    "sessionId": "s1",
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "tool_use",
+                                "id": "tu-1",
+                                "name": "Bash",
+                                "input": {"command": "npm test"},
+                            }
+                        ],
+                    },
+                },
+            ],
+        )
+        results = _parser.parse_file(f)
+        _, messages = results[0]
+        tc = messages[0].tool_calls[0]
+        assert tc.category == "shell"
+        assert tc.summary == "npm test"
+
+    def test_agent_tool_enriched(self, tmp_path: Path, project_dir: Path):
+        f = project_dir / "session.jsonl"
+        _write_session(
+            f,
+            [
+                {
+                    "type": "assistant",
+                    "uuid": "m1",
+                    "sessionId": "s1",
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "tool_use",
+                                "id": "tu-1",
+                                "name": "Agent",
+                                "input": {"description": "Search codebase", "prompt": "find bugs"},
+                            }
+                        ],
+                    },
+                },
+            ],
+        )
+        results = _parser.parse_file(f)
+        _, messages = results[0]
+        tc = messages[0].tool_calls[0]
+        assert tc.category == "agent"
+        assert tc.summary == "Search codebase"
+
+
+# ─── Discover subagent-only sessions
+class TestDiscoverSubagentOnlySessions:
+    """Tests for ClaudeCodeParser.discover_subagent_only_sessions."""
+
+    def test_finds_subagent_dirs_without_root_jsonl(self, tmp_path: Path):
+        """Session dir with only subagent files and no root JSONL is discovered."""
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+
+        # Session with root JSONL — should NOT be returned
+        (project_dir / "has-root.jsonl").write_text("{}\n")
+        sa_dir = project_dir / "has-root" / "subagents"
+        sa_dir.mkdir(parents=True)
+        (sa_dir / "agent-a1.jsonl").write_text("{}\n")
+
+        # Session with only subagent data — SHOULD be returned
+        sa_dir2 = project_dir / "subagent-only" / "subagents"
+        sa_dir2.mkdir(parents=True)
+        (sa_dir2 / "agent-b1.jsonl").write_text("{}\n")
+
+        result = _parser.discover_subagent_only_sessions(project_dir)
+        print(f"  discovered: {[p.name for p in result]}")
         assert len(result) == 1
+        # Returns the subagents/ dir, parent is the session dir
+        assert result[0].parent.name == "subagent-only"
+
+    def test_ignores_dirs_without_subagents(self, tmp_path: Path):
+        """Directories with only tool-results are ignored."""
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        (project_dir / "tool-only" / "tool-results").mkdir(parents=True)
+
+        result = _parser.discover_subagent_only_sessions(project_dir)
+        assert result == []
+
+    def test_ignores_empty_subagent_dirs(self, tmp_path: Path):
+        """Empty subagent directories are ignored."""
+        project_dir = tmp_path / "project"
+        (project_dir / "empty-sa" / "subagents").mkdir(parents=True)
+
+        result = _parser.discover_subagent_only_sessions(project_dir)
+        assert result == []
+
+    def test_returns_empty_for_no_dirs(self, tmp_path: Path):
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        (project_dir / "session.jsonl").write_text("{}\n")
+
+        result = _parser.discover_subagent_only_sessions(project_dir)
+        assert result == []
+
+    def test_nonexistent_project_dir(self, tmp_path: Path):
+        result = _parser.discover_subagent_only_sessions(tmp_path / "nonexistent")
+        assert result == []
+
+
+# ─── parse_history_index with since/limit
+class TestParseHistoryIndexFiltering:
+    def test_since_filters_old_sessions(self, claude_dir: Path):
+        """Sessions before `since` are excluded."""
+        _write_history(
+            claude_dir,
+            [
+                {"sessionId": "old", "display": "Old", "timestamp": 1700000000000, "project": "/p"},
+                {"sessionId": "new", "display": "New", "timestamp": 1710000000000, "project": "/p"},
+            ],
+        )
+        since = datetime(2024, 3, 1, tzinfo=UTC)
+        result = _parser.parse_history_index(claude_dir, since=since)
+        assert len(result) == 1
+        assert result[0].session_id == "new"
+        print(f"  filtered: kept {len(result)} of 2 sessions")
+
+    def test_since_none_returns_all(self, claude_dir: Path):
+        _write_history(
+            claude_dir,
+            [
+                {"sessionId": "s1", "display": "A", "timestamp": 1700000000000, "project": "/p"},
+                {"sessionId": "s2", "display": "B", "timestamp": 1710000000000, "project": "/p"},
+            ],
+        )
+        result = _parser.parse_history_index(claude_dir, since=None)
+        assert len(result) == 2
+
+    def test_limit_truncates_results(self, claude_dir: Path):
+        entries = [
+            {
+                "sessionId": f"s{i}", "display": f"msg{i}",
+                "timestamp": 1700000000000 + i * 1000000,
+                "project": "/p",
+            }
+            for i in range(10)
+        ]
+        _write_history(claude_dir, entries)
+        result = _parser.parse_history_index(claude_dir, limit=3)
+        assert len(result) == 3
+        print(f"  limited to {len(result)} sessions")
+
+    def test_limit_none_returns_all(self, claude_dir: Path):
+        entries = [
+            {
+                "sessionId": f"s{i}", "display": f"msg{i}",
+                "timestamp": 1700000000000 + i * 1000000,
+                "project": "/p",
+            }
+            for i in range(5)
+        ]
+        _write_history(claude_dir, entries)
+        result = _parser.parse_history_index(claude_dir, limit=None)
+        assert len(result) == 5
+
+    def test_since_and_limit_combined(self, claude_dir: Path):
+        _write_history(
+            claude_dir,
+            [
+                {"sessionId": "old", "display": "Old",
+                 "timestamp": 1700000000000, "project": "/p"},
+                {"sessionId": "mid", "display": "Mid",
+                 "timestamp": 1710000000000, "project": "/p"},
+                {"sessionId": "new1", "display": "New1",
+                 "timestamp": 1720000000000, "project": "/p"},
+                {"sessionId": "new2", "display": "New2",
+                 "timestamp": 1730000000000, "project": "/p"},
+            ],
+        )
+        since = datetime(2024, 3, 1, tzinfo=UTC)
+        result = _parser.parse_history_index(claude_dir, since=since, limit=1)
+        assert len(result) == 1
+
+    def test_backward_compatible(self, claude_dir: Path):
+        """No args behaves the same as before."""
+        _write_history(
+            claude_dir,
+            [{"sessionId": "s1", "display": "x", "timestamp": 1707734674932, "project": "/p"}],
+        )
+        result = _parser.parse_history_index(claude_dir)
+        assert len(result) == 1
+
+
+# ─── count_history_entries
+class TestCountHistoryEntries:
+    def test_counts_lines(self, claude_dir: Path):
+        _write_history(
+            claude_dir,
+            [
+                {"sessionId": "s1", "display": "A", "timestamp": 1700000000000, "project": "/p"},
+                {"sessionId": "s2", "display": "B", "timestamp": 1700000001000, "project": "/p"},
+                {"sessionId": "s3", "display": "C", "timestamp": 1700000002000, "project": "/p"},
+            ],
+        )
+        count = count_history_entries(claude_dir)
+        assert count == 3
+        print(f"  counted {count} entries")
+
+    def test_missing_file_returns_zero(self, claude_dir: Path):
+        assert count_history_entries(claude_dir) == 0
+
+    def test_empty_file(self, claude_dir: Path):
+        (claude_dir / "history.jsonl").write_text("")
+        assert count_history_entries(claude_dir) == 0

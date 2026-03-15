@@ -1,12 +1,12 @@
-"""Session-level models and request/response types."""
+"""Session-level domain models."""
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
 
-class DataSourceType(str, Enum):
+class DataSourceType(StrEnum):
     """Supported data source types."""
 
     LOCAL = "local"
@@ -14,11 +14,26 @@ class DataSourceType(str, Enum):
     MONGODB = "mongodb"
 
 
-class DataTargetType(str, Enum):
+class DataTargetType(StrEnum):
     """Supported data target types."""
 
     MONGODB = "mongodb"
     HUGGINGFACE = "huggingface"
+
+
+class ParseDiagnostics(BaseModel):
+    """Diagnostics collected during session parsing."""
+
+    skipped_lines: int = Field(default=0, description="JSONL lines that failed JSON decode.")
+    orphaned_tool_calls: int = Field(
+        default=0, description="tool_use blocks with no matching tool_result."
+    )
+    orphaned_tool_results: int = Field(
+        default=0, description="tool_result blocks with no matching tool_use."
+    )
+    completeness_score: float = Field(
+        default=1.0, description="Quality score from 0.0 (poor) to 1.0 (perfect)."
+    )
 
 
 class SessionSummary(BaseModel):
@@ -54,14 +69,28 @@ class SessionSummary(BaseModel):
         default="", description="Name of the data source (e.g. HuggingFace repo id)."
     )
     source_host: str = Field(default="", description="Hostname or URL of the remote data source.")
+    diagnostics: ParseDiagnostics | None = Field(
+        default=None, description="Parse quality diagnostics, if collected."
+    )
 
 
 class SessionDetail(BaseModel):
-    """Full session data including all messages."""
+    """Full session data including all messages and sub-agent hierarchy.
+
+    The ``messages`` list contains only the main session's messages.
+    Sub-agent conversations are kept separate in ``sub_sessions``,
+    preserving the cascade hierarchy for frontend display: the left
+    panel shows only main sessions, while sub-agent messages are
+    revealed via expandable dropdowns at their spawn points.
+    """
 
     summary: SessionSummary = Field(description="Aggregated session-level summary.")
     messages: list = Field(
-        default_factory=list, description="Ordered list of Message objects in the session."
+        default_factory=list, description="Ordered list of Message objects in the main session."
+    )
+    sub_sessions: list = Field(
+        default_factory=list,
+        description="Sub-agent sessions spawned during this session (SubAgentSession objects).",
     )
 
 
@@ -89,52 +118,3 @@ class SessionMetadata(BaseModel):
         default=0, description="Total tokens written into the prompt cache."
     )
     duration: int = Field(default=0, description="Session wall-clock duration in seconds.")
-
-
-class PushRequest(BaseModel):
-    """Push request payload."""
-
-    session_ids: list[str] = Field(description="Session IDs to upload to the target.")
-    target: DataTargetType = Field(description="Destination data store for the push operation.")
-
-
-class PushResult(BaseModel):
-    """Push operation result."""
-
-    total: int = Field(description="Total number of sessions in the push request.")
-    uploaded: int = Field(description="Number of sessions successfully uploaded.")
-    skipped: int = Field(description="Number of sessions skipped (already exist or filtered).")
-    errors: list[dict] = Field(
-        default_factory=list, description="Per-session error details for failed uploads."
-    )
-
-
-class PullRequest(BaseModel):
-    """HuggingFace pull request payload."""
-
-    repo_id: str = Field(description="HuggingFace repository identifier (e.g. 'org/dataset-name').")
-    force_refresh: bool = Field(
-        default=False, description="Re-download all sessions even if already cached."
-    )
-
-
-class PullResult(BaseModel):
-    """Pull operation result."""
-
-    repo_id: str = Field(description="HuggingFace repository that was pulled from.")
-    sessions_imported: int = Field(description="Number of new sessions imported.")
-    messages_imported: int = Field(description="Total messages imported across all sessions.")
-    skipped: int = Field(description="Number of sessions skipped (already present locally).")
-
-
-class RemoteSessionsQuery(BaseModel):
-    """Query parameters for remote session listing."""
-
-    project_id: str | None = Field(
-        default=None, description="Filter sessions by project identifier."
-    )
-    source_type: DataSourceType | None = Field(
-        default=None, description="Filter sessions by data source type."
-    )
-    limit: int = Field(default=100, description="Maximum number of sessions to return.")
-    offset: int = Field(default=0, description="Number of sessions to skip for pagination.")

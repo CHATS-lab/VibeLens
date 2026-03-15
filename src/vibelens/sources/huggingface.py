@@ -18,12 +18,8 @@ from vibelens.db import (
     query_sessions,
 )
 from vibelens.ingest.dataclaw import DataclawParser
-from vibelens.models.session import (
-    PullResult,
-    RemoteSessionsQuery,
-    SessionDetail,
-    SessionSummary,
-)
+from vibelens.models.requests import PullResult, RemoteSessionsQuery
+from vibelens.models.session import SessionDetail, SessionSummary
 from vibelens.utils import get_logger, load_json_file
 from vibelens.utils.paths import ensure_dir
 

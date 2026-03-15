@@ -20,6 +20,9 @@ venv/
 # Environment
 .env
 
+# Datasets
+datasets/
+
 # Logs
 logs/
 
