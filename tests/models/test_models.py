@@ -117,7 +117,10 @@ class TestSessionDetail:
 
     def test_with_messages(self):
         summary = SessionSummary(session_id="s1")
-        detail = SessionDetail(summary=summary, messages=[{"role": "user"}])
+        detail = SessionDetail(
+            summary=summary,
+            messages=[{"uuid": "msg-1", "session_id": "s1", "role": "user", "type": "user"}],
+        )
         assert len(detail.messages) == 1
 
 

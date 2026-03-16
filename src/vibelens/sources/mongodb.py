@@ -5,10 +5,14 @@ from collections import defaultdict
 
 from motor.motor_asyncio import AsyncIOMotorClient
 
-from vibelens.models.message import Message, SubAgentSession
+from vibelens.models.message import Message
 from vibelens.models.requests import RemoteSessionsQuery
-from vibelens.models.session import SessionDetail, SessionSummary
-from vibelens.targets.mongodb import MAIN_AGENT_ID
+from vibelens.models.session import (
+    MAIN_AGENT_ID,
+    SessionDetail,
+    SessionSummary,
+    SubAgentSession,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +82,9 @@ class MongoDBSource:
 
         summary = _deserialize_session(session_doc)
 
+        # Messages are stored flat in MongoDB with agent_id as discriminator.
+        # Group by agent_id, then use the sub_sessions metadata tree from the
+        # session document to reconstruct the nested SubAgentSession hierarchy.
         cursor = self.messages.find({"session_id": session_id}).sort("timestamp", 1)
         messages_by_agent: dict[str, list[Message]] = defaultdict(list)
         async for doc in cursor:
@@ -180,6 +187,9 @@ def _reconstruct_sub_sessions(
     for meta in sub_meta:
         agent_id = meta["agent_id"]
         nested_meta = meta.get("sub_sessions", [])
+        # pop() rather than get() so each agent's messages are consumed
+        # exactly once — prevents duplicate attachment if metadata has
+        # overlapping agent_ids across nesting levels.
         sub = SubAgentSession(
             agent_id=agent_id,
             spawn_index=meta.get("spawn_index"),

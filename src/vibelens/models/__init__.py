@@ -6,7 +6,7 @@ from vibelens.models.analysis import (
     ToolUsageStat,
     UserPreferenceResult,
 )
-from vibelens.models.message import ContentBlock, Message, SubAgentSession, TokenUsage, ToolCall
+from vibelens.models.message import ContentBlock, Message, TokenUsage, ToolCall
 from vibelens.models.requests import (
     PullRequest,
     PullResult,
@@ -21,6 +21,7 @@ from vibelens.models.session import (
     SessionDetail,
     SessionMetadata,
     SessionSummary,
+    SubAgentSession,
 )
 
 __all__ = [

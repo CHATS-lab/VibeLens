@@ -19,16 +19,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from vibelens.ingest.base import BaseParser, _is_meaningful_prompt
 from vibelens.ingest.diagnostics import DiagnosticsCollector
-from vibelens.models.message import (
-    ContentBlock,
-    Message,
-    SubAgentSession,
-    TokenUsage,
-    ToolCall,
-)
-from vibelens.models.session import SessionMetadata, SessionSummary
+from vibelens.ingest.parsers.base import BaseParser, _is_meaningful_prompt
+from vibelens.models.message import ContentBlock, Message, TokenUsage, ToolCall
+from vibelens.models.session import SessionMetadata, SessionSummary, SubAgentSession
 from vibelens.utils import coerce_to_string, get_logger, normalize_timestamp
 
 # Sentinel for sorting messages that lack timestamps — placed before all
@@ -80,10 +74,7 @@ class ClaudeCodeParser(BaseParser):
         return [(summary, messages)]
 
     def parse_history_index(
-        self,
-        claude_dir: Path,
-        since: datetime | None = None,
-        limit: int | None = None,
+        self, claude_dir: Path, since: datetime | None = None, limit: int | None = None
     ) -> list[SessionSummary]:
         """Parse history.jsonl to build a session summary list.
 
@@ -179,6 +170,9 @@ class ClaudeCodeParser(BaseParser):
         Returns:
             List of SubAgentSession objects with spawn_index populated.
         """
+        # Claude Code stores sub-agent files alongside the main session at
+        # {session-id}/subagents/agent-*.jsonl — the dir name matches the
+        # main file's stem (UUID), forming a sibling directory structure.
         subagent_dir = file_path.parent / file_path.stem / "subagents"
         if not subagent_dir.is_dir():
             return []
@@ -187,6 +181,9 @@ class ClaudeCodeParser(BaseParser):
         if not agent_files:
             return []
 
+        # Positional matching: the N-th sorted agent file corresponds to the
+        # N-th Agent tool_call in the parent session. Claude Code doesn't
+        # store an explicit link between agent files and their spawn points.
         agent_spawn_points = _find_agent_spawn_points(parent_messages)
         sub_sessions: list[SubAgentSession] = []
 
@@ -310,6 +307,11 @@ class ClaudeCodeParser(BaseParser):
             if entry.get("type") in RELEVANT_TYPES
         ]
 
+        # Two-pass design: first scan user messages to build the tool_use_id →
+        # result mapping, then construct Messages with results already paired.
+        # This is necessary because Claude Code splits tool invocations across
+        # two JSONL lines: tool_use in the assistant message, tool_result in
+        # the *following* user message.
         tool_results = _collect_tool_results(raw_entries)
         tool_use_ids: set[str] = set()
 
@@ -337,6 +339,9 @@ class ClaudeCodeParser(BaseParser):
                     if diagnostics:
                         diagnostics.record_tool_call()
 
+            # Preserve the original format: plain strings stay as strings for
+            # simple user messages, while structured content (tool_use/tool_result
+            # blocks) keeps the parsed ContentBlock list for downstream rendering.
             message_content: str | list[ContentBlock] = (
                 raw_content if isinstance(raw_content, str) else content_blocks
             )
@@ -436,6 +441,10 @@ def _aggregate_history_lines(history_file: Path, since_ms: int) -> dict[str, dic
             else:
                 sess = sessions[session_id]
                 sess["message_count"] += 1
+                # Use the earliest meaningful prompt as the session preview.
+                # History entries aren't guaranteed to arrive in chronological
+                # order, so we track the earliest timestamp and re-assign
+                # first_message when we discover an even earlier entry.
                 if not sess["first_message"] and _is_meaningful_prompt(display):
                     sess["first_message"] = display
                 if timestamp_ms < sess["first_timestamp"]:

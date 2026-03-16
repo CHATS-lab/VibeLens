@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from vibelens.ingest.codex import (
+from vibelens.ingest.parsers.codex import (
     CodexParser,
     _collect_tool_outputs,
     _extract_message_text,
@@ -1063,7 +1063,8 @@ class TestToolEnrichmentViaParseFile:
                 _turn_context_entry(),
                 _assistant_msg_entry("Let me check"),
                 _function_call_entry(
-                    call_id="fc-1", name="shell",
+                    call_id="fc-1",
+                    name="shell",
                     arguments='{"command": "ls -la"}',
                 ),
                 _function_call_output_entry(call_id="fc-1", output="file1.txt"),

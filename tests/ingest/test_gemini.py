@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from vibelens.ingest.gemini import (
+from vibelens.ingest.parsers.gemini import (
     GeminiParser,
     _extract_thinking,
     _parse_gemini_tokens,
@@ -365,9 +365,7 @@ class TestToolCalls:
                                 "functionResponse": {
                                     "id": "tc-1",
                                     "name": "ReadFile",
-                                    "response": {
-                                        "output": "file content"
-                                    },
+                                    "response": {"output": "file content"},
                                 }
                             }
                         ],
@@ -668,9 +666,7 @@ class TestProjectHashResolution:
         hash_dir = "abc123hash"
         project_dir = gemini_dir / "tmp" / hash_dir
         project_dir.mkdir(parents=True)
-        (project_dir / ".project_root").write_text(
-            "/Users/dev/my-project"
-        )
+        (project_dir / ".project_root").write_text("/Users/dev/my-project")
 
         result = resolve_project_path(hash_dir, gemini_dir)
         assert result == "/Users/dev/my-project"

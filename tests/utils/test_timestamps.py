@@ -12,7 +12,6 @@ from vibelens.utils.timestamps import (
 )
 
 
-# ─── parse_ms_timestamp
 class TestParseMsTimestamp:
     def test_valid_ms_timestamp(self):
         dt = parse_ms_timestamp(1700000000000)
@@ -60,7 +59,6 @@ class TestParseMsTimestamp:
         assert parse_ms_timestamp(10**30) is None
 
 
-# ─── parse_iso_timestamp
 class TestParseIsoTimestamp:
     def test_valid_iso(self):
         dt = parse_iso_timestamp("2024-06-15T10:30:00+00:00")
@@ -88,7 +86,6 @@ class TestParseIsoTimestamp:
         assert parse_iso_timestamp("2040-01-01T00:00:00Z") is None
 
 
-# ─── normalize_timestamp
 class TestNormalizeTimestamp:
     def test_none(self):
         assert normalize_timestamp(None) is None
@@ -127,7 +124,6 @@ class TestNormalizeTimestamp:
         assert normalize_timestamp(far_future) is None
 
 
-# ─── safe_int
 class TestSafeInt:
     def test_int(self):
         assert safe_int(42) == 42
@@ -166,7 +162,6 @@ class TestSafeInt:
         assert safe_int(False) == 0
 
 
-# ─── Range validation constants
 class TestValidationConstants:
     def test_min_valid_epoch_is_2015(self):
         dt = datetime.fromtimestamp(MIN_VALID_EPOCH, tz=UTC)

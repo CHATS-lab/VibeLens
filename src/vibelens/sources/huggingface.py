@@ -17,7 +17,7 @@ from vibelens.db import (
     query_session_detail,
     query_sessions,
 )
-from vibelens.ingest.dataclaw import DataclawParser
+from vibelens.ingest.parsers.dataclaw import DataclawParser
 from vibelens.models.requests import PullResult, RemoteSessionsQuery
 from vibelens.models.session import SessionDetail, SessionSummary
 from vibelens.utils import get_logger, load_json_file
@@ -141,9 +141,7 @@ class HuggingFaceSource:
         return repos
 
     async def list_sessions(
-        self,
-        conn: aiosqlite.Connection,
-        query: RemoteSessionsQuery,
+        self, conn: aiosqlite.Connection, query: RemoteSessionsQuery
     ) -> list[SessionSummary]:
         """Query stored HuggingFace sessions from SQLite.
 
@@ -163,9 +161,7 @@ class HuggingFaceSource:
         )
 
     async def get_session(
-        self,
-        conn: aiosqlite.Connection,
-        session_id: str,
+        self, conn: aiosqlite.Connection, session_id: str
     ) -> SessionDetail | None:
         """Retrieve full session detail from SQLite.
 

@@ -1,30 +1,42 @@
-import { Search, CheckSquare, Square, MinusSquare } from "lucide-react";
-import { useState } from "react";
+import {
+  Search,
+  CheckSquare,
+  Square,
+  MinusSquare,
+  Clock,
+  FolderOpen,
+  ChevronDown,
+  ChevronRight,
+} from "lucide-react";
+import { useMemo, useState } from "react";
 import type { SessionSummary } from "../types";
 import { formatTime, truncate } from "../utils";
+
+export type ViewMode = "time" | "project";
 
 interface SessionListProps {
   sessions: SessionSummary[];
   selectedId: string | null;
   onSelect: (id: string) => void;
-  projects: string[];
-  selectedProject: string;
-  onProjectChange: (project: string) => void;
   checkedIds: Set<string>;
   onCheckedChange: (ids: Set<string>) => void;
+  viewMode: ViewMode;
+  onViewModeChange: (mode: ViewMode) => void;
 }
 
 export function SessionList({
   sessions,
   selectedId,
   onSelect,
-  projects,
-  selectedProject,
-  onProjectChange,
   checkedIds,
   onCheckedChange,
+  viewMode,
+  onViewModeChange,
 }: SessionListProps) {
   const [search, setSearch] = useState("");
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(
+    new Set()
+  );
 
   const filtered = sessions.filter((s) => {
     if (!search) return true;
@@ -40,6 +52,34 @@ export function SessionList({
   const allChecked =
     filtered.length > 0 && checkedInView.length === filtered.length;
   const someChecked = checkedInView.length > 0 && !allChecked;
+
+  const groupedByProject = useMemo(() => {
+    const groups = new Map<string, SessionSummary[]>();
+    for (const session of filtered) {
+      const key = session.project_name || "Unknown";
+      const list = groups.get(key) || [];
+      list.push(session);
+      groups.set(key, list);
+    }
+    return groups;
+  }, [filtered]);
+
+  const handleSetViewMode = (mode: ViewMode) => {
+    if (mode === "project" && viewMode !== "project") {
+      setExpandedProjects(new Set());
+    }
+    onViewModeChange(mode);
+  };
+
+  const toggleProjectExpanded = (projectName: string) => {
+    const next = new Set(expandedProjects);
+    if (next.has(projectName)) {
+      next.delete(projectName);
+    } else {
+      next.add(projectName);
+    }
+    setExpandedProjects(next);
+  };
 
   const handleToggleAll = () => {
     if (allChecked) {
@@ -64,20 +104,34 @@ export function SessionList({
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col flex-1 min-h-0">
       <div className="p-3 space-y-2 border-b border-zinc-800">
-        <select
-          value={selectedProject}
-          onChange={(e) => onProjectChange(e.target.value)}
-          className="w-full bg-zinc-800 text-zinc-200 text-sm rounded px-2 py-1.5 border border-zinc-700 focus:outline-none focus:border-cyan-600"
-        >
-          <option value="">All Projects</option>
-          {projects.map((p) => (
-            <option key={p} value={p}>
-              {p}
-            </option>
-          ))}
-        </select>
+        {/* View Mode Toggle */}
+        <div className="flex gap-0.5 bg-zinc-800 rounded p-0.5">
+          <button
+            onClick={() => handleSetViewMode("time")}
+            className={`flex-1 flex items-center justify-center gap-1.5 text-xs py-1.5 rounded transition ${
+              viewMode === "time"
+                ? "bg-zinc-700 text-zinc-100"
+                : "text-zinc-500 hover:text-zinc-300"
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5" />
+            By Time
+          </button>
+          <button
+            onClick={() => handleSetViewMode("project")}
+            className={`flex-1 flex items-center justify-center gap-1.5 text-xs py-1.5 rounded transition ${
+              viewMode === "project"
+                ? "bg-zinc-700 text-zinc-100"
+                : "text-zinc-500 hover:text-zinc-300"
+            }`}
+          >
+            <FolderOpen className="w-3.5 h-3.5" />
+            By Project
+          </button>
+        </div>
+
         <div className="relative">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500" />
           <input
@@ -106,51 +160,109 @@ export function SessionList({
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {filtered.map((session) => (
-          <div
-            key={session.session_id}
-            className={`flex items-start border-b border-zinc-800/50 transition-all duration-200 ${
-              selectedId === session.session_id
-                ? "bg-cyan-600/15 border-l-2 border-l-cyan-400"
-                : "hover:bg-zinc-800/50 border-l-2 border-l-transparent"
-            }`}
-          >
-            {/* Checkbox */}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleToggleOne(session.session_id);
-              }}
-              className="shrink-0 px-2 pt-3 text-zinc-500 hover:text-cyan-400 transition"
-            >
-              {checkedIds.has(session.session_id) ? (
-                <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
-              ) : (
-                <Square className="w-3.5 h-3.5" />
-              )}
-            </button>
-
-            {/* Session content */}
-            <button
-              onClick={() => onSelect(session.session_id)}
-              className="flex-1 text-left pr-3 py-2.5 min-w-0"
-            >
-              <div className="flex items-center justify-between mb-0.5">
-                <span className="text-[10px] text-zinc-500 uppercase tracking-wide">
-                  {session.project_name}
-                </span>
-                <span className="text-[10px] text-zinc-500">
-                  {formatTime(session.timestamp)}
-                </span>
+        {viewMode === "time" ? (
+          filtered.map((session) => (
+            <SessionRow
+              key={session.session_id}
+              session={session}
+              selectedId={selectedId}
+              checkedIds={checkedIds}
+              onSelect={onSelect}
+              onToggle={handleToggleOne}
+            />
+          ))
+        ) : (
+          Array.from(groupedByProject.entries()).map(
+            ([projectName, projectSessions]) => (
+              <div key={projectName}>
+                <button
+                  onClick={() => toggleProjectExpanded(projectName)}
+                  className="sticky top-0 z-10 w-full flex items-center gap-2 px-3 py-2 bg-zinc-900 border-b border-zinc-800 text-xs text-zinc-300 hover:text-zinc-100 transition"
+                >
+                  {expandedProjects.has(projectName) ? (
+                    <ChevronDown className="w-3.5 h-3.5 shrink-0" />
+                  ) : (
+                    <ChevronRight className="w-3.5 h-3.5 shrink-0" />
+                  )}
+                  <FolderOpen className="w-3.5 h-3.5 shrink-0 text-zinc-500" />
+                  <span className="truncate font-medium">{projectName}</span>
+                  <span className="ml-auto text-zinc-500 shrink-0">
+                    {projectSessions.length}
+                  </span>
+                </button>
+                {expandedProjects.has(projectName) &&
+                  projectSessions.map((session) => (
+                    <SessionRow
+                      key={session.session_id}
+                      session={session}
+                      selectedId={selectedId}
+                      checkedIds={checkedIds}
+                      onSelect={onSelect}
+                      onToggle={handleToggleOne}
+                    />
+                  ))}
               </div>
-              <p className="text-xs text-zinc-300 line-clamp-2 leading-relaxed">
-                {truncate(session.first_message, 120) || "Empty session"}
-              </p>
-            </button>
-          </div>
-        ))}
+            )
+          )
+        )}
       </div>
+    </div>
+  );
+}
 
+function SessionRow({
+  session,
+  selectedId,
+  checkedIds,
+  onSelect,
+  onToggle,
+}: {
+  session: SessionSummary;
+  selectedId: string | null;
+  checkedIds: Set<string>;
+  onSelect: (id: string) => void;
+  onToggle: (id: string) => void;
+}) {
+  return (
+    <div
+      className={`flex items-start border-b border-zinc-800/50 transition-all duration-200 ${
+        selectedId === session.session_id
+          ? "bg-cyan-600/15 border-l-2 border-l-cyan-400"
+          : "hover:bg-zinc-800/50 border-l-2 border-l-transparent"
+      }`}
+    >
+      {/* Checkbox */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle(session.session_id);
+        }}
+        className="shrink-0 px-2 pt-3 text-zinc-500 hover:text-cyan-400 transition"
+      >
+        {checkedIds.has(session.session_id) ? (
+          <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
+        ) : (
+          <Square className="w-3.5 h-3.5" />
+        )}
+      </button>
+
+      {/* Session content */}
+      <button
+        onClick={() => onSelect(session.session_id)}
+        className="flex-1 text-left pr-3 py-2.5 min-w-0"
+      >
+        <div className="flex items-center justify-between mb-0.5">
+          <span className="text-[10px] text-zinc-500 uppercase tracking-wide">
+            {session.project_name}
+          </span>
+          <span className="text-[10px] text-zinc-500">
+            {formatTime(session.timestamp)}
+          </span>
+        </div>
+        <p className="text-xs text-zinc-300 line-clamp-2 leading-relaxed">
+          {truncate(session.first_message, 120) || "Empty session"}
+        </p>
+      </button>
     </div>
   );
 }

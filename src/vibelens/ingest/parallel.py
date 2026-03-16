@@ -21,9 +21,7 @@ BATCH_SIZE = 50
 
 
 def parse_files_parallel(
-    parser_class_name: str,
-    file_paths: list[Path],
-    max_workers: int = MAX_WORKERS,
+    parser_class_name: str, file_paths: list[Path], max_workers: int = MAX_WORKERS
 ) -> list[tuple[SessionSummary, list[Message]]]:
     """Parse multiple files in parallel using process workers.
 
@@ -76,9 +74,7 @@ def _parse_sequential(
     return results
 
 
-def _parse_file_worker(
-    parser_class_name: str, file_path_str: str
-) -> list[tuple[dict, list[dict]]]:
+def _parse_file_worker(parser_class_name: str, file_path_str: str) -> list[tuple[dict, list[dict]]]:
     """Worker function executed in a subprocess.
 
     Returns plain dicts to avoid Pydantic pickling issues across
@@ -102,10 +98,10 @@ def _parse_file_worker(
 
 def _get_parser(class_name: str):
     """Instantiate a parser by class name."""
-    from vibelens.ingest.claude_code import ClaudeCodeParser
-    from vibelens.ingest.codex import CodexParser
-    from vibelens.ingest.dataclaw import DataclawParser
-    from vibelens.ingest.gemini import GeminiParser
+    from vibelens.ingest.parsers.claude_code import ClaudeCodeParser
+    from vibelens.ingest.parsers.codex import CodexParser
+    from vibelens.ingest.parsers.dataclaw import DataclawParser
+    from vibelens.ingest.parsers.gemini import GeminiParser
 
     registry = {
         "ClaudeCodeParser": ClaudeCodeParser,

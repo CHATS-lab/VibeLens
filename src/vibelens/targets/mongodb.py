@@ -4,15 +4,14 @@ import logging
 
 from motor.motor_asyncio import AsyncIOMotorClient
 
-from vibelens.models.message import Message, SubAgentSession
+from vibelens.models.message import Message
 from vibelens.models.requests import PushResult
-from vibelens.models.session import SessionDetail
+from vibelens.models.session import MAIN_AGENT_ID, SessionDetail, SubAgentSession
 from vibelens.utils.timestamps import format_isoformat
 
 logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 500
-MAIN_AGENT_ID = ""
 
 
 class MongoDBTarget:
@@ -68,10 +67,10 @@ class MongoDBTarget:
                     skipped += 1
                     continue
 
-                session_doc = _serialize_session(detail)
+                session_doc = serialize_session(detail)
                 await self.sessions.insert_one(session_doc)
 
-                message_docs = _flatten_messages(detail)
+                message_docs = flatten_messages(detail)
                 if message_docs:
                     for batch_start in range(0, len(message_docs), BATCH_SIZE):
                         batch = message_docs[batch_start : batch_start + BATCH_SIZE]
@@ -91,7 +90,7 @@ class MongoDBTarget:
         self._client.close()
 
 
-def _serialize_session(detail: SessionDetail) -> dict:
+def serialize_session(detail: SessionDetail) -> dict:
     """Convert a SessionDetail into a MongoDB session document.
 
     Args:
@@ -106,6 +105,7 @@ def _serialize_session(detail: SessionDetail) -> dict:
     )
     return {
         "_id": summary.session_id,
+        "session_id": summary.session_id,
         "project_id": summary.project_id,
         "project_name": summary.project_name,
         "timestamp": format_isoformat(summary.timestamp),
@@ -187,8 +187,13 @@ def _serialize_message(msg: Message, agent_id: str) -> dict:
     }
 
 
-def _flatten_messages(detail: SessionDetail) -> list[dict]:
+def flatten_messages(detail: SessionDetail) -> list[dict]:
     """Recursively collect all messages from main session and sub-sessions.
+
+    MongoDB stores all messages in a single flat collection. Each message
+    carries an ``agent_id`` discriminator so queries can reconstruct the
+    tree: main session messages use MAIN_AGENT_ID (""), sub-agent messages
+    use their agent file stem (e.g. "agent-abc123").
 
     Args:
         detail: Full session data containing messages and sub-sessions.

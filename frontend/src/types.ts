@@ -1,4 +1,4 @@
-export type DataSourceType = "local" | "huggingface" | "mongodb";
+export type DataSourceType = "local" | "huggingface" | "mongodb" | "upload";
 export type DataTargetType = "mongodb" | "huggingface";
 
 export interface ToolCall {
@@ -88,6 +88,14 @@ export interface PullResult {
   sessions_imported: number;
   messages_imported: number;
   skipped: number;
+}
+
+export interface UploadResult {
+  files_received: number;
+  sessions_parsed: number;
+  messages_stored: number;
+  skipped: number;
+  errors: Array<{ filename: string; error: string }>;
 }
 
 export interface ToolUsageStat {

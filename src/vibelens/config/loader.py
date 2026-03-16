@@ -11,10 +11,7 @@ logger = logging.getLogger(__name__)
 ENV_PREFIX = "VIBELENS_"
 CONFIG_ENV_VAR = "VIBELENS_CONFIG"
 
-DEFAULT_CONFIG_NAMES = [
-    "vibelens.yaml",
-    "vibelens.yml",
-]
+DEFAULT_CONFIG_NAMES = ["vibelens.yaml", "vibelens.yml"]
 
 # Maps nested YAML sections/keys → flat Settings field names.
 # Supports readable YAML structure while keeping a flat pydantic model.

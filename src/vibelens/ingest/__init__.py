@@ -11,14 +11,21 @@ Supported formats:
     - Dataclaw      — HuggingFace export JSONL (one complete session per line)
 """
 
-from vibelens.ingest.base import BaseParser
-from vibelens.ingest.claude_code import ClaudeCodeParser, count_history_entries
-from vibelens.ingest.codex import CodexParser
-from vibelens.ingest.correlator import CorrelatedGroup, CorrelatedSession, correlate_sessions
-from vibelens.ingest.dataclaw import DataclawParser
+from vibelens.ingest.correlator import (
+    CorrelatedGroup,
+    CorrelatedSession,
+    correlate_sessions,
+)
 from vibelens.ingest.diagnostics import DiagnosticsCollector
 from vibelens.ingest.fingerprint import FormatMatch, fingerprint_file, parse_auto
-from vibelens.ingest.gemini import GeminiParser
+from vibelens.ingest.parsers import (
+    BaseParser,
+    ClaudeCodeParser,
+    CodexParser,
+    DataclawParser,
+    GeminiParser,
+    count_history_entries,
+)
 from vibelens.ingest.phase_detector import PhaseSegment, SessionPhase, detect_phases
 from vibelens.ingest.tool_graph import ToolDependencyGraph, ToolEdge, build_tool_graph
 from vibelens.ingest.tool_normalizers import (

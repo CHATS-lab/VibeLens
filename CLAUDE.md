@@ -7,11 +7,12 @@ Agent trajectory analysis and visualization platform. Parses, normalizes, and vi
 ```
 src/vibelens/
 ├── ingest/                # Format-specific parsers and analysis
-│   ├── base.py            # BaseParser ABC with shared helpers
-│   ├── claude_code.py     # Claude Code JSONL parser
-│   ├── codex.py           # Codex CLI rollout parser
-│   ├── gemini.py          # Gemini CLI session parser
-│   ├── dataclaw.py        # Dataclaw HuggingFace export parser
+│   ├── parsers/           # Format-specific parser implementations
+│   │   ├── base.py        # BaseParser ABC with shared helpers
+│   │   ├── claude_code.py # Claude Code JSONL parser
+│   │   ├── codex.py       # Codex CLI rollout parser
+│   │   ├── gemini.py      # Gemini CLI session parser
+│   │   └── dataclaw.py    # Dataclaw HuggingFace export parser
 │   ├── correlator.py      # Cross-agent session correlation
 │   ├── tool_normalizers.py # Tool categorization and summary extraction
 │   ├── diagnostics.py     # Parse quality metrics (DiagnosticsCollector)
@@ -20,8 +21,8 @@ src/vibelens/
 │   ├── phase_detector.py  # Session conversation phase classification
 │   └── parallel.py        # Multi-file parallel parsing (ProcessPoolExecutor)
 ├── models/                # Pydantic domain models
-│   ├── message.py         # Message, ToolCall, TokenUsage, ContentBlock, SubAgentSession
-│   ├── session.py         # SessionSummary, SessionDetail, ParseDiagnostics
+│   ├── message.py         # Message, ToolCall, TokenUsage, ContentBlock
+│   ├── session.py         # SessionSummary, SessionDetail, SubAgentSession, MAIN_AGENT_ID
 │   ├── requests.py        # API request/response models
 │   └── analysis.py        # Analytics result models
 ├── analysis/              # Session analytics and pattern detection

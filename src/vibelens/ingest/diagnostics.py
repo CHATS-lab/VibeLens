@@ -69,6 +69,9 @@ class DiagnosticsCollector:
         total = max(self.total_lines, 1)
         total_calls = max(self._total_tool_calls, 1)
         total_results = max(self._total_tool_results, 1)
+        # Weights reflect data loss severity: skipped lines (0.5) lose
+        # entire messages; orphaned calls (0.3) lose tool output context;
+        # orphaned results (0.2) lose output data but the call still exists.
         score = (
             1.0
             - (self.skipped_lines / total) * 0.5

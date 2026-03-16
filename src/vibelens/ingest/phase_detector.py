@@ -110,6 +110,10 @@ def _classify_window(window: list[Message]) -> SessionPhase:
     write_ratio = write_count / total_tools
     shell_ratio = shell_count / total_tools
 
+    # Priority order reflects how agents typically work: errors with file
+    # activity signal debugging; shell-only (no writes, no errors) means
+    # running tests or checks; writes mean implementation; reads-only
+    # means exploring/understanding code before acting.
     if has_error and (read_ratio + write_ratio) >= _DOMINANCE_THRESHOLD:
         return SessionPhase.DEBUGGING
     if shell_ratio >= 0.5 and write_count == 0 and not has_error:
@@ -149,7 +153,11 @@ def _merge_adjacent(
 
 
 def _absorb_small_segments(segments: list[PhaseSegment]) -> list[PhaseSegment]:
-    """Absorb sub-threshold segments (1 message) into their neighbors."""
+    """Absorb sub-threshold segments (1 message) into their neighbors.
+
+    Merges backwards (into predecessor) rather than forwards so that a
+    single-message blip doesn't prematurely start a new phase trend.
+    """
     if len(segments) <= 1:
         return segments
 

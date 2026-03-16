@@ -30,7 +30,7 @@ database:
   path: ~/.vibelens/vibelens.db
 
 mongodb:
-  uri: ""                 # e.g. mongodb+srv://user:pass@cluster.mongodb.net/
+  uri: ""
   db_name: vibelens
 
 sources:

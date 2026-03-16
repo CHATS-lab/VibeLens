@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from vibelens.ingest.base import MAX_FIRST_MESSAGE_LENGTH, BaseParser
-from vibelens.ingest.claude_code import (
+from vibelens.ingest.parsers.base import MAX_FIRST_MESSAGE_LENGTH, BaseParser
+from vibelens.ingest.parsers.claude_code import (
     ClaudeCodeParser,
     _extract_tool_calls,
     _extract_tool_result_text,
@@ -1236,7 +1236,8 @@ class TestParseHistoryIndexFiltering:
     def test_limit_truncates_results(self, claude_dir: Path):
         entries = [
             {
-                "sessionId": f"s{i}", "display": f"msg{i}",
+                "sessionId": f"s{i}",
+                "display": f"msg{i}",
                 "timestamp": 1700000000000 + i * 1000000,
                 "project": "/p",
             }
@@ -1250,7 +1251,8 @@ class TestParseHistoryIndexFiltering:
     def test_limit_none_returns_all(self, claude_dir: Path):
         entries = [
             {
-                "sessionId": f"s{i}", "display": f"msg{i}",
+                "sessionId": f"s{i}",
+                "display": f"msg{i}",
                 "timestamp": 1700000000000 + i * 1000000,
                 "project": "/p",
             }
@@ -1264,14 +1266,20 @@ class TestParseHistoryIndexFiltering:
         _write_history(
             claude_dir,
             [
-                {"sessionId": "old", "display": "Old",
-                 "timestamp": 1700000000000, "project": "/p"},
-                {"sessionId": "mid", "display": "Mid",
-                 "timestamp": 1710000000000, "project": "/p"},
-                {"sessionId": "new1", "display": "New1",
-                 "timestamp": 1720000000000, "project": "/p"},
-                {"sessionId": "new2", "display": "New2",
-                 "timestamp": 1730000000000, "project": "/p"},
+                {"sessionId": "old", "display": "Old", "timestamp": 1700000000000, "project": "/p"},
+                {"sessionId": "mid", "display": "Mid", "timestamp": 1710000000000, "project": "/p"},
+                {
+                    "sessionId": "new1",
+                    "display": "New1",
+                    "timestamp": 1720000000000,
+                    "project": "/p",
+                },
+                {
+                    "sessionId": "new2",
+                    "display": "New2",
+                    "timestamp": 1730000000000,
+                    "project": "/p",
+                },
             ],
         )
         since = datetime(2024, 3, 1, tzinfo=UTC)

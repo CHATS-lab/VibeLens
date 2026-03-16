@@ -5,7 +5,27 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+import vibelens.api.deps as deps
+import vibelens.db as db
 from vibelens.app import create_app
+
+
+@pytest.fixture(autouse=True)
+def reset_singletons():
+    """Reset module-level singletons between tests."""
+    deps._settings = None
+    deps._local_source = None
+    deps._hf_source = None
+    deps._mongodb_target = None
+    deps._mongodb_source = None
+    db._db_path = None
+    yield
+    deps._settings = None
+    deps._local_source = None
+    deps._hf_source = None
+    deps._mongodb_target = None
+    deps._mongodb_source = None
+    db._db_path = None
 
 
 @pytest.fixture

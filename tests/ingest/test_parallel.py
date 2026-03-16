@@ -24,9 +24,7 @@ def _write_claude_session(path: Path, session_id: str) -> None:
             "message": {"role": "assistant", "content": "Hi there"},
         },
     ]
-    path.write_text(
-        "\n".join(json.dumps(e) for e in entries) + "\n"
-    )
+    path.write_text("\n".join(json.dumps(e) for e in entries) + "\n")
 
 
 # ─── parse_files_parallel
@@ -72,9 +70,7 @@ class TestParseFilesParallel:
         _write_claude_session(good, "s1")
         bad = tmp_path / "bad.jsonl"
         bad.write_text("NOT VALID JSON\n")
-        results = parse_files_parallel(
-            "ClaudeCodeParser", [good, bad]
-        )
+        results = parse_files_parallel("ClaudeCodeParser", [good, bad])
         assert len(results) >= 1
         print(f"  results with bad file: {len(results)}")
 

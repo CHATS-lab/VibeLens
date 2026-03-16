@@ -12,6 +12,7 @@ from vibelens.models.session import SessionSummary
 
 if TYPE_CHECKING:
     from vibelens.ingest.diagnostics import DiagnosticsCollector
+
 from vibelens.utils.paths import encode_project_path as _encode_project_path
 from vibelens.utils.paths import extract_project_name as _extract_project_name
 
@@ -46,9 +47,7 @@ class BaseParser(ABC):
     """
 
     @abstractmethod
-    def parse_file(
-        self, file_path: Path
-    ) -> list[tuple[SessionSummary, list[Message]]]:
+    def parse_file(self, file_path: Path) -> list[tuple[SessionSummary, list[Message]]]:
         """Parse a data file into (summary, messages) pairs.
 
         Args:

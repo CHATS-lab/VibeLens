@@ -26,9 +26,7 @@ class PushResult(BaseModel):
 class PullRequest(BaseModel):
     """HuggingFace pull request payload."""
 
-    repo_id: str = Field(
-        description="HuggingFace repository identifier (e.g. 'org/dataset-name')."
-    )
+    repo_id: str = Field(description="HuggingFace repository identifier (e.g. 'org/dataset-name').")
     force_refresh: bool = Field(
         default=False, description="Re-download all sessions even if already cached."
     )
@@ -41,6 +39,20 @@ class PullResult(BaseModel):
     sessions_imported: int = Field(description="Number of new sessions imported.")
     messages_imported: int = Field(description="Total messages imported across all sessions.")
     skipped: int = Field(description="Number of sessions skipped (already present locally).")
+
+
+class UploadResult(BaseModel):
+    """Result of a file upload operation."""
+
+    files_received: int = Field(default=0, description="Number of files received in the request.")
+    sessions_parsed: int = Field(default=0, description="Number of sessions successfully parsed.")
+    messages_stored: int = Field(
+        default=0, description="Total messages stored across all sessions."
+    )
+    skipped: int = Field(default=0, description="Number of sessions skipped (already exist).")
+    errors: list[dict] = Field(
+        default_factory=list, description="Per-file error details for failed uploads."
+    )
 
 
 class RemoteSessionsQuery(BaseModel):

@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from vibelens.ingest.base import MAX_FIRST_MESSAGE_LENGTH, BaseParser
+from vibelens.ingest.parsers.base import MAX_FIRST_MESSAGE_LENGTH, BaseParser
 from vibelens.models.message import ContentBlock, Message, ToolCall
 
 

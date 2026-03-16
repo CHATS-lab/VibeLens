@@ -115,8 +115,12 @@ class TestPhaseSegment:
 class TestSessionPhase:
     def test_all_values(self):
         expected = {
-            "exploration", "implementation", "debugging",
-            "verification", "planning", "mixed",
+            "exploration",
+            "implementation",
+            "debugging",
+            "verification",
+            "planning",
+            "mixed",
         }
         actual = {p.value for p in SessionPhase}
         assert actual == expected
