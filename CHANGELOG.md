@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.4.0] - 2026-03-16
+
+### Added
+- **File upload** (`POST /api/upload`): Upload conversation files (JSONL/JSON) directly through the UI with auto-format detection and SQLite persistence.
+- **Upload dialog** (`upload-dialog.tsx`): Drag-and-drop / file picker dialog for uploading conversation files with progress feedback.
+- **Session export** (`GET /api/sessions/{id}/export`): Download individual sessions as JSON in MongoDB document format (`{session, messages}`).
+- **View modes** (`session-list.tsx`): Toggle between "By Time" (flat chronological list) and "By Project" (collapsible grouped headers) views.
+- **Resizable panels** (`resize-handle.tsx`): Drag-to-resize left sidebar (240–600px) and right prompt navigation panel (160–400px).
+- **SQLite session merging** (`sessions.py`): Unified session listing across local files and SQLite (upload/huggingface sources), deduplicated and sorted by timestamp.
+
+### Changed
+- **Parsers refactored** into `ingest/parsers/` sub-package: `base.py`, `claude_code.py`, `codex.py`, `gemini.py`, `dataclaw.py` moved from flat `ingest/` module.
+- **MongoDB serialization** functions `serialize_session()` and `flatten_messages()` made public (renamed from private `_serialize_*` / `_flatten_*`) for reuse in export endpoint.
+- **Global scroll disabled**: `overflow: hidden` on `html/body/#root` prevents outer page scrolling; only inner containers scroll.
+- **Download button** replaces clipboard copy in session header — triggers real file download instead of copying JSON to clipboard.
+- **Project dropdown removed** from session list sidebar; project grouping is now handled by the "By Project" view mode.
+- **Pagination moved** to sidebar footer bar; only visible in "By Time" mode.
+- **Session count** displayed in sidebar footer alongside pagination controls.
+- Tests updated for parser path changes, public MongoDB serialization functions, and new test directories (`tests/config/`, `tests/sources/`, `tests/targets/`, `tests/utils/`).
+- Version bumped to 0.4.0.
+
 ## [0.3.0] - 2026-03-15
 
 ### Added

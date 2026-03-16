@@ -380,7 +380,7 @@ class TestAPIEndpoints:
 
             # Verify token counts are aggregated
             messages = detail["messages"]
-            total_input = sum(m.get("usage", {}).get("input_tokens", 0) for m in messages)
+            total_input = sum((m.get("usage") or {}).get("input_tokens", 0) for m in messages)
             assert total_input > 0
 
 
@@ -418,7 +418,6 @@ class TestDataParsing:
         assert "claude-sonnet-4-6" in detail.summary.models
 
 
-@pytest.mark.asyncio
 class TestErrorHandling:
     """Test error handling."""
 
@@ -475,6 +474,7 @@ class TestErrorHandling:
         assert detail is not None
         # The parser should skip invalid lines but continue
 
+    @pytest.mark.asyncio
     async def test_missing_session_file(self, test_settings, monkeypatch):
         """Test behavior when session referenced in history has no file."""
         settings, claude_dir, _ = test_settings

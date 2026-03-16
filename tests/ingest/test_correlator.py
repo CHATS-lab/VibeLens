@@ -77,12 +77,16 @@ class TestCorrelateSessionsBasic:
     def test_sessions_without_timestamps_skipped(self):
         """Sessions with None timestamps are excluded from correlation."""
         s1 = SessionSummary(
-            session_id="s1", project_name="my-project",
-            timestamp=None, duration=600,
+            session_id="s1",
+            project_name="my-project",
+            timestamp=None,
+            duration=600,
         )
         s2 = SessionSummary(
-            session_id="s2", project_name="my-project",
-            timestamp=None, duration=600,
+            session_id="s2",
+            project_name="my-project",
+            timestamp=None,
+            duration=600,
         )
         groups = correlate_sessions([s1, s2])
         assert groups == []
@@ -133,11 +137,17 @@ class TestCorrelateSessionsAdvanced:
         sa1 = _make_summary("sa1", project_name="alpha", timestamp=base, duration=3600)
         offset = base + timedelta(minutes=5)
         sa2 = _make_summary(
-            "sa2", project_name="alpha", timestamp=offset, duration=3600,
+            "sa2",
+            project_name="alpha",
+            timestamp=offset,
+            duration=3600,
         )
         sb1 = _make_summary("sb1", project_name="beta", timestamp=base, duration=3600)
         sb2 = _make_summary(
-            "sb2", project_name="beta", timestamp=offset, duration=3600,
+            "sb2",
+            project_name="beta",
+            timestamp=offset,
+            duration=3600,
         )
 
         groups = correlate_sessions([sa1, sa2, sb1, sb2])
@@ -205,11 +215,14 @@ class TestFindOverlapping:
     def test_sessions_without_timestamps_excluded(self):
         """Sessions with None timestamps are skipped."""
         s1 = SessionSummary(
-            session_id="s1", project_name="my-project",
-            timestamp=None, duration=600,
+            session_id="s1",
+            project_name="my-project",
+            timestamp=None,
+            duration=600,
         )
         s2 = _make_summary(
-            "s2", timestamp=datetime(2025, 1, 15, 10, 0, tzinfo=UTC),
+            "s2",
+            timestamp=datetime(2025, 1, 15, 10, 0, tzinfo=UTC),
             duration=600,
         )
         result = _find_overlapping([s1, s2])

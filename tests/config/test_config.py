@@ -4,7 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from vibelens.config import Settings, discover_config_path, load_settings, validate_mongodb_config
+from vibelens.config import (
+    Settings,
+    discover_config_path,
+    load_settings,
+    validate_mongodb_config,
+)
 from vibelens.config.loader import load_yaml_flat
 
 
@@ -67,11 +72,7 @@ class TestLoadSettings:
         """YAML config values should populate settings."""
         config_file = tmp_path / "test.yaml"
         config_file.write_text(
-            "server:\n"
-            "  host: 10.0.0.1\n"
-            "  port: 9090\n"
-            "mongodb:\n"
-            "  uri: mongodb://yaml-host:27017\n"
+            "server:\n  host: 10.0.0.1\n  port: 9090\nmongodb:\n  uri: mongodb://yaml-host:27017\n"
         )
         # Clear env vars that would override YAML
         monkeypatch.delenv("VIBELENS_HOST", raising=False)
@@ -88,11 +89,7 @@ class TestLoadSettings:
     def test_env_vars_override_yaml(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         """Env vars should take priority over YAML values."""
         config_file = tmp_path / "test.yaml"
-        config_file.write_text(
-            "server:\n"
-            "  host: yaml-host\n"
-            "  port: 1111\n"
-        )
+        config_file.write_text("server:\n  host: yaml-host\n  port: 1111\n")
         monkeypatch.setenv("VIBELENS_PORT", "2222")
         monkeypatch.delenv("VIBELENS_HOST", raising=False)
 

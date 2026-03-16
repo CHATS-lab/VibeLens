@@ -5,7 +5,7 @@ from pathlib import Path
 import aiosqlite
 import pytest
 
-from vibelens.db import SCHEMA_SQL, get_connection, init_db
+from vibelens.db import get_connection, init_db
 
 
 class TestInitDb:
@@ -60,9 +60,7 @@ class TestInitDb:
         await init_db(db_path)
 
         async with aiosqlite.connect(str(db_path)) as db:
-            cursor = await db.execute(
-                "SELECT count(*) FROM sqlite_master WHERE type='table'"
-            )
+            cursor = await db.execute("SELECT count(*) FROM sqlite_master WHERE type='table'")
             row = await cursor.fetchone()
             assert row[0] == 2
 
@@ -71,9 +69,18 @@ class TestInitDb:
         await init_db(db_path)
 
         expected_columns = {
-            "session_id", "project_id", "project_name", "timestamp",
-            "duration", "message_count", "tool_call_count", "models",
-            "first_message", "source_type", "source_name", "source_host",
+            "session_id",
+            "project_id",
+            "project_name",
+            "timestamp",
+            "duration",
+            "message_count",
+            "tool_call_count",
+            "models",
+            "first_message",
+            "source_type",
+            "source_name",
+            "source_host",
         }
         async with aiosqlite.connect(str(db_path)) as db:
             cursor = await db.execute("PRAGMA table_info(sessions)")
@@ -86,9 +93,18 @@ class TestInitDb:
         await init_db(db_path)
 
         expected_columns = {
-            "uuid", "session_id", "parent_uuid", "role", "type",
-            "content", "thinking", "model", "timestamp",
-            "is_sidechain", "usage", "tool_calls",
+            "uuid",
+            "session_id",
+            "parent_uuid",
+            "role",
+            "type",
+            "content",
+            "thinking",
+            "model",
+            "timestamp",
+            "is_sidechain",
+            "usage",
+            "tool_calls",
         }
         async with aiosqlite.connect(str(db_path)) as db:
             cursor = await db.execute("PRAGMA table_info(messages)")
@@ -102,6 +118,7 @@ class TestGetConnection:
 
     async def test_raises_before_init(self, tmp_path: Path):
         import vibelens.db
+
         original = vibelens.db._db_path
         vibelens.db._db_path = None
         try:

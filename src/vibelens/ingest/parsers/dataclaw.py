@@ -18,8 +18,8 @@ agents.  Tool calls use a flat ``tool_uses`` array without result data
 from collections.abc import Iterator
 from pathlib import Path
 
-from vibelens.ingest.base import BaseParser
 from vibelens.ingest.diagnostics import DiagnosticsCollector
+from vibelens.ingest.parsers.base import BaseParser
 from vibelens.models.message import Message, ToolCall
 from vibelens.models.session import DataSourceType, SessionSummary
 from vibelens.utils import coerce_to_string, deterministic_id, get_logger, parse_iso_timestamp
@@ -154,7 +154,6 @@ def _build_messages(raw_messages: list, session_id: str, session_model: str) -> 
                 tool_calls=tool_calls,
             )
         )
-
     return messages
 
 

@@ -5,18 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from vibelens.ingest.fingerprint import (
-    FormatMatch,
-    fingerprint_file,
-    parse_auto,
-)
+from vibelens.ingest.fingerprint import FormatMatch, fingerprint_file, parse_auto
 
 
 def _write_jsonl(path: Path, entries: list[dict]) -> None:
     """Write a list of dicts as JSONL."""
-    path.write_text(
-        "\n".join(json.dumps(entry) for entry in entries) + "\n"
-    )
+    path.write_text("\n".join(json.dumps(entry) for entry in entries) + "\n")
 
 
 # ─── Fixtures
@@ -26,11 +20,15 @@ def claude_code_jsonl(tmp_path: Path) -> Path:
     path = tmp_path / "session.jsonl"
     lines = [
         {
-            "type": "user", "sessionId": "s1", "uuid": "u1",
+            "type": "user",
+            "sessionId": "s1",
+            "uuid": "u1",
             "message": {"role": "user", "content": "hi"},
         },
         {
-            "type": "assistant", "sessionId": "s1", "uuid": "u2",
+            "type": "assistant",
+            "sessionId": "s1",
+            "uuid": "u2",
             "message": {"role": "assistant", "content": "hello"},
         },
     ]

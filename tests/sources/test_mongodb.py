@@ -33,17 +33,18 @@ def _make_session_doc(session_id: str = "test-session-1") -> dict:
         "total_output_tokens": 500,
         "total_cache_read": 200,
         "total_cache_write": 100,
-        "diagnostics": {"completeness_score": 0.95, "skipped_lines": 0,
-                        "orphaned_tool_calls": 0, "orphaned_tool_results": 0},
+        "diagnostics": {
+            "completeness_score": 0.95,
+            "skipped_lines": 0,
+            "orphaned_tool_calls": 0,
+            "orphaned_tool_results": 0,
+        },
         "sub_sessions": [],
     }
 
 
 def _make_message_doc(
-    uuid: str = "msg-1",
-    session_id: str = "test-session-1",
-    agent_id: str = "",
-    role: str = "user",
+    uuid: str = "msg-1", session_id: str = "test-session-1", agent_id: str = "", role: str = "user"
 ) -> dict:
     """Build a sample MongoDB message document."""
     return {
@@ -58,8 +59,12 @@ def _make_message_doc(
         "model": "claude-opus-4-6",
         "timestamp": "2025-06-15T10:00:00+00:00",
         "is_sidechain": False,
-        "usage": {"input_tokens": 100, "output_tokens": 50,
-                  "cache_creation_tokens": 0, "cache_read_tokens": 0},
+        "usage": {
+            "input_tokens": 100,
+            "output_tokens": 50,
+            "cache_creation_tokens": 0,
+            "cache_read_tokens": 0,
+        },
         "tool_calls": [],
     }
 
@@ -166,8 +171,16 @@ class TestDeserializeMessage:
     def test_tool_calls_deserialized(self):
         doc = _make_message_doc()
         doc["tool_calls"] = [
-            {"id": "tc-1", "name": "Read", "input": {}, "output": None,
-             "is_error": False, "summary": "", "category": "", "output_digest": ""},
+            {
+                "id": "tc-1",
+                "name": "Read",
+                "input": {},
+                "output": None,
+                "is_error": False,
+                "summary": "",
+                "category": "",
+                "output_digest": "",
+            },
         ]
         msg = _deserialize_message(doc)
 
@@ -183,8 +196,14 @@ class TestReconstructSubSessions:
         assert result == []
 
     def test_single_sub_agent(self):
-        meta = [{"agent_id": "agent-1", "spawn_index": 0,
-                 "spawn_tool_call_id": "tc-1", "sub_sessions": []}]
+        meta = [
+            {
+                "agent_id": "agent-1",
+                "spawn_index": 0,
+                "spawn_tool_call_id": "tc-1",
+                "sub_sessions": [],
+            }
+        ]
         messages_by_agent = {
             "agent-1": [
                 Message(uuid="m1", session_id="s1", role="user", type="user"),
@@ -200,17 +219,21 @@ class TestReconstructSubSessions:
         print(f"Reconstructed: {result[0].agent_id} with {len(result[0].messages)} messages")
 
     def test_nested_sub_agents(self):
-        meta = [{
-            "agent_id": "agent-outer",
-            "spawn_index": 1,
-            "spawn_tool_call_id": "tc-outer",
-            "sub_sessions": [{
-                "agent_id": "agent-inner",
-                "spawn_index": 0,
-                "spawn_tool_call_id": "tc-inner",
-                "sub_sessions": [],
-            }],
-        }]
+        meta = [
+            {
+                "agent_id": "agent-outer",
+                "spawn_index": 1,
+                "spawn_tool_call_id": "tc-outer",
+                "sub_sessions": [
+                    {
+                        "agent_id": "agent-inner",
+                        "spawn_index": 0,
+                        "spawn_tool_call_id": "tc-inner",
+                        "sub_sessions": [],
+                    }
+                ],
+            }
+        ]
         messages_by_agent = {
             "agent-outer": [Message(uuid="m1", session_id="s1", role="user", type="user")],
             "agent-inner": [
@@ -227,8 +250,14 @@ class TestReconstructSubSessions:
         print("Nested sub-agents reconstructed")
 
     def test_missing_messages(self):
-        meta = [{"agent_id": "agent-x", "spawn_index": 0,
-                 "spawn_tool_call_id": "tc-x", "sub_sessions": []}]
+        meta = [
+            {
+                "agent_id": "agent-x",
+                "spawn_index": 0,
+                "spawn_tool_call_id": "tc-x",
+                "sub_sessions": [],
+            }
+        ]
         result = _reconstruct_sub_sessions(meta, {})
 
         assert len(result) == 1
@@ -378,12 +407,14 @@ class TestGetSession:
             source = MongoDBSource("mongodb://localhost:27017", "test_db")
 
         session_doc = _make_session_doc()
-        session_doc["sub_sessions"] = [{
-            "agent_id": "agent-abc",
-            "spawn_index": 0,
-            "spawn_tool_call_id": "tc-1",
-            "sub_sessions": [],
-        }]
+        session_doc["sub_sessions"] = [
+            {
+                "agent_id": "agent-abc",
+                "spawn_index": 0,
+                "spawn_tool_call_id": "tc-1",
+                "sub_sessions": [],
+            }
+        ]
 
         message_docs = [
             _make_message_doc("msg-1", "test-session-1", "", "user"),

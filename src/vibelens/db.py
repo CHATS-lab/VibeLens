@@ -205,6 +205,8 @@ async def query_sessions(
         ORDER BY timestamp DESC
         LIMIT ? OFFSET ?
     """
+    # LIMIT/OFFSET params must come after any WHERE params because
+    # SQLite binds positional placeholders (?) left-to-right.
     params.extend([limit, offset])
 
     cursor = await conn.execute(query, params)
@@ -304,7 +306,6 @@ async def query_session_detail(
                 tool_calls=tool_calls,
             )
         )
-
     return summary, messages
 
 

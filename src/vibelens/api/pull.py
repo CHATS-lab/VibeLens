@@ -18,9 +18,7 @@ async def pull_from_huggingface(request: PullRequest) -> PullResult:
     conn = await get_db()
     try:
         return await hf_source.pull_repo(
-            conn=conn,
-            repo_id=request.repo_id,
-            force_refresh=request.force_refresh,
+            conn=conn, repo_id=request.repo_id, force_refresh=request.force_refresh
         )
     finally:
         await conn.close()

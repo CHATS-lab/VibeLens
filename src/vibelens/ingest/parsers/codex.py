@@ -27,8 +27,8 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
-from vibelens.ingest.base import BaseParser
 from vibelens.ingest.diagnostics import DiagnosticsCollector
+from vibelens.ingest.parsers.base import BaseParser
 from vibelens.models.message import Message, TokenUsage, ToolCall
 from vibelens.models.session import DataSourceType, SessionSummary
 from vibelens.utils import coerce_to_string, get_logger, parse_iso_timestamp
@@ -50,7 +50,13 @@ _OUTPUT_PREFIX_RE = re.compile(
 
 
 class _CodexParseState(BaseModel):
-    """Mutable state carried across response_item processing."""
+    """Mutable state carried across response_item processing.
+
+    Codex emits tool calls and reasoning as separate JSONL entries
+    *between* message entries, with no explicit end-of-turn marker.
+    We buffer them here and flush to the preceding assistant message
+    when the next message boundary arrives (or at end-of-file).
+    """
 
     pending_tools: list[ToolCall] = Field(
         default_factory=list, description="Tool calls buffered until the next message boundary."
@@ -234,8 +240,12 @@ def _build_messages(
 
         if entry_type == "response_item":
             _handle_response_item(
-                payload, timestamp, session_id,
-                tool_outputs, messages, state,
+                payload,
+                timestamp,
+                session_id,
+                tool_outputs,
+                messages,
+                state,
             )
             continue
 
@@ -297,8 +307,9 @@ def _handle_response_item(
 
     elif payload_type == "reasoning":
         # Codex reasoning entries contain summary[].text blocks with the
-        # model's chain-of-thought.  Deduplicate by content hash since
-        # Codex sometimes emits duplicate reasoning blocks.
+        # model's chain-of-thought.  Deduplicate by content hash because
+        # Codex streaming recovery can re-emit identical reasoning blocks,
+        # producing confusing repetition in the thinking output.
         summary_items = payload.get("summary", [])
         for item in summary_items:
             if not isinstance(item, dict):
@@ -396,7 +407,7 @@ def _parse_structured_output(raw: str) -> tuple[str, bool]:
     if not match:
         return raw, False
     exit_code = int(match.group(1))
-    cleaned = raw[match.end():]
+    cleaned = raw[match.end() :]
     return cleaned, exit_code != 0
 
 

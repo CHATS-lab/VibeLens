@@ -1,5 +1,6 @@
 import { MessageSquare } from "lucide-react";
 import { extractUserText, truncate } from "../utils";
+import { ResizeHandle } from "./resize-handle";
 import type { Message } from "../types";
 
 const PREVIEW_MAX_CHARS = 80;
@@ -15,6 +16,8 @@ interface PromptNavPanelProps {
   messages: Message[];
   activePromptUuid: string | null;
   onNavigate: (uuid: string) => void;
+  width: number;
+  onResize: (delta: number) => void;
 }
 
 function buildPromptEntries(messages: Message[]): PromptEntry[] {
@@ -54,13 +57,19 @@ export function PromptNavPanel({
   messages,
   activePromptUuid,
   onNavigate,
+  width,
+  onResize,
 }: PromptNavPanelProps) {
   const entries = buildPromptEntries(messages);
 
   if (entries.length < MIN_PROMPTS_FOR_NAV) return null;
 
   return (
-    <div className="hidden xl:block w-56 shrink-0 h-full overflow-y-auto border-l border-zinc-800 bg-zinc-900/50">
+    <div
+      style={{ width }}
+      className="hidden xl:block relative shrink-0 h-full overflow-y-auto border-l border-zinc-800 bg-zinc-900/50"
+    >
+      <ResizeHandle side="right" onResize={onResize} />
       <div className="px-3 py-3">
         <div className="flex items-center gap-1.5 text-xs text-zinc-400 mb-3">
           <MessageSquare className="w-3.5 h-3.5" />

@@ -21,8 +21,8 @@ Claude Code and Codex:
 import json
 from pathlib import Path
 
-from vibelens.ingest.base import BaseParser
 from vibelens.ingest.diagnostics import DiagnosticsCollector
+from vibelens.ingest.parsers.base import BaseParser
 from vibelens.models.message import Message, TokenUsage, ToolCall
 from vibelens.models.session import DataSourceType, SessionSummary
 from vibelens.utils import (
@@ -99,8 +99,10 @@ class GeminiParser(BaseParser):
         if start_time and last_updated:
             duration = int((last_updated - start_time).total_seconds())
 
-        # Resolve project hash directory to a human-readable project path.
-        # Gemini stores sessions under ~/.gemini/tmp/{sha256-hash}/chats/.
+        # Gemini hashes project paths into opaque directory names, so we
+        # reverse-engineer the layout: session files live at
+        # ~/.gemini/tmp/{sha256-hash}/chats/session-*.json — walk up two
+        # levels to find the hash dir, then up two more to reach ~/.gemini.
         hash_dir = ""
         gemini_dir = None
         if file_path.parts:
@@ -205,12 +207,16 @@ def _infer_project_from_tool_args(messages: list[Message]) -> str:
                 if isinstance(value, str) and value.startswith("/"):
                     absolute_paths.append(value)
 
+    # Require at least 2 paths to avoid false positives from a single
+    # tool call that happens to use an absolute path.
     if len(absolute_paths) < 2:
         return ""
 
     from collections import Counter
     from os.path import commonpath, dirname
 
+    # Discard shallow system paths (/ , /Users, /tmp) that would
+    # match any project on the same machine.
     directories = [dirname(p) if not p.endswith("/") else p.rstrip("/") for p in absolute_paths]
     dir_counts: Counter[str] = Counter()
     for directory in directories:
@@ -226,6 +232,9 @@ def _infer_project_from_tool_args(messages: list[Message]) -> str:
     except ValueError:
         return ""
 
+    # If the common prefix is too shallow (e.g. /Users), fall back to
+    # the most frequently occurring deep directory — it's likely the
+    # project root where most tool calls operate.
     prefix_parts = prefix.split("/")
     if len(prefix_parts) < _MIN_PATH_DEPTH:
         most_common = dir_counts.most_common(1)[0]

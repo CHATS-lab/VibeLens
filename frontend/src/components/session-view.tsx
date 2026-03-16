@@ -12,6 +12,7 @@ import {
   Cpu,
   Calendar,
   Hash,
+  Upload,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Message, SessionDetail, SubAgentSession, DataSourceType } from "../types";
@@ -29,8 +30,18 @@ export function SessionView({ sessionId }: SessionViewProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [activePromptUuid, setActivePromptUuid] = useState<string | null>(null);
+  const [promptNavWidth, setPromptNavWidth] = useState(224);
   const messagesRef = useRef<HTMLDivElement>(null);
   const isNavigatingRef = useRef(false);
+
+  const MIN_PROMPT_NAV_WIDTH = 160;
+  const MAX_PROMPT_NAV_WIDTH = 400;
+
+  const handlePromptNavResize = useCallback((delta: number) => {
+    setPromptNavWidth((w) =>
+      Math.min(MAX_PROMPT_NAV_WIDTH, Math.max(MIN_PROMPT_NAV_WIDTH, w + delta))
+    );
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -234,9 +245,16 @@ export function SessionView({ sessionId }: SessionViewProps) {
             </div>
             <div className="flex gap-2 shrink-0 ml-3">
               <button
-                onClick={() => navigator.clipboard.writeText(JSON.stringify(detail, null, 2))}
+                onClick={() => {
+                  const link = document.createElement("a");
+                  link.href = `/api/sessions/${sessionId}/export`;
+                  link.download = `vibelens-${sessionId.slice(0, 8)}.json`;
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                }}
                 className="p-2 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded transition text-xs"
-                title="Export session"
+                title="Download session (MongoDB format)"
               >
                 <Download className="w-4 h-4" />
               </button>
@@ -297,6 +315,8 @@ export function SessionView({ sessionId }: SessionViewProps) {
           messages={messages}
           activePromptUuid={activePromptUuid}
           onNavigate={handlePromptNavigate}
+          width={promptNavWidth}
+          onResize={handlePromptNavResize}
         />
       </div>
     </div>
@@ -326,12 +346,14 @@ const SOURCE_BADGE_STYLES: Record<DataSourceType, string> = {
   local: "bg-emerald-500/15 text-emerald-400 border-emerald-500/25",
   mongodb: "bg-green-500/15 text-green-400 border-green-500/25",
   huggingface: "bg-yellow-500/15 text-yellow-400 border-yellow-500/25",
+  upload: "bg-violet-500/15 text-violet-400 border-violet-500/25",
 };
 
 const SOURCE_ICONS: Record<DataSourceType, React.ReactNode> = {
   local: <HardDrive className="w-3 h-3" />,
   mongodb: <Database className="w-3 h-3" />,
   huggingface: <Database className="w-3 h-3" />,
+  upload: <Upload className="w-3 h-3" />,
 };
 
 function SourceBadge({ sourceType }: { sourceType: DataSourceType }) {

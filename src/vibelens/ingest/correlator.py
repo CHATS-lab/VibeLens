@@ -93,9 +93,13 @@ def _find_overlapping(sessions: list[SessionSummary]) -> CorrelatedGroup | None:
     intervals.sort(key=lambda x: x[0])
 
     overlapping_entries: list[CorrelatedSession] = []
+    # A session can overlap with multiple others; seen_ids prevents
+    # adding it to the result list more than once.
     seen_ids: set[str] = set()
     max_overlap = 0
 
+    # O(n²) pairwise scan is acceptable: project-level session counts
+    # are small (typically < 100 even for active projects).
     for i in range(len(intervals)):
         for j in range(i + 1, len(intervals)):
             start_i, end_i, source_i, sid_i = intervals[i]

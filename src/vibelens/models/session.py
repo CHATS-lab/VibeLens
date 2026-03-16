@@ -5,6 +5,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
+from vibelens.models.message import Message
+
 
 class DataSourceType(StrEnum):
     """Supported data source types."""
@@ -12,6 +14,7 @@ class DataSourceType(StrEnum):
     LOCAL = "local"
     HUGGINGFACE = "huggingface"
     MONGODB = "mongodb"
+    UPLOAD = "upload"
 
 
 class DataTargetType(StrEnum):
@@ -86,6 +89,42 @@ class SessionSummary(BaseModel):
     )
 
 
+MAIN_AGENT_ID = ""
+
+
+class SubAgentSession(BaseModel):
+    """Sub-agent conversation spawned from a parent session.
+
+    Supports recursive nesting: a sub-agent can itself spawn further
+    sub-agents, forming a cascade hierarchy. The ``spawn_index`` field
+    tells the frontend exactly which parent message triggered this
+    sub-agent, enabling inline expandable display.
+    """
+
+    agent_id: str = Field(
+        description="Sub-agent identifier extracted from filename (e.g. 'agent-abc123')."
+    )
+    spawn_index: int | None = Field(
+        default=None,
+        description="0-based index of the parent message that spawned this sub-agent.",
+    )
+    spawn_tool_call_id: str = Field(
+        default="",
+        description="Tool call ID in the parent message that triggered this sub-agent.",
+    )
+    messages: list[Message] = Field(
+        default_factory=list,
+        description="Ordered messages in this sub-agent's conversation.",
+    )
+    sub_sessions: list["SubAgentSession"] = Field(
+        default_factory=list,
+        description="Nested sub-agent sessions spawned by this sub-agent (cascade).",
+    )
+
+
+SubAgentSession.model_rebuild()
+
+
 class SessionDetail(BaseModel):
     """Full session data including all messages and sub-agent hierarchy.
 
@@ -97,12 +136,12 @@ class SessionDetail(BaseModel):
     """
 
     summary: SessionSummary = Field(description="Aggregated session-level summary.")
-    messages: list = Field(
+    messages: list[Message] = Field(
         default_factory=list, description="Ordered list of Message objects in the main session."
     )
-    sub_sessions: list = Field(
+    sub_sessions: list[SubAgentSession] = Field(
         default_factory=list,
-        description="Sub-agent sessions spawned during this session (SubAgentSession objects).",
+        description="Sub-agent sessions spawned during this session.",
     )
 
 

@@ -68,6 +68,8 @@ _SUMMARY_KEYS: dict[str, list[str]] = {
 # Limit summary length to avoid overly long strings in analytics displays.
 _MAX_SUMMARY_LENGTH = 120
 
+MAX_OUTPUT_DIGEST_LENGTH = 150
+
 
 def categorize_tool(name: str) -> str:
     """Map a tool name to its semantic category.
@@ -107,9 +109,6 @@ def summarize_tool_input(name: str, raw_input: dict | str | None) -> str:
         if isinstance(value, str) and value.strip():
             return value[:_MAX_SUMMARY_LENGTH]
     return ""
-
-
-MAX_OUTPUT_DIGEST_LENGTH = 150
 
 
 def summarize_tool_output(name: str, output: str | None, is_error: bool) -> str:

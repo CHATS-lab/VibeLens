@@ -132,7 +132,13 @@ def _find_error_retry(
     calls: list[tuple[str, str, str, dict | str | None]],
     has_predecessor: set[str],
 ) -> list[ToolEdge]:
-    """Detect tool with is_error followed by same tool name."""
+    """Detect tool with is_error followed by same tool name.
+
+    NOTE: Currently inert — the flattened tuple doesn't carry ``is_error``,
+    so ``prev_error_name`` is never set. This is a placeholder for when
+    the tuple is extended to include error status. The sequential fallback
+    in ``_find_sequential`` covers the gap for now.
+    """
     edges: list[ToolEdge] = []
     prev_error_name: str = ""
     prev_error_id: str = ""
@@ -151,9 +157,6 @@ def _find_error_retry(
             continue
         prev_error_name = ""
         prev_error_id = ""
-        # Check if current call has an error by looking at its position.
-        # We don't have is_error here, so approximate: check from messages.
-        # Actually, we can extend the tuple. For now, use sequential pattern.
     return edges
 
 
@@ -184,7 +187,12 @@ def _find_sequential(
     calls: list[tuple[str, str, str, dict | str | None]],
     has_predecessor: set[str],
 ) -> list[ToolEdge]:
-    """Add sequential edges for consecutive tool calls within same message context."""
+    """Add sequential edges for tool calls that weren't linked by stronger relations.
+
+    Only connects calls that don't already have a predecessor from
+    read_before_write, error_retry, or search_then_read — acting as
+    a fallback to ensure every non-root node has exactly one inbound edge.
+    """
     edges: list[ToolEdge] = []
     for i in range(1, len(calls)):
         tc_id = calls[i][0]

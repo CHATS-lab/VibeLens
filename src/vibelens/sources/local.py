@@ -1,8 +1,9 @@
 """Local Claude Code JSONL data source."""
 
+import socket
 from pathlib import Path
 
-from vibelens.ingest.claude_code import ClaudeCodeParser
+from vibelens.ingest.parsers.claude_code import ClaudeCodeParser
 from vibelens.models.session import SessionDetail, SessionSummary
 from vibelens.utils import get_logger
 
@@ -23,6 +24,7 @@ class LocalSource:
         self._projects_dir = claude_dir / "projects"
         self._file_index: dict[str, Path] = {}
         self._parser = ClaudeCodeParser()
+        self._hostname = socket.gethostname()
 
     @property
     def source_type(self) -> str:
@@ -84,6 +86,8 @@ class LocalSource:
         summary.total_output_tokens = metadata.total_output_tokens
         summary.total_cache_read = metadata.total_cache_read
         summary.total_cache_write = metadata.total_cache_write
+        summary.source_name = str(self._claude_dir)
+        summary.source_host = self._hostname
         if metadata.first_message:
             summary.first_message = metadata.first_message
 
@@ -106,7 +110,13 @@ class LocalSource:
 
         self._build_file_index()
         all_sessions = self._parser.parse_history_index(self._claude_dir)
+        # history.jsonl can reference sessions whose JSONL files have been
+        # deleted or never fully written. Filter to IDs with actual files
+        # to prevent "file not found" errors during on-demand parsing.
         self._sessions_cache = [s for s in all_sessions if s.session_id in self._file_index]
+        for session in self._sessions_cache:
+            session.source_name = str(self._claude_dir)
+            session.source_host = self._hostname
         logger.info(
             "Loaded %d sessions (%d skipped, no file on disk)",
             len(self._sessions_cache),

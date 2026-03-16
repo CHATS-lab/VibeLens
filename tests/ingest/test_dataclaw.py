@@ -4,7 +4,7 @@ import json
 import tempfile
 from pathlib import Path
 
-from vibelens.ingest.dataclaw import DataclawParser
+from vibelens.ingest.parsers.dataclaw import DataclawParser
 from vibelens.models.session import DataSourceType
 
 _parser = DataclawParser()

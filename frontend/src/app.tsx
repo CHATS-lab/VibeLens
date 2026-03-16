@@ -6,11 +6,14 @@ import {
   ChevronUp,
   ChevronDown,
   Upload,
+  FileUp,
 } from "lucide-react";
 import { useEffect, useState, useCallback } from "react";
 import { ConfirmDialog } from "./components/confirm-dialog";
-import { SessionList } from "./components/session-list";
+import { ResizeHandle } from "./components/resize-handle";
+import { SessionList, type ViewMode } from "./components/session-list";
 import { SessionView } from "./components/session-view";
+import { UploadDialog } from "./components/upload-dialog";
 import type { PushResult, SessionSummary } from "./types";
 
 type DialogState =
@@ -23,7 +26,6 @@ export function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [projects, setProjects] = useState<string[]>([]);
-  const [selectedProject, setSelectedProject] = useState("");
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
     null
   );
@@ -32,8 +34,20 @@ export function App() {
   const [loading, setLoading] = useState(false);
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [dialog, setDialog] = useState<DialogState>({ kind: "hidden" });
+  const [showUploadDialog, setShowUploadDialog] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [viewMode, setViewMode] = useState<ViewMode>("time");
+  const [sidebarWidth, setSidebarWidth] = useState(320);
 
+  const MIN_SIDEBAR_WIDTH = 240;
+  const MAX_SIDEBAR_WIDTH = 600;
   const SESSIONS_PER_PAGE = 100;
+
+  const handleSidebarResize = useCallback((delta: number) => {
+    setSidebarWidth((w) =>
+      Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, w + delta))
+    );
+  }, []);
 
   useEffect(() => {
     fetch("/api/projects")
@@ -44,13 +58,7 @@ export function App() {
 
   useEffect(() => {
     setLoading(true);
-    setPage(0);
-  }, [selectedProject]);
-
-  useEffect(() => {
-    setLoading(true);
     const params = new URLSearchParams();
-    if (selectedProject) params.set("project_name", selectedProject);
     params.set("limit", String(SESSIONS_PER_PAGE));
     params.set("offset", String(page * SESSIONS_PER_PAGE));
 
@@ -59,7 +67,7 @@ export function App() {
       .then((data: SessionSummary[]) => setSessions(data))
       .catch((err) => console.error("Failed to load sessions:", err))
       .finally(() => setLoading(false));
-  }, [selectedProject, page]);
+  }, [page, refreshKey]);
 
   const selectedSession = sessions.find(
     (s) => s.session_id === selectedSessionId
@@ -183,10 +191,14 @@ export function App() {
   };
 
   return (
-    <div className="flex h-screen bg-zinc-950 text-zinc-100">
+    <div className="flex h-screen overflow-hidden bg-zinc-950 text-zinc-100">
       {/* Sidebar */}
       {sidebarOpen && (
-        <aside className="w-80 border-r border-zinc-800 flex flex-col shrink-0 bg-zinc-900">
+        <aside
+          style={{ width: sidebarWidth }}
+          className="relative border-r border-zinc-800 flex flex-col shrink-0 bg-zinc-900"
+        >
+          <ResizeHandle side="left" onResize={handleSidebarResize} />
           <div className="flex items-center justify-between px-4 h-[75px] border-b border-zinc-800 sticky top-0">
             <div className="flex items-center gap-3">
               <img src="/icon.png" alt="VibeLens" className="w-12 h-12" />
@@ -201,55 +213,62 @@ export function App() {
             </button>
           </div>
 
-          {/* Toolbar: Collect + Pagination */}
-          <div className="shrink-0 border-b border-zinc-800 px-3 py-2.5 flex items-center justify-between text-xs text-zinc-400">
-            <div className="flex items-center gap-2.5">
-              <button
-                onClick={handleCollectClick}
-                disabled={checkedIds.size === 0}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-cyan-600 hover:bg-cyan-500 text-white rounded transition disabled:opacity-40 disabled:cursor-not-allowed"
-                title="Send selected sessions to MongoDB"
-              >
-                <Upload className="w-3.5 h-3.5" />
-                Collect ({checkedIds.size})
-              </button>
-              <span className="text-xs text-zinc-400">{sessions.length} sessions</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setPage(Math.max(0, page - 1))}
-                disabled={page === 0 || loading}
-                className="p-1 hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed rounded transition"
-                title="Previous page"
-              >
-                <ChevronUp className="w-4 h-4" />
-              </button>
-              <span className="px-1 text-xs">{page + 1}</span>
-              <button
-                onClick={() => setPage(page + 1)}
-                disabled={sessions.length < SESSIONS_PER_PAGE || loading}
-                className="p-1 hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed rounded transition"
-                title="Next page"
-              >
-                <ChevronDown className="w-4 h-4" />
-              </button>
-            </div>
+          {/* Toolbar: Collect + Upload */}
+          <div className="shrink-0 border-b border-zinc-800 px-3 py-2.5 flex items-center gap-2.5 text-xs text-zinc-400">
+            <button
+              onClick={handleCollectClick}
+              disabled={checkedIds.size === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-cyan-600 hover:bg-cyan-500 text-white rounded transition disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Send selected sessions to MongoDB"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              Collect ({checkedIds.size})
+            </button>
+            <button
+              onClick={() => setShowUploadDialog(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-violet-600 hover:bg-violet-500 text-white rounded transition"
+              title="Upload conversation files"
+            >
+              <FileUp className="w-3.5 h-3.5" />
+              Upload
+            </button>
           </div>
 
           <SessionList
             sessions={sessions}
             selectedId={selectedSessionId}
             onSelect={setSelectedSessionId}
-            projects={projects}
-            selectedProject={selectedProject}
-            onProjectChange={(project) => {
-              setSelectedProject(project);
-              setPage(0);
-              setSelectedSessionId(null);
-            }}
             checkedIds={checkedIds}
             onCheckedChange={setCheckedIds}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
           />
+
+          {/* Footer: Session count + Pagination */}
+          <div className="shrink-0 border-t border-zinc-800 px-3 py-2 flex items-center justify-between text-xs text-zinc-400">
+            <span>{sessions.length} sessions</span>
+            {viewMode === "time" && (
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setPage(Math.max(0, page - 1))}
+                  disabled={page === 0 || loading}
+                  className="p-1 hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed rounded transition"
+                  title="Previous page"
+                >
+                  <ChevronUp className="w-4 h-4" />
+                </button>
+                <span className="px-1 text-xs">{page + 1}</span>
+                <button
+                  onClick={() => setPage(page + 1)}
+                  disabled={sessions.length < SESSIONS_PER_PAGE || loading}
+                  className="p-1 hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed rounded transition"
+                  title="Next page"
+                >
+                  <ChevronDown className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </div>
         </aside>
       )}
 
@@ -332,6 +351,14 @@ export function App() {
 
       {/* Dialog overlay */}
       {renderDialog()}
+
+      {/* Upload dialog */}
+      {showUploadDialog && (
+        <UploadDialog
+          onClose={() => setShowUploadDialog(false)}
+          onComplete={() => setRefreshKey((k) => k + 1)}
+        />
+      )}
     </div>
   );
 }

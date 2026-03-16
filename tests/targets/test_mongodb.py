@@ -5,19 +5,20 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from vibelens.models.message import Message, SubAgentSession, TokenUsage, ToolCall
+from vibelens.models.message import Message, TokenUsage, ToolCall
 from vibelens.models.session import (
+    MAIN_AGENT_ID,
     DataSourceType,
     ParseDiagnostics,
     SessionDetail,
     SessionSummary,
+    SubAgentSession,
 )
 from vibelens.targets.mongodb import (
-    MAIN_AGENT_ID,
     _extract_sub_session_metadata,
-    _flatten_messages,
     _serialize_message,
-    _serialize_session,
+    flatten_messages,
+    serialize_session,
 )
 
 
@@ -105,11 +106,11 @@ def _make_detail_with_subagents() -> SessionDetail:
 
 
 class TestSerializeSession:
-    """Tests for _serialize_session."""
+    """Tests for serialize_session."""
 
     def test_basic_fields(self):
         detail = _make_detail()
-        doc = _serialize_session(detail)
+        doc = serialize_session(detail)
 
         assert doc["_id"] == "test-session-1"
         assert doc["project_id"] == "encoded-project"
@@ -124,7 +125,7 @@ class TestSerializeSession:
 
     def test_timestamp_serialized(self):
         detail = _make_detail()
-        doc = _serialize_session(detail)
+        doc = serialize_session(detail)
 
         assert doc["timestamp"] is not None
         assert "2025-06-15" in doc["timestamp"]
@@ -132,7 +133,7 @@ class TestSerializeSession:
 
     def test_token_fields(self):
         detail = _make_detail()
-        doc = _serialize_session(detail)
+        doc = serialize_session(detail)
 
         assert doc["total_input_tokens"] == 1000
         assert doc["total_output_tokens"] == 500
@@ -141,7 +142,7 @@ class TestSerializeSession:
 
     def test_diagnostics_serialized(self):
         detail = _make_detail()
-        doc = _serialize_session(detail)
+        doc = serialize_session(detail)
 
         assert doc["diagnostics"] is not None
         assert doc["diagnostics"]["completeness_score"] == 0.95
@@ -149,13 +150,13 @@ class TestSerializeSession:
     def test_diagnostics_none(self):
         detail = _make_detail()
         detail.summary.diagnostics = None
-        doc = _serialize_session(detail)
+        doc = serialize_session(detail)
 
         assert doc["diagnostics"] is None
 
     def test_sub_sessions_metadata(self):
         detail = _make_detail_with_subagents()
-        doc = _serialize_session(detail)
+        doc = serialize_session(detail)
 
         assert len(doc["sub_sessions"]) == 1
         sub = doc["sub_sessions"][0]
@@ -262,11 +263,11 @@ class TestSerializeMessage:
 
 
 class TestFlattenMessages:
-    """Tests for _flatten_messages."""
+    """Tests for flatten_messages."""
 
     def test_main_messages_only(self):
         detail = _make_detail()
-        docs = _flatten_messages(detail)
+        docs = flatten_messages(detail)
 
         assert len(docs) == 2
         assert all(d["agent_id"] == MAIN_AGENT_ID for d in docs)
@@ -274,7 +275,7 @@ class TestFlattenMessages:
 
     def test_with_sub_agents(self):
         detail = _make_detail_with_subagents()
-        docs = _flatten_messages(detail)
+        docs = flatten_messages(detail)
 
         # 1 main + 2 sub + 1 nested
         assert len(docs) == 4
@@ -287,7 +288,7 @@ class TestFlattenMessages:
 
     def test_empty_session(self):
         detail = SessionDetail(summary=_make_summary(), messages=[], sub_sessions=[])
-        docs = _flatten_messages(detail)
+        docs = flatten_messages(detail)
 
         assert docs == []
 

@@ -210,10 +210,10 @@ def _instantiate_parser(class_name: str):
     Returns:
         Parser instance.
     """
-    from vibelens.ingest.claude_code import ClaudeCodeParser
-    from vibelens.ingest.codex import CodexParser
-    from vibelens.ingest.dataclaw import DataclawParser
-    from vibelens.ingest.gemini import GeminiParser
+    from vibelens.ingest.parsers.claude_code import ClaudeCodeParser
+    from vibelens.ingest.parsers.codex import CodexParser
+    from vibelens.ingest.parsers.dataclaw import DataclawParser
+    from vibelens.ingest.parsers.gemini import GeminiParser
 
     registry = {
         "ClaudeCodeParser": ClaudeCodeParser,
