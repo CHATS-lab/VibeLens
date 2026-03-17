@@ -86,6 +86,7 @@ class LocalSource:
         summary.total_output_tokens = metadata.total_output_tokens
         summary.total_cache_read = metadata.total_cache_read
         summary.total_cache_write = metadata.total_cache_write
+        summary.sub_agent_count = len(sub_sessions)
         summary.source_name = str(self._claude_dir)
         summary.source_host = self._hostname
         if metadata.first_message:

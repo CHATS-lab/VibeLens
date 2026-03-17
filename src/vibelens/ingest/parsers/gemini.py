@@ -18,13 +18,15 @@ Claude Code and Codex:
     files with ``kind: "subagent"``.
 """
 
+import hashlib
 import json
 from pathlib import Path
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
 from vibelens.ingest.parsers.base import BaseParser
+from vibelens.models.enums import DataSourceType
 from vibelens.models.message import Message, TokenUsage, ToolCall
-from vibelens.models.session import DataSourceType, SessionSummary
+from vibelens.models.session import SessionSummary
 from vibelens.utils import (
     coerce_to_string,
     deterministic_id,
@@ -95,25 +97,20 @@ class GeminiParser(BaseParser):
         models = {m.model for m in messages if m.model}
         tool_call_count = sum(len(m.tool_calls) for m in messages)
 
+        total_input = 0
+        total_output = 0
+        total_cache_read = 0
+        for msg in messages:
+            if msg.usage:
+                total_input += msg.usage.input_tokens
+                total_output += msg.usage.output_tokens
+                total_cache_read += msg.usage.cache_read_tokens
+
         duration = 0
         if start_time and last_updated:
             duration = int((last_updated - start_time).total_seconds())
 
-        # Gemini hashes project paths into opaque directory names, so we
-        # reverse-engineer the layout: session files live at
-        # ~/.gemini/tmp/{sha256-hash}/chats/session-*.json — walk up two
-        # levels to find the hash dir, then up two more to reach ~/.gemini.
-        hash_dir = ""
-        gemini_dir = None
-        if file_path.parts:
-            chats_parent = file_path.parent.parent
-            if chats_parent.name and file_path.parent.name == "chats":
-                hash_dir = chats_parent.name
-                gemini_dir = chats_parent.parent.parent
-
-        project_path = ""
-        if hash_dir and gemini_dir:
-            project_path = resolve_project_path(hash_dir, gemini_dir, messages)
+        project_path = _resolve_project(file_path, data, messages)
 
         summary = SessionSummary(
             session_id=session_id,
@@ -125,11 +122,105 @@ class GeminiParser(BaseParser):
             tool_call_count=tool_call_count,
             models=sorted(models),
             first_message=first_message,
+            total_input_tokens=total_input,
+            total_output_tokens=total_output,
+            total_cache_read=total_cache_read,
             source_type=DataSourceType.LOCAL,
             diagnostics=collector.to_diagnostics(),
+            agent_format="gemini",
         )
 
         return [(summary, messages)]
+
+
+_DEFAULT_GEMINI_DIR = Path.home() / ".gemini"
+
+
+def _resolve_project(
+    file_path: Path, data: dict, messages: list[Message]
+) -> str:
+    """Resolve the project path using all available strategies.
+
+    Strategy chain:
+    1. Filesystem layout (file at ~/.gemini/tmp/{hash}/chats/)
+    2. projectHash lookup against ~/.gemini/ (for files outside ~/.gemini/)
+    3. Tool call argument inference
+    4. Empty string (no project)
+
+    Args:
+        file_path: Path to the session JSON file.
+        data: Parsed session JSON root object.
+        messages: Parsed messages for tool-arg inference.
+
+    Returns:
+        Project path string, or empty string if unresolvable.
+    """
+    # Strategy 1: file is at the expected ~/.gemini/tmp/{hash}/chats/ location
+    hash_dir = ""
+    gemini_dir = None
+    if file_path.parts:
+        chats_parent = file_path.parent.parent
+        if chats_parent.name and file_path.parent.name == "chats":
+            hash_dir = chats_parent.name
+            gemini_dir = chats_parent.parent.parent
+
+    if hash_dir and gemini_dir:
+        result = resolve_project_path(hash_dir, gemini_dir, messages)
+        if result and result != hash_dir:
+            return result
+
+    # Strategy 2: use projectHash from session data against default ~/.gemini/
+    project_hash = data.get("projectHash", "")
+    if project_hash and _DEFAULT_GEMINI_DIR.is_dir():
+        result = resolve_project_path(project_hash, _DEFAULT_GEMINI_DIR, messages)
+        if result and result != project_hash:
+            return result
+
+    # Strategy 3: infer from tool call file paths
+    if messages:
+        result = _infer_project_from_tool_args(messages)
+        if result:
+            return result
+
+    return ""
+
+
+def _lookup_projects_json(projects_data: dict, hash_dir: str) -> str:
+    """Reverse-lookup a project path from projects.json.
+
+    Handles both Gemini projects.json formats:
+    - Current: ``{projects: {path: dirname}}``
+    - Legacy: ``{path: {hash: "..."}}``
+
+    Also matches when hash_dir is a SHA-256 hash of the project path
+    (from the session's projectHash field).
+
+    Args:
+        projects_data: Parsed projects.json content.
+        hash_dir: Directory name or SHA-256 hash to look up.
+
+    Returns:
+        Resolved project path, or empty string if not found.
+    """
+    # Current format: {projects: {path: dirname}}
+    projects_map = projects_data.get("projects", {})
+    if isinstance(projects_map, dict):
+        for project_path, dirname in projects_map.items():
+            if dirname == hash_dir:
+                return project_path
+            # Match SHA-256 hash of the project path against projectHash
+            path_hash = hashlib.sha256(project_path.encode()).hexdigest()
+            if path_hash == hash_dir:
+                return project_path
+
+    # Legacy format: {path: {hash: "..."}}
+    for project_path, info in projects_data.items():
+        if project_path == "projects":
+            continue
+        if isinstance(info, dict) and info.get("hash") == hash_dir:
+            return project_path
+
+    return ""
 
 
 _PATH_ARG_KEYS = {"file_path", "path", "filename", "directory"}
@@ -168,12 +259,17 @@ def resolve_project_path(
         pass
 
     # Medium path: projects.json reverse lookup
+    # Gemini CLI uses two possible formats:
+    #   Legacy: {path: {hash: "..."}}
+    #   Current: {projects: {path: dirname}}
+    # The hash_dir may be a dirname (e.g. "agent-guideline") or a
+    # SHA-256 hash of the project path (from the projectHash field).
     projects_file = gemini_dir / "projects.json"
     projects_data = load_json_file(projects_file)
     if isinstance(projects_data, dict):
-        for project_path, info in projects_data.items():
-            if isinstance(info, dict) and info.get("hash") == hash_dir:
-                return project_path
+        resolved = _lookup_projects_json(projects_data, hash_dir)
+        if resolved:
+            return resolved
 
     # Slow path: infer from tool call arguments
     if messages:
@@ -278,14 +374,21 @@ def _build_messages(raw_messages: list, session_id: str) -> list[Message]:
                 )
             )
         elif msg_type == "gemini":
+            content = raw.get("content", "")
+            thinking = _extract_thinking(raw)
+            # Gemini sometimes produces only thoughts with empty content
+            # (e.g. during extended reasoning). Use thinking as display
+            # content so the message isn't rendered as blank.
+            if not content and thinking:
+                content = thinking
             messages.append(
                 Message(
                     uuid=uuid,
                     session_id=session_id,
                     role="assistant",
                     type="gemini",
-                    content=raw.get("content", ""),
-                    thinking=_extract_thinking(raw),
+                    content=content,
+                    thinking=thinking,
                     model=raw.get("model", ""),
                     timestamp=timestamp,
                     usage=_parse_gemini_tokens(raw.get("tokens")),

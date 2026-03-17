@@ -69,16 +69,11 @@ def build_tool_graph(messages: list[Message]) -> ToolDependencyGraph:
     root_nodes = [n for n in nodes if n not in has_predecessor]
 
     return ToolDependencyGraph(
-        session_id=session_id,
-        nodes=nodes,
-        edges=edges,
-        root_nodes=root_nodes,
+        session_id=session_id, nodes=nodes, edges=edges, root_nodes=root_nodes
     )
 
 
-def _flatten_tool_calls(
-    messages: list[Message],
-) -> list[tuple[str, str, str, dict | str | None]]:
+def _flatten_tool_calls(messages: list[Message]) -> list[tuple[str, str, str, dict | str | None]]:
     """Extract (id, name, category, input) tuples in chronological order."""
     result = []
     for msg in messages:
@@ -102,8 +97,7 @@ def _extract_file_path(raw_input: dict | str | None) -> str:
 
 
 def _find_read_before_write(
-    calls: list[tuple[str, str, str, dict | str | None]],
-    has_predecessor: set[str],
+    calls: list[tuple[str, str, str, dict | str | None]], has_predecessor: set[str]
 ) -> list[ToolEdge]:
     """Detect Read(path=X) followed by Edit/Write(path=X)."""
     edges: list[ToolEdge] = []
@@ -129,8 +123,7 @@ def _find_read_before_write(
 
 
 def _find_error_retry(
-    calls: list[tuple[str, str, str, dict | str | None]],
-    has_predecessor: set[str],
+    calls: list[tuple[str, str, str, dict | str | None]], has_predecessor: set[str]
 ) -> list[ToolEdge]:
     """Detect tool with is_error followed by same tool name.
 
@@ -161,8 +154,7 @@ def _find_error_retry(
 
 
 def _find_search_then_read(
-    calls: list[tuple[str, str, str, dict | str | None]],
-    has_predecessor: set[str],
+    calls: list[tuple[str, str, str, dict | str | None]], has_predecessor: set[str]
 ) -> list[ToolEdge]:
     """Detect Grep/Glob followed by Read targeting found paths."""
     edges: list[ToolEdge] = []
@@ -184,8 +176,7 @@ def _find_search_then_read(
 
 
 def _find_sequential(
-    calls: list[tuple[str, str, str, dict | str | None]],
-    has_predecessor: set[str],
+    calls: list[tuple[str, str, str, dict | str | None]], has_predecessor: set[str]
 ) -> list[ToolEdge]:
     """Add sequential edges for tool calls that weren't linked by stronger relations.
 
@@ -200,11 +191,7 @@ def _find_sequential(
             continue
         prev_id = calls[i - 1][0]
         edges.append(
-            ToolEdge(
-                source_tool_call_id=prev_id,
-                target_tool_call_id=tc_id,
-                relation="sequential",
-            )
+            ToolEdge(source_tool_call_id=prev_id, target_tool_call_id=tc_id, relation="sequential")
         )
         has_predecessor.add(tc_id)
     return edges

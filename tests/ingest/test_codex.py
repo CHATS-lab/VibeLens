@@ -14,8 +14,8 @@ from vibelens.ingest.parsers.codex import (
     _parse_token_count,
     compute_session_tokens_max,
 )
+from vibelens.models.enums import DataSourceType
 from vibelens.models.message import Message, TokenUsage
-from vibelens.models.session import DataSourceType
 
 _parser = CodexParser()
 
@@ -540,6 +540,19 @@ class TestTokenCountAttachment:
     def test_parse_token_count_empty_info(self):
         """_parse_token_count with empty info returns None."""
         payload = {"type": "token_count", "info": {}}
+        usage = _parse_token_count(payload)
+        assert usage is None
+
+    def test_parse_token_count_all_zeros_returns_none(self):
+        """_parse_token_count with all-zero counts returns None, not TokenUsage(0,0,0,0)."""
+        payload = {
+            "type": "token_count",
+            "info": {
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "input_tokens_details": {"cached_tokens": 0},
+            },
+        }
         usage = _parse_token_count(payload)
         assert usage is None
 

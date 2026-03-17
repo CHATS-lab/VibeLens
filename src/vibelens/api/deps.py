@@ -2,9 +2,11 @@
 
 from vibelens.config import Settings, load_settings, validate_mongodb_config
 from vibelens.db import get_connection
+from vibelens.models.enums import AppMode
 from vibelens.sources.huggingface import HuggingFaceSource
 from vibelens.sources.local import LocalSource
 from vibelens.sources.mongodb import MongoDBSource
+from vibelens.stores import MemorySessionStore, SessionStore, SqliteSessionStore
 from vibelens.targets.mongodb import MongoDBTarget
 
 _settings: Settings | None = None
@@ -12,6 +14,7 @@ _local_source: LocalSource | None = None
 _hf_source: HuggingFaceSource | None = None
 _mongodb_target: MongoDBTarget | None = None
 _mongodb_source: MongoDBSource | None = None
+_session_store: SessionStore | None = None
 
 
 async def get_db():  # noqa: ANN201
@@ -29,6 +32,27 @@ def get_settings() -> Settings:
     if _settings is None:
         _settings = load_settings()
     return _settings
+
+
+def is_demo_mode() -> bool:
+    """Check whether the application is running in demo mode."""
+    return get_settings().app_mode == AppMode.DEMO
+
+
+def get_session_store() -> SessionStore:
+    """Return cached SessionStore instance.
+
+    Returns MemorySessionStore when demo mode uses memory storage,
+    otherwise SqliteSessionStore.
+    """
+    global _session_store
+    if _session_store is None:
+        settings = get_settings()
+        if settings.app_mode == AppMode.DEMO and settings.demo_storage == "memory":
+            _session_store = MemorySessionStore(ttl_seconds=settings.demo_session_ttl)
+        else:
+            _session_store = SqliteSessionStore()
+    return _session_store
 
 
 def get_local_source() -> LocalSource:

@@ -1,0 +1,27 @@
+# VibeLens — Demo Configuration (In-Memory Storage)
+# Public-facing mode: pre-loaded examples + ephemeral per-tab uploads.
+# No SQLite, no MongoDB, no local source scanning.
+#
+# Usage:
+#   vibelens serve --config config/demo-memory.yaml
+#   VIBELENS_CONFIG=config/demo-memory.yaml vibelens serve
+
+app:
+  mode: demo
+
+demo:
+  storage: memory                  # Uploads stored in memory, lost on restart
+  example_sessions: "examples/claude-code-example.jsonl,examples/codex-example.jsonl,examples/gemini-example.json"
+  session_ttl: 3600                # Evict orphaned uploads after 1 hour
+  persist_uploads: false           # Do not save uploaded files to disk
+
+server:
+  host: 0.0.0.0                   # Bind to all interfaces for public access
+  port: 12001
+
+upload:
+  allowed_extensions: ".json,.jsonl"
+  max_file_size_bytes: 10485760    # 10 MB per file (lower for public demo)
+  max_zip_bytes: 52428800         # 50 MB
+  max_extracted_bytes: 104857600  # 100 MB
+  max_file_count: 1000

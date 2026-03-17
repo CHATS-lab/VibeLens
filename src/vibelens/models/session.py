@@ -1,27 +1,11 @@
 """Session-level domain models."""
 
 from datetime import datetime
-from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
+from vibelens.models.enums import DataSourceType
 from vibelens.models.message import Message
-
-
-class DataSourceType(StrEnum):
-    """Supported data source types."""
-
-    LOCAL = "local"
-    HUGGINGFACE = "huggingface"
-    MONGODB = "mongodb"
-    UPLOAD = "upload"
-
-
-class DataTargetType(StrEnum):
-    """Supported data target types."""
-
-    MONGODB = "mongodb"
-    HUGGINGFACE = "huggingface"
 
 
 class ParseDiagnostics(BaseModel):
@@ -83,6 +67,13 @@ class SessionSummary(BaseModel):
     )
     total_cache_write: int = Field(
         default=0, description="Total tokens written into the prompt cache."
+    )
+    sub_agent_count: int = Field(
+        default=0, description="Number of sub-agent sessions spawned during the session."
+    )
+    agent_format: str = Field(
+        default="",
+        description="Original agent CLI format: claude_code, codex, gemini, dataclaw, vibelens.",
     )
     diagnostics: ParseDiagnostics | None = Field(
         default=None, description="Parse quality diagnostics, if collected."

@@ -7,27 +7,16 @@ spent exploring vs coding?" analytics.
 """
 
 from datetime import datetime
-from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
+from vibelens.models.enums import SessionPhase
 from vibelens.models.message import Message
 
 PHASE_WINDOW_SIZE = 5
 
 # Minimum fraction of window tools that must match for a dominant phase.
 _DOMINANCE_THRESHOLD = 0.4
-
-
-class SessionPhase(StrEnum):
-    """Semantic phase of a coding agent session."""
-
-    EXPLORATION = "exploration"
-    IMPLEMENTATION = "implementation"
-    DEBUGGING = "debugging"
-    VERIFICATION = "verification"
-    PLANNING = "planning"
-    MIXED = "mixed"
 
 
 class PhaseSegment(BaseModel):

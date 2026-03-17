@@ -1,0 +1,34 @@
+# VibeLens — Self-Use Configuration
+# Default mode: local sessions from ~/.claude/ + persistent SQLite uploads.
+#
+# Usage:
+#   vibelens serve --config config/self-use.yaml
+#   VIBELENS_CONFIG=config/self-use.yaml vibelens serve
+
+app:
+  mode: self
+
+server:
+  host: 127.0.0.1
+  port: 12001
+
+database:
+  path: ~/.vibelens/vibelens.db
+
+sources:
+  claude_dir: ~/.claude
+
+upload:
+  dir: ~/.vibelens/uploads
+  allowed_extensions: ".json,.jsonl"
+  max_file_size_bytes: 52428800   # 50 MB per file
+  max_zip_bytes: 209715200        # 200 MB
+  max_extracted_bytes: 524288000  # 500 MB
+  max_file_count: 10000
+
+mongodb:
+  uri: ""
+  db_name: vibelens
+
+integrations:
+  hf_token: ""

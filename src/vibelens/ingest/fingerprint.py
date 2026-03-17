@@ -22,7 +22,9 @@ _MIN_CONFIDENCE = 0.5
 class FormatMatch(BaseModel):
     """A candidate format match with confidence score."""
 
-    format_name: str = Field(description="Format identifier: claude_code, codex, gemini, dataclaw.")
+    format_name: str = Field(
+        description="Format identifier: claude_code, codex, gemini, dataclaw, vibelens."
+    )
     confidence: float = Field(description="Confidence from 0.0 to 1.0.")
     parser_class: str = Field(description="Parser class name to instantiate.")
 
@@ -71,16 +73,74 @@ def parse_auto(
 
 
 def _probe_json(file_path: Path) -> list[FormatMatch]:
-    """Probe a JSON file for Gemini format signatures."""
+    """Probe a JSON file for VibeLens or Gemini format signatures."""
     try:
-        raw = file_path.read_bytes()[:MAX_PROBE_BYTES]
-        data = json.loads(raw.decode("utf-8", errors="replace"))
+        data = json.loads(file_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return []
 
     if not isinstance(data, dict):
         return []
 
+    matches: list[FormatMatch] = []
+
+    # VibeLens Export v1 check (higher priority than Gemini)
+    vibelens_score = _score_vibelens(data)
+    if vibelens_score > 0:
+        matches.append(
+            FormatMatch(
+                format_name="vibelens",
+                confidence=min(vibelens_score, 1.0),
+                parser_class="VibeLensParser",
+            )
+        )
+
+    # Gemini check
+    gemini_score = _score_gemini(data)
+    if gemini_score > 0:
+        matches.append(
+            FormatMatch(
+                format_name="gemini",
+                confidence=min(gemini_score, 1.0),
+                parser_class="GeminiParser",
+            )
+        )
+
+    matches.sort(key=lambda m: m.confidence, reverse=True)
+    return matches
+
+
+def _score_vibelens(data: dict) -> float:
+    """Score a JSON object for VibeLens Export v1 format signatures.
+
+    Args:
+        data: Parsed JSON root object.
+
+    Returns:
+        Confidence score from 0.0 to 1.0.
+    """
+    score = 0.0
+    if "vibelens_version" in data:
+        score += 0.6
+    if "agent_format" in data:
+        score += 0.2
+    session = data.get("session")
+    if isinstance(session, dict) and "session_id" in session:
+        score += 0.1
+    if isinstance(data.get("messages"), list):
+        score += 0.1
+    return score
+
+
+def _score_gemini(data: dict) -> float:
+    """Score a JSON object for Gemini CLI format signatures.
+
+    Args:
+        data: Parsed JSON root object.
+
+    Returns:
+        Confidence score from 0.0 to 1.0.
+    """
     score = 0.0
     if "sessionId" in data:
         score += 0.4
@@ -93,14 +153,7 @@ def _probe_json(file_path: Path) -> list[FormatMatch]:
             score += 0.3
     if "startTime" in data:
         score += 0.1
-
-    return [
-        FormatMatch(
-            format_name="gemini",
-            confidence=min(score, 1.0),
-            parser_class="GeminiParser",
-        )
-    ]
+    return score
 
 
 def _probe_jsonl(file_path: Path) -> list[FormatMatch]:
@@ -109,11 +162,7 @@ def _probe_jsonl(file_path: Path) -> list[FormatMatch]:
     if not lines:
         return []
 
-    scores: dict[str, float] = {
-        "claude_code": 0.0,
-        "codex": 0.0,
-        "dataclaw": 0.0,
-    }
+    scores: dict[str, float] = {"claude_code": 0.0, "codex": 0.0, "dataclaw": 0.0}
 
     for line_data in lines:
         if not isinstance(line_data, dict):
@@ -124,9 +173,7 @@ def _probe_jsonl(file_path: Path) -> list[FormatMatch]:
 
     matches = [
         FormatMatch(
-            format_name=name,
-            confidence=min(score, 1.0),
-            parser_class=_PARSER_CLASSES[name],
+            format_name=name, confidence=min(score, 1.0), parser_class=_PARSER_CLASSES[name]
         )
         for name, score in scores.items()
         if score > 0
@@ -198,6 +245,7 @@ _PARSER_CLASSES: dict[str, str] = {
     "codex": "CodexParser",
     "gemini": "GeminiParser",
     "dataclaw": "DataclawParser",
+    "vibelens": "VibeLensParser",
 }
 
 
@@ -214,11 +262,13 @@ def _instantiate_parser(class_name: str):
     from vibelens.ingest.parsers.codex import CodexParser
     from vibelens.ingest.parsers.dataclaw import DataclawParser
     from vibelens.ingest.parsers.gemini import GeminiParser
+    from vibelens.ingest.parsers.vibelens import VibeLensParser
 
     registry = {
         "ClaudeCodeParser": ClaudeCodeParser,
         "CodexParser": CodexParser,
         "GeminiParser": GeminiParser,
         "DataclawParser": DataclawParser,
+        "VibeLensParser": VibeLensParser,
     }
     return registry[class_name]()

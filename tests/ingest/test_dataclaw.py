@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 
 from vibelens.ingest.parsers.dataclaw import DataclawParser
-from vibelens.models.session import DataSourceType
+from vibelens.models.enums import DataSourceType
 
 _parser = DataclawParser()
 

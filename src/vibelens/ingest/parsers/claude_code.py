@@ -57,6 +57,7 @@ class ClaudeCodeParser(BaseParser):
             Single-element list of (SessionSummary, messages).
         """
         collector = DiagnosticsCollector()
+        project_path = _extract_project_path(file_path)
         messages, sub_sessions = self.parse_session_with_subagents(file_path, diagnostics=collector)
         if not messages:
             return []
@@ -67,10 +68,25 @@ class ClaudeCodeParser(BaseParser):
         session_id = file_path.stem
         summary = SessionSummary(
             session_id=session_id,
+            project_id=self.encode_project_path(project_path) if project_path else "",
+            project_name=self.extract_project_name(project_path) if project_path else "",
             message_count=metadata.message_count,
+            tool_call_count=metadata.tool_call_count,
+            models=metadata.models,
             first_message=metadata.first_message,
+            total_input_tokens=metadata.total_input_tokens,
+            total_output_tokens=metadata.total_output_tokens,
+            total_cache_read=metadata.total_cache_read,
+            total_cache_write=metadata.total_cache_write,
+            duration=metadata.duration,
+            sub_agent_count=len(sub_sessions),
             diagnostics=collector.to_diagnostics(),
+            agent_format="claude_code",
         )
+        # Derive timestamp from the earliest message
+        timestamps = [m.timestamp for m in messages if m.timestamp]
+        if timestamps:
+            summary.timestamp = min(timestamps)
         return [(summary, messages)]
 
     def parse_history_index(
@@ -115,6 +131,7 @@ class ClaudeCodeParser(BaseParser):
                     message_count=data["message_count"],
                     first_message=first_message,
                     source_type="local",
+                    agent_format="claude_code",
                 )
             )
 
@@ -366,6 +383,45 @@ class ClaudeCodeParser(BaseParser):
             _detect_orphans(tool_use_ids, tool_results, diagnostics)
 
         return messages
+
+
+def _extract_project_path(file_path: Path) -> str:
+    """Extract the project working directory from the first JSONL entries.
+
+    Claude Code entries carry a ``cwd`` field with the absolute working
+    directory.  We probe the first few lines to find the most common one.
+
+    Args:
+        file_path: Path to the session .jsonl file.
+
+    Returns:
+        Project path string, or empty string if not found.
+    """
+    probe_limit = 10
+    cwd_values: list[str] = []
+    try:
+        with open(file_path, encoding="utf-8") as f:
+            for line in f:
+                if len(cwd_values) >= probe_limit:
+                    break
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                try:
+                    entry = json.loads(stripped)
+                except json.JSONDecodeError:
+                    continue
+                cwd = entry.get("cwd", "")
+                if cwd:
+                    cwd_values.append(cwd)
+    except OSError:
+        return ""
+    if not cwd_values:
+        return ""
+    # Return the most frequent cwd value
+    from collections import Counter
+
+    return Counter(cwd_values).most_common(1)[0][0]
 
 
 def count_history_entries(claude_dir: Path) -> int:

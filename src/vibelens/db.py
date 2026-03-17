@@ -5,8 +5,9 @@ from pathlib import Path
 
 import aiosqlite
 
+from vibelens.models.enums import DataSourceType
 from vibelens.models.message import Message
-from vibelens.models.session import DataSourceType, SessionSummary
+from vibelens.models.session import SessionSummary
 from vibelens.utils.paths import ensure_dir
 from vibelens.utils.timestamps import format_isoformat
 
@@ -76,8 +77,7 @@ async def insert_session(conn: aiosqlite.Connection, summary: SessionSummary) ->
         True if inserted, False if already existed (skipped).
     """
     cursor = await conn.execute(
-        "SELECT 1 FROM sessions WHERE session_id = ?",
-        (summary.session_id,),
+        "SELECT 1 FROM sessions WHERE session_id = ?", (summary.session_id,)
     )
     if await cursor.fetchone():
         return False

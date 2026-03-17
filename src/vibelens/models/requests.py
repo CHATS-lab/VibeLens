@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, Field
 
-from vibelens.models.session import DataSourceType, DataTargetType
+from vibelens.models.enums import DataSourceType, DataTargetType
 
 
 class PushRequest(BaseModel):
@@ -53,6 +53,12 @@ class UploadResult(BaseModel):
     errors: list[dict] = Field(
         default_factory=list, description="Per-file error details for failed uploads."
     )
+
+
+class DownloadRequest(BaseModel):
+    """Batch download request payload."""
+
+    session_ids: list[str] = Field(description="Session IDs to export as a zip archive.")
 
 
 class RemoteSessionsQuery(BaseModel):

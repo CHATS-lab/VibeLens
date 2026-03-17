@@ -20,8 +20,9 @@ from pathlib import Path
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
 from vibelens.ingest.parsers.base import BaseParser
+from vibelens.models.enums import DataSourceType
 from vibelens.models.message import Message, ToolCall
-from vibelens.models.session import DataSourceType, SessionSummary
+from vibelens.models.session import SessionSummary
 from vibelens.utils import coerce_to_string, deterministic_id, get_logger, parse_iso_timestamp
 
 logger = get_logger(__name__)
@@ -113,6 +114,7 @@ class DataclawParser(BaseParser):
             source_name="",
             source_host="https://huggingface.co",
             diagnostics=diagnostics.to_diagnostics() if diagnostics else None,
+            agent_format="dataclaw",
         )
 
         return summary, messages

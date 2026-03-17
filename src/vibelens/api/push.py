@@ -5,8 +5,9 @@ import logging
 from fastapi import APIRouter, HTTPException
 
 from vibelens.api.deps import get_local_source, get_mongodb_target
+from vibelens.models.enums import DataTargetType
 from vibelens.models.requests import PushRequest, PushResult
-from vibelens.models.session import DataTargetType, SessionDetail
+from vibelens.models.session import SessionDetail
 
 logger = logging.getLogger(__name__)
 
