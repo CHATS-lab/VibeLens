@@ -4,9 +4,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from vibelens.models.enums import DataSourceType
 from vibelens.models.message import Message
 from vibelens.models.requests import RemoteSessionsQuery
-from vibelens.models.session import DataSourceType, SessionSummary
+from vibelens.models.session import SessionSummary
 from vibelens.sources.mongodb import (
     _deserialize_message,
     _deserialize_session,

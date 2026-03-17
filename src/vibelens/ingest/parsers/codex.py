@@ -29,8 +29,9 @@ from pydantic import BaseModel, Field
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
 from vibelens.ingest.parsers.base import BaseParser
+from vibelens.models.enums import DataSourceType
 from vibelens.models.message import Message, TokenUsage, ToolCall
-from vibelens.models.session import DataSourceType, SessionSummary
+from vibelens.models.session import SessionSummary
 from vibelens.utils import coerce_to_string, get_logger, parse_iso_timestamp
 
 logger = get_logger(__name__)
@@ -134,6 +135,7 @@ class CodexParser(BaseParser):
             first_message=first_message,
             source_type=DataSourceType.LOCAL,
             diagnostics=collector.to_diagnostics(),
+            agent_format="codex",
         )
 
         return [(summary, messages)]
@@ -427,6 +429,10 @@ def _parse_token_count(payload: dict) -> TokenUsage | None:
     output_tokens = info.get("output_tokens", 0) or info.get("completion_tokens", 0)
     input_details = info.get("input_tokens_details", {}) or {}
     cached_tokens = input_details.get("cached_tokens", 0)
+    # All-zero usage means no token data was present; return None so
+    # _attach_usage_to_last_assistant() can overwrite later if real data arrives.
+    if input_tokens == 0 and output_tokens == 0 and cached_tokens == 0:
+        return None
     return TokenUsage(
         input_tokens=input_tokens,
         output_tokens=output_tokens,

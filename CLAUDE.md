@@ -21,22 +21,37 @@ src/vibelens/
 │   ├── phase_detector.py  # Session conversation phase classification
 │   └── parallel.py        # Multi-file parallel parsing (ProcessPoolExecutor)
 ├── models/                # Pydantic domain models
+│   ├── enums.py           # AgentType, AppMode, DataSourceType, SessionPhase
 │   ├── message.py         # Message, ToolCall, TokenUsage, ContentBlock
 │   ├── session.py         # SessionSummary, SessionDetail, SubAgentSession, MAIN_AGENT_ID
 │   ├── requests.py        # API request/response models
 │   └── analysis.py        # Analytics result models
+├── stores/                # Session storage backends
+│   ├── protocol.py        # SessionStore Protocol definition
+│   ├── sqlite.py          # SqliteSessionStore — wraps db.py
+│   └── memory.py          # MemorySessionStore — per-token with TTL
 ├── analysis/              # Session analytics and pattern detection
 ├── api/                   # FastAPI routes
+│   └── deps.py            # get_session_store(), is_demo_mode() helpers
 ├── sources/               # Data source connectors (local, HuggingFace)
 ├── targets/               # Data target connectors (MongoDB, HuggingFace)
 ├── utils/                 # Shared utilities (timestamps, paths, JSON helpers, logging)
 ├── config/                # Configuration package
-│   ├── settings.py        # Pydantic Settings model and load_settings()
+│   ├── settings.py        # Pydantic Settings model (AppMode, demo fields)
 │   ├── loader.py          # YAML config loading and auto-discovery
 │   └── validators.py      # Integration config validators
 ├── db.py                  # SQLite persistence
 ├── cli.py                 # Typer CLI entrypoint
-└── app.py                 # FastAPI app factory
+└── app.py                 # FastAPI app factory (mode-aware lifespan)
+config/                    # Configuration templates
+├── self-use.yaml          # Default self-use mode
+├── demo-memory.yaml       # Demo mode with in-memory storage
+├── demo-sqlite.yaml       # Demo mode with SQLite persistence
+└── vibelens.example.yaml  # Full reference config with all options
+examples/                  # Example session files for demo mode
+├── claude-code-example.jsonl
+├── codex-example.jsonl
+└── gemini-example.json
 tests/
 ├── ingest/                # Parser tests
 ├── models/                # Model tests
@@ -53,22 +68,32 @@ tests/
 
 ## Documentation References
 
-- `docs/CLAUDE_LOCAL_STRUCTURE.md` — Claude Code `~/.claude/` directory structure and JSONL format
-- `docs/codex/CODEX_LOCAL_STRUCTURE.md` — Codex CLI `~/.codex/` directory structure and rollout format
-- `docs/gemini-cli/GEMINI_LOCAL_STRUCTURE.md` — Gemini CLI `~/.gemini/` directory structure and session format
-- `docs/PRODUCT_SPEC.md` — Product specification
-- `docs/TECHNICAL_DESIGN.md` — Technical design document
-- `docs/ANALYSIS_DESIGN.md` — Analytics module design
+### Agent format references
+- `docs/claude/claude-local-structure.md` — Claude Code `~/.claude/` directory structure and JSONL format
+- `docs/codex/codex-local-structure.md` — Codex CLI `~/.codex/` directory structure and rollout format
+- `docs/gemini/gemini-local-structure.md` — Gemini CLI `~/.gemini/` directory structure and session format
+- `docs/conversation-format-comparison.md` — Cross-agent format comparison
 
-Links:
+### Design specifications
+- `docs/product-spec.md` — Product specification and requirements
+- `docs/architecture.md` — System architecture and data flows
+- `docs/data-models.md` — Pydantic and TypeScript model definitions
+- `docs/api-reference.md` — REST API endpoint contracts
+- `docs/database-spec.md` — SQLite and MongoDB schema design
+- `docs/ingest-spec.md` — Parser framework and tool normalization
+- `docs/frontend-spec.md` — React component architecture
+- `docs/config-reference.md` — Configuration and environment variables
+- `docs/mongodb-target-spec.md` — MongoDB push/pull specification
+- `docs/analysis-design.md` — Analytics module design (aspirational)
+
+### Links
 - [Deep Dive: How Claude Code's /insights Command Works](https://www.zolkos.com/2026/02/04/deep-dive-how-claude-codes-insights-command-works.html)
 
 
 ## Reference Repos
 
-- [Claude-Run](/Users/JinghengYe/Documents/Projects/Agent-Guideline/claude-code-monitors/claude-run). Beautiful UI.
-- [CooperBench Website](/Users/JinghengYe/Documents/Projects/Agent-Guideline/claude-code-monitors/website). Many analysis indicator.
-
+- [Claude-Run](https://github.com/kamranahmedse/claude-run). Beautiful UI.
+- [CooperBench Website](https://github.com/cooperbench/website). Many analysis indicator.
 
 
 ## General Rules
@@ -82,6 +107,7 @@ Links:
 - Return early. Use guard clauses to eliminate nesting. Avoid deep if-else chains.
 - Limit function arguments to 3. If you need more, group them into a dataclass, dict, or config object.
 - Add typing annotation to function input parameters.
+- Add detailed comments to complex code.
 
 ## Python Conventions
 

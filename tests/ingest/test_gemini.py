@@ -9,7 +9,7 @@ from vibelens.ingest.parsers.gemini import (
     _parse_gemini_tokens,
     resolve_project_path,
 )
-from vibelens.models.session import DataSourceType
+from vibelens.models.enums import DataSourceType
 
 _parser = GeminiParser()
 

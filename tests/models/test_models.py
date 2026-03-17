@@ -10,6 +10,7 @@ from vibelens.models.analysis import (
     ToolUsageStat,
     UserPreferenceResult,
 )
+from vibelens.models.enums import DataSourceType, DataTargetType
 from vibelens.models.message import ContentBlock, Message, TokenUsage, ToolCall
 from vibelens.models.requests import (
     PullRequest,
@@ -19,8 +20,6 @@ from vibelens.models.requests import (
     RemoteSessionsQuery,
 )
 from vibelens.models.session import (
-    DataSourceType,
-    DataTargetType,
     SessionDetail,
     SessionMetadata,
     SessionSummary,

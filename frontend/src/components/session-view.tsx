@@ -15,6 +15,7 @@ import {
   Upload,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAppContext } from "../app";
 import type { Message, SessionDetail, SubAgentSession, DataSourceType } from "../types";
 import { MessageBlock } from "./message-block";
 import { SubAgentBlock } from "./sub-agent-block";
@@ -26,6 +27,7 @@ interface SessionViewProps {
 }
 
 export function SessionView({ sessionId }: SessionViewProps) {
+  const { fetchWithToken } = useAppContext();
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -49,7 +51,7 @@ export function SessionView({ sessionId }: SessionViewProps) {
     setDetail(null);
     setActivePromptUuid(null);
 
-    fetch(`/api/sessions/${sessionId}`)
+    fetchWithToken(`/api/sessions/${sessionId}`)
       .then((res) => {
         if (!res.ok) throw new Error(`Failed to load session: ${res.status}`);
         return res.json();
@@ -57,7 +59,7 @@ export function SessionView({ sessionId }: SessionViewProps) {
       .then((data: SessionDetail) => setDetail(data))
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [sessionId]);
+  }, [sessionId, fetchWithToken]);
 
   const subSessions = (detail?.sub_sessions || []) as SubAgentSession[];
 
@@ -207,10 +209,10 @@ export function SessionView({ sessionId }: SessionViewProps) {
                   label={`${stats.tool_call_count} tools`}
                   color="text-amber-400"
                 />
-                {subSessions.length > 0 && (
+                {(subSessions.length > 0 || (stats.sub_agent_count ?? 0) > 0) && (
                   <MetaPill
                     icon={<Bot className="w-3 h-3" />}
-                    label={`${subSessions.length} sub-agent${subSessions.length > 1 ? "s" : ""}`}
+                    label={`${subSessions.length || stats.sub_agent_count} sub-agent${(subSessions.length || stats.sub_agent_count || 0) !== 1 ? "s" : ""}`}
                     color="text-violet-400"
                   />
                 )}

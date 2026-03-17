@@ -8,7 +8,8 @@ from vibelens.ingest.correlator import (
     _find_overlapping,
     correlate_sessions,
 )
-from vibelens.models.session import DataSourceType, SessionSummary
+from vibelens.models.enums import DataSourceType
+from vibelens.models.session import SessionSummary
 
 _DEFAULT_TIMESTAMP = datetime(2025, 1, 15, 10, 0, tzinfo=UTC)
 

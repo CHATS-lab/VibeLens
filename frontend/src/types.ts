@@ -1,3 +1,5 @@
+export type AgentType = "claude_code" | "codex" | "gemini";
+export type OSPlatform = "macos" | "linux" | "windows";
 export type DataSourceType = "local" | "huggingface" | "mongodb" | "upload";
 export type DataTargetType = "mongodb" | "huggingface";
 
@@ -60,6 +62,8 @@ export interface SessionSummary {
   total_output_tokens?: number;
   total_cache_read?: number;
   total_cache_write?: number;
+  sub_agent_count?: number;
+  agent_format?: string;
 }
 
 export interface SubAgentSession {
@@ -88,6 +92,11 @@ export interface PullResult {
   sessions_imported: number;
   messages_imported: number;
   skipped: number;
+}
+
+export interface UploadCommands {
+  command: string;
+  description: string;
 }
 
 export interface UploadResult {

@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.5.0] - 2026-03-17
+
+### Added
+- **Two-mode system**: Self-use (default) and demo mode with configurable storage backends.
+  - `AppMode` enum (`self` / `demo`) controls application behavior.
+  - `SessionStore` protocol with `SqliteSessionStore` and `MemorySessionStore` implementations in new `stores/` package.
+  - Per-tab client isolation via `X-Session-Token` header and `crypto.randomUUID()` in React.
+  - Background TTL cleanup evicts orphaned demo uploads after configurable timeout.
+- **Demo mode**: Pre-loaded example sessions visible to all clients, ephemeral uploads scoped per browser tab, lost on page refresh.
+  - In-memory storage (default) or SQLite persistence for demo uploads.
+  - `SHARED_TOKEN` sentinel for shared example sessions.
+  - Example session loading at startup via `parse_auto()`.
+- **Config templates** (`config/`): `self-use.yaml`, `demo-memory.yaml`, `demo-sqlite.yaml`, `vibelens.example.yaml`.
+- **Example sessions** (`examples/`): Bundled Claude Code, Codex, and Gemini example files for demo mode.
+- **VibeLens Export v1** parser (`vibelens.py`): Parse re-imported VibeLens export JSON files.
+- **Zip upload** (`POST /api/upload/zip`): Upload zip archives containing multiple session files.
+- **Batch download** (`POST /api/sessions/download`): Export multiple sessions as a zip archive.
+- **`sub_agent_count`** field on `SessionSummary` for displaying sub-agent counts in the session header.
+- **Integration tests** (`test_examples.py`): 28 tests parsing real example data files to verify metadata, content, and token aggregation.
+- Settings fields: `app_mode`, `demo_storage`, `demo_example_sessions`, `demo_session_ttl`, `demo_persist_uploads`.
+- Environment variables: `VIBELENS_APP_MODE`, `VIBELENS_DEMO_STORAGE`, `VIBELENS_DEMO_EXAMPLE_SESSIONS`, `VIBELENS_DEMO_SESSION_TTL`, `VIBELENS_DEMO_PERSIST_UPLOADS`.
+
+### Changed
+- **Frontend**: `AppContext` provides `sessionToken`, `appMode`, `fetchWithToken` to all components. Collect/Resume buttons hidden in demo mode.
+- **Session endpoints**: All endpoints accept `X-Session-Token` header and branch on `is_demo_mode()`.
+- **Upload endpoints**: Mode-aware storage routing through `SessionStore` instead of direct SQLite.
+- **System endpoints**: `GET /api/settings` returns `app_mode`; sources/targets filtered by mode.
+- `vibelens.example.yaml` moved to `config/vibelens.example.yaml`.
+- README updated with two-mode documentation, config templates table, and new environment variables.
+- CLAUDE.md project structure updated with `stores/`, `config/`, `examples/` directories.
+
+### Fixed
+- **Claude Code parser**: `parse_file()` now populates `timestamp`, `duration`, `tool_call_count`, `models`, `project_name`, `project_id`, and all token counts from `compute_session_metadata()`.
+- **Claude Code project name**: New `_extract_project_path()` reads `cwd` field from JSONL entries to derive project name.
+- **Gemini empty content**: Messages with only `thoughts` (no content) now use thinking text as display content instead of rendering blank.
+- **Gemini token totals**: Summary now aggregates `total_input_tokens`, `total_output_tokens`, `total_cache_read` from per-message token data.
+- **Gemini project resolution**: New `_resolve_project()` chains three strategies — filesystem layout, `projectHash` SHA-256 reverse-lookup against `~/.gemini/projects.json`, and tool call argument inference. Handles both current (`{projects: {path: dirname}}`) and legacy projects.json formats.
+- **Gemini JSON fingerprinting**: `_probe_json()` now reads the full file instead of truncating at 8KB, fixing detection failure for files larger than `MAX_PROBE_BYTES`.
+- **Memory store sorting**: `list_sessions()` coerces timestamps to `str()` to avoid `TypeError` when mixing `str` and `datetime` objects.
+
 ## [0.4.0] - 2026-03-16
 
 ### Added

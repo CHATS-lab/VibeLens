@@ -22,6 +22,17 @@
 #   VIBELENS_HF_TOKEN     HuggingFace API token (default: empty)
 #   VIBELENS_CONFIG       Path to this YAML config file (default: auto-discover)
 
+# Application mode: "self" (default) or "demo" (public-facing)
+app:
+  mode: self
+
+# Demo mode settings (only used when app.mode is "demo")
+demo:
+  storage: memory                  # "memory" (ephemeral) or "sqlite" (persistent)
+  example_sessions: ""             # Comma-separated file paths to pre-load
+  session_ttl: 3600                # Seconds before orphaned uploads are cleaned up
+  persist_uploads: false           # Save raw uploaded files to disk
+
 server:
   host: 127.0.0.1
   port: 12001
@@ -38,3 +49,14 @@ sources:
 
 integrations:
   hf_token: ""            # HuggingFace API token for pulling dataclaw datasets
+
+upload:
+  dir: ~/.vibelens/uploads
+  allowed_extensions: ".json,.jsonl"
+  max_file_size_bytes: 52428800   # 50 MB per file
+  max_zip_bytes: 209715200        # 200 MB
+  max_extracted_bytes: 524288000  # 500 MB
+  max_file_count: 10000
+  subagent_file_prefix: "agent-"
+  min_confidence: 0.5
+  stream_chunk_size: 65536        # 64 KB

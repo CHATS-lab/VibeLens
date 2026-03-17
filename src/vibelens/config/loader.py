@@ -33,6 +33,26 @@ YAML_FIELD_MAP: dict[str, dict[str, str]] = {
     "integrations": {
         "hf_token": "hf_token",
     },
+    "upload": {
+        "dir": "upload_dir",
+        "allowed_extensions": "upload_allowed_extensions",
+        "max_file_size_bytes": "max_file_size_bytes",
+        "max_zip_bytes": "max_zip_bytes",
+        "max_extracted_bytes": "max_extracted_bytes",
+        "max_file_count": "max_file_count",
+        "subagent_file_prefix": "subagent_file_prefix",
+        "min_confidence": "min_confidence",
+        "stream_chunk_size": "stream_chunk_size",
+    },
+    "app": {
+        "mode": "app_mode",
+    },
+    "demo": {
+        "storage": "demo_storage",
+        "example_sessions": "demo_example_sessions",
+        "session_ttl": "demo_session_ttl",
+        "persist_uploads": "demo_persist_uploads",
+    },
 }
 
 

@@ -28,8 +28,14 @@ Agent trajectory analysis and visualization platform. Parses, normalizes, and vi
 - **Phase detection**: Classifies session segments into phases (exploration, implementation, debugging, verification, planning) using sliding-window analysis over tool call categories
 - **Parallel parsing**: `ProcessPoolExecutor`-based multi-file parsing for CPU-bound JSONL processing
 
+### Two-Mode System
+- **Self-use mode** (default): Local sessions from `~/.claude/` + persistent SQLite uploads. Full access to MongoDB, HuggingFace, and local sources.
+- **Demo mode**: Public-facing. Pre-loaded example sessions + ephemeral per-tab uploads. Storage is configurable (in-memory or SQLite). Uploads are scoped per browser tab via `X-Session-Token` header, lost on page refresh.
+
 ### Storage & API
+- **SessionStore protocol**: Pluggable storage backend with `SqliteSessionStore` and `MemorySessionStore` implementations
 - **SQLite storage**: Persistent session and message storage with async access
+- **In-memory storage**: Per-token ephemeral storage with TTL cleanup for demo mode
 - **MongoDB storage**: Optional remote storage with two-collection design (sessions + messages), batch insert, and duplicate detection
 - **REST API**: FastAPI backend for session listing, filtering, pagination, detail views, push/pull operations, and system configuration
 - **React frontend**: Session browser with rich message rendering, tool-call visualization, sub-agent display, and batch collection
@@ -48,13 +54,18 @@ Agent trajectory analysis and visualization platform. Parses, normalizes, and vi
 
 ```bash
 uv sync
-cp vibelens.example.yaml vibelens.yaml   # edit with your settings
+
+# Self-use mode (default) — reads local ~/.claude/ sessions
+cp config/self-use.yaml vibelens.yaml
 uv run vibelens serve
+
+# Demo mode — pre-loaded examples, ephemeral uploads
+uv run vibelens serve --config config/demo-memory.yaml
 ```
 
 ## Configuration
 
-VibeLens uses YAML-based configuration with environment variable overrides.
+VibeLens uses YAML-based configuration with environment variable overrides. Config templates live in `config/`.
 
 Priority (highest to lowest):
 1. **Environment variables** (`VIBELENS_*`)
@@ -62,15 +73,27 @@ Priority (highest to lowest):
 3. **YAML config file** (`vibelens.yaml`)
 4. **Built-in defaults**
 
+### Config Templates
+
+| Template | Mode | Storage | Use Case |
+|----------|------|---------|----------|
+| `config/self-use.yaml` | `self` | SQLite | Local development, personal use |
+| `config/demo-memory.yaml` | `demo` | Memory | Public demo, uploads lost on restart |
+| `config/demo-sqlite.yaml` | `demo` | SQLite | Public demo, uploads persist across restarts |
+| `config/vibelens.example.yaml` | `self` | SQLite | Full reference with all options documented |
+
 ### YAML Config (recommended)
 
-Copy the template and edit:
+Copy a template and edit:
 
 ```bash
-cp vibelens.example.yaml vibelens.yaml
+cp config/self-use.yaml vibelens.yaml
 ```
 
 ```yaml
+app:
+  mode: self                       # "self" or "demo"
+
 server:
   host: 127.0.0.1
   port: 12001
@@ -78,15 +101,15 @@ server:
 database:
   path: ~/.vibelens/vibelens.db
 
-mongodb:
-  uri: mongodb+srv://user:pass@host/
-  db_name: vibelens
-
 sources:
   claude_dir: ~/.claude
 
-integrations:
-  hf_token: ""
+# Demo mode settings (only used when app.mode is "demo")
+demo:
+  storage: memory                  # "memory" or "sqlite"
+  example_sessions: "examples/claude-code-example.jsonl"
+  session_ttl: 3600
+  persist_uploads: false
 ```
 
 ### Starting the Server
@@ -96,19 +119,20 @@ integrations:
 vibelens serve
 
 # Explicit config file
-vibelens serve --config path/to/config.yaml
+vibelens serve --config config/demo-memory.yaml
 
 # Override specific settings via CLI flags
 vibelens serve --host 0.0.0.0 --port 8080
 
 # Override via environment variables
-VIBELENS_PORT=8080 VIBELENS_MONGODB_URI=mongodb://localhost vibelens serve
+VIBELENS_PORT=8080 VIBELENS_APP_MODE=demo vibelens serve
 ```
 
 ### Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `VIBELENS_APP_MODE` | `self` | Operating mode: `self` or `demo` |
 | `VIBELENS_HOST` | `127.0.0.1` | Server bind address |
 | `VIBELENS_PORT` | `12001` | Server port |
 | `VIBELENS_DB_PATH` | `~/.vibelens/vibelens.db` | SQLite database file |
@@ -116,6 +140,10 @@ VIBELENS_PORT=8080 VIBELENS_MONGODB_URI=mongodb://localhost vibelens serve
 | `VIBELENS_MONGODB_URI` | *(empty)* | MongoDB connection URI |
 | `VIBELENS_MONGODB_DB` | `vibelens` | MongoDB database name |
 | `VIBELENS_HF_TOKEN` | *(empty)* | HuggingFace API token |
+| `VIBELENS_DEMO_STORAGE` | `memory` | Demo storage backend: `memory` or `sqlite` |
+| `VIBELENS_DEMO_EXAMPLE_SESSIONS` | *(empty)* | Comma-separated example session paths |
+| `VIBELENS_DEMO_SESSION_TTL` | `3600` | Seconds before orphaned demo uploads are evicted |
+| `VIBELENS_DEMO_PERSIST_UPLOADS` | `false` | Save uploaded files to disk in demo mode |
 | `VIBELENS_CONFIG` | *(empty)* | Path to YAML config file |
 
 ## Development
@@ -136,15 +164,20 @@ npm run dev
 ```
 src/vibelens/
   config/              # Configuration package
-    settings.py        # Pydantic Settings model and load_settings()
+    settings.py        # Pydantic Settings model (AppMode, demo fields)
     loader.py          # YAML config loading and auto-discovery
     validators.py      # Integration config validators
+  stores/              # Session storage backends
+    protocol.py        # SessionStore Protocol definition
+    sqlite.py          # SqliteSessionStore — wraps db.py
+    memory.py          # MemorySessionStore — per-token with TTL
   ingest/              # Format parsers and analysis
-    base.py            # BaseParser ABC with shared helpers
-    claude_code.py     # Claude Code JSONL parser
-    codex.py           # Codex CLI rollout parser
-    gemini.py          # Gemini CLI session parser
-    dataclaw.py        # Dataclaw HuggingFace export parser
+    parsers/           # Format-specific parser implementations
+      base.py          # BaseParser ABC with shared helpers
+      claude_code.py   # Claude Code JSONL parser
+      codex.py         # Codex CLI rollout parser
+      gemini.py        # Gemini CLI session parser
+      dataclaw.py      # Dataclaw HuggingFace export parser
     correlator.py      # Cross-agent session correlation
     tool_normalizers.py # Tool categorization and summary extraction
     diagnostics.py     # Parse quality metrics collection
@@ -153,8 +186,9 @@ src/vibelens/
     phase_detector.py  # Session conversation phase classification
     parallel.py        # Multi-file parallel parsing
   models/              # Pydantic domain models
-    message.py         # Message, ToolCall, TokenUsage, ContentBlock, SubAgentSession
-    session.py         # SessionSummary, SessionDetail, ParseDiagnostics
+    enums.py           # AgentType, AppMode, DataSourceType, SessionPhase
+    message.py         # Message, ToolCall, TokenUsage, ContentBlock
+    session.py         # SessionSummary, SessionDetail, SubAgentSession
     requests.py        # API request/response models
     analysis.py        # Analytics result models
   sources/             # Data source connectors (local, HuggingFace, MongoDB)
@@ -163,16 +197,27 @@ src/vibelens/
   api/                 # FastAPI route handlers
   utils/               # Shared utilities (logging, timestamps, paths, JSON)
   db.py                # SQLite database layer
-  app.py               # FastAPI application factory
+  app.py               # FastAPI application factory (mode-aware lifespan)
   cli.py               # Typer CLI entrypoint
+config/                # Configuration templates
+  self-use.yaml        # Default self-use mode
+  demo-memory.yaml     # Demo mode with in-memory storage
+  demo-sqlite.yaml     # Demo mode with SQLite persistence
+  vibelens.example.yaml # Full reference config
+examples/              # Example session files for demo mode
+  claude-code-example.jsonl
+  codex-example.jsonl
+  gemini-example.json
 frontend/              # React + Vite + Tailwind UI
   src/
+    app.tsx                  # AppContext (sessionToken, fetchWithToken, appMode)
     components/
       session-list.tsx       # Filterable session list with multi-select
       session-view.tsx       # Full session viewer with metadata and messages
       message-block.tsx      # Rich message rendering with tool-specific views
       sub-agent-block.tsx    # Collapsible sub-agent hierarchy display
       prompt-nav-panel.tsx   # Right sidebar prompt navigation
+      upload-dialog.tsx      # File upload wizard
       confirm-dialog.tsx     # Modal confirmation dialog
       collapsible-pill.tsx   # Reusable expandable panel
       markdown-renderer.tsx  # Markdown content rendering
