@@ -28,10 +28,16 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
-from vibelens.ingest.parsers.base import BaseParser
-from vibelens.models.enums import DataSourceType
-from vibelens.models.message import Message, TokenUsage, ToolCall
-from vibelens.models.session import SessionSummary
+from vibelens.ingest.parsers.base import BaseParser, mark_error_content
+from vibelens.models.enums import StepSource
+from vibelens.models.trajectories import (
+    Metrics,
+    Observation,
+    ObservationResult,
+    Step,
+    ToolCall,
+    Trajectory,
+)
 from vibelens.utils import coerce_to_string, get_logger, parse_iso_timestamp
 
 logger = get_logger(__name__)
@@ -49,18 +55,26 @@ _OUTPUT_PREFIX_RE = re.compile(
     re.DOTALL,
 )
 
+# ATIF source mapping for Codex role names
+_ROLE_TO_SOURCE = {"user": StepSource.USER, "assistant": StepSource.AGENT}
+
+AGENT_NAME = "codex"
+
 
 class _CodexParseState(BaseModel):
     """Mutable state carried across response_item processing.
 
     Codex emits tool calls and reasoning as separate JSONL entries
     *between* message entries, with no explicit end-of-turn marker.
-    We buffer them here and flush to the preceding assistant message
+    We buffer them here and flush to the preceding agent step
     when the next message boundary arrives (or at end-of-file).
     """
 
     pending_tools: list[ToolCall] = Field(
         default_factory=list, description="Tool calls buffered until the next message boundary."
+    )
+    pending_obs_results: list[ObservationResult] = Field(
+        default_factory=list, description="Observation results buffered for the preceding step."
     )
     current_model: str = Field(
         default="", description="Active model name from the most recent turn_context."
@@ -80,94 +94,93 @@ class CodexParser(BaseParser):
     turn_context, and event_msg entries.
     """
 
-    def parse_file(self, file_path: Path) -> list[tuple[SessionSummary, list[Message]]]:
-        """Parse a Codex rollout JSONL file.
+    def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
+        """Parse Codex rollout JSONL content into a Trajectory.
 
         Args:
-            file_path: Path to a rollout-*.jsonl file.
+            content: Raw JSONL content string.
+            source_path: Original file path (used for session ID fallback).
 
         Returns:
-            Single-element list of (SessionSummary, messages), or empty list.
+            Single-element list with the Trajectory, or empty list.
         """
-        if not file_path.exists():
-            logger.warning("Rollout file not found: %s", file_path)
-            return []
-
         collector = DiagnosticsCollector()
-        entries = _load_rollout_entries(file_path, collector)
+        entries = _load_rollout_content(content, collector)
         if not entries:
             return []
 
         meta = _extract_session_meta(entries)
-        session_id = meta.get("id", file_path.stem)
-        messages = _build_messages(entries, session_id, collector)
-        if not messages:
+        fallback_id = Path(source_path).stem if source_path else str(uuid4())
+        session_id = meta.get("id", fallback_id)
+        steps = _build_steps(entries, session_id, collector)
+        if not steps:
             return []
-        self.enrich_tool_calls(messages)
 
-        is_subagent = meta.get("source") == "sub_agent"
-        if is_subagent:
-            for msg in messages:
-                msg.is_sidechain = True
-
-        project_path = meta.get("cwd", "")
-        start_time = parse_iso_timestamp(meta.get("timestamp"))
-        first_message = self.find_first_user_text(messages)
-        models = {m.model for m in messages if m.model}
-        tool_call_count = sum(len(m.tool_calls) for m in messages)
-
-        total_input, total_output = compute_session_tokens_max(messages)
-
-        timestamps = [m.timestamp for m in messages if m.timestamp]
-        duration = 0
-        if len(timestamps) >= 2:
-            duration = int((max(timestamps) - min(timestamps)).total_seconds())
-
-        summary = SessionSummary(
+        project_path = meta.get("cwd") or None
+        extra = _build_diagnostics_extra(collector)
+        agent = self.build_agent(AGENT_NAME)
+        return [self.assemble_trajectory(
             session_id=session_id,
-            project_id=self.encode_project_path(project_path) if project_path else "",
-            project_name=self.extract_project_name(project_path) if project_path else "",
-            timestamp=start_time,
-            duration=duration,
-            message_count=len(messages),
-            tool_call_count=tool_call_count,
-            models=sorted(models),
-            first_message=first_message,
-            source_type=DataSourceType.LOCAL,
-            diagnostics=collector.to_diagnostics(),
-            agent_format="codex",
-        )
-
-        return [(summary, messages)]
+            agent=agent,
+            steps=steps,
+            project_path=project_path,
+            extra=extra,
+        )]
 
 
-def compute_session_tokens_max(messages: list[Message]) -> tuple[int, int]:
+def _build_diagnostics_extra(collector: DiagnosticsCollector) -> dict | None:
+    """Build trajectory extra dict from diagnostics if there are issues."""
+    has_issues = (
+        collector.skipped_lines > 0
+        or collector.orphaned_tool_calls > 0
+        or collector.orphaned_tool_results > 0
+    )
+    if not has_issues:
+        return None
+    return {"diagnostics": collector.to_diagnostics().model_dump()}
+
+
+def compute_session_tokens_max(steps: list[Step]) -> tuple[int, int]:
     """Compute session token totals using MAX strategy.
 
     Codex token_count events report cumulative per-turn totals, so
-    summing them would double-count. Instead, take the maximum input
-    and output values seen across all messages.
+    summing them would double-count. Instead, take the maximum prompt
+    and completion values seen across all steps.
 
     Args:
-        messages: Parsed messages with optional usage data.
+        steps: Parsed steps with optional metrics data.
 
     Returns:
-        Tuple of (max_input_tokens, max_output_tokens).
+        Tuple of (max_prompt_tokens, max_completion_tokens).
     """
-    max_input = 0
-    max_output = 0
-    for msg in messages:
-        if msg.usage:
-            max_input = max(max_input, msg.usage.input_tokens)
-            max_output = max(max_output, msg.usage.output_tokens)
-    return max_input, max_output
+    max_prompt = 0
+    max_completion = 0
+    for step in steps:
+        if step.metrics:
+            max_prompt = max(max_prompt, step.metrics.prompt_tokens)
+            max_completion = max(max_completion, step.metrics.completion_tokens)
+    return max_prompt, max_completion
 
 
-def _load_rollout_entries(
-    file_path: Path, diagnostics: DiagnosticsCollector | None = None
+def _load_rollout_content(
+    content: str, diagnostics: DiagnosticsCollector | None = None
 ) -> list[dict]:
-    """Load all JSON entries from a rollout JSONL file."""
-    return list(BaseParser.iter_jsonl_safe(file_path, diagnostics=diagnostics))
+    """Parse JSONL content string into entry dicts."""
+    entries = []
+    for line in content.split("\n"):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if diagnostics:
+            diagnostics.total_lines += 1
+        try:
+            entries.append(json.loads(stripped))
+            if diagnostics:
+                diagnostics.parsed_lines += 1
+        except json.JSONDecodeError:
+            if diagnostics:
+                diagnostics.record_skip("invalid JSON")
+    return entries
 
 
 def _extract_session_meta(entries: list[dict]) -> dict:
@@ -195,10 +208,10 @@ def _collect_tool_outputs(
         call_id = payload.get("call_id", "")
         if call_id:
             raw_output = payload.get("output", "")
-            cleaned, is_error = _parse_structured_output(raw_output)
+            cleaned, has_error = _parse_structured_output(raw_output)
             outputs[call_id] = {
                 "output": cleaned,
-                "is_error": is_error,
+                "is_error": has_error,
             }
             if len(outputs) > MAX_TOOL_RESULT_CACHE:
                 outputs.popitem(last=False)
@@ -207,16 +220,12 @@ def _collect_tool_outputs(
     return outputs
 
 
-def _build_messages(
+def _build_steps(
     entries: list[dict],
     session_id: str,
     diagnostics: DiagnosticsCollector | None = None,
-) -> list[Message]:
-    """Build Message objects from rollout entries.
-
-    Extracts user/assistant messages from response_item entries,
-    attaches tool calls from function_call/function_call_output pairs,
-    and parses token usage from event_msg token_count entries.
+) -> list[Step]:
+    """Build Step objects from rollout entries.
 
     Args:
         entries: Parsed JSON entries from rollout JSONL.
@@ -224,15 +233,14 @@ def _build_messages(
         diagnostics: Optional collector for parse quality metrics.
 
     Returns:
-        Ordered list of Message objects.
+        Ordered list of Step objects.
     """
     tool_outputs = _collect_tool_outputs(entries, diagnostics)
-    messages: list[Message] = []
+    steps: list[Step] = []
     state = _CodexParseState()
 
     for entry in entries:
         entry_type = entry.get("type", "")
-        # Codex rollout timestamps are ISO-8601 strings (not ms-epoch).
         timestamp = parse_iso_timestamp(entry.get("timestamp"))
         payload = entry.get("payload", {})
 
@@ -242,25 +250,20 @@ def _build_messages(
 
         if entry_type == "response_item":
             _handle_response_item(
-                payload,
-                timestamp,
-                session_id,
-                tool_outputs,
-                messages,
-                state,
+                payload, timestamp, session_id, tool_outputs, steps, state,
             )
             continue
 
         # token_count events carry per-turn usage stats from the OpenAI API;
-        # attach to the most recent assistant message for per-message accounting.
+        # attach to the most recent agent step for per-step accounting.
         if entry_type == "event_msg" and payload.get("type") == "token_count":
-            usage = _parse_token_count(payload)
-            if usage:
-                _attach_usage_to_last_assistant(messages, usage)
+            metrics = _parse_token_count(payload)
+            if metrics:
+                _attach_metrics_to_last_agent(steps, metrics)
 
-    # Flush any trailing tool calls / thinking from the last assistant turn.
-    _flush_pending(messages, state)
-    return messages
+    # Flush any trailing tool calls / thinking from the last agent turn.
+    _flush_pending(steps, state)
+    return steps
 
 
 def _handle_response_item(
@@ -268,7 +271,7 @@ def _handle_response_item(
     timestamp,
     session_id: str,
     tool_outputs: dict[str, dict],
-    messages: list[Message],
+    steps: list[Step],
     state: _CodexParseState,
 ) -> None:
     """Process a single response_item entry."""
@@ -279,17 +282,16 @@ def _handle_response_item(
         if role not in RELEVANT_ROLES:
             return
         # A new message boundary: flush any tool calls / thinking buffered
-        # from the preceding assistant turn before creating the next message.
-        _flush_pending(messages, state)
+        # from the preceding agent turn before creating the next step.
+        _flush_pending(steps, state)
+        source = _ROLE_TO_SOURCE.get(role, StepSource.USER)
         content_text = _extract_message_text(payload)
-        messages.append(
-            Message(
-                uuid=str(uuid4()),
-                session_id=session_id,
-                role=role,
-                type=role,
-                content=content_text,
-                model=state.current_model if role == "assistant" else "",
+        steps.append(
+            Step(
+                step_id=str(uuid4()),
+                source=source,
+                message=content_text,
+                model_name=(state.current_model or None) if role == "assistant" else None,
                 timestamp=timestamp,
             )
         )
@@ -299,19 +301,27 @@ def _handle_response_item(
         result = tool_outputs.get(call_id, {})
         state.pending_tools.append(
             ToolCall(
-                id=call_id,
-                name=payload.get("name", "unknown"),
-                input=_parse_arguments(payload.get("arguments", "")),
-                output=result.get("output"),
-                is_error=result.get("is_error", False),
+                tool_call_id=call_id,
+                function_name=payload.get("name", "unknown"),
+                arguments=_parse_arguments(payload.get("arguments", "")),
             )
         )
+        # Buffer observation result for the tool output
+        if result:
+            content = result.get("output")
+            if result.get("is_error", False):
+                content = mark_error_content(content)
+            state.pending_obs_results.append(
+                ObservationResult(
+                    source_call_id=call_id,
+                    content=content,
+                )
+            )
 
     elif payload_type == "reasoning":
         # Codex reasoning entries contain summary[].text blocks with the
         # model's chain-of-thought.  Deduplicate by content hash because
-        # Codex streaming recovery can re-emit identical reasoning blocks,
-        # producing confusing repetition in the thinking output.
+        # Codex streaming recovery can re-emit identical reasoning blocks.
         summary_items = payload.get("summary", [])
         for item in summary_items:
             if not isinstance(item, dict):
@@ -325,28 +335,35 @@ def _handle_response_item(
                 state.pending_thinking.append(text)
 
 
-def _flush_pending(messages: list[Message], state: _CodexParseState) -> None:
-    """Attach pending tool calls and thinking to the last assistant message."""
+def _flush_pending(steps: list[Step], state: _CodexParseState) -> None:
+    """Attach pending tool calls, observations, and thinking to the last agent step."""
     if not state.pending_tools and not state.pending_thinking:
         return
-    for msg in reversed(messages):
-        if msg.role == "assistant":
+    for step in reversed(steps):
+        if step.source == StepSource.AGENT:
             if state.pending_tools:
-                msg.tool_calls.extend(state.pending_tools)
+                step.tool_calls.extend(state.pending_tools)
+            if state.pending_obs_results:
+                if step.observation is None:
+                    step.observation = Observation(results=[])
+                step.observation.results.extend(state.pending_obs_results)
             if state.pending_thinking:
-                existing = msg.thinking or ""
+                existing = step.reasoning_content or ""
                 new_thinking = "\n".join(state.pending_thinking)
-                msg.thinking = f"{existing}\n{new_thinking}".strip() if existing else new_thinking
+                step.reasoning_content = (
+                    f"{existing}\n{new_thinking}".strip() if existing else new_thinking
+                )
             break
     state.pending_tools.clear()
+    state.pending_obs_results.clear()
     state.pending_thinking.clear()
 
 
-def _attach_usage_to_last_assistant(messages: list[Message], usage: TokenUsage) -> None:
-    """Attach token usage to the last assistant message lacking usage data."""
-    for msg in reversed(messages):
-        if msg.role == "assistant" and not msg.usage:
-            msg.usage = usage
+def _attach_metrics_to_last_agent(steps: list[Step], metrics: Metrics) -> None:
+    """Attach token metrics to the last agent step lacking metrics data."""
+    for step in reversed(steps):
+        if step.source == StepSource.AGENT and not step.metrics:
+            step.metrics = metrics
             return
 
 
@@ -354,8 +371,7 @@ def _extract_message_text(payload: dict) -> str:
     """Extract plain text from a response_item message payload.
 
     Codex uses ``input_text`` for user messages and ``output_text`` for
-    assistant messages (following the OpenAI Responses API content types),
-    unlike Claude Code's uniform ``text`` type.
+    assistant messages (following the OpenAI Responses API content types).
     """
     content = payload.get("content", [])
     if isinstance(content, str):
@@ -378,8 +394,7 @@ def _parse_arguments(arguments: str) -> dict | str | None:
 
     OpenAI serialises function_call arguments as a JSON *string* rather
     than an inline object.  We decode it back to a dict; if the JSON is
-    malformed (rare but possible in streaming), return the raw string so
-    no data is lost.
+    malformed, return the raw string so no data is lost.
     """
     if not arguments:
         return None
@@ -391,11 +406,6 @@ def _parse_arguments(arguments: str) -> dict | str | None:
 
 def _parse_structured_output(raw: str) -> tuple[str, bool]:
     """Parse Codex structured tool output, stripping metadata prefix.
-
-    Codex tool outputs follow the pattern
-    ``Exit code: N\\nWall time: ...\\nOutput:\\n<actual output>``.
-    Strips the metadata prefix and returns just the actual output,
-    preserving exit code as an error flag.
 
     Args:
         raw: Raw tool output string.
@@ -409,32 +419,27 @@ def _parse_structured_output(raw: str) -> tuple[str, bool]:
     if not match:
         return raw, False
     exit_code = int(match.group(1))
-    cleaned = raw[match.end() :]
+    cleaned = raw[match.end():]
     return cleaned, exit_code != 0
 
 
-def _parse_token_count(payload: dict) -> TokenUsage | None:
-    """Parse token_count event_msg payload into TokenUsage.
+def _parse_token_count(payload: dict) -> Metrics | None:
+    """Parse token_count event_msg payload into Metrics.
 
-    The ``info`` sub-object mirrors the OpenAI API usage response, which
-    has evolved over time: older versions used ``prompt_tokens`` /
-    ``completion_tokens``, newer ones use ``input_tokens`` / ``output_tokens``.
-    We accept both to handle rollouts from different CLI versions.
-    Cached token counts are nested inside ``input_tokens_details``.
+    Accepts both old (``prompt_tokens``/``completion_tokens``) and new
+    (``input_tokens``/``output_tokens``) field names.
     """
     info = payload.get("info", {})
     if not info:
         return None
-    input_tokens = info.get("input_tokens", 0) or info.get("prompt_tokens", 0)
-    output_tokens = info.get("output_tokens", 0) or info.get("completion_tokens", 0)
+    prompt_tokens = info.get("input_tokens", 0) or info.get("prompt_tokens", 0)
+    completion_tokens = info.get("output_tokens", 0) or info.get("completion_tokens", 0)
     input_details = info.get("input_tokens_details", {}) or {}
     cached_tokens = input_details.get("cached_tokens", 0)
-    # All-zero usage means no token data was present; return None so
-    # _attach_usage_to_last_assistant() can overwrite later if real data arrives.
-    if input_tokens == 0 and output_tokens == 0 and cached_tokens == 0:
+    if prompt_tokens == 0 and completion_tokens == 0 and cached_tokens == 0:
         return None
-    return TokenUsage(
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
-        cache_read_tokens=cached_tokens,
+    return Metrics(
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        cached_tokens=cached_tokens,
     )

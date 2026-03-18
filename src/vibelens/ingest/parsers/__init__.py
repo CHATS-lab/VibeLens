@@ -1,7 +1,7 @@
 """Format-specific session parsers.
 
-Each parser normalises a vendor-specific session format into the unified
-(SessionSummary, list[Message]) representation.
+Each parser normalises a vendor-specific session format into ATIF
+Trajectory objects for downstream analytics and storage.
 """
 
 from vibelens.ingest.parsers.base import BaseParser
