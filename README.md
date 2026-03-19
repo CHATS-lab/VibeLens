@@ -1,7 +1,6 @@
 # VibeLens
 
-Agent trajectory analysis and visualization platform. Parses, normalizes, and visualizes conversation histories from coding agent CLIs using the [ATIF v1.6](https://github.com/agent-trajectory/atif) trajectory model.
-
+Agent trajectory analysis and visualization platform. Parses, normalizes, and visualizes conversation histories from coding agent CLIs using the [ATIF v1.6](https://github.com/harbor-framework/harbor/blob/main/docs/rfcs/0001-trajectory-format.md) trajectory model.
 
 ![Session list with step timeline](figures/demo1.png)
 
