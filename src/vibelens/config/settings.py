@@ -51,12 +51,12 @@ class Settings(BaseSettings):
         description="Directory to store uploaded zip files.",
     )
     max_zip_bytes: int = Field(
-        default=500 * 1024 * 1024,
-        description="Maximum zip file size (500 MB).",
+        default=10 * 1024 * 1024 * 1024,
+        description="Maximum zip file size (10 GB).",
     )
     max_extracted_bytes: int = Field(
-        default=1024 * 1024 * 1024,
-        description="Maximum total extracted size (1 GB).",
+        default=20 * 1024 * 1024 * 1024,
+        description="Maximum total extracted size (20 GB).",
     )
     max_file_count: int = Field(
         default=10_000,

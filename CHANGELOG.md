@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.6.1] - 2026-03-18
+
+### Added
+- **Demo upload isolation**: Scoped uploads by browser tab token (`X-Session-Token`). Each tab only sees its own uploads; demo examples remain visible to all.
+- **Donate consent dialog**: Consent form with CHATS-Lab attribution and agreement checkbox required before donating.
+- **README**: Quick start guide, data donation section, contributing guidelines, screenshots.
+
+### Changed
+- Upload result now reports main session count instead of total trajectory count.
+- Increased default upload limits: 10 GB zip, 20 GB extracted, 10K files.
+
+### Removed
+- Unused settings: `max_file_size_bytes`, `upload_allowed_extensions`, `subagent_file_prefix`, `min_confidence`.
+- VibeLens Export parser and fingerprint scorer.
+
 ## [0.6.0] - 2026-03-18
 
 ### Added

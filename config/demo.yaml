@@ -17,6 +17,6 @@ server:
   port: 12001
 
 upload:
-  max_zip_bytes: 524288000        # 500 MB
-  max_extracted_bytes: 1073741824 # 1 GB
-  max_file_count: 1000
+  max_zip_bytes: 10737418240      # 10 GB
+  max_extracted_bytes: 21474836480 # 20 GB
+  max_file_count: 10000
