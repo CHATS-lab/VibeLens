@@ -35,7 +35,8 @@ const DEFAULT_AGENT: AgentType = "claude_code";
 const DEFAULT_OS: OSPlatform = "macos";
 
 export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
-  const { fetchWithToken } = useAppContext();
+  const { fetchWithToken, sessionToken, maxZipBytes } = useAppContext();
+  const maxZipMB = Math.round(maxZipBytes / (1024 * 1024));
   const [step, setStep] = useState<Step>("select");
   const [agentType, setAgentType] = useState<AgentType>(DEFAULT_AGENT);
   const [osPlatform, setOsPlatform] = useState<OSPlatform>(DEFAULT_OS);
@@ -44,6 +45,8 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
   const [file, setFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadPhase, setUploadPhase] = useState<"sending" | "processing">("sending");
   const [result, setResult] = useState<UploadResult | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -65,9 +68,12 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
       .finally(() => setCommandLoading(false));
   }, [step, agentType, osPlatform, fetchWithToken]);
 
+  const fileTooLarge = file ? file.size > maxZipBytes : false;
+
   const handleFileDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
+    setResult(null);
     const dropped = e.dataTransfer.files[0];
     if (dropped && dropped.name.toLowerCase().endsWith(".zip")) {
       setFile(dropped);
@@ -76,6 +82,7 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
 
   const handleFileSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
+      setResult(null);
       const selected = e.target.files?.[0];
       if (selected && selected.name.toLowerCase().endsWith(".zip")) {
         setFile(selected);
@@ -85,43 +92,70 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
     []
   );
 
-  const handleUpload = useCallback(async () => {
+  const handleUpload = useCallback(() => {
     if (!file) return;
     setUploading(true);
     setResult(null);
+    setUploadProgress(0);
+    setUploadPhase("sending");
 
     const formData = new FormData();
     formData.append("file", file);
     formData.append("agent_type", agentType);
 
-    try {
-      const res = await fetchWithToken("/api/upload/zip", {
-        method: "POST",
-        body: formData,
-      });
-      if (!res.ok) {
-        const text = await res.text().catch(() => `HTTP ${res.status}`);
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/upload/zip");
+    xhr.setRequestHeader("X-Session-Token", sessionToken);
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        setUploadProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    };
+
+    xhr.upload.onload = () => {
+      setUploadPhase("processing");
+    };
+
+    xhr.onload = () => {
+      try {
+        const data = JSON.parse(xhr.responseText);
+        if (xhr.status >= 200 && xhr.status < 300) {
+          setResult(data);
+        } else {
+          setResult({
+            files_received: 1,
+            sessions_parsed: 0,
+            steps_stored: 0,
+            skipped: 0,
+            errors: [{ filename: file.name, error: data.detail || `HTTP ${xhr.status}` }],
+          });
+        }
+      } catch {
         setResult({
           files_received: 1,
           sessions_parsed: 0,
           steps_stored: 0,
           skipped: 0,
-          errors: [{ filename: file.name, error: text }],
+          errors: [{ filename: file.name, error: xhr.responseText || `HTTP ${xhr.status}` }],
         });
-      } else {
-        setResult(await res.json());
       }
-    } catch (err) {
+      setUploading(false);
+    };
+
+    xhr.onerror = () => {
       setResult({
         files_received: 1,
         sessions_parsed: 0,
         steps_stored: 0,
         skipped: 0,
-        errors: [{ filename: file.name, error: String(err) }],
+        errors: [{ filename: file.name, error: "Network error" }],
       });
-    }
-    setUploading(false);
-  }, [file, agentType, fetchWithToken]);
+      setUploading(false);
+    };
+
+    xhr.send(formData);
+  }, [file, agentType, sessionToken]);
 
   const handleDone = useCallback(() => {
     if (result && result.sessions_parsed > 0) {
@@ -251,7 +285,7 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
                   className={`w-7 h-7 ${dragOver ? "text-violet-400" : "text-zinc-500"}`}
                 />
                 <p className="text-sm text-zinc-300">Drop .zip file here</p>
-                <p className="text-xs text-zinc-500">or click to browse</p>
+                <p className="text-xs text-zinc-500">or click to browse (max {maxZipMB} MB)</p>
                 <input
                   ref={inputRef}
                   type="file"
@@ -267,7 +301,7 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
                   <div className="flex items-center gap-2 text-xs text-zinc-300 truncate min-w-0">
                     <FileArchive className="w-3.5 h-3.5 text-violet-400 shrink-0" />
                     <span className="truncate">{file.name}</span>
-                    <span className="text-zinc-500 shrink-0">
+                    <span className={`shrink-0 ${fileTooLarge ? "text-rose-400" : "text-zinc-500"}`}>
                       ({(file.size / (1024 * 1024)).toFixed(1)} MB)
                     </span>
                     <button
@@ -283,14 +317,21 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
                   </div>
                   <button
                     onClick={hasResult ? handleDone : handleUpload}
-                    disabled={uploading}
+                    disabled={uploading || fileTooLarge}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white bg-violet-600 hover:bg-violet-500 rounded transition disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
                   >
                     {uploading ? (
-                      <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        Uploading...
-                      </>
+                      uploadPhase === "processing" ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          {uploadProgress}%
+                        </>
+                      )
                     ) : hasResult ? (
                       "Done"
                     ) : (
@@ -300,6 +341,34 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
                       </>
                     )}
                   </button>
+                </div>
+              )}
+
+              {/* Size warning */}
+              {file && fileTooLarge && (
+                <p className="text-xs text-rose-400">
+                  File exceeds the {maxZipMB} MB limit. Try excluding large sessions or splitting the archive.
+                </p>
+              )}
+
+              {/* Progress bar */}
+              {uploading && (
+                <div className="space-y-1.5">
+                  <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                    {uploadPhase === "sending" ? (
+                      <div
+                        className="h-full bg-violet-500 rounded-full transition-all duration-300"
+                        style={{ width: `${uploadProgress}%` }}
+                      />
+                    ) : (
+                      <div className="h-full bg-violet-500 rounded-full animate-pulse w-full" />
+                    )}
+                  </div>
+                  <p className="text-[10px] text-zinc-500 text-center">
+                    {uploadPhase === "sending"
+                      ? `Uploading — ${uploadProgress}% of ${((file?.size ?? 0) / (1024 * 1024)).toFixed(0)} MB`
+                      : "Server is extracting and parsing sessions…"}
+                  </p>
                 </div>
               )}
 

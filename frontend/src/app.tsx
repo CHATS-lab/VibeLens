@@ -30,12 +30,16 @@ type DialogState =
 interface AppContextValue {
   sessionToken: string;
   appMode: AppMode;
+  maxZipBytes: number;
   fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
 }
+
+const DEFAULT_MAX_ZIP_BYTES = 500 * 1024 * 1024;
 
 const AppContext = createContext<AppContextValue>({
   sessionToken: "",
   appMode: "self",
+  maxZipBytes: DEFAULT_MAX_ZIP_BYTES,
   fetchWithToken: (url, init) => fetch(url, init),
 });
 
@@ -60,6 +64,7 @@ export function App() {
   const [viewMode, setViewMode] = useState<ViewMode>("time");
   const [sidebarWidth, setSidebarWidth] = useState(320);
   const [appMode, setAppMode] = useState<AppMode>("self");
+  const [maxZipBytes, setMaxZipBytes] = useState(DEFAULT_MAX_ZIP_BYTES);
   const [resolvedFirstMessage, setResolvedFirstMessage] = useState<string | null>(null);
 
   // Ephemeral token: new on every page load, never persisted
@@ -84,6 +89,7 @@ export function App() {
   const contextValue: AppContextValue = {
     sessionToken,
     appMode,
+    maxZipBytes,
     fetchWithToken,
   };
 
@@ -97,8 +103,9 @@ export function App() {
   useEffect(() => {
     fetchWithToken("/api/settings")
       .then((r) => r.json())
-      .then((data: { app_mode?: string }) => {
+      .then((data: { app_mode?: string; max_zip_bytes?: number }) => {
         if (data.app_mode === "demo") setAppMode("demo");
+        if (data.max_zip_bytes) setMaxZipBytes(data.max_zip_bytes);
       })
       .catch((err) => console.error("Failed to load settings:", err));
   }, [fetchWithToken]);
