@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.6.2] - 2026-03-18
+
+### Changed
+- **Logging**: One log file per module, overwritten each restart. Removed combined root log and timestamped per-module duplicates.
+- **README**: Added live demo link.
+
 ## [0.6.1] - 2026-03-18
 
 ### Added
