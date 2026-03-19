@@ -1,5 +1,6 @@
 """Upload orchestration — stream, validate, extract, parse, store."""
 
+import asyncio
 import json
 import shutil
 from datetime import UTC, datetime
@@ -256,7 +257,8 @@ async def process_zip(
         zip_path = await receive_zip(
             file, root, upload_id, settings.max_zip_bytes, settings.stream_chunk_size
         )
-        session_files = extract_and_discover(
+        session_files = await asyncio.to_thread(
+            extract_and_discover,
             zip_path,
             agent_type,
             settings.max_zip_bytes,
@@ -265,7 +267,9 @@ async def process_zip(
         )
         logger.info("Discovered %d session files in %s", len(session_files), filename)
 
-        session_details = _parse_and_store_files(session_files, store, upload_id, result)
+        session_details = await asyncio.to_thread(
+            _parse_and_store_files, session_files, store, upload_id, result
+        )
         metadata = _build_upload_metadata(upload_id, agent_type, filename, session_details, result)
         write_upload_metadata(root, upload_id, metadata)
 
@@ -298,8 +302,11 @@ def _parse_and_store_files(
     for file_path in session_files:
         try:
             trajectories = parse_auto(file_path)
-        except ValueError as exc:
-            result.errors.append({"filename": file_path.name, "error": str(exc)})
+        except ValueError:
+            # Low-confidence or unrecognizable files are empty/metadata-only
+            # sessions (e.g. only "progress" or "file-history-snapshot" entries).
+            # Count as skipped rather than surfacing as errors.
+            result.skipped += 1
             continue
 
         if not trajectories:
