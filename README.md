@@ -14,26 +14,33 @@ Agent trajectory analysis and visualization platform. Parses, normalizes, and vi
 
 ## Quick Start
 
-```bash
-uv sync
+### Prerequisites
 
-# Self-use mode — reads local ~/.claude/ sessions
-cp config/self-use.yaml vibelens.yaml
+- Python 3.12+
+- [uv](https://docs.astral.sh/uv/) package manager
+- Node.js 18+ (only for frontend development)
+
+### Install and run
+
+```bash
+git clone https://github.com/yejh123/VibeLens.git
+cd VibeLens
+uv sync
 uv run vibelens serve
 ```
 
-Open `http://127.0.0.1:12001` in your browser.
+Open http://127.0.0.1:12001 in your browser. VibeLens reads your local `~/.claude/` sessions by default.
 
-## Configuration
+### Configuration
 
-YAML-based configuration with environment variable overrides (`VIBELENS_*`).
+YAML-based configuration with environment variable overrides (`VIBELENS_*`). See [`config/vibelens.example.yaml`](config/vibelens.example.yaml) for all options.
 
 ```bash
-# Explicit config file
-vibelens serve --config config/self-use.yaml
+# Use a config file
+uv run vibelens serve --config config/self-use.yaml
 
-# Override via CLI flags
-vibelens serve --host 0.0.0.0 --port 8080
+# Override host/port
+uv run vibelens serve --host 0.0.0.0 --port 8080
 ```
 
 ## Data Donation
@@ -44,22 +51,17 @@ We welcome contributions of real-world coding agent trajectories across all supp
 
 To donate, upload your data, select your sessions, and click the **Donate** button.
 
-## Contributing
-
-Contributions are welcome! Please ensure code passes linting and tests before submitting:
-
-```bash
-uv run ruff check src/ tests/
-uv run pytest tests/ -v -s
-```
-
 ## Development
 
 ```bash
-# Backend
+# Lint and test
 uv run ruff check src/ tests/
 uv run pytest tests/ -v -s
 
-# Frontend
+# Frontend dev server (hot reload)
 cd frontend && npm install && npm run dev
 ```
+
+## Contributing
+
+Contributions are welcome! Please ensure code passes `ruff check` and `pytest` before submitting.
