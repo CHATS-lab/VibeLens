@@ -45,12 +45,6 @@ class Settings(BaseSettings):
         description="Root directory containing Claude Code conversation history.",
     )
 
-    # Database
-    db_path: Path = Field(
-        default=Path.home() / ".vibelens" / "vibelens.db",
-        description="File path for the local SQLite database.",
-    )
-
     # Upload
     upload_dir: Path = Field(
         default=Path.home() / ".vibelens" / "uploads",
@@ -89,32 +83,10 @@ class Settings(BaseSettings):
         description="Chunk size in bytes for streaming uploads to disk.",
     )
 
-    # MongoDB
-    mongodb_uri: str = Field(
-        default="",
-        description="MongoDB connection URI. Leave empty to disable MongoDB integration.",
-    )
-    mongodb_db: str = Field(
-        default="vibelens",
-        description="MongoDB database name for session and message storage.",
-    )
-
     # Demo mode
-    demo_storage: str = Field(
-        default="memory",
-        description="Storage backend for demo mode: 'memory' or 'sqlite'.",
-    )
     demo_example_sessions: str = Field(
         default="",
         description="Comma-separated file paths to pre-load as example sessions.",
-    )
-    demo_session_ttl: int = Field(
-        default=3600,
-        description="Seconds before orphaned demo uploads are cleaned up.",
-    )
-    demo_persist_uploads: bool = Field(
-        default=False,
-        description="Save raw uploaded files to disk in demo mode.",
     )
 
     @property
@@ -123,22 +95,13 @@ class Settings(BaseSettings):
         if not self.demo_example_sessions:
             return []
         return [
-            Path(p.strip()).expanduser()
-            for p in self.demo_example_sessions.split(",")
-            if p.strip()
+            Path(p.strip()).expanduser() for p in self.demo_example_sessions.split(",") if p.strip()
         ]
-
-    # HuggingFace
-    hf_token: str = Field(
-        default="",
-        description="HuggingFace API token for pulling dataclaw datasets.",
-    )
 
     @model_validator(mode="after")
     def expand_paths(self) -> "Settings":
         """Expand ~ in Path fields so YAML values like ~/.claude work."""
         self.claude_dir = self.claude_dir.expanduser()
-        self.db_path = self.db_path.expanduser()
         self.upload_dir = self.upload_dir.expanduser()
         return self
 

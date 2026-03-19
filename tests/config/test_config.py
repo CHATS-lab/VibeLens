@@ -8,7 +8,6 @@ from vibelens.config import (
     Settings,
     discover_config_path,
     load_settings,
-    validate_mongodb_config,
 )
 from vibelens.config.loader import load_yaml_flat
 
@@ -21,10 +20,6 @@ class TestSettings:
         assert settings.host == "127.0.0.1"
         assert settings.port == 12001
         assert settings.claude_dir == Path.home() / ".claude"
-        assert settings.db_path == Path.home() / ".vibelens" / "vibelens.db"
-        assert settings.mongodb_uri == ""
-        assert settings.mongodb_db == "vibelens"
-        assert settings.hf_token == ""
 
     def test_override_host_and_port(self):
         settings = Settings(host="0.0.0.0", port=8080)
@@ -34,14 +29,6 @@ class TestSettings:
     def test_override_claude_dir(self, tmp_path: Path):
         settings = Settings(claude_dir=tmp_path / "custom")
         assert settings.claude_dir == tmp_path / "custom"
-
-    def test_override_db_path(self, tmp_path: Path):
-        settings = Settings(db_path=tmp_path / "test.db")
-        assert settings.db_path == tmp_path / "test.db"
-
-    def test_mongodb_uri(self):
-        settings = Settings(mongodb_uri="mongodb://localhost:27017")
-        assert settings.mongodb_uri == "mongodb://localhost:27017"
 
     def test_env_prefix(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setenv("VIBELENS_HOST", "192.168.1.1")
@@ -71,19 +58,15 @@ class TestLoadSettings:
     def test_loads_yaml_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         """YAML config values should populate settings."""
         config_file = tmp_path / "test.yaml"
-        config_file.write_text(
-            "server:\n  host: 10.0.0.1\n  port: 9090\nmongodb:\n  uri: mongodb://yaml-host:27017\n"
-        )
+        config_file.write_text("server:\n  host: 10.0.0.1\n  port: 9090\n")
         # Clear env vars that would override YAML
         monkeypatch.delenv("VIBELENS_HOST", raising=False)
         monkeypatch.delenv("VIBELENS_PORT", raising=False)
-        monkeypatch.delenv("VIBELENS_MONGODB_URI", raising=False)
 
         settings = load_settings(config_path=config_file)
 
         assert settings.host == "10.0.0.1"
         assert settings.port == 9090
-        assert settings.mongodb_uri == "mongodb://yaml-host:27017"
         print(f"YAML loaded: host={settings.host} port={settings.port}")
 
     def test_env_vars_override_yaml(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -115,28 +98,13 @@ class TestLoadYamlFlat:
     def test_full_config(self, tmp_path: Path):
         config_file = tmp_path / "full.yaml"
         config_file.write_text(
-            "server:\n"
-            "  host: 0.0.0.0\n"
-            "  port: 8080\n"
-            "database:\n"
-            "  path: /tmp/test.db\n"
-            "mongodb:\n"
-            "  uri: mongodb://localhost\n"
-            "  db_name: testdb\n"
-            "sources:\n"
-            "  claude_dir: /tmp/claude\n"
-            "integrations:\n"
-            "  hf_token: hf_test_token\n"
+            "server:\n  host: 0.0.0.0\n  port: 8080\nsources:\n  claude_dir: /tmp/claude\n"
         )
         result = load_yaml_flat(config_file)
 
         assert result["host"] == "0.0.0.0"
         assert result["port"] == "8080"
-        assert result["db_path"] == "/tmp/test.db"
-        assert result["mongodb_uri"] == "mongodb://localhost"
-        assert result["mongodb_db"] == "testdb"
         assert result["claude_dir"] == "/tmp/claude"
-        assert result["hf_token"] == "hf_test_token"
         print(f"Flattened: {result}")
 
     def test_partial_config(self, tmp_path: Path):
@@ -207,17 +175,3 @@ class TestDiscoverConfigPath:
     def test_env_var_missing_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setenv("VIBELENS_CONFIG", str(tmp_path / "nonexistent.yaml"))
         assert discover_config_path() is None
-
-
-class TestValidateMongodbConfig:
-    """Test MongoDB config validation."""
-
-    def test_valid_uri(self):
-        settings = Settings(mongodb_uri="mongodb://localhost:27017")
-        uri = validate_mongodb_config(settings)
-        assert uri == "mongodb://localhost:27017"
-
-    def test_empty_uri_raises(self):
-        settings = Settings(mongodb_uri="")
-        with pytest.raises(ValueError, match="MongoDB is not configured"):
-            validate_mongodb_config(settings)

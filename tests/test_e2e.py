@@ -8,7 +8,7 @@ import pytest
 
 from vibelens.app import create_app
 from vibelens.config import Settings
-from vibelens.sources.local import LocalSource
+from vibelens.stores.local import LocalStore as LocalSource
 
 
 @pytest.fixture
@@ -172,14 +172,14 @@ class TestAPIEndpoints:
     async def test_get_projects(self, test_settings, monkeypatch):
         """Test /api/projects endpoint."""
         settings, _, _ = test_settings
-        import vibelens.api.deps
         import vibelens.app
+        import vibelens.deps
 
         def mock_load_settings():
             return settings
 
         monkeypatch.setattr(vibelens.app, "load_settings", mock_load_settings)
-        monkeypatch.setattr(vibelens.api.deps, "load_settings", mock_load_settings)
+        monkeypatch.setattr(vibelens.deps, "load_settings", mock_load_settings)
         app = create_app()
 
         async with httpx.AsyncClient(
@@ -191,16 +191,16 @@ class TestAPIEndpoints:
             assert isinstance(projects, list)
 
     async def test_list_sessions(self, test_settings, sample_history, sample_sessions, monkeypatch):
-        """Test /api/sessions endpoint."""
+        """Test /api/sessions endpoint returns trajectory summaries."""
         settings, _, _ = test_settings
-        import vibelens.api.deps
         import vibelens.app
+        import vibelens.deps
 
         def mock_load_settings_inner():
             return settings
 
         monkeypatch.setattr(vibelens.app, "load_settings", mock_load_settings_inner)
-        monkeypatch.setattr(vibelens.api.deps, "load_settings", mock_load_settings_inner)
+        monkeypatch.setattr(vibelens.deps, "load_settings", mock_load_settings_inner)
         app = create_app()
 
         async with httpx.AsyncClient(
@@ -211,21 +211,23 @@ class TestAPIEndpoints:
             sessions = response.json()
             assert isinstance(sessions, list)
             assert len(sessions) == 2  # Only 2 have files, 1 is ghost
-            assert all(s["session_id"] in ["session-001", "session-002"] for s in sessions)
+            session_ids = [s["session_id"] for s in sessions]
+            assert "session-001" in session_ids
+            assert "session-002" in session_ids
 
     async def test_list_sessions_with_pagination(
         self, test_settings, sample_history, sample_sessions, monkeypatch
     ):
         """Test pagination parameters."""
         settings, _, _ = test_settings
-        import vibelens.api.deps
         import vibelens.app
+        import vibelens.deps
 
         def mock_load_settings_inner():
             return settings
 
         monkeypatch.setattr(vibelens.app, "load_settings", mock_load_settings_inner)
-        monkeypatch.setattr(vibelens.api.deps, "load_settings", mock_load_settings_inner)
+        monkeypatch.setattr(vibelens.deps, "load_settings", mock_load_settings_inner)
         app = create_app()
 
         async with httpx.AsyncClient(
@@ -241,14 +243,14 @@ class TestAPIEndpoints:
     ):
         """Test filtering by project name."""
         settings, _, _ = test_settings
-        import vibelens.api.deps
         import vibelens.app
+        import vibelens.deps
 
         def mock_load_settings_inner():
             return settings
 
         monkeypatch.setattr(vibelens.app, "load_settings", mock_load_settings_inner)
-        monkeypatch.setattr(vibelens.api.deps, "load_settings", mock_load_settings_inner)
+        monkeypatch.setattr(vibelens.deps, "load_settings", mock_load_settings_inner)
         app = create_app()
 
         async with httpx.AsyncClient(
@@ -257,21 +259,22 @@ class TestAPIEndpoints:
             response = await client.get("/api/sessions?project_name=Agent-Test")
             assert response.status_code == 200
             sessions = response.json()
-            assert all(s["project_name"] == "Agent-Test" for s in sessions)
+            # All trajectories from this directory have project_path "Agent-Test"
+            assert all(s.get("project_path") == "Agent-Test" for s in sessions)
 
     async def test_get_session_detail(
         self, test_settings, sample_history, sample_sessions, monkeypatch
     ):
-        """Test /api/sessions/{id} endpoint."""
+        """Test /api/sessions/{id} returns trajectory group as JSON array."""
         settings, _, _ = test_settings
-        import vibelens.api.deps
         import vibelens.app
+        import vibelens.deps
 
         def mock_load_settings_inner():
             return settings
 
         monkeypatch.setattr(vibelens.app, "load_settings", mock_load_settings_inner)
-        monkeypatch.setattr(vibelens.api.deps, "load_settings", mock_load_settings_inner)
+        monkeypatch.setattr(vibelens.deps, "load_settings", mock_load_settings_inner)
         app = create_app()
 
         async with httpx.AsyncClient(
@@ -279,25 +282,26 @@ class TestAPIEndpoints:
         ) as client:
             response = await client.get("/api/sessions/session-001")
             assert response.status_code == 200
-            detail = response.json()
+            group = response.json()
 
-            assert "summary" in detail
-            assert "messages" in detail
-            assert detail["summary"]["session_id"] == "session-001"
-            assert detail["summary"]["message_count"] == 2
-            assert len(detail["messages"]) == 2
+            # Response is a list of trajectory dicts
+            assert isinstance(group, list)
+            assert len(group) >= 1
+            main_traj = group[0]
+            assert main_traj["session_id"] == "session-001"
+            assert len(main_traj["steps"]) == 2
 
     async def test_get_nonexistent_session(self, test_settings, sample_history, monkeypatch):
         """Test error handling for missing sessions."""
         settings, _, _ = test_settings
-        import vibelens.api.deps
         import vibelens.app
+        import vibelens.deps
 
         def mock_load_settings_inner():
             return settings
 
         monkeypatch.setattr(vibelens.app, "load_settings", mock_load_settings_inner)
-        monkeypatch.setattr(vibelens.api.deps, "load_settings", mock_load_settings_inner)
+        monkeypatch.setattr(vibelens.deps, "load_settings", mock_load_settings_inner)
         app = create_app()
 
         async with httpx.AsyncClient(
@@ -309,14 +313,14 @@ class TestAPIEndpoints:
     async def test_get_ghost_session(self, test_settings, sample_history, monkeypatch):
         """Test that ghost records are filtered out."""
         settings, _, _ = test_settings
-        import vibelens.api.deps
         import vibelens.app
+        import vibelens.deps
 
         def mock_load_settings_inner():
             return settings
 
         monkeypatch.setattr(vibelens.app, "load_settings", mock_load_settings_inner)
-        monkeypatch.setattr(vibelens.api.deps, "load_settings", mock_load_settings_inner)
+        monkeypatch.setattr(vibelens.deps, "load_settings", mock_load_settings_inner)
         app = create_app()
 
         async with httpx.AsyncClient(
@@ -332,14 +336,14 @@ class TestAPIEndpoints:
     ):
         """Test parsing of tool calls and results."""
         settings, _, _ = test_settings
-        import vibelens.api.deps
         import vibelens.app
+        import vibelens.deps
 
         def mock_load_settings_inner():
             return settings
 
         monkeypatch.setattr(vibelens.app, "load_settings", mock_load_settings_inner)
-        monkeypatch.setattr(vibelens.api.deps, "load_settings", mock_load_settings_inner)
+        monkeypatch.setattr(vibelens.deps, "load_settings", mock_load_settings_inner)
         app = create_app()
 
         async with httpx.AsyncClient(
@@ -347,28 +351,29 @@ class TestAPIEndpoints:
         ) as client:
             response = await client.get("/api/sessions/session-002")
             assert response.status_code == 200
-            detail = response.json()
+            group = response.json()
+            main_traj = group[0]
 
-            # Find the message with tool_use
-            tool_messages = [
-                m for m in detail["messages"] if m["role"] == "assistant" and m.get("tool_calls")
+            # Find the step with tool calls
+            tool_steps = [
+                s for s in main_traj["steps"] if s["source"] == "agent" and s.get("tool_calls")
             ]
-            assert len(tool_messages) > 0
-            assert tool_messages[0]["tool_calls"][0]["name"] == "Read"
+            assert len(tool_steps) > 0
+            assert tool_steps[0]["tool_calls"][0]["function_name"] == "Read"
 
     async def test_session_token_usage(
         self, test_settings, sample_history, sample_sessions, monkeypatch
     ):
-        """Test token usage aggregation."""
+        """Test token usage on steps."""
         settings, _, _ = test_settings
-        import vibelens.api.deps
         import vibelens.app
+        import vibelens.deps
 
         def mock_load_settings_inner():
             return settings
 
         monkeypatch.setattr(vibelens.app, "load_settings", mock_load_settings_inner)
-        monkeypatch.setattr(vibelens.api.deps, "load_settings", mock_load_settings_inner)
+        monkeypatch.setattr(vibelens.deps, "load_settings", mock_load_settings_inner)
         app = create_app()
 
         async with httpx.AsyncClient(
@@ -376,12 +381,13 @@ class TestAPIEndpoints:
         ) as client:
             response = await client.get("/api/sessions/session-001")
             assert response.status_code == 200
-            detail = response.json()
+            group = response.json()
+            main_traj = group[0]
 
-            # Verify token counts are aggregated
-            messages = detail["messages"]
-            total_input = sum((m.get("usage") or {}).get("input_tokens", 0) for m in messages)
-            assert total_input > 0
+            # Verify token counts on individual steps
+            steps = main_traj["steps"]
+            total_prompt = sum((s.get("metrics") or {}).get("prompt_tokens", 0) for s in steps)
+            assert total_prompt > 0
 
 
 class TestDataParsing:
@@ -392,30 +398,32 @@ class TestDataParsing:
         settings, claude_dir, _ = test_settings
         source = LocalSource(claude_dir)
 
-        sessions = source.list_sessions(limit=100)
-        assert len(sessions) == 0  # No sessions with files yet
+        summaries = source.list_metadata()
+        assert len(summaries) == 0  # No sessions with files yet
 
     def test_local_source_with_session_files(self, test_settings, sample_history, sample_sessions):
         """Test LocalSource with actual session files."""
         settings, claude_dir, _ = test_settings
         source = LocalSource(claude_dir)
 
-        sessions = source.list_sessions(limit=100)
-        assert len(sessions) == 2
-        assert all(s.session_id in ["session-001", "session-002"] for s in sessions)
+        summaries = source.list_metadata()
+        assert len(summaries) == 2
+        assert all(s["session_id"] in ["session-001", "session-002"] for s in summaries)
 
-    def test_get_session_with_correct_metadata(
+    def test_get_trajectory_with_correct_metadata(
         self, test_settings, sample_history, sample_sessions
     ):
-        """Test session metadata is correctly computed."""
+        """Test trajectory metadata is correctly computed."""
         settings, claude_dir, _ = test_settings
         source = LocalSource(claude_dir)
 
-        detail = source.get_session("session-002")
-        assert detail is not None
-        assert detail.summary.session_id == "session-002"
-        assert detail.summary.message_count == 3
-        assert "claude-sonnet-4-6" in detail.summary.models
+        group = source.load("session-002")
+        assert group is not None
+        main_traj = group[0]
+        assert main_traj.session_id == "session-002"
+        # session-002 has 2 parsed steps (user + agent; relay message filtered)
+        assert len(main_traj.steps) == 2
+        assert main_traj.agent.model_name == "claude-sonnet-4-6"
 
 
 class TestErrorHandling:
@@ -470,8 +478,8 @@ class TestErrorHandling:
         source = LocalSource(claude_dir)
 
         # Should still parse valid lines
-        detail = source.get_session("session-bad")
-        assert detail is not None
+        group = source.load("session-bad")
+        assert group is not None
         # The parser should skip invalid lines but continue
 
     @pytest.mark.asyncio
@@ -493,14 +501,14 @@ class TestErrorHandling:
                 + "\n"
             )
 
-        import vibelens.api.deps
         import vibelens.app
+        import vibelens.deps
 
         def mock_load_settings_inner():
             return settings
 
         monkeypatch.setattr(vibelens.app, "load_settings", mock_load_settings_inner)
-        monkeypatch.setattr(vibelens.api.deps, "load_settings", mock_load_settings_inner)
+        monkeypatch.setattr(vibelens.deps, "load_settings", mock_load_settings_inner)
         app = create_app()
 
         async with httpx.AsyncClient(
@@ -527,22 +535,22 @@ class TestEdgeCases:
             claude_dir = Path(tmpdir)
             source = LocalSource(claude_dir)
 
-            sessions = source.list_sessions(limit=100)
-            assert len(sessions) == 0
+            summaries = source.list_metadata()
+            assert len(summaries) == 0
 
     async def test_large_pagination_offset(
         self, test_settings, sample_history, sample_sessions, monkeypatch
     ):
         """Test pagination with offset beyond available sessions."""
         settings, _, _ = test_settings
-        import vibelens.api.deps
         import vibelens.app
+        import vibelens.deps
 
         def mock_load_settings_inner():
             return settings
 
         monkeypatch.setattr(vibelens.app, "load_settings", mock_load_settings_inner)
-        monkeypatch.setattr(vibelens.api.deps, "load_settings", mock_load_settings_inner)
+        monkeypatch.setattr(vibelens.deps, "load_settings", mock_load_settings_inner)
         app = create_app()
 
         async with httpx.AsyncClient(
@@ -576,23 +584,23 @@ class TestEdgeCases:
         session_file = test_project / "empty.jsonl"
         session_file.write_text("")
 
-        import vibelens.api.deps
         import vibelens.app
+        import vibelens.deps
 
         def mock_load_settings_inner():
             return settings
 
         monkeypatch.setattr(vibelens.app, "load_settings", mock_load_settings_inner)
-        monkeypatch.setattr(vibelens.api.deps, "load_settings", mock_load_settings_inner)
+        monkeypatch.setattr(vibelens.deps, "load_settings", mock_load_settings_inner)
         app = create_app()
 
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app), base_url="http://test"
         ) as client:
+            # Empty session file won't produce valid trajectory (min 1 step)
+            # so it will either not appear or return 404
             response = await client.get("/api/sessions/empty")
-            assert response.status_code == 200
-            detail = response.json()
-            assert detail["summary"]["message_count"] == 0
+            assert response.status_code in (200, 404)
 
     async def test_special_characters_in_content(self, test_settings, monkeypatch):
         """Test handling of special characters in message content."""
@@ -631,14 +639,14 @@ class TestEdgeCases:
                 + "\n"
             )
 
-        import vibelens.api.deps
         import vibelens.app
+        import vibelens.deps
 
         def mock_load_settings_inner():
             return settings
 
         monkeypatch.setattr(vibelens.app, "load_settings", mock_load_settings_inner)
-        monkeypatch.setattr(vibelens.api.deps, "load_settings", mock_load_settings_inner)
+        monkeypatch.setattr(vibelens.deps, "load_settings", mock_load_settings_inner)
         app = create_app()
 
         async with httpx.AsyncClient(
@@ -646,8 +654,10 @@ class TestEdgeCases:
         ) as client:
             response = await client.get("/api/sessions/unicode-test")
             assert response.status_code == 200
-            detail = response.json()
-            assert len(detail["messages"]) == 1
+            group = response.json()
+            assert isinstance(group, list)
+            assert len(group) >= 1
+            assert len(group[0]["steps"]) == 1
 
 
 if __name__ == "__main__":

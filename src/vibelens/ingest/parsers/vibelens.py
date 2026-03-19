@@ -12,6 +12,7 @@ import json
 from vibelens.ingest.parsers.base import BaseParser, mark_error_content
 from vibelens.models.enums import StepSource
 from vibelens.models.trajectories import (
+    Agent,
     Metrics,
     Observation,
     ObservationResult,
@@ -30,8 +31,6 @@ SUPPORTED_VERSIONS = {1, 2}
 # ATIF source mapping for legacy v1 role names
 _ROLE_TO_SOURCE = {"user": StepSource.USER, "assistant": StepSource.AGENT}
 
-AGENT_NAME = "vibelens"
-
 
 class VibeLensParser(BaseParser):
     """Parser for VibeLens Export v1/v2 JSON format.
@@ -40,6 +39,8 @@ class VibeLensParser(BaseParser):
     reconstructs ATIF Trajectory objects. Supports both v1 (old names)
     and v2 (ATIF-aligned names) for backward compatibility.
     """
+
+    AGENT_NAME = "vibelens"
 
     def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
         """Parse VibeLens export JSON content into Trajectory objects.
@@ -66,17 +67,18 @@ class VibeLensParser(BaseParser):
         version = data.get("vibelens_version")
         if version not in SUPPORTED_VERSIONS:
             raise ValueError(
-                f"Unsupported vibelens_version {version}"
-                f" (expected one of {SUPPORTED_VERSIONS})"
+                f"Unsupported vibelens_version {version} (expected one of {SUPPORTED_VERSIONS})"
             )
 
         session_meta = data.get("session", {})
         session_id = session_meta.get("session_id", "")
         steps = _parse_steps(data, version)
-        extra = _build_extra_from_session(session_meta, data)
-        agent = self.build_agent(
-            name=data.get("agent_format", AGENT_NAME),
-        )
+        extra = _build_extra_from_session(session_meta, data, self.AGENT_NAME)
+        agent_format = data.get("agent_format")
+        if agent_format and agent_format != self.AGENT_NAME:
+            agent = Agent(name=agent_format)
+        else:
+            agent = self.build_agent()
 
         main_trajectory = self.assemble_trajectory(
             session_id=session_id,
@@ -90,31 +92,34 @@ class VibeLensParser(BaseParser):
         return [main_trajectory, *sub_trajectories]
 
 
-def _build_extra_from_session(session_meta: dict, data: dict) -> dict:
+def _build_extra_from_session(session_meta: dict, data: dict, agent_name: str) -> dict:
     """Build Trajectory.extra from the session metadata in the export.
 
     Args:
         session_meta: Session section from the export JSON.
         data: Full export JSON root.
+        agent_name: Fallback agent name when agent_format is absent.
 
     Returns:
         Dict of extra metadata.
     """
     extra: dict = {
         "source_type": "upload",
-        "agent_format": data.get("agent_format", AGENT_NAME),
+        "agent_format": data.get("agent_format", agent_name),
     }
 
     # v1 and v2 carry the same metadata keys in the session block
-    extra.update({
-        "project_id": session_meta.get("project_id", ""),
-        "project_name": session_meta.get("project_name", ""),
-        "first_message": session_meta.get("first_message", ""),
-        "duration": session_meta.get("duration", 0),
-        "models": session_meta.get("models", []),
-        "tool_call_count": session_meta.get("tool_call_count", 0),
-        "total_cache_write": session_meta.get("total_cache_write", 0),
-    })
+    extra.update(
+        {
+            "project_id": session_meta.get("project_id", ""),
+            "project_name": session_meta.get("project_name", ""),
+            "first_message": session_meta.get("first_message", ""),
+            "duration": session_meta.get("duration", 0),
+            "models": session_meta.get("models", []),
+            "tool_call_count": session_meta.get("tool_call_count", 0),
+            "total_cache_write": session_meta.get("total_cache_write", 0),
+        }
+    )
 
     timestamp = session_meta.get("timestamp")
     if timestamp:
@@ -277,7 +282,7 @@ def _parse_sub_trajectories(
     """Reconstruct sub-agent trajectories from export data.
 
     Each sub-session in the export becomes a separate Trajectory with
-    parent_session_ref pointing back to the main session.
+    parent_trajectory_ref pointing back to the main session.
 
     Args:
         data: Parsed export JSON root.
@@ -295,9 +300,7 @@ def _parse_sub_trajectories(
     for raw in raw_subs:
         if not isinstance(raw, dict):
             continue
-        _reconstruct_sub_trajectory(
-            raw, version, parent_sid, agent, parser, trajectories
-        )
+        _reconstruct_sub_trajectory(raw, version, parent_sid, agent, parser, trajectories)
 
     return trajectories
 
@@ -332,10 +335,6 @@ def _reconstruct_sub_trajectory(
         return
 
     agent_id = raw.get("agent_id", "")
-    parent_ref = TrajectoryRef(
-        session_id=parent_sid,
-        tool_call_id=raw.get("spawn_tool_call_id", "") or None,
-    )
 
     sub_extra = {
         "source_type": "upload",
@@ -347,8 +346,10 @@ def _reconstruct_sub_trajectory(
             session_id=agent_id,
             agent=agent,
             steps=steps,
-            parent_trajectory_ref=TrajectoryRef(session_id=parent_sid),
-            parent_ref=parent_ref,
+            parent_trajectory_ref=TrajectoryRef(
+                session_id=parent_sid,
+                tool_call_id=raw.get("spawn_tool_call_id", "") or None,
+            ),
             extra=sub_extra,
         )
     )
@@ -356,6 +357,4 @@ def _reconstruct_sub_trajectory(
     # Recurse into nested sub-sessions
     for sub_data in raw.get("sub_sessions", []):
         if isinstance(sub_data, dict):
-            _reconstruct_sub_trajectory(
-                sub_data, version, agent_id, agent, parser, result_list
-            )
+            _reconstruct_sub_trajectory(sub_data, version, agent_id, agent, parser, result_list)

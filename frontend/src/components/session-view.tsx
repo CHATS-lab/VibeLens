@@ -7,33 +7,33 @@ import {
   MessageSquare,
   Wrench,
   FolderOpen,
-  Database,
-  HardDrive,
   Cpu,
   Calendar,
   Hash,
-  Upload,
+  Layers,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppContext } from "../app";
-import type { Message, SessionDetail, SubAgentSession, DataSourceType } from "../types";
-import { MessageBlock } from "./message-block";
+import type { Step, Trajectory } from "../types";
+import { StepBlock } from "./message-block";
 import { SubAgentBlock } from "./sub-agent-block";
+import { StepTimeline } from "./step-timeline";
 import { PromptNavPanel } from "./prompt-nav-panel";
-import { formatTokens, formatDuration, extractUserText } from "../utils";
+import { formatTokens, formatDuration, extractUserText, baseProjectName } from "../utils";
 
 interface SessionViewProps {
   sessionId: string;
+  onFirstMessageResolved?: (firstMessage: string) => void;
 }
 
-export function SessionView({ sessionId }: SessionViewProps) {
+export function SessionView({ sessionId, onFirstMessageResolved }: SessionViewProps) {
   const { fetchWithToken } = useAppContext();
-  const [detail, setDetail] = useState<SessionDetail | null>(null);
+  const [trajectories, setTrajectories] = useState<Trajectory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [activePromptUuid, setActivePromptUuid] = useState<string | null>(null);
+  const [activeStepId, setActiveStepId] = useState<string | null>(null);
   const [promptNavWidth, setPromptNavWidth] = useState(224);
-  const messagesRef = useRef<HTMLDivElement>(null);
+  const stepsRef = useRef<HTMLDivElement>(null);
   const isNavigatingRef = useRef(false);
 
   const MIN_PROMPT_NAV_WIDTH = 160;
@@ -48,52 +48,116 @@ export function SessionView({ sessionId }: SessionViewProps) {
   useEffect(() => {
     setLoading(true);
     setError("");
-    setDetail(null);
-    setActivePromptUuid(null);
+    setTrajectories([]);
+    setActiveStepId(null);
 
     fetchWithToken(`/api/sessions/${sessionId}`)
       .then((res) => {
         if (!res.ok) throw new Error(`Failed to load session: ${res.status}`);
         return res.json();
       })
-      .then((data: SessionDetail) => setDetail(data))
+      .then((data: Trajectory[]) => {
+        setTrajectories(data);
+        const mainTraj = data.find((t) => !t.parent_trajectory_ref);
+        if (mainTraj?.first_message && onFirstMessageResolved) {
+          onFirstMessageResolved(mainTraj.first_message);
+        }
+      })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [sessionId, fetchWithToken]);
+  }, [sessionId, fetchWithToken, onFirstMessageResolved]);
 
-  const subSessions = (detail?.sub_sessions || []) as SubAgentSession[];
+  const main = useMemo(
+    () => trajectories.find((t) => !t.parent_trajectory_ref) ?? null,
+    [trajectories]
+  );
 
-  const subSessionsBySpawn = useMemo(() => {
-    const map = new Map<number, SubAgentSession[]>();
-    const orphans: SubAgentSession[] = [];
-    for (const sub of subSessions) {
-      if (sub.spawn_index !== null && sub.spawn_index !== undefined) {
-        const existing = map.get(sub.spawn_index) || [];
-        existing.push(sub);
-        map.set(sub.spawn_index, existing);
-      } else {
-        orphans.push(sub);
+  const subAgents = useMemo(
+    () =>
+      trajectories
+        .filter((t) => !!t.parent_trajectory_ref)
+        .sort((a, b) => {
+          const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+          const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+          return ta - tb;
+        }),
+    [trajectories]
+  );
+
+  // Build a map: step_id -> sub-agent trajectories spawned from that step.
+  // Phase 1 links via observation.subagent_trajectory_ref (explicit linkage).
+  // Phase 2 places unlinked sub-agents (e.g. compaction) at the
+  // chronologically correct position using timestamp heuristics.
+  const subAgentsByStep = useMemo(() => {
+    const map = new Map<string, Trajectory[]>();
+    const orphans: Trajectory[] = [];
+    const unlinked: Trajectory[] = [];
+
+    for (const sub of subAgents) {
+      let placed = false;
+      if (main?.steps) {
+        for (const step of main.steps) {
+          if (!step.observation) continue;
+          for (const result of step.observation.results) {
+            if (!result.subagent_trajectory_ref) continue;
+            for (const ref of result.subagent_trajectory_ref) {
+              if (ref.session_id === sub.session_id) {
+                const existing = map.get(step.step_id) || [];
+                existing.push(sub);
+                map.set(step.step_id, existing);
+                placed = true;
+                break;
+              }
+            }
+            if (placed) break;
+          }
+          if (placed) break;
+        }
       }
+      if (!placed) unlinked.push(sub);
     }
+
+    // Place unlinked sub-agents at the last main step whose timestamp
+    // is <= the sub-agent's start timestamp. Falls back to orphans
+    // only when no timestamp is available.
+    for (const sub of unlinked) {
+      const subTs = sub.timestamp ? new Date(sub.timestamp).getTime() : NaN;
+      if (!isNaN(subTs) && main?.steps) {
+        let bestStepId: string | null = null;
+        for (const step of main.steps) {
+          if (!step.timestamp) continue;
+          const stepTs = new Date(step.timestamp).getTime();
+          if (stepTs <= subTs) bestStepId = step.step_id;
+          else break;
+        }
+        if (bestStepId) {
+          const existing = map.get(bestStepId) || [];
+          existing.push(sub);
+          map.set(bestStepId, existing);
+          continue;
+        }
+      }
+      orphans.push(sub);
+    }
+
     return { map, orphans };
-  }, [detail]);
+  }, [main, subAgents]);
 
-  const messages = (detail?.messages || []) as Message[];
+  const steps = (main?.steps || []) as Step[];
 
-  const userPromptUuids = useMemo(() => {
-    return messages
-      .filter((m) => m.role === "user" && extractUserText(m))
-      .map((m) => m.uuid);
-  }, [messages]);
+  const userStepIds = useMemo(() => {
+    return steps
+      .filter((s) => s.source === "user" && extractUserText(s))
+      .map((s) => s.step_id);
+  }, [steps]);
 
   // IntersectionObserver to track which user prompt is currently visible
   useEffect(() => {
-    if (!messagesRef.current || userPromptUuids.length < 2) return;
+    if (!stepsRef.current || userStepIds.length < 2) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
         if (isNavigatingRef.current) return;
-        // Pick the topmost intersecting entry to avoid flickering
         let topEntry: IntersectionObserverEntry | null = null;
         for (const entry of entries) {
           if (!entry.isIntersecting) continue;
@@ -102,32 +166,31 @@ export function SessionView({ sessionId }: SessionViewProps) {
           }
         }
         if (topEntry) {
-          setActivePromptUuid(topEntry.target.id.replace("msg-", ""));
+          setActiveStepId(topEntry.target.id.replace("step-", ""));
         }
       },
       {
-        root: messagesRef.current,
+        root: stepsRef.current,
         rootMargin: "-10% 0px -80% 0px",
         threshold: 0,
       }
     );
 
-    for (const uuid of userPromptUuids) {
-      const el = document.getElementById(`msg-${uuid}`);
+    for (const stepId of userStepIds) {
+      const el = document.getElementById(`step-${stepId}`);
       if (el) observer.observe(el);
     }
 
     return () => observer.disconnect();
-  }, [userPromptUuids]);
+  }, [userStepIds]);
 
   const SCROLL_SUPPRESS_MS = 800;
 
-  const handlePromptNavigate = useCallback((uuid: string) => {
-    const el = document.getElementById(`msg-${uuid}`);
+  const handlePromptNavigate = useCallback((stepId: string) => {
+    const el = document.getElementById(`step-${stepId}`);
     if (!el) return;
-    // Suppress observer during programmatic scroll to prevent wrong highlight
     isNavigatingRef.current = true;
-    setActivePromptUuid(uuid);
+    setActiveStepId(stepId);
     el.scrollIntoView({ behavior: "smooth", block: "start" });
     setTimeout(() => {
       isNavigatingRef.current = false;
@@ -162,24 +225,19 @@ export function SessionView({ sessionId }: SessionViewProps) {
     );
   }
 
-  if (!detail) return null;
+  if (!main) return null;
 
-  const stats = detail.summary;
-  const promptCount = userPromptUuids.length;
+  const metrics = main.final_metrics;
+  const promptCount = userStepIds.length;
   const totalTokens =
-    (stats.total_input_tokens || 0) +
-    (stats.total_output_tokens || 0);
+    (metrics?.total_prompt_tokens || 0) +
+    (metrics?.total_completion_tokens || 0);
 
-  const isVisibleMessage = (m: Message): boolean => {
-    if (m.role === "user") {
-      if (Array.isArray(m.content)) {
-        const hasText = (m.content).some(
-          (b) => b.type === "text" && b.text?.trim()
-        );
-        if (!hasText) return false;
-      }
+  const isVisibleStep = (s: Step): boolean => {
+    if (s.source === "user") {
+      if (!s.message.trim()) return false;
     }
-    return m.role === "user" || m.role === "assistant";
+    return s.source === "user" || s.source === "agent";
   };
 
   return (
@@ -190,59 +248,73 @@ export function SessionView({ sessionId }: SessionViewProps) {
           {/* Row 1: Title + Meta Pills */}
           <div className="flex items-start justify-between mb-3">
             <div className="min-w-0 flex-1">
-              <h2 className="text-sm font-semibold text-zinc-100 truncate">
-                {stats.first_message ? stats.first_message.slice(0, 80) : "Session"}
-              </h2>
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-800/60 text-[11px] text-zinc-500 shrink-0">
+                  <Hash className="w-3 h-3" />
+                  {main.session_id.slice(0, 8)}
+                </span>
+                <h2 className="text-sm font-semibold text-zinc-100 truncate">
+                  {main.first_message || "Session"}
+                </h2>
+              </div>
               <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                <MetaPill
-                  icon={<Clock className="w-3 h-3" />}
-                  label={formatDuration(stats.duration)}
-                  color="text-cyan-400"
-                />
+                {main.agent.model_name && (
+                  <MetaPill
+                    icon={<Cpu className="w-3 h-3" />}
+                    label={`${main.agent.name}@${main.agent.model_name}`}
+                    color="text-amber-300"
+                  />
+                )}
+                {main.timestamp && (
+                  <MetaPill
+                    icon={<Calendar className="w-3 h-3" />}
+                    label={formatCreatedTime(main.timestamp)}
+                    color="text-zinc-400"
+                  />
+                )}
+                {metrics && (
+                  <MetaPill
+                    icon={<Clock className="w-3 h-3" />}
+                    label={formatDuration(metrics.duration)}
+                    color="text-cyan-400"
+                  />
+                )}
                 <MetaPill
                   icon={<MessageSquare className="w-3 h-3" />}
                   label={`${promptCount} turn${promptCount !== 1 ? "s" : ""}`}
                   color="text-blue-400"
                 />
-                <MetaPill
-                  icon={<Wrench className="w-3 h-3" />}
-                  label={`${stats.tool_call_count} tools`}
-                  color="text-amber-400"
-                />
-                {(subSessions.length > 0 || (stats.sub_agent_count ?? 0) > 0) && (
+                {metrics && (
+                  <>
+                    <MetaPill
+                      icon={<Wrench className="w-3 h-3" />}
+                      label={`${metrics.tool_call_count} tools`}
+                      color="text-amber-400"
+                    />
+                    {metrics.total_steps && (
+                      <MetaPill
+                        icon={<Layers className="w-3 h-3" />}
+                        label={`${metrics.total_steps} steps`}
+                        color="text-zinc-300"
+                      />
+                    )}
+                  </>
+                )}
+                {subAgents.length > 0 && (
                   <MetaPill
                     icon={<Bot className="w-3 h-3" />}
-                    label={`${subSessions.length || stats.sub_agent_count} sub-agent${(subSessions.length || stats.sub_agent_count || 0) !== 1 ? "s" : ""}`}
+                    label={`${subAgents.length} sub-agent${subAgents.length !== 1 ? "s" : ""}`}
                     color="text-violet-400"
                   />
                 )}
-                <SourceBadge sourceType={stats.source_type} />
-                {stats.project_name && (
+                {main.project_path && (
                   <MetaPill
                     icon={<FolderOpen className="w-3 h-3" />}
-                    label={stats.project_name}
+                    label={baseProjectName(main.project_path)}
+                    title={main.project_path}
                     color="text-zinc-300"
                   />
                 )}
-                {stats.timestamp && (
-                  <MetaPill
-                    icon={<Calendar className="w-3 h-3" />}
-                    label={formatCreatedTime(stats.timestamp)}
-                    color="text-zinc-400"
-                  />
-                )}
-                {stats.models && stats.models.length > 0 && (
-                  <MetaPill
-                    icon={<Cpu className="w-3 h-3" />}
-                    label={stats.models.join(", ")}
-                    color="text-amber-300"
-                  />
-                )}
-                <MetaPill
-                  icon={<Hash className="w-3 h-3" />}
-                  label={stats.session_id.slice(0, 8)}
-                  color="text-zinc-500"
-                />
               </div>
             </div>
             <div className="flex gap-2 shrink-0 ml-3">
@@ -256,7 +328,7 @@ export function SessionView({ sessionId }: SessionViewProps) {
                   document.body.removeChild(link);
                 }}
                 className="p-2 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded transition text-xs"
-                title="Download session (MongoDB format)"
+                title="Download session"
               >
                 <Download className="w-4 h-4" />
               </button>
@@ -264,48 +336,70 @@ export function SessionView({ sessionId }: SessionViewProps) {
           </div>
 
           {/* Row 2: Token Stats */}
-          {(stats.total_input_tokens !== undefined ||
-            stats.total_output_tokens !== undefined) && (
+          {metrics && (metrics.total_prompt_tokens != null || metrics.total_completion_tokens != null) && (
             <div className="grid grid-cols-5 gap-2 text-xs">
-              <TokenStat label="Input" value={stats.total_input_tokens || 0} color="text-cyan-300" />
-              <TokenStat label="Output" value={stats.total_output_tokens || 0} color="text-cyan-300" />
-              <TokenStat label="Cache Read" value={stats.total_cache_read || 0} color="text-green-300" />
-              <TokenStat label="Cache Write" value={stats.total_cache_write || 0} color="text-violet-300" />
+              <TokenStat label="Input" value={metrics.total_prompt_tokens || 0} color="text-cyan-300" />
+              <TokenStat label="Output" value={metrics.total_completion_tokens || 0} color="text-cyan-300" />
+              <TokenStat label="Cache Read" value={metrics.total_cache_read || 0} color="text-green-300" />
+              <TokenStat label="Cache Write" value={metrics.total_cache_write || 0} color="text-violet-300" />
               <TokenStat label="Total" value={totalTokens} color="text-amber-300" />
             </div>
           )}
         </div>
       </div>
 
-      {/* Two-column body: Messages + Prompt Nav */}
+      {/* Two-column body: Steps + Prompt Nav */}
       <div className="flex-1 flex min-h-0">
-        {/* Messages */}
-        <div ref={messagesRef} className="flex-1 overflow-y-auto">
+        {/* Steps */}
+        <div ref={stepsRef} className="flex-1 overflow-y-auto">
           <div className="max-w-5xl mx-auto px-4 py-6 space-y-3">
-            {messages.length === 0 ? (
+            {steps.length === 0 ? (
               <div className="text-center text-zinc-500 text-sm py-8">
                 <BarChart3 className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                <p>No messages to display</p>
+                <p>No steps to display</p>
               </div>
             ) : (
               <>
-                {messages.map((msg, idx) => {
-                  const visible = isVisibleMessage(msg);
-                  const spawnedSubs = subSessionsBySpawn.map.get(idx);
-                  if (!visible && !spawnedSubs) return null;
-                  return (
-                    <div key={msg.uuid} id={`msg-${msg.uuid}`}>
-                      {visible && <MessageBlock message={msg} />}
-                      {spawnedSubs?.map((sub) => (
-                        <div key={sub.agent_id} className="mt-2">
-                          <SubAgentBlock subSession={sub} />
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })}
-                {subSessionsBySpawn.orphans.map((sub) => (
-                  <SubAgentBlock key={sub.agent_id} subSession={sub} />
+                <StepTimeline
+                  entries={steps
+                    .filter((step) => {
+                      const visible = isVisibleStep(step);
+                      const spawnedSubs = subAgentsByStep.map.get(step.step_id);
+                      return visible || !!spawnedSubs;
+                    })
+                    .map((step) => {
+                      const visible = isVisibleStep(step);
+                      const spawnedSubs = subAgentsByStep.map.get(step.step_id);
+                      return {
+                        step,
+                        content: (
+                          <div id={`step-${step.step_id}`}>
+                            {visible && <StepBlock step={step} />}
+                            {spawnedSubs?.map((sub) => (
+                              <div key={sub.session_id} id={`subagent-${sub.session_id}`} className="mt-2">
+                                <SubAgentBlock
+                                  trajectory={sub}
+                                  allTrajectories={trajectories}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        ),
+                      };
+                    })}
+                  sessionStartMs={
+                    main.timestamp
+                      ? new Date(main.timestamp).getTime()
+                      : null
+                  }
+                />
+                {subAgentsByStep.orphans.map((sub) => (
+                  <div key={sub.session_id} id={`subagent-${sub.session_id}`}>
+                    <SubAgentBlock
+                      trajectory={sub}
+                      allTrajectories={trajectories}
+                    />
+                  </div>
                 ))}
               </>
             )}
@@ -314,8 +408,9 @@ export function SessionView({ sessionId }: SessionViewProps) {
 
         {/* Prompt Navigation Sidebar */}
         <PromptNavPanel
-          messages={messages}
-          activePromptUuid={activePromptUuid}
+          steps={steps}
+          subAgents={subAgents}
+          activeStepId={activeStepId}
           onNavigate={handlePromptNavigate}
           width={promptNavWidth}
           onResize={handlePromptNavResize}
@@ -329,43 +424,20 @@ function MetaPill({
   icon,
   label,
   color,
+  title,
 }: {
   icon: React.ReactNode;
   label: string;
   color: string;
+  title?: string;
 }) {
   return (
     <span
       className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-800/60 text-[11px] ${color}`}
+      title={title ?? label}
     >
       {icon}
-      <span className="truncate max-w-[180px]">{label}</span>
-    </span>
-  );
-}
-
-const SOURCE_BADGE_STYLES: Record<DataSourceType, string> = {
-  local: "bg-emerald-500/15 text-emerald-400 border-emerald-500/25",
-  mongodb: "bg-green-500/15 text-green-400 border-green-500/25",
-  huggingface: "bg-yellow-500/15 text-yellow-400 border-yellow-500/25",
-  upload: "bg-violet-500/15 text-violet-400 border-violet-500/25",
-};
-
-const SOURCE_ICONS: Record<DataSourceType, React.ReactNode> = {
-  local: <HardDrive className="w-3 h-3" />,
-  mongodb: <Database className="w-3 h-3" />,
-  huggingface: <Database className="w-3 h-3" />,
-  upload: <Upload className="w-3 h-3" />,
-};
-
-function SourceBadge({ sourceType }: { sourceType: DataSourceType }) {
-  if (!sourceType) return null;
-  return (
-    <span
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] border ${SOURCE_BADGE_STYLES[sourceType] || SOURCE_BADGE_STYLES.local}`}
-    >
-      {SOURCE_ICONS[sourceType] || SOURCE_ICONS.local}
-      {sourceType}
+      <span>{label}</span>
     </span>
   );
 }

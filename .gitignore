@@ -31,6 +31,9 @@ docs/
 # Datasets
 datasets/
 
+# Scripts
+scripts/
+
 # Logs
 logs/
 
@@ -38,11 +41,12 @@ logs/
 .pytest_cache/
 .coverage
 htmlcov/
+examples/*
+!examples/claude-codex-example/
 
 # Frontend
 frontend/node_modules/
 frontend/dist/
-
 
 # OS
 .DS_Store

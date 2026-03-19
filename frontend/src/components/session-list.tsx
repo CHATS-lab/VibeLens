@@ -9,13 +9,13 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { SessionSummary } from "../types";
-import { formatTime, truncate } from "../utils";
+import type { Trajectory } from "../types";
+import { formatTime, truncate, baseProjectName } from "../utils";
 
 export type ViewMode = "time" | "project";
 
 interface SessionListProps {
-  sessions: SessionSummary[];
+  sessions: Trajectory[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   checkedIds: Set<string>;
@@ -42,8 +42,8 @@ export function SessionList({
     if (!search) return true;
     const q = search.toLowerCase();
     return (
-      s.first_message.toLowerCase().includes(q) ||
-      s.project_name.toLowerCase().includes(q)
+      (s.first_message || "").toLowerCase().includes(q) ||
+      (s.project_path || "").toLowerCase().includes(q)
     );
   });
 
@@ -54,9 +54,9 @@ export function SessionList({
   const someChecked = checkedInView.length > 0 && !allChecked;
 
   const groupedByProject = useMemo(() => {
-    const groups = new Map<string, SessionSummary[]>();
+    const groups = new Map<string, Trajectory[]>();
     for (const session of filtered) {
-      const key = session.project_name || "Unknown";
+      const key = session.project_path || "Unknown";
       const list = groups.get(key) || [];
       list.push(session);
       groups.set(key, list);
@@ -185,7 +185,9 @@ export function SessionList({
                     <ChevronRight className="w-3.5 h-3.5 shrink-0" />
                   )}
                   <FolderOpen className="w-3.5 h-3.5 shrink-0 text-zinc-500" />
-                  <span className="truncate font-medium">{projectName}</span>
+                  <span className="truncate font-medium" title={projectName}>
+                    {baseProjectName(projectName)}
+                  </span>
                   <span className="ml-auto text-zinc-500 shrink-0">
                     {projectSessions.length}
                   </span>
@@ -217,7 +219,7 @@ function SessionRow({
   onSelect,
   onToggle,
 }: {
-  session: SessionSummary;
+  session: Trajectory;
   selectedId: string | null;
   checkedIds: Set<string>;
   onSelect: (id: string) => void;
@@ -252,15 +254,15 @@ function SessionRow({
         className="flex-1 text-left pr-3 py-2.5 min-w-0"
       >
         <div className="flex items-center justify-between mb-0.5">
-          <span className="text-[10px] text-zinc-500 uppercase tracking-wide">
-            {session.project_name}
+          <span className="text-[10px] text-zinc-500 uppercase tracking-wide" title={session.project_path || ""}>
+            {baseProjectName(session.project_path || "")}
           </span>
           <span className="text-[10px] text-zinc-500">
-            {formatTime(session.timestamp)}
+            {formatTime(session.timestamp ?? null)}
           </span>
         </div>
         <p className="text-xs text-zinc-300 line-clamp-2 leading-relaxed">
-          {truncate(session.first_message, 120) || "Empty session"}
+          {truncate(session.first_message || "", 120) || "Empty session"}
         </p>
       </button>
     </div>

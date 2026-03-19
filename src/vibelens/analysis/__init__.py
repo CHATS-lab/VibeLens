@@ -1,1 +1,25 @@
-"""Analysis engine for agent trajectory data."""
+"""Session analytics and pattern detection.
+
+Analytical modules operate on parsed ATIF trajectories to produce
+higher-level insights: conversation phase classification, tool call
+dependency graphs, and cross-agent session correlation.
+"""
+
+from vibelens.analysis.correlator import (
+    CorrelatedGroup,
+    CorrelatedSession,
+    correlate_sessions,
+)
+from vibelens.analysis.phase_detector import PhaseSegment, detect_phases
+from vibelens.analysis.tool_graph import ToolDependencyGraph, ToolEdge, build_tool_graph
+
+__all__ = [
+    "CorrelatedGroup",
+    "CorrelatedSession",
+    "PhaseSegment",
+    "ToolDependencyGraph",
+    "ToolEdge",
+    "build_tool_graph",
+    "correlate_sessions",
+    "detect_phases",
+]

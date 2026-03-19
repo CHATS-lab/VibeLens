@@ -5,25 +5,27 @@ import {
   Check,
   ChevronUp,
   ChevronDown,
-  Upload,
   Download,
   FileUp,
+  Heart,
 } from "lucide-react";
 import { useEffect, useState, useCallback, createContext, useContext } from "react";
 import { ConfirmDialog } from "./components/confirm-dialog";
+import { DonateConsentDialog } from "./components/donate-consent-dialog";
 import { ResizeHandle } from "./components/resize-handle";
 import { SessionList, type ViewMode } from "./components/session-list";
 import { SessionView } from "./components/session-view";
 import { UploadDialog } from "./components/upload-dialog";
-import type { PushResult, SessionSummary } from "./types";
+import type { DonateResult, Trajectory } from "./types";
+import { baseProjectName } from "./utils";
 
 type AppMode = "self" | "demo";
 
 type DialogState =
   | { kind: "hidden" }
-  | { kind: "confirm" }
-  | { kind: "pushing" }
-  | { kind: "result"; result: PushResult };
+  | { kind: "donate-confirm" }
+  | { kind: "donating" }
+  | { kind: "donate-result"; result: DonateResult };
 
 interface AppContextValue {
   sessionToken: string;
@@ -43,7 +45,7 @@ export function useAppContext(): AppContextValue {
 
 export function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [sessions, setSessions] = useState<Trajectory[]>([]);
   const [projects, setProjects] = useState<string[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
     null
@@ -58,9 +60,13 @@ export function App() {
   const [viewMode, setViewMode] = useState<ViewMode>("time");
   const [sidebarWidth, setSidebarWidth] = useState(320);
   const [appMode, setAppMode] = useState<AppMode>("self");
+  const [resolvedFirstMessage, setResolvedFirstMessage] = useState<string | null>(null);
 
   // Ephemeral token: new on every page load, never persisted
-  const [sessionToken] = useState(() => crypto.randomUUID());
+  const [sessionToken] = useState(() =>
+    crypto.randomUUID?.() ??
+    Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("")
+  );
 
   const MIN_SIDEBAR_WIDTH = 240;
   const MAX_SIDEBAR_WIDTH = 600;
@@ -112,7 +118,7 @@ export function App() {
 
     fetchWithToken(`/api/sessions?${params}`)
       .then((r) => r.json())
-      .then((data: SessionSummary[]) => setSessions(data))
+      .then((data: Trajectory[]) => setSessions(data))
       .catch((err) => console.error("Failed to load sessions:", err))
       .finally(() => setLoading(false));
   }, [page, refreshKey, fetchWithToken]);
@@ -121,16 +127,22 @@ export function App() {
     (s) => s.session_id === selectedSessionId
   );
 
+  const handleSelectSession = useCallback((id: string | null) => {
+    setSelectedSessionId(id);
+    setResolvedFirstMessage(null);
+  }, []);
+
+  const handleFirstMessageResolved = useCallback((msg: string) => {
+    setResolvedFirstMessage(msg);
+  }, []);
+
+  const displayFirstMessage = resolvedFirstMessage || selectedSession?.first_message || "";
+
   const handleCopyResume = () => {
     if (!selectedSessionId) return;
     navigator.clipboard.writeText(`claude --resume ${selectedSessionId}`);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleCollectClick = () => {
-    if (checkedIds.size === 0) return;
-    setDialog({ kind: "confirm" });
   };
 
   const handleDownloadClick = async () => {
@@ -154,16 +166,18 @@ export function App() {
     }
   };
 
-  const handlePushConfirm = useCallback(async () => {
-    setDialog({ kind: "pushing" });
+  const handleDonateClick = () => {
+    if (checkedIds.size === 0) return;
+    setDialog({ kind: "donate-confirm" });
+  };
+
+  const handleDonateConfirm = useCallback(async () => {
+    setDialog({ kind: "donating" });
     try {
-      const res = await fetchWithToken("/api/push/mongodb", {
+      const res = await fetchWithToken("/api/sessions/donate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          session_ids: [...checkedIds],
-          target: "mongodb",
-        }),
+        body: JSON.stringify({ session_ids: [...checkedIds] }),
       });
       if (!res.ok) {
         let errorMsg = `HTTP ${res.status}`;
@@ -174,25 +188,23 @@ export function App() {
           errorMsg = await res.text().catch(() => errorMsg);
         }
         setDialog({
-          kind: "result",
+          kind: "donate-result",
           result: {
             total: checkedIds.size,
-            uploaded: 0,
-            skipped: 0,
+            donated: 0,
             errors: [{ session_id: "", error: errorMsg }],
           },
         });
         return;
       }
-      const result: PushResult = await res.json();
-      setDialog({ kind: "result", result });
+      const result: DonateResult = await res.json();
+      setDialog({ kind: "donate-result", result });
     } catch (err) {
       setDialog({
-        kind: "result",
+        kind: "donate-result",
         result: {
           total: checkedIds.size,
-          uploaded: 0,
-          skipped: 0,
+          donated: 0,
           errors: [{ session_id: "", error: String(err) }],
         },
       });
@@ -200,7 +212,7 @@ export function App() {
   }, [checkedIds, fetchWithToken]);
 
   const handleDialogClose = () => {
-    if (dialog.kind === "result" && dialog.result.uploaded > 0) {
+    if (dialog.kind === "donate-result" && dialog.result.donated > 0) {
       setCheckedIds(new Set());
     }
     setDialog({ kind: "hidden" });
@@ -210,45 +222,42 @@ export function App() {
 
   const renderDialog = () => {
     switch (dialog.kind) {
-      case "confirm":
+      case "donate-confirm":
         return (
-          <ConfirmDialog
-            title="Send to MongoDB"
-            message={`Send ${checkedIds.size} session${checkedIds.size !== 1 ? "s" : ""} to MongoDB?\n\nExisting sessions will be skipped automatically.`}
-            confirmLabel="Send"
-            onConfirm={handlePushConfirm}
+          <DonateConsentDialog
+            sessionCount={checkedIds.size}
+            onConfirm={handleDonateConfirm}
             onCancel={handleDialogClose}
           />
         );
-      case "pushing":
+      case "donating":
         return (
           <ConfirmDialog
-            title="Sending..."
-            message={`Uploading ${checkedIds.size} session${checkedIds.size !== 1 ? "s" : ""} to MongoDB...`}
+            title="Donating..."
+            message={`Donating ${checkedIds.size} session${checkedIds.size !== 1 ? "s" : ""}...`}
             onConfirm={() => {}}
             onCancel={() => {}}
             loading
           />
         );
-      case "result": {
-        const r = dialog.result;
-        const hasErrors = r.errors.length > 0;
-        const lines = [
-          `Uploaded: ${r.uploaded}`,
-          `Skipped: ${r.skipped}`,
-          `Total: ${r.total}`,
+      case "donate-result": {
+        const dr = dialog.result;
+        const hasDonateErrors = dr.errors.length > 0;
+        const donateLines = [
+          `Donated: ${dr.donated}`,
+          `Total: ${dr.total}`,
         ];
-        if (hasErrors) {
-          lines.push("");
-          lines.push(`Errors: ${r.errors.length}`);
-          for (const e of r.errors.slice(0, 3)) {
-            lines.push(`  ${e.session_id || "—"}: ${e.error}`);
+        if (hasDonateErrors) {
+          donateLines.push("");
+          donateLines.push(`Errors: ${dr.errors.length}`);
+          for (const e of dr.errors.slice(0, 3)) {
+            donateLines.push(`  ${e.session_id || "—"}: ${e.error}`);
           }
         }
         return (
           <ConfirmDialog
-            title={hasErrors ? "Completed with errors" : "Upload complete"}
-            message={lines.join("\n")}
+            title={hasDonateErrors ? "Completed with errors" : "Donation complete"}
+            message={donateLines.join("\n")}
             confirmLabel="OK"
             cancelLabel="Close"
             onConfirm={handleDialogClose}
@@ -285,42 +294,40 @@ export function App() {
               </button>
             </div>
 
-            {/* Toolbar: Collect + Upload */}
-            <div className="shrink-0 border-b border-zinc-800 px-3 py-2.5 flex items-center gap-2.5 text-xs text-zinc-400">
-              {!isDemo && (
-                <button
-                  onClick={handleCollectClick}
-                  disabled={checkedIds.size === 0}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-cyan-600 hover:bg-cyan-500 text-white rounded transition disabled:opacity-40 disabled:cursor-not-allowed"
-                  title="Send selected sessions to MongoDB"
-                >
-                  <Upload className="w-3.5 h-3.5" />
-                  Collect
-                </button>
-              )}
+            {/* Toolbar */}
+            <div className="shrink-0 border-b border-zinc-800 px-3 py-2.5 grid grid-cols-3 gap-2 text-xs text-zinc-400">
+              <button
+                onClick={() => setShowUploadDialog(true)}
+                className="flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium bg-violet-600 hover:bg-violet-500 text-white rounded transition"
+                title="Upload conversation files"
+              >
+                <FileUp className="w-3.5 h-3.5" />
+                Upload
+              </button>
               <button
                 onClick={handleDownloadClick}
                 disabled={checkedIds.size === 0}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-500 text-white rounded transition disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-500 text-white rounded transition disabled:opacity-40 disabled:cursor-not-allowed"
                 title="Download selected sessions as zip"
               >
                 <Download className="w-3.5 h-3.5" />
                 Download
               </button>
               <button
-                onClick={() => setShowUploadDialog(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-violet-600 hover:bg-violet-500 text-white rounded transition"
-                title="Upload conversation files"
+                onClick={handleDonateClick}
+                disabled={checkedIds.size === 0}
+                className="flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium bg-rose-600 hover:bg-rose-500 text-white rounded transition disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Donate selected sessions for research"
               >
-                <FileUp className="w-3.5 h-3.5" />
-                Upload
+                <Heart className="w-3.5 h-3.5" />
+                Donate
               </button>
             </div>
 
             <SessionList
               sessions={sessions}
               selectedId={selectedSessionId}
-              onSelect={setSelectedSessionId}
+              onSelect={handleSelectSession}
               checkedIds={checkedIds}
               onCheckedChange={setCheckedIds}
               viewMode={viewMode}
@@ -373,12 +380,14 @@ export function App() {
               <>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-zinc-200 truncate font-medium">
-                    {selectedSession.first_message || "Session"}
+                    {displayFirstMessage || "Session"}
                   </p>
                   <p className="text-[10px] text-zinc-500 mt-0.5">
-                    {selectedSession.project_name}
-                    {selectedSession.models?.length > 0 &&
-                      ` • ${selectedSession.models.join(", ")}`}
+                    <span title={selectedSession.project_path || ""}>
+                      {baseProjectName(selectedSession.project_path || "")}
+                    </span>
+                    {selectedSession.agent?.model_name &&
+                      ` • ${selectedSession.agent.name}@${selectedSession.agent.model_name}`}
                   </p>
                 </div>
 
@@ -412,7 +421,7 @@ export function App() {
           {/* Content Area */}
           <div className="flex-1 min-h-0">
             {selectedSessionId ? (
-              <SessionView sessionId={selectedSessionId} />
+              <SessionView sessionId={selectedSessionId} onFirstMessageResolved={handleFirstMessageResolved} />
             ) : (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center">

@@ -1,26 +1,24 @@
 """Unit tests for vibelens.ingest.claude_code parser."""
 
 import json
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
-from vibelens.ingest.parsers.base import MAX_FIRST_MESSAGE_LENGTH, BaseParser
+from vibelens.ingest.parsers.base import MAX_FIRST_MESSAGE_LENGTH, is_error_content
 from vibelens.ingest.parsers.claude_code import (
     ClaudeCodeParser,
-    _extract_tool_calls,
-    _extract_tool_result_text,
-    _parse_content_blocks,
-    _parse_usage,
-    count_history_entries,
+    _decompose_raw_content,
+    _extract_git_branches,
 )
-from vibelens.models.message import ContentBlock, Message, TokenUsage, ToolCall
+from vibelens.models.enums import StepSource
+from vibelens.models.trajectories import Metrics, Observation, ObservationResult, Step, ToolCall
 
 _parser = ClaudeCodeParser()
 
 
-# ─── Fixtures
 @pytest.fixture
 def claude_dir(tmp_path: Path) -> Path:
     """Create a minimal ~/.claude directory structure."""
@@ -52,135 +50,38 @@ def _write_session(path: Path, entries: list[dict]) -> None:
             f.write(json.dumps(entry) + "\n")
 
 
-# ─── BaseParser shared methods
-class TestBaseParserExtractProjectName:
-    def test_normal_path(self):
-        assert BaseParser.extract_project_name("/Users/Test/MyProject") == "MyProject"
+class TestDecomposeRawContent:
+    def test_plain_and_empty_strings(self):
+        """Plain strings, empty strings, and whitespace all produce expected text output."""
+        # Plain string passes through
+        message, reasoning, tool_calls, obs = _decompose_raw_content("Hello world")
+        assert message == "Hello world"
+        assert reasoning is None
+        assert tool_calls == []
+        assert obs is None
 
-    def test_nested_path(self):
-        assert BaseParser.extract_project_name("/a/b/c/deep") == "deep"
+        # Empty string
+        message, _, tool_calls, _ = _decompose_raw_content("")
+        assert message == ""
+        assert tool_calls == []
 
-    def test_empty_string(self):
-        assert BaseParser.extract_project_name("") == "Unknown"
+        # Whitespace is stripped to empty
+        message, _, _, _ = _decompose_raw_content("   ")
+        assert message == ""
+        print("  plain/empty/whitespace strings handled correctly")
 
-    def test_root_path(self):
-        assert BaseParser.extract_project_name("/") == "Unknown"
+    def test_content_block_types(self):
+        """Text, thinking, and tool_use blocks are each decomposed correctly."""
+        # Text block
+        message, _, _, _ = _decompose_raw_content([{"type": "text", "text": "Hello"}])
+        assert message == "Hello"
 
-    def test_single_component(self):
-        assert BaseParser.extract_project_name("project") == "project"
+        # Thinking block
+        _, reasoning, _, _ = _decompose_raw_content([{"type": "thinking", "thinking": "hmm"}])
+        assert reasoning == "hmm"
 
-
-class TestBaseParserEncodeProjectPath:
-    def test_normal_path(self):
-        assert BaseParser.encode_project_path("/Users/Test/MyProject") == "Users-Test-MyProject"
-
-    def test_empty_string(self):
-        assert BaseParser.encode_project_path("") == ""
-
-    def test_no_leading_dash(self):
-        result = BaseParser.encode_project_path("/a/b")
-        assert not result.startswith("-")
-
-    def test_multiple_slashes(self):
-        assert BaseParser.encode_project_path("/a/b/c/d") == "a-b-c-d"
-
-
-class TestBaseParserTruncateFirstMessage:
-    def test_short_message(self):
-        assert BaseParser.truncate_first_message("hello") == "hello"
-
-    def test_long_message(self):
-        long = "x" * 500
-        result = BaseParser.truncate_first_message(long)
-        assert len(result) == MAX_FIRST_MESSAGE_LENGTH
-
-
-# ─── _parse_usage
-class TestParseUsage:
-    def test_none_input(self):
-        assert _parse_usage(None) is None
-
-    def test_empty_dict(self):
-        assert _parse_usage({}) is None
-
-    def test_full_usage(self):
-        usage = _parse_usage(
-            {
-                "input_tokens": 1000,
-                "output_tokens": 500,
-                "cache_creation_input_tokens": 200,
-                "cache_read_input_tokens": 800,
-            }
-        )
-        assert usage.input_tokens == 1000
-        assert usage.output_tokens == 500
-        assert usage.cache_creation_tokens == 200
-        assert usage.cache_read_tokens == 800
-
-    def test_partial_usage(self):
-        usage = _parse_usage({"input_tokens": 100})
-        assert usage.input_tokens == 100
-        assert usage.output_tokens == 0
-        assert usage.cache_creation_tokens == 0
-        assert usage.cache_read_tokens == 0
-
-
-# ─── _extract_tool_result_text
-class TestExtractToolResultText:
-    def test_none_content(self):
-        assert _extract_tool_result_text(None) == ""
-
-    def test_string_content(self):
-        assert _extract_tool_result_text("output text") == "output text"
-
-    def test_list_with_text_blocks(self):
-        content = [
-            {"type": "text", "text": "line 1"},
-            {"type": "text", "text": "line 2"},
-        ]
-        assert _extract_tool_result_text(content) == "line 1\nline 2"
-
-    def test_list_with_string_items(self):
-        content = ["item 1", "item 2"]
-        assert _extract_tool_result_text(content) == "item 1\nitem 2"
-
-    def test_list_with_mixed_types(self):
-        content = [{"type": "text", "text": "a"}, "b", {"type": "image"}]
-        assert _extract_tool_result_text(content) == "a\nb"
-
-    def test_non_standard_type(self):
-        assert _extract_tool_result_text(12345) == "12345"
-
-    def test_empty_list(self):
-        assert _extract_tool_result_text([]) == ""
-
-
-# ─── _parse_content_blocks
-class TestParseContentBlocks:
-    def test_plain_string(self):
-        blocks = _parse_content_blocks("Hello world")
-        assert len(blocks) == 1
-        assert blocks[0].type == "text"
-        assert blocks[0].text == "Hello world"
-
-    def test_empty_string(self):
-        assert _parse_content_blocks("") == []
-
-    def test_whitespace_string(self):
-        assert _parse_content_blocks("   ") == []
-
-    def test_text_block(self):
-        blocks = _parse_content_blocks([{"type": "text", "text": "Hello"}])
-        assert len(blocks) == 1
-        assert blocks[0].text == "Hello"
-
-    def test_thinking_block(self):
-        blocks = _parse_content_blocks([{"type": "thinking", "thinking": "hmm"}])
-        assert blocks[0].type == "thinking"
-        assert blocks[0].thinking == "hmm"
-
-    def test_tool_use_block(self):
-        blocks = _parse_content_blocks(
+        # Tool use block
+        _, _, tool_calls, _ = _decompose_raw_content(
             [
                 {
                     "type": "tool_use",
@@ -190,13 +91,15 @@ class TestParseContentBlocks:
                 }
             ]
         )
-        assert blocks[0].type == "tool_use"
-        assert blocks[0].name == "Bash"
-        assert blocks[0].id == "tu-1"
-        assert blocks[0].input == {"command": "ls"}
+        assert len(tool_calls) == 1
+        assert tool_calls[0].function_name == "Bash"
+        assert tool_calls[0].tool_call_id == "tu-1"
+        assert tool_calls[0].arguments == {"command": "ls"}
+        print("  text/thinking/tool_use blocks decomposed correctly")
 
     def test_tool_result_block(self):
-        blocks = _parse_content_blocks(
+        """Tool result blocks produce observation with source_call_id linkage."""
+        _, _, _, obs = _decompose_raw_content(
             [
                 {
                     "type": "tool_result",
@@ -206,251 +109,162 @@ class TestParseContentBlocks:
                 }
             ]
         )
-        assert blocks[0].tool_use_id == "tu-1"
-        assert blocks[0].is_error is False
+        assert obs is not None
+        assert obs.results[0].source_call_id == "tu-1"
 
-    def test_multiple_blocks(self):
-        blocks = _parse_content_blocks(
+    def test_mixed_blocks(self):
+        """Multiple block types in one content array are all extracted."""
+        message, reasoning, tool_calls, _ = _decompose_raw_content(
             [
                 {"type": "thinking", "thinking": "Let me think"},
                 {"type": "text", "text": "Here is my answer"},
                 {"type": "tool_use", "id": "tu-1", "name": "Read", "input": {}},
             ]
         )
-        assert len(blocks) == 3
+        assert reasoning == "Let me think"
+        assert message == "Here is my answer"
+        assert len(tool_calls) == 1
+        print("  mixed blocks: thinking + text + tool_use decomposed")
 
-    def test_non_dict_items_skipped(self):
-        blocks = _parse_content_blocks(["not a dict", 42, None])
-        assert len(blocks) == 0
-
-    def test_empty_list(self):
-        assert _parse_content_blocks([]) == []
-
-
-# ─── _extract_tool_calls
-class TestExtractToolCalls:
-    def test_no_tool_use_blocks(self):
-        blocks = [ContentBlock(type="text", text="hello")]
-        assert _extract_tool_calls(blocks, {}) == []
-
-    def test_tool_use_without_result(self):
-        blocks = [ContentBlock(type="tool_use", id="tu-1", name="Bash", input={"command": "ls"})]
-        calls = _extract_tool_calls(blocks, {})
-        assert len(calls) == 1
-        assert calls[0].name == "Bash"
-        assert calls[0].output is None
-        assert calls[0].is_error is False
-
-    def test_tool_use_with_matching_result(self):
-        blocks = [ContentBlock(type="tool_use", id="tu-1", name="Read", input={})]
+    def test_tool_use_with_results(self):
+        """Tool results are injected via the result map,
+        including errors and multiple calls."""
+        # Matching result
+        raw = [{"type": "tool_use", "id": "tu-1", "name": "Read", "input": {}}]
         results = {"tu-1": {"output": "file content", "is_error": False}}
-        calls = _extract_tool_calls(blocks, results)
-        assert calls[0].output == "file content"
-        assert calls[0].is_error is False
+        _, _, tool_calls, obs = _decompose_raw_content(raw, results)
+        assert len(tool_calls) == 1
+        assert obs is not None
+        assert obs.results[0].source_call_id == "tu-1"
+        assert obs.results[0].content == "file content"
 
-    def test_tool_use_with_error_result(self):
-        blocks = [ContentBlock(type="tool_use", id="tu-1", name="Bash", input={})]
-        results = {"tu-1": {"output": "command not found", "is_error": True}}
-        calls = _extract_tool_calls(blocks, results)
-        assert calls[0].is_error is True
+        # Error result uses "[ERROR]" prefix
+        results_err = {"tu-1": {"output": "command not found", "is_error": True}}
+        _, _, _, obs_err = _decompose_raw_content(raw, results_err)
+        assert obs_err is not None
+        assert "[ERROR]" in obs_err.results[0].content
 
-    def test_multiple_tool_calls(self):
-        blocks = [
-            ContentBlock(type="tool_use", id="tu-1", name="Read", input={}),
-            ContentBlock(type="text", text="intermediate"),
-            ContentBlock(type="tool_use", id="tu-2", name="Edit", input={}),
+        # Multiple tool calls with results
+        raw_multi = [
+            {"type": "tool_use", "id": "tu-1", "name": "Read", "input": {}},
+            {"type": "text", "text": "intermediate"},
+            {"type": "tool_use", "id": "tu-2", "name": "Edit", "input": {}},
         ]
-        results = {
+        results_multi = {
             "tu-1": {"output": "content", "is_error": False},
             "tu-2": {"output": "edited", "is_error": False},
         }
-        calls = _extract_tool_calls(blocks, results)
-        assert len(calls) == 2
-        assert calls[0].name == "Read"
-        assert calls[1].name == "Edit"
-
-    def test_missing_id_defaults_empty(self):
-        blocks = [ContentBlock(type="tool_use", name="Bash")]
-        calls = _extract_tool_calls(blocks, {})
-        assert calls[0].id == ""
-
-    def test_missing_name_defaults_unknown(self):
-        blocks = [ContentBlock(type="tool_use", id="tu-1")]
-        calls = _extract_tool_calls(blocks, {})
-        assert calls[0].name == "unknown"
+        _, _, tool_calls_m, obs_m = _decompose_raw_content(raw_multi, results_multi)
+        assert len(tool_calls_m) == 2
+        assert obs_m is not None
+        assert len(obs_m.results) == 2
+        print("  tool results injected: normal, error, multiple calls")
 
 
-# ─── parse_history_index (now a method on ClaudeCodeParser)
 class TestParseHistoryIndex:
-    def test_no_history_file(self, claude_dir: Path):
-        result = _parser.parse_history_index(claude_dir)
-        assert result == []
-
-    def test_empty_history_file(self, claude_dir: Path):
-        (claude_dir / "history.jsonl").write_text("")
-        result = _parser.parse_history_index(claude_dir)
-        assert result == []
-
-    def test_single_session(self, claude_dir: Path):
-        _write_history(
-            claude_dir,
-            [
-                {
-                    "sessionId": "s1",
-                    "display": "Hello world",
-                    "timestamp": 1707734674932,
-                    "project": "/Users/Test/MyProject",
-                }
-            ],
-        )
-        result = _parser.parse_history_index(claude_dir)
-        assert len(result) == 1
-        assert result[0].session_id == "s1"
-        assert result[0].project_name == "MyProject"
-        assert result[0].first_message == "Hello world"
-        assert result[0].message_count == 1
-
-    def test_multiple_entries_same_session(self, claude_dir: Path):
-        _write_history(
-            claude_dir,
-            [
-                {
-                    "sessionId": "s1",
-                    "display": "First message",
-                    "timestamp": 1000000,
-                    "project": "/Users/Test/Proj",
-                },
-                {
-                    "sessionId": "s1",
-                    "display": "Second message",
-                    "timestamp": 2000000,
-                    "project": "/Users/Test/Proj",
-                },
-            ],
-        )
-        result = _parser.parse_history_index(claude_dir)
-        assert len(result) == 1
-        assert result[0].message_count == 2
-        assert result[0].first_message == "First message"
-
-    def test_multiple_sessions_sorted_by_timestamp(self, claude_dir: Path):
+    def test_basic_history_parsing(self, claude_dir: Path):
+        """Covers single session fields, multi-entry dedup, sort order, since filter, and limit."""
         _write_history(
             claude_dir,
             [
                 {
                     "sessionId": "old",
-                    "display": "Old",
-                    "timestamp": 1000000,
+                    "display": "Old message",
+                    "timestamp": 1700000000000,
+                    "project": "/Users/Test/ProjA",
+                },
+                {
+                    "sessionId": "old",
+                    "display": "Second old entry",
+                    "timestamp": 1700000001000,
+                    "project": "/Users/Test/ProjA",
+                },
+                {
+                    "sessionId": "mid",
+                    "display": "Mid message",
+                    "timestamp": 1710000000000,
+                    "project": "/Users/Test/ProjB",
+                },
+                {
+                    "sessionId": "new1",
+                    "display": "New1",
+                    "timestamp": 1720000000000,
                     "project": "/p",
                 },
                 {
-                    "sessionId": "new",
-                    "display": "New",
-                    "timestamp": 9000000,
+                    "sessionId": "new2",
+                    "display": "New2",
+                    "timestamp": 1730000000000,
                     "project": "/p",
                 },
             ],
         )
+        # All sessions returned, sorted newest-first
         result = _parser.parse_history_index(claude_dir)
-        assert result[0].session_id == "new"
-        assert result[1].session_id == "old"
+        assert len(result) == 4
+        assert result[0].session_id == "new2"
+        assert result[-1].session_id == "old"
 
-    def test_malformed_json_lines_skipped(self, claude_dir: Path):
+        # Session fields
+        old_traj = [t for t in result if t.session_id == "old"][0]
+        assert old_traj.project_path == "/Users/Test/ProjA"
+        assert old_traj.first_message == "Old message"
+        assert old_traj.final_metrics.total_steps == 2
+        print(f"  parsed {len(result)} sessions, sorted newest-first")
+
+        # since filter
+        since = datetime(2024, 3, 1, tzinfo=UTC)
+        filtered = _parser.parse_history_index(claude_dir, since=since)
+        filtered_ids = {t.session_id for t in filtered}
+        assert "old" not in filtered_ids
+        assert "new1" in filtered_ids
+        print(f"  since filter kept {len(filtered)} of 4 sessions")
+
+        # limit
+        limited = _parser.parse_history_index(claude_dir, limit=2)
+        assert len(limited) == 2
+        print(f"  limit=2 returned {len(limited)} sessions")
+
+    def test_edge_cases(self, claude_dir: Path):
+        """Missing file, empty file, malformed JSON, missing sessionId, and blank lines."""
+        # Missing history file
+        assert _parser.parse_history_index(claude_dir) == []
+
+        # Empty history file
+        (claude_dir / "history.jsonl").write_text("")
+        assert _parser.parse_history_index(claude_dir) == []
+
+        # Malformed JSON + missing sessionId + blank lines mixed with valid entry
         with open(claude_dir / "history.jsonl", "w") as f:
             f.write("NOT VALID JSON\n")
-            f.write(
-                json.dumps(
-                    {
-                        "sessionId": "s1",
-                        "display": "Valid",
-                        "timestamp": 1000000,
-                        "project": "/p",
-                    }
-                )
-                + "\n"
-            )
-        result = _parser.parse_history_index(claude_dir)
-        assert len(result) == 1
-
-    def test_entries_without_session_id_skipped(self, claude_dir: Path):
-        _write_history(
-            claude_dir,
-            [
-                {"display": "No session id", "timestamp": 1000000, "project": "/p"},
-                {
-                    "sessionId": "s1",
-                    "display": "Has id",
-                    "timestamp": 1000000,
-                    "project": "/p",
-                },
-            ],
-        )
-        result = _parser.parse_history_index(claude_dir)
-        assert len(result) == 1
-
-    def test_blank_lines_ignored(self, claude_dir: Path):
-        with open(claude_dir / "history.jsonl", "w") as f:
             f.write("\n")
-            f.write(
-                json.dumps(
-                    {
-                        "sessionId": "s1",
-                        "display": "x",
-                        "timestamp": 1000000,
-                        "project": "/p",
-                    }
-                )
-                + "\n"
-            )
+            no_id = {"display": "No session id", "timestamp": 1000000, "project": "/p"}
+            f.write(json.dumps(no_id) + "\n")
+            valid = {"sessionId": "s1", "display": "Valid", "timestamp": 1000000, "project": "/p"}
+            f.write(json.dumps(valid) + "\n")
             f.write("\n")
         result = _parser.parse_history_index(claude_dir)
         assert len(result) == 1
+        assert result[0].session_id == "s1"
+        print("  edge cases: missing/empty/malformed/blank all handled")
 
     def test_first_message_truncated(self, claude_dir: Path):
+        """Long first_message is truncated with '...' suffix."""
         long_message = "x" * 500
         _write_history(
             claude_dir,
-            [
-                {
-                    "sessionId": "s1",
-                    "display": long_message,
-                    "timestamp": 1000000,
-                    "project": "/p",
-                }
-            ],
+            [{"sessionId": "s1", "display": long_message, "timestamp": 1000000, "project": "/p"}],
         )
         result = _parser.parse_history_index(claude_dir)
-        assert len(result[0].first_message) == MAX_FIRST_MESSAGE_LENGTH
-
-    def test_project_id_encoded(self, claude_dir: Path):
-        _write_history(
-            claude_dir,
-            [
-                {
-                    "sessionId": "s1",
-                    "display": "x",
-                    "timestamp": 1000000,
-                    "project": "/Users/Test/Proj",
-                }
-            ],
-        )
-        result = _parser.parse_history_index(claude_dir)
-        assert result[0].project_id == "Users-Test-Proj"
+        # Truncation adds "..." suffix beyond the max length
+        assert len(result[0].first_message) == MAX_FIRST_MESSAGE_LENGTH + 3
+        assert result[0].first_message.endswith("...")
+        print(f"  truncated to {len(result[0].first_message)} chars")
 
 
-# ─── parse_session_jsonl (now a method on ClaudeCodeParser)
 class TestParseSessionJsonl:
-    def test_nonexistent_file(self, tmp_path: Path):
-        result = _parser.parse_session_jsonl(tmp_path / "missing.jsonl")
-        assert result == []
-
-    def test_empty_file(self, tmp_path: Path):
-        f = tmp_path / "empty.jsonl"
-        f.write_text("")
-        result = _parser.parse_session_jsonl(f)
-        assert result == []
-
-    def test_single_user_message(self, tmp_path: Path):
+    def test_basic_parsing(self, tmp_path: Path):
+        """User message, assistant content, timestamp, and usage are all parsed correctly."""
         f = tmp_path / "session.jsonl"
         _write_session(
             f,
@@ -459,56 +273,47 @@ class TestParseSessionJsonl:
                     "type": "user",
                     "uuid": "m1",
                     "sessionId": "s1",
+                    "timestamp": 1707734674932,
                     "message": {"role": "user", "content": "Hello"},
-                }
-            ],
-        )
-        result = _parser.parse_session_jsonl(f)
-        assert len(result) == 1
-        assert result[0].role == "user"
-        assert result[0].content == "Hello"
-
-    def test_assistant_with_text_content(self, tmp_path: Path):
-        f = tmp_path / "session.jsonl"
-        _write_session(
-            f,
-            [
+                },
                 {
                     "type": "assistant",
-                    "uuid": "m1",
+                    "uuid": "m2",
                     "sessionId": "s1",
                     "message": {
                         "role": "assistant",
                         "content": [{"type": "text", "text": "Hi there"}],
                         "model": "claude-sonnet-4-6",
+                        "usage": {
+                            "input_tokens": 500,
+                            "output_tokens": 200,
+                            "cache_read_input_tokens": 100,
+                        },
                     },
-                }
-            ],
-        )
-        result = _parser.parse_session_jsonl(f)
-        assert len(result) == 1
-        assert result[0].model == "claude-sonnet-4-6"
-        assert isinstance(result[0].content, list)
-
-    def test_non_relevant_types_filtered(self, tmp_path: Path):
-        f = tmp_path / "session.jsonl"
-        _write_session(
-            f,
-            [
-                {"type": "system", "uuid": "m0", "message": {"role": "system", "content": "sys"}},
-                {
-                    "type": "user",
-                    "uuid": "m1",
-                    "sessionId": "s1",
-                    "message": {"role": "user", "content": "hi"},
                 },
             ],
         )
         result = _parser.parse_session_jsonl(f)
-        assert len(result) == 1
-        assert result[0].role == "user"
+        assert len(result) == 2
 
-    def test_tool_use_and_result_paired(self, tmp_path: Path):
+        # User step
+        user_step = result[0]
+        assert user_step.source == StepSource.USER
+        assert user_step.message == "Hello"
+        assert user_step.timestamp is not None
+        assert user_step.timestamp.tzinfo == UTC
+
+        # Assistant step
+        agent_step = result[1]
+        assert agent_step.model_name == "claude-sonnet-4-6"
+        assert agent_step.metrics is not None
+        # prompt_tokens = input_tokens + cache_read_input_tokens (Harbor-aligned)
+        assert agent_step.metrics.prompt_tokens == 600
+        assert agent_step.metrics.cached_tokens == 100
+        print(f"  parsed {len(result)} steps with timestamps and usage")
+
+    def test_tool_use_pairing(self, tmp_path: Path):
+        """Tool use in assistant message is paired with tool result from next user message."""
         f = tmp_path / "session.jsonl"
         _write_session(
             f,
@@ -548,12 +353,15 @@ class TestParseSessionJsonl:
             ],
         )
         result = _parser.parse_session_jsonl(f)
-        assistant_msg = [m for m in result if m.role == "assistant"][0]
-        assert len(assistant_msg.tool_calls) == 1
-        assert assistant_msg.tool_calls[0].name == "Read"
-        assert assistant_msg.tool_calls[0].output == "print('hello')"
+        agent_step = [s for s in result if s.source == StepSource.AGENT][0]
+        assert len(agent_step.tool_calls) == 1
+        assert agent_step.tool_calls[0].function_name == "Read"
+        assert agent_step.observation is not None
+        assert agent_step.observation.results[0].content == "print('hello')"
+        print("  tool_use paired with tool_result via tool_use_id")
 
-    def test_tool_result_with_error(self, tmp_path: Path):
+    def test_error_marking(self, tmp_path: Path):
+        """Tool results with is_error=True produce error-marked observation content."""
         f = tmp_path / "session.jsonl"
         _write_session(
             f,
@@ -593,75 +401,46 @@ class TestParseSessionJsonl:
             ],
         )
         result = _parser.parse_session_jsonl(f)
-        assistant_msg = [m for m in result if m.role == "assistant"][0]
-        assert assistant_msg.tool_calls[0].is_error is True
+        agent_step = [s for s in result if s.source == StepSource.AGENT][0]
+        assert agent_step.observation is not None
+        assert is_error_content(agent_step.observation.results[0].content)
+        print("  error tool results marked with [ERROR] prefix")
 
-    def test_usage_parsed(self, tmp_path: Path):
-        f = tmp_path / "session.jsonl"
-        _write_session(
-            f,
-            [
-                {
-                    "type": "assistant",
-                    "uuid": "m1",
-                    "sessionId": "s1",
-                    "message": {
-                        "role": "assistant",
-                        "content": "response",
-                        "usage": {
-                            "input_tokens": 500,
-                            "output_tokens": 200,
-                            "cache_read_input_tokens": 100,
-                        },
-                    },
-                }
-            ],
-        )
-        result = _parser.parse_session_jsonl(f)
-        assert result[0].usage is not None
-        assert result[0].usage.input_tokens == 500
-        assert result[0].usage.cache_read_tokens == 100
+    def test_edge_cases(self, tmp_path: Path):
+        """Nonexistent file, empty file, non-relevant types, malformed lines, and sidechain flag."""
+        # Nonexistent file
+        assert _parser.parse_session_jsonl(tmp_path / "missing.jsonl") == []
 
-    def test_malformed_lines_skipped(self, tmp_path: Path):
-        f = tmp_path / "session.jsonl"
-        with open(f, "w") as fh:
-            fh.write("INVALID\n")
-            fh.write(
-                json.dumps(
-                    {
-                        "type": "user",
-                        "uuid": "m1",
-                        "sessionId": "s1",
-                        "message": {"role": "user", "content": "valid"},
-                    }
-                )
-                + "\n"
-            )
-        result = _parser.parse_session_jsonl(f)
+        # Empty file
+        empty = tmp_path / "empty.jsonl"
+        empty.write_text("")
+        assert _parser.parse_session_jsonl(empty) == []
+
+        # Non-relevant types filtered + malformed lines skipped
+        mixed = tmp_path / "mixed.jsonl"
+        with open(mixed, "w") as fh:
+            fh.write("INVALID JSON\n")
+            sys_entry = {
+                "type": "system",
+                "uuid": "m0",
+                "message": {"role": "system", "content": "sys"},
+            }
+            fh.write(json.dumps(sys_entry) + "\n")
+            user_entry = {
+                "type": "user",
+                "uuid": "m1",
+                "sessionId": "s1",
+                "message": {"role": "user", "content": "valid"},
+            }
+            fh.write(json.dumps(user_entry) + "\n")
+        result = _parser.parse_session_jsonl(mixed)
         assert len(result) == 1
+        assert result[0].source == StepSource.USER
 
-    def test_timestamp_parsed(self, tmp_path: Path):
-        f = tmp_path / "session.jsonl"
+        # Sidechain flag in extra
+        sidechain = tmp_path / "sidechain.jsonl"
         _write_session(
-            f,
-            [
-                {
-                    "type": "user",
-                    "uuid": "m1",
-                    "sessionId": "s1",
-                    "timestamp": 1707734674932,
-                    "message": {"role": "user", "content": "hi"},
-                }
-            ],
-        )
-        result = _parser.parse_session_jsonl(f)
-        assert result[0].timestamp is not None
-        assert result[0].timestamp.tzinfo == UTC
-
-    def test_sidechain_flag(self, tmp_path: Path):
-        f = tmp_path / "session.jsonl"
-        _write_session(
-            f,
+            sidechain,
             [
                 {
                     "type": "assistant",
@@ -672,232 +451,128 @@ class TestParseSessionJsonl:
                 }
             ],
         )
-        result = _parser.parse_session_jsonl(f)
-        assert result[0].is_sidechain is True
-
-    def test_parent_uuid(self, tmp_path: Path):
-        f = tmp_path / "session.jsonl"
-        _write_session(
-            f,
-            [
-                {
-                    "type": "assistant",
-                    "uuid": "m2",
-                    "sessionId": "s1",
-                    "parentUuid": "m1",
-                    "message": {"role": "assistant", "content": "reply"},
-                }
-            ],
-        )
-        result = _parser.parse_session_jsonl(f)
-        assert result[0].parent_uuid == "m1"
+        sc_result = _parser.parse_session_jsonl(sidechain)
+        assert sc_result[0].extra is not None
+        assert sc_result[0].extra.get("is_sidechain") is True
+        print("  edge cases: missing/empty/filtered/malformed/sidechain all handled")
 
 
-# ─── compute_session_metadata (now a method on ClaudeCodeParser)
-class TestComputeSessionMetadata:
-    def test_empty_messages(self):
-        meta = _parser.compute_session_metadata([])
-        assert meta.message_count == 0
-        assert meta.duration == 0
+class TestMetadataViaAssembleTrajectory:
+    """Tests that assemble_trajectory auto-computes first_message and final_metrics."""
 
-    def test_message_count(self):
-        msgs = [
-            Message(uuid="m1", session_id="s1", role="user", type="user", content="hi"),
-            Message(
-                uuid="m2",
-                session_id="s1",
-                role="assistant",
-                type="assistant",
-                content="hello",
-            ),
-        ]
-        meta = _parser.compute_session_metadata(msgs)
-        assert meta.message_count == 2
-
-    def test_model_collection(self):
-        msgs = [
-            Message(
-                uuid="m1",
-                session_id="s1",
-                role="assistant",
-                type="assistant",
-                model="claude-sonnet-4-6",
-            ),
-            Message(
-                uuid="m2",
-                session_id="s1",
-                role="assistant",
-                type="assistant",
-                model="claude-haiku-4-5",
-            ),
-            Message(
-                uuid="m3",
-                session_id="s1",
-                role="assistant",
-                type="assistant",
-                model="claude-sonnet-4-6",
-            ),
-        ]
-        meta = _parser.compute_session_metadata(msgs)
-        assert sorted(meta.models) == ["claude-haiku-4-5", "claude-sonnet-4-6"]
-
-    def test_token_aggregation(self):
-        msgs = [
-            Message(
-                uuid="m1",
-                session_id="s1",
-                role="assistant",
-                type="assistant",
-                usage=TokenUsage(
-                    input_tokens=100,
-                    output_tokens=50,
-                    cache_read_tokens=30,
+    def test_metrics_aggregation(self):
+        """Step count, token sums, and tool call count are aggregated across steps."""
+        steps = [
+            Step(
+                step_id="m1",
+                source=StepSource.AGENT,
+                metrics=Metrics(
+                    prompt_tokens=100,
+                    completion_tokens=50,
+                    cached_tokens=30,
                     cache_creation_tokens=20,
                 ),
+                tool_calls=[ToolCall(function_name="Read"), ToolCall(function_name="Edit")],
             ),
-            Message(
-                uuid="m2",
-                session_id="s1",
-                role="assistant",
-                type="assistant",
-                usage=TokenUsage(
-                    input_tokens=200,
-                    output_tokens=100,
-                    cache_read_tokens=70,
+            Step(
+                step_id="m2",
+                source=StepSource.AGENT,
+                metrics=Metrics(
+                    prompt_tokens=200,
+                    completion_tokens=100,
+                    cached_tokens=70,
                     cache_creation_tokens=10,
                 ),
+                tool_calls=[ToolCall(function_name="Bash")],
             ),
+            Step(step_id="m3", source=StepSource.USER, message="hi"),
         ]
-        meta = _parser.compute_session_metadata(msgs)
-        assert meta.total_input_tokens == 300
-        assert meta.total_output_tokens == 150
-        assert meta.total_cache_read == 100
-        assert meta.total_cache_write == 30
+        traj = _parser.assemble_trajectory(
+            session_id="test", agent=_parser.build_agent("claude-code"), steps=steps
+        )
+        # Step count includes all steps
+        assert traj.final_metrics.total_steps == 3
 
-    def test_tool_call_count(self):
-        msgs = [
-            Message(
-                uuid="m1",
-                session_id="s1",
-                role="assistant",
-                type="assistant",
-                tool_calls=[ToolCall(name="Read"), ToolCall(name="Edit")],
-            ),
-            Message(
-                uuid="m2",
-                session_id="s1",
-                role="assistant",
-                type="assistant",
-                tool_calls=[ToolCall(name="Bash")],
-            ),
+        # Token aggregation
+        assert traj.final_metrics.total_prompt_tokens == 300
+        assert traj.final_metrics.total_completion_tokens == 150
+        assert traj.final_metrics.total_cache_read == 100
+        assert traj.final_metrics.total_cache_write == 30
+
+        # Tool call count
+        assert traj.final_metrics.tool_call_count == 3
+
+        # Steps without metrics contribute zero
+        steps_no_metrics = [Step(step_id="m1", source=StepSource.USER)]
+        traj_no = _parser.assemble_trajectory(
+            session_id="test2", agent=_parser.build_agent("claude-code"), steps=steps_no_metrics
+        )
+        assert traj_no.final_metrics.total_prompt_tokens == 0
+        step_count = traj.final_metrics.total_steps
+        tc_count = traj.final_metrics.tool_call_count
+        print(f"  metrics aggregated: {step_count} steps, {tc_count} tool calls")
+
+    def test_first_message(self):
+        """First user message is extracted and truncated when too long."""
+        # First user message found even when agent speaks first
+        steps = [
+            Step(step_id="m1", source=StepSource.AGENT, message="I'll help"),
+            Step(step_id="m2", source=StepSource.USER, message="Fix the bug"),
         ]
-        meta = _parser.compute_session_metadata(msgs)
-        assert meta.tool_call_count == 3
+        traj = _parser.assemble_trajectory(
+            session_id="test", agent=_parser.build_agent("claude-code"), steps=steps
+        )
+        assert traj.first_message == "Fix the bug"
 
-    def test_first_message_from_user(self):
-        msgs = [
-            Message(
-                uuid="m1",
-                session_id="s1",
-                role="assistant",
-                type="assistant",
-                content="I'll help",
-            ),
-            Message(uuid="m2", session_id="s1", role="user", type="user", content="Fix the bug"),
-        ]
-        meta = _parser.compute_session_metadata(msgs)
-        assert meta.first_message == "Fix the bug"
-
-    def test_first_message_ignores_content_blocks(self):
-        blocks = [ContentBlock(type="tool_result", content="tool output")]
-        msgs = [
-            Message(uuid="m1", session_id="s1", role="user", type="user", content=blocks),
-            Message(uuid="m2", session_id="s1", role="user", type="user", content="Real question"),
-        ]
-        meta = _parser.compute_session_metadata(msgs)
-        assert meta.first_message == "Real question"
-
-    def test_first_message_truncated(self):
+        # Long first message is truncated
         long = "x" * 500
-        msgs = [
-            Message(uuid="m1", session_id="s1", role="user", type="user", content=long),
-        ]
-        meta = _parser.compute_session_metadata(msgs)
-        assert len(meta.first_message) == MAX_FIRST_MESSAGE_LENGTH
+        steps_long = [Step(step_id="m1", source=StepSource.USER, message=long)]
+        traj_long = _parser.assemble_trajectory(
+            session_id="test2", agent=_parser.build_agent("claude-code"), steps=steps_long
+        )
+        assert len(traj_long.first_message) == MAX_FIRST_MESSAGE_LENGTH + 3
+        print("  first_message extraction and truncation verified")
 
-    def test_duration_from_timestamps(self):
+    def test_duration(self):
+        """Duration computed from first/last timestamps, zero for single or missing timestamps."""
         t1 = datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC)
         t2 = datetime(2025, 1, 1, 10, 5, 0, tzinfo=UTC)
-        msgs = [
-            Message(uuid="m1", session_id="s1", role="user", type="user", timestamp=t1),
-            Message(uuid="m2", session_id="s1", role="assistant", type="assistant", timestamp=t2),
+
+        # Two timestamps produce 300s duration
+        steps = [
+            Step(step_id="m1", source=StepSource.USER, timestamp=t1),
+            Step(step_id="m2", source=StepSource.AGENT, timestamp=t2),
         ]
-        meta = _parser.compute_session_metadata(msgs)
-        assert meta.duration == 300
+        traj = _parser.assemble_trajectory(
+            session_id="test", agent=_parser.build_agent("claude-code"), steps=steps
+        )
+        assert traj.final_metrics.duration == 300
 
-    def test_duration_single_message(self):
-        t1 = datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC)
-        msgs = [
-            Message(uuid="m1", session_id="s1", role="user", type="user", timestamp=t1),
-        ]
-        meta = _parser.compute_session_metadata(msgs)
-        assert meta.duration == 0
+        # Single timestamp produces zero duration
+        traj_single = _parser.assemble_trajectory(
+            session_id="test2",
+            agent=_parser.build_agent("claude-code"),
+            steps=[Step(step_id="m1", source=StepSource.USER, timestamp=t1)],
+        )
+        assert traj_single.final_metrics.duration == 0
 
-    def test_messages_without_timestamps(self):
-        msgs = [
-            Message(uuid="m1", session_id="s1", role="user", type="user"),
-            Message(uuid="m2", session_id="s1", role="assistant", type="assistant"),
-        ]
-        meta = _parser.compute_session_metadata(msgs)
-        assert meta.duration == 0
-
-    def test_messages_without_usage(self):
-        msgs = [
-            Message(uuid="m1", session_id="s1", role="user", type="user"),
-        ]
-        meta = _parser.compute_session_metadata(msgs)
-        assert meta.total_input_tokens == 0
+        # No timestamps produce zero duration
+        traj_none = _parser.assemble_trajectory(
+            session_id="test3",
+            agent=_parser.build_agent("claude-code"),
+            steps=[
+                Step(step_id="m1", source=StepSource.USER),
+                Step(step_id="m2", source=StepSource.AGENT),
+            ],
+        )
+        assert traj_none.final_metrics.duration == 0
+        print("  duration: 300s, 0s (single), 0s (no timestamps)")
 
 
-# ─── Subagent parsing (separated, not merged)
 class TestSubagentParsing:
-    def test_main_session_excludes_subagent_messages(self, tmp_path: Path):
-        """parse_session_jsonl returns only main-session messages."""
-        main_file = tmp_path / "session-abc.jsonl"
-        _write_session(
-            main_file,
-            [
-                {
-                    "type": "user",
-                    "uuid": "m1",
-                    "sessionId": "session-abc",
-                    "message": {"role": "user", "content": "Main session message"},
-                }
-            ],
-        )
-
-        subagent_dir = tmp_path / "session-abc" / "subagents"
-        subagent_dir.mkdir(parents=True)
-        _write_session(
-            subagent_dir / "agent-001.jsonl",
-            [
-                {
-                    "type": "assistant",
-                    "uuid": "sa-1",
-                    "sessionId": "session-abc",
-                    "message": {"role": "assistant", "content": "Subagent response"},
-                }
-            ],
-        )
-
-        result = _parser.parse_session_jsonl(main_file)
-        print(f"  main messages: {len(result)}")
-        print(f"  content: {[m.content for m in result]}")
-        assert len(result) == 1
-        assert result[0].content == "Main session message"
-
-    def test_subagents_returned_separately(self, tmp_path: Path):
-        """parse_session_with_subagents returns sub-sessions as separate objects."""
+    def test_subagent_trajectories(self, tmp_path: Path):
+        """Subagent JSONL files produce separate Trajectory objects
+        linked via parent_trajectory_ref."""
         main_file = tmp_path / "session-abc.jsonl"
         _write_session(
             main_file,
@@ -924,84 +599,63 @@ class TestSubagentParsing:
                         ],
                     },
                 },
+                {
+                    "type": "user",
+                    "uuid": "m3",
+                    "sessionId": "session-abc",
+                    "message": {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": "tu-agent-1",
+                                "content": "Task completed. agentId: 001",
+                            }
+                        ],
+                    },
+                },
             ],
         )
 
         subagent_dir = tmp_path / "session-abc" / "subagents"
         subagent_dir.mkdir(parents=True)
-        _write_session(
-            subagent_dir / "agent-001.jsonl",
-            [
-                {
-                    "type": "assistant",
-                    "uuid": "sa-1",
-                    "sessionId": "session-abc",
-                    "message": {"role": "assistant", "content": "Subagent response"},
-                }
-            ],
-        )
-
-        messages, sub_sessions = _parser.parse_session_with_subagents(main_file)
-        print(f"  main messages: {len(messages)}")
-        print(f"  sub_sessions: {len(sub_sessions)}")
-        for sub in sub_sessions:
-            print(f"    agent_id={sub.agent_id}, spawn_index={sub.spawn_index}")
-            print(f"    spawn_tool_call_id={sub.spawn_tool_call_id}")
-            print(f"    messages: {len(sub.messages)}")
-            for m in sub.messages:
-                print(f"      role={m.role}, sidechain={m.is_sidechain}, content={m.content[:50]}")
-
-        assert len(messages) == 2
-        assert len(sub_sessions) == 1
-        assert sub_sessions[0].agent_id == "agent-001"
-        assert sub_sessions[0].spawn_index == 1
-        assert sub_sessions[0].spawn_tool_call_id == "tu-agent-1"
-        assert sub_sessions[0].messages[0].is_sidechain is True
-
-    def test_multiple_subagent_files_separate(self, tmp_path: Path):
-        """Multiple subagent files produce separate SubAgentSession objects."""
-        main_file = tmp_path / "sess.jsonl"
-        _write_session(
-            main_file,
-            [
-                {
-                    "type": "user",
-                    "uuid": "m1",
-                    "sessionId": "sess",
-                    "message": {"role": "user", "content": "start"},
-                }
-            ],
-        )
-
-        subagent_dir = tmp_path / "sess" / "subagents"
-        subagent_dir.mkdir(parents=True)
-
-        for agent_id in ["agent-aaa", "agent-bbb"]:
+        for agent_id in ["agent-001", "agent-002"]:
             _write_session(
                 subagent_dir / f"{agent_id}.jsonl",
                 [
                     {
                         "type": "assistant",
                         "uuid": f"sa-{agent_id}",
-                        "sessionId": "sess",
+                        "sessionId": "session-abc",
                         "message": {"role": "assistant", "content": f"from {agent_id}"},
                     }
                 ],
             )
 
-        messages, sub_sessions = _parser.parse_session_with_subagents(main_file)
-        print(f"  main messages: {len(messages)}")
-        print(f"  sub_sessions: {len(sub_sessions)}")
-        for sub in sub_sessions:
-            print(f"    agent_id={sub.agent_id}, msgs={len(sub.messages)}")
+        trajectories = _parser.parse_file(main_file)
+        print(f"  total trajectories: {len(trajectories)}")
+        for traj in trajectories:
+            print(f"    session_id={traj.session_id}, steps={len(traj.steps)}")
+            if traj.parent_trajectory_ref:
+                print(f"    parent_trajectory_ref={traj.parent_trajectory_ref.session_id}")
 
-        assert len(messages) == 1
-        assert len(sub_sessions) == 2
-        agent_ids = {sub.agent_id for sub in sub_sessions}
-        assert agent_ids == {"agent-aaa", "agent-bbb"}
+        # Main + 2 sub-agents
+        assert len(trajectories) == 3
+        main_traj = trajectories[0]
+        assert len(main_traj.steps) >= 1
 
-    def test_no_subagent_dir(self, tmp_path: Path):
-        """No error when subagent directory does not exist."""
+        # Sub-agent trajectories link back to parent via parent_trajectory_ref
+        sub_trajs = trajectories[1:]
+        for sub_traj in sub_trajs:
+            assert sub_traj.parent_trajectory_ref is not None
+            assert sub_traj.parent_trajectory_ref.session_id == main_traj.session_id
+
+        sub_session_ids = {t.session_id for t in sub_trajs}
+        assert sub_session_ids == {"agent-001", "agent-002"}
+
+    def test_no_subagent_scenarios(self, tmp_path: Path):
+        """No subagent dir and empty subagent dir both produce only the main trajectory."""
+        # No subagent directory at all
         main_file = tmp_path / "session.jsonl"
         _write_session(
             main_file,
@@ -1014,147 +668,64 @@ class TestSubagentParsing:
                 }
             ],
         )
-        messages, sub_sessions = _parser.parse_session_with_subagents(main_file)
-        print(f"  main messages: {len(messages)}, sub_sessions: {len(sub_sessions)}")
-        assert len(messages) == 1
-        assert len(sub_sessions) == 0
+        trajectories = _parser.parse_file(main_file)
+        print(f"  no subagent dir: {len(trajectories)} trajectories")
+        assert len(trajectories) == 1
 
-    def test_empty_subagent_dir(self, tmp_path: Path):
-        """Empty subagent directory produces no sub-sessions."""
-        main_file = tmp_path / "session.jsonl"
+        # Empty subagent directory
+        main_file2 = tmp_path / "session2.jsonl"
         _write_session(
-            main_file,
+            main_file2,
             [
                 {
                     "type": "user",
                     "uuid": "m1",
-                    "sessionId": "s1",
-                    "message": {"role": "user", "content": "solo"},
+                    "sessionId": "s2",
+                    "message": {"role": "user", "content": "solo2"},
                 }
             ],
         )
-        subagent_dir = tmp_path / "session" / "subagents"
-        subagent_dir.mkdir(parents=True)
+        (tmp_path / "session2" / "subagents").mkdir(parents=True)
+        trajectories2 = _parser.parse_file(main_file2)
+        assert len(trajectories2) == 1
+        print(f"  empty subagent dir: {len(trajectories2)} trajectories")
 
-        messages, sub_sessions = _parser.parse_session_with_subagents(main_file)
-        assert len(messages) == 1
-        assert len(sub_sessions) == 0
-
-
-# ─── Tool enrichment via parse_file
-class TestToolEnrichmentViaParseFile:
-    """Tests that parse_file populates tool category and summary."""
-
-    def test_read_tool_enriched(self, tmp_path: Path, project_dir: Path):
-        f = project_dir / "session.jsonl"
+        # parse_session_jsonl excludes subagent messages from main session
+        main_file3 = tmp_path / "session3.jsonl"
         _write_session(
-            f,
+            main_file3,
             [
-                {
-                    "type": "assistant",
-                    "uuid": "m1",
-                    "sessionId": "s1",
-                    "message": {
-                        "role": "assistant",
-                        "content": [
-                            {
-                                "type": "tool_use",
-                                "id": "tu-1",
-                                "name": "Read",
-                                "input": {"file_path": "/src/main.py"},
-                            }
-                        ],
-                    },
-                },
                 {
                     "type": "user",
-                    "uuid": "m2",
-                    "sessionId": "s1",
-                    "message": {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "tool_result",
-                                "tool_use_id": "tu-1",
-                                "content": "print('hello')",
-                            }
-                        ],
-                    },
-                },
+                    "uuid": "m1",
+                    "sessionId": "session3",
+                    "message": {"role": "user", "content": "Main only"},
+                }
             ],
         )
-        results = _parser.parse_file(f)
-        _, messages = results[0]
-        tc = messages[0].tool_calls[0]
-        print(f"  name={tc.name}, category={tc.category}, summary={tc.summary}")
-        assert tc.category == "file_read"
-        assert tc.summary == "/src/main.py"
-
-    def test_bash_tool_enriched(self, tmp_path: Path, project_dir: Path):
-        f = project_dir / "session.jsonl"
+        sa_dir = tmp_path / "session3" / "subagents"
+        sa_dir.mkdir(parents=True)
         _write_session(
-            f,
+            sa_dir / "agent-x.jsonl",
             [
                 {
                     "type": "assistant",
-                    "uuid": "m1",
-                    "sessionId": "s1",
-                    "message": {
-                        "role": "assistant",
-                        "content": [
-                            {
-                                "type": "tool_use",
-                                "id": "tu-1",
-                                "name": "Bash",
-                                "input": {"command": "npm test"},
-                            }
-                        ],
-                    },
-                },
+                    "uuid": "sa-1",
+                    "sessionId": "session3",
+                    "message": {"role": "assistant", "content": "Subagent"},
+                }
             ],
         )
-        results = _parser.parse_file(f)
-        _, messages = results[0]
-        tc = messages[0].tool_calls[0]
-        assert tc.category == "shell"
-        assert tc.summary == "npm test"
-
-    def test_agent_tool_enriched(self, tmp_path: Path, project_dir: Path):
-        f = project_dir / "session.jsonl"
-        _write_session(
-            f,
-            [
-                {
-                    "type": "assistant",
-                    "uuid": "m1",
-                    "sessionId": "s1",
-                    "message": {
-                        "role": "assistant",
-                        "content": [
-                            {
-                                "type": "tool_use",
-                                "id": "tu-1",
-                                "name": "Agent",
-                                "input": {"description": "Search codebase", "prompt": "find bugs"},
-                            }
-                        ],
-                    },
-                },
-            ],
-        )
-        results = _parser.parse_file(f)
-        _, messages = results[0]
-        tc = messages[0].tool_calls[0]
-        assert tc.category == "agent"
-        assert tc.summary == "Search codebase"
+        main_steps = _parser.parse_session_jsonl(main_file3)
+        assert len(main_steps) == 1
+        assert main_steps[0].message == "Main only"
+        print("  main session excludes subagent messages")
 
 
-# ─── Discover subagent-only sessions
 class TestDiscoverSubagentOnlySessions:
-    """Tests for ClaudeCodeParser.discover_subagent_only_sessions."""
-
-    def test_finds_subagent_dirs_without_root_jsonl(self, tmp_path: Path):
-        """Session dir with only subagent files and no root JSONL is discovered."""
+    def test_discover_subagent_only_sessions(self, tmp_path: Path):
+        """Finds session dirs with only subagent files,
+        ignores dirs with root JSONL, tool-only, empty, or nonexistent."""
         project_dir = tmp_path / "project"
         project_dir.mkdir()
 
@@ -1169,151 +740,498 @@ class TestDiscoverSubagentOnlySessions:
         sa_dir2.mkdir(parents=True)
         (sa_dir2 / "agent-b1.jsonl").write_text("{}\n")
 
-        result = _parser.discover_subagent_only_sessions(project_dir)
-        print(f"  discovered: {[p.name for p in result]}")
-        assert len(result) == 1
-        # Returns the subagents/ dir, parent is the session dir
-        assert result[0].parent.name == "subagent-only"
-
-    def test_ignores_dirs_without_subagents(self, tmp_path: Path):
-        """Directories with only tool-results are ignored."""
-        project_dir = tmp_path / "project"
-        project_dir.mkdir()
+        # Tool-only dir — should NOT be returned
         (project_dir / "tool-only" / "tool-results").mkdir(parents=True)
 
-        result = _parser.discover_subagent_only_sessions(project_dir)
-        assert result == []
-
-    def test_ignores_empty_subagent_dirs(self, tmp_path: Path):
-        """Empty subagent directories are ignored."""
-        project_dir = tmp_path / "project"
+        # Empty subagent dir — should NOT be returned
         (project_dir / "empty-sa" / "subagents").mkdir(parents=True)
 
         result = _parser.discover_subagent_only_sessions(project_dir)
-        assert result == []
-
-    def test_returns_empty_for_no_dirs(self, tmp_path: Path):
-        project_dir = tmp_path / "project"
-        project_dir.mkdir()
-        (project_dir / "session.jsonl").write_text("{}\n")
-
-        result = _parser.discover_subagent_only_sessions(project_dir)
-        assert result == []
-
-    def test_nonexistent_project_dir(self, tmp_path: Path):
-        result = _parser.discover_subagent_only_sessions(tmp_path / "nonexistent")
-        assert result == []
-
-
-# ─── parse_history_index with since/limit
-class TestParseHistoryIndexFiltering:
-    def test_since_filters_old_sessions(self, claude_dir: Path):
-        """Sessions before `since` are excluded."""
-        _write_history(
-            claude_dir,
-            [
-                {"sessionId": "old", "display": "Old", "timestamp": 1700000000000, "project": "/p"},
-                {"sessionId": "new", "display": "New", "timestamp": 1710000000000, "project": "/p"},
-            ],
-        )
-        since = datetime(2024, 3, 1, tzinfo=UTC)
-        result = _parser.parse_history_index(claude_dir, since=since)
+        print(f"  discovered: {[p.name for p in result]}")
         assert len(result) == 1
-        assert result[0].session_id == "new"
-        print(f"  filtered: kept {len(result)} of 2 sessions")
+        assert result[0].parent.name == "subagent-only"
 
-    def test_since_none_returns_all(self, claude_dir: Path):
-        _write_history(
-            claude_dir,
+        # Nonexistent project dir
+        assert _parser.discover_subagent_only_sessions(tmp_path / "nonexistent") == []
+
+        # Directory with only root JSONL, no session subdirs
+        flat_dir = tmp_path / "flat"
+        flat_dir.mkdir()
+        (flat_dir / "session.jsonl").write_text("{}\n")
+        assert _parser.discover_subagent_only_sessions(flat_dir) == []
+        print("  subagent-only discovery: correct filtering verified")
+
+
+class TestMetricsDedup:
+    def test_streaming_chunks_merged_into_single_step(self, tmp_path: Path):
+        """Consecutive entries with same message.id are merged into one step."""
+        f = tmp_path / "session.jsonl"
+        shared_msg_id = "msg_abc123"
+        _write_session(
+            f,
             [
-                {"sessionId": "s1", "display": "A", "timestamp": 1700000000000, "project": "/p"},
-                {"sessionId": "s2", "display": "B", "timestamp": 1710000000000, "project": "/p"},
+                {
+                    "type": "assistant",
+                    "uuid": "m1",
+                    "sessionId": "s1",
+                    "message": {
+                        "id": shared_msg_id,
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "First chunk"}],
+                        "model": "claude-sonnet-4-6",
+                        "usage": {"input_tokens": 500, "output_tokens": 200},
+                    },
+                },
+                {
+                    "type": "assistant",
+                    "uuid": "m2",
+                    "sessionId": "s1",
+                    "message": {
+                        "id": shared_msg_id,
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "Second chunk"}],
+                        "model": "claude-sonnet-4-6",
+                        "usage": {"input_tokens": 500, "output_tokens": 200},
+                    },
+                },
             ],
         )
-        result = _parser.parse_history_index(claude_dir, since=None)
-        assert len(result) == 2
+        result = _parser.parse_session_jsonl(f)
+        assert len(result) == 1
+        assert result[0].step_id == shared_msg_id
+        assert "First chunk" in result[0].message
+        assert "Second chunk" in result[0].message
+        assert result[0].metrics is not None
+        assert result[0].metrics.prompt_tokens == 500
 
-    def test_limit_truncates_results(self, claude_dir: Path):
-        entries = [
-            {
-                "sessionId": f"s{i}",
-                "display": f"msg{i}",
-                "timestamp": 1700000000000 + i * 1000000,
-                "project": "/p",
-            }
-            for i in range(10)
-        ]
-        _write_history(claude_dir, entries)
-        result = _parser.parse_history_index(claude_dir, limit=3)
+
+class TestStepExtraMetadata:
+    def test_step_extra_metadata_preserved(self, tmp_path: Path):
+        """Entry with stop_reason, cwd, requestId, service_tier all captured in step.extra."""
+        f = tmp_path / "session.jsonl"
+        _write_session(
+            f,
+            [
+                {
+                    "type": "assistant",
+                    "uuid": "m1",
+                    "sessionId": "s1",
+                    "cwd": "/home/user/project",
+                    "message": {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "Done."}],
+                        "stop_reason": "end_turn",
+                        "requestId": "req-xyz",
+                        "service_tier": "standard",
+                    },
+                },
+            ],
+        )
+        result = _parser.parse_session_jsonl(f)
+        assert len(result) == 1
+        extra = result[0].extra
+        assert extra is not None
+        assert extra["stop_reason"] == "end_turn"
+        assert extra["cwd"] == "/home/user/project"
+        assert extra["request_id"] == "req-xyz"
+        assert extra["service_tier"] == "standard"
+
+
+class TestToolResultMetadata:
+    def test_tool_result_metadata_in_observation_extra(self, tmp_path: Path):
+        """toolUseResult metadata populates ObservationResult.extra."""
+        f = tmp_path / "session.jsonl"
+        _write_session(
+            f,
+            [
+                {
+                    "type": "assistant",
+                    "uuid": "m1",
+                    "sessionId": "s1",
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "tool_use",
+                                "id": "tu-1",
+                                "name": "Bash",
+                                "input": {"command": "ls"},
+                            }
+                        ],
+                    },
+                },
+                {
+                    "type": "user",
+                    "uuid": "m2",
+                    "sessionId": "s1",
+                    "toolUseResult": {
+                        "stdout": "file1.py\nfile2.py",
+                        "stderr": "",
+                        "exitCode": 0,
+                    },
+                    "message": {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": "tu-1",
+                                "content": "file1.py\nfile2.py",
+                            }
+                        ],
+                    },
+                },
+            ],
+        )
+        result = _parser.parse_session_jsonl(f)
+        agent_step = [s for s in result if s.source == StepSource.AGENT][0]
+        assert agent_step.observation is not None
+        obs_extra = agent_step.observation.results[0].extra
+        assert obs_extra is not None
+        assert obs_extra["exit_code"] == 0
+        assert obs_extra["stdout"] == "file1.py\nfile2.py"
+        assert obs_extra["stderr"] == ""
+
+
+class TestQueueOperationHandling:
+    """Tests for queue-operation (enqueue/dequeue/remove) handling."""
+
+    def test_enqueue_remove_creates_user_step(self, tmp_path: Path):
+        """Enqueue + remove pair produces a user step with extra.is_queued_prompt."""
+        f = tmp_path / "session.jsonl"
+        _write_session(
+            f,
+            [
+                {
+                    "type": "user",
+                    "uuid": "m1",
+                    "sessionId": "s1",
+                    "timestamp": 1707734674000,
+                    "message": {"role": "user", "content": "Initial prompt"},
+                },
+                {
+                    "type": "assistant",
+                    "uuid": "m2",
+                    "sessionId": "s1",
+                    "timestamp": 1707734675000,
+                    "message": {"role": "assistant", "content": "Working on it..."},
+                },
+                {
+                    "type": "queue-operation",
+                    "operation": "enqueue",
+                    "sessionId": "s1",
+                    "timestamp": 1707734676000,
+                    "content": "Actually, also do this other thing",
+                },
+                {
+                    "type": "queue-operation",
+                    "operation": "remove",
+                    "sessionId": "s1",
+                    "timestamp": 1707734676000,
+                },
+            ],
+        )
+        result = _parser.parse_session_jsonl(f)
+        # Should have 3 steps: user, assistant, synthetic user from enqueue
         assert len(result) == 3
-        print(f"  limited to {len(result)} sessions")
+        queued_step = result[2]
+        assert queued_step.source == StepSource.USER
+        assert queued_step.message == "Actually, also do this other thing"
+        assert queued_step.extra is not None
+        assert queued_step.extra.get("is_queued_prompt") is True
 
-    def test_limit_none_returns_all(self, claude_dir: Path):
+    def test_enqueue_dequeue_no_duplicate(self, tmp_path: Path):
+        """Enqueue + dequeue pair does NOT create a synthetic step."""
+        f = tmp_path / "session.jsonl"
+        _write_session(
+            f,
+            [
+                {
+                    "type": "user",
+                    "uuid": "m1",
+                    "sessionId": "s1",
+                    "timestamp": 1707734674000,
+                    "message": {"role": "user", "content": "Initial prompt"},
+                },
+                {
+                    "type": "queue-operation",
+                    "operation": "enqueue",
+                    "sessionId": "s1",
+                    "timestamp": 1707734676000,
+                    "content": "Follow-up message",
+                },
+                {
+                    "type": "queue-operation",
+                    "operation": "dequeue",
+                    "sessionId": "s1",
+                    "timestamp": 1707734676000,
+                },
+                {
+                    "type": "user",
+                    "uuid": "m2",
+                    "sessionId": "s1",
+                    "timestamp": 1707734677000,
+                    "message": {"role": "user", "content": "Follow-up message"},
+                },
+            ],
+        )
+        result = _parser.parse_session_jsonl(f)
+        # Should have exactly 2 user steps (original + dequeued regular message)
+        # NO synthetic step from enqueue
+        assert len(result) == 2
+        assert all(s.source == StepSource.USER for s in result)
+        assert result[0].message == "Initial prompt"
+        assert result[1].message == "Follow-up message"
+        # Neither should be marked as queued
+        for step in result:
+            if step.extra:
+                assert step.extra.get("is_queued_prompt") is not True
+
+    def test_enqueue_step_has_correct_timestamp(self, tmp_path: Path):
+        """Synthetic enqueue step uses the enqueue event's timestamp."""
+        f = tmp_path / "session.jsonl"
+        enqueue_ts = 1707734676000
+        _write_session(
+            f,
+            [
+                {
+                    "type": "queue-operation",
+                    "operation": "enqueue",
+                    "sessionId": "s1",
+                    "timestamp": enqueue_ts,
+                    "content": "Queued message",
+                },
+                {
+                    "type": "queue-operation",
+                    "operation": "remove",
+                    "sessionId": "s1",
+                    "timestamp": enqueue_ts,
+                },
+            ],
+        )
+        result = _parser.parse_session_jsonl(f)
+        assert len(result) == 1
+        step = result[0]
+        assert step.timestamp is not None
+        # Timestamp should correspond to enqueue_ts (1707734676000 ms)
+        assert step.timestamp.year == 2024
+        assert step.step_id.startswith(f"enqueue-{enqueue_ts}-")
+
+
+class TestStepValidatorHardening:
+    def test_orphaned_observation_raises_error(self):
+        """Step with observation referencing non-existent tool_call raises ValueError."""
+        with pytest.raises(ValueError, match="non-existent tool_call IDs"):
+            Step(
+                step_id="s1",
+                source=StepSource.AGENT,
+                tool_calls=[ToolCall(tool_call_id="tc-1", function_name="Read")],
+                observation=Observation(
+                    results=[
+                        ObservationResult(source_call_id="tc-1", content="ok"),
+                        ObservationResult(source_call_id="tc-GHOST", content="bad"),
+                    ]
+                ),
+            )
+
+    def test_orphaned_tool_call_warns(self, caplog: pytest.LogCaptureFixture):
+        """Step with tool_call but no matching observation succeeds with warning."""
+        with caplog.at_level(logging.WARNING):
+            step = Step(
+                step_id="s1",
+                source=StepSource.AGENT,
+                tool_calls=[
+                    ToolCall(tool_call_id="tc-1", function_name="Read"),
+                    ToolCall(tool_call_id="tc-2", function_name="Edit"),
+                ],
+                observation=Observation(
+                    results=[ObservationResult(source_call_id="tc-1", content="ok")]
+                ),
+            )
+        assert step is not None
+        assert "tc-2" in caplog.text
+
+
+class TestSubagentLinkageValidation:
+    def test_subagent_linkage_warns_on_broken_ref(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ):
+        """Parsing session with missing subagent file logs warning but succeeds."""
+        main_file = tmp_path / "session-abc.jsonl"
+        _write_session(
+            main_file,
+            [
+                {
+                    "type": "user",
+                    "uuid": "m1",
+                    "sessionId": "session-abc",
+                    "message": {"role": "user", "content": "Main message"},
+                },
+                {
+                    "type": "assistant",
+                    "uuid": "m2",
+                    "sessionId": "session-abc",
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "tool_use",
+                                "id": "tu-agent-1",
+                                "name": "Task",
+                                "input": {"prompt": "do something"},
+                            }
+                        ],
+                    },
+                },
+                {
+                    "type": "user",
+                    "uuid": "m3",
+                    "sessionId": "session-abc",
+                    "message": {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": "tu-agent-1",
+                                "content": "Task completed. agentId: 001",
+                            }
+                        ],
+                    },
+                },
+            ],
+        )
+
+        # Create subagent dir with agent-001 (matched) and agent-002 (unmatched)
+        subagent_dir = tmp_path / "session-abc" / "subagents"
+        subagent_dir.mkdir(parents=True)
+        for agent_id in ["agent-001", "agent-002"]:
+            _write_session(
+                subagent_dir / f"{agent_id}.jsonl",
+                [
+                    {
+                        "type": "assistant",
+                        "uuid": f"sa-{agent_id}",
+                        "sessionId": "session-abc",
+                        "message": {"role": "assistant", "content": f"from {agent_id}"},
+                    }
+                ],
+            )
+
+        with caplog.at_level(logging.WARNING):
+            trajectories = _parser.parse_file(main_file)
+
+        # Should succeed with main + 2 sub-agents
+        assert len(trajectories) == 3
+
+        # agent-002 is not referenced by any parent step — should warn
+        assert "not referenced by parent" in caplog.text
+
+
+class TestExtractGitBranches:
+    def test_extracts_unique_branches(self):
+        """Unique gitBranch values are collected and sorted."""
+        content = "\n".join(
+            json.dumps({"type": "user", "gitBranch": b})
+            for b in ["feature/xyz", "main", "feature/xyz"]
+        )
+        result = _extract_git_branches(content)
+        assert result == ["feature/xyz", "main"]
+
+    def test_returns_none_when_absent(self):
+        """Returns None when no entries have gitBranch."""
+        content = json.dumps({"type": "user", "message": {"role": "user", "content": "hi"}})
+        assert _extract_git_branches(content) is None
+
+    def test_git_branches_in_trajectory_extra(self):
+        """Parsed trajectory includes git_branches in extra."""
         entries = [
             {
-                "sessionId": f"s{i}",
-                "display": f"msg{i}",
-                "timestamp": 1700000000000 + i * 1000000,
-                "project": "/p",
-            }
-            for i in range(5)
+                "type": "user",
+                "uuid": "m1",
+                "sessionId": "s1",
+                "gitBranch": "dev",
+                "message": {"role": "user", "content": "Hello"},
+            },
+            {
+                "type": "assistant",
+                "uuid": "m2",
+                "sessionId": "s1",
+                "gitBranch": "dev",
+                "message": {"role": "assistant", "content": "Hi"},
+            },
         ]
-        _write_history(claude_dir, entries)
-        result = _parser.parse_history_index(claude_dir, limit=None)
-        assert len(result) == 5
+        content = "\n".join(json.dumps(e) for e in entries)
+        trajectories = _parser.parse(content)
+        assert len(trajectories) == 1
+        assert trajectories[0].extra is not None
+        assert trajectories[0].extra["git_branches"] == ["dev"]
 
-    def test_since_and_limit_combined(self, claude_dir: Path):
-        _write_history(
-            claude_dir,
+
+class TestStepExtraEnrichment:
+    def test_stop_sequence_captured(self, tmp_path: Path):
+        """stop_sequence from message is captured in step extra."""
+        f = tmp_path / "session.jsonl"
+        _write_session(
+            f,
             [
-                {"sessionId": "old", "display": "Old", "timestamp": 1700000000000, "project": "/p"},
-                {"sessionId": "mid", "display": "Mid", "timestamp": 1710000000000, "project": "/p"},
                 {
-                    "sessionId": "new1",
-                    "display": "New1",
-                    "timestamp": 1720000000000,
-                    "project": "/p",
-                },
-                {
-                    "sessionId": "new2",
-                    "display": "New2",
-                    "timestamp": 1730000000000,
-                    "project": "/p",
+                    "type": "assistant",
+                    "uuid": "m1",
+                    "sessionId": "s1",
+                    "message": {
+                        "role": "assistant",
+                        "content": "done",
+                        "stop_reason": "end_turn",
+                        "stop_sequence": "\n\nHuman:",
+                    },
                 },
             ],
         )
-        since = datetime(2024, 3, 1, tzinfo=UTC)
-        result = _parser.parse_history_index(claude_dir, since=since, limit=1)
-        assert len(result) == 1
+        result = _parser.parse_session_jsonl(f)
+        assert result[0].extra is not None
+        assert result[0].extra["stop_sequence"] == "\n\nHuman:"
 
-    def test_backward_compatible(self, claude_dir: Path):
-        """No args behaves the same as before."""
-        _write_history(
-            claude_dir,
-            [{"sessionId": "s1", "display": "x", "timestamp": 1707734674932, "project": "/p"}],
-        )
-        result = _parser.parse_history_index(claude_dir)
-        assert len(result) == 1
-
-
-# ─── count_history_entries
-class TestCountHistoryEntries:
-    def test_counts_lines(self, claude_dir: Path):
-        _write_history(
-            claude_dir,
+    def test_user_type_captured(self, tmp_path: Path):
+        """Non-external userType is captured in step extra."""
+        f = tmp_path / "session.jsonl"
+        _write_session(
+            f,
             [
-                {"sessionId": "s1", "display": "A", "timestamp": 1700000000000, "project": "/p"},
-                {"sessionId": "s2", "display": "B", "timestamp": 1700000001000, "project": "/p"},
-                {"sessionId": "s3", "display": "C", "timestamp": 1700000002000, "project": "/p"},
+                {
+                    "type": "assistant",
+                    "uuid": "m1",
+                    "sessionId": "s1",
+                    "userType": "internal",
+                    "message": {"role": "assistant", "content": "hi"},
+                },
             ],
         )
-        count = count_history_entries(claude_dir)
-        assert count == 3
-        print(f"  counted {count} entries")
+        result = _parser.parse_session_jsonl(f)
+        assert result[0].extra is not None
+        assert result[0].extra["user_type"] == "internal"
 
-    def test_missing_file_returns_zero(self, claude_dir: Path):
-        assert count_history_entries(claude_dir) == 0
+    def test_user_type_external_excluded(self, tmp_path: Path):
+        """userType='external' is not stored in extra."""
+        f = tmp_path / "session.jsonl"
+        _write_session(
+            f,
+            [
+                {
+                    "type": "assistant",
+                    "uuid": "m1",
+                    "sessionId": "s1",
+                    "userType": "external",
+                    "message": {"role": "assistant", "content": "hi"},
+                },
+            ],
+        )
+        result = _parser.parse_session_jsonl(f)
+        if result[0].extra:
+            assert "user_type" not in result[0].extra
 
-    def test_empty_file(self, claude_dir: Path):
-        (claude_dir / "history.jsonl").write_text("")
-        assert count_history_entries(claude_dir) == 0
+
+class TestErrorHandling:
+    def test_all_invalid_json_raises(self):
+        """Content where all lines fail JSON parsing raises ValueError."""
+        content = "not json\nalso not json\n"
+        with pytest.raises(ValueError, match="No parseable entries"):
+            _parser.parse(content, source_path="test.jsonl")

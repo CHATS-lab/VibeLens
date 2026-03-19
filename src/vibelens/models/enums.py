@@ -11,6 +11,22 @@ class AgentType(StrEnum):
     GEMINI = "gemini"
 
 
+class StepSource(StrEnum):
+    """Originator of a trajectory step (ATIF v1.6)."""
+
+    SYSTEM = "system"
+    USER = "user"
+    AGENT = "agent"
+
+
+class ContentType(StrEnum):
+    """Content part type within a multimodal message (ATIF v1.6)."""
+
+    TEXT = "text"
+    IMAGE = "image"
+    PDF = "pdf"
+
+
 class DataSourceType(StrEnum):
     """Supported data source types."""
 
