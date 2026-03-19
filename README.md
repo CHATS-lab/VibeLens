@@ -6,6 +6,8 @@ Agent trajectory analysis and visualization platform. Parses, normalizes, and vi
 
 ![Session detail with sub-agent view](figures/demo2.png)
 
+**Live Demo:** [vibelens.chats-lab.org](https://vibelens.chats-lab.org/)
+
 ## Features
 
 - **Multi-agent parsing** — Claude Code, Codex CLI, Gemini CLI, and Dataclaw formats with auto-detection

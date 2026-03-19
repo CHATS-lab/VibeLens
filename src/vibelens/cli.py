@@ -7,7 +7,6 @@ import uvicorn
 
 from vibelens import __version__
 from vibelens.config import load_settings
-from vibelens.utils.log import setup_file_logging
 
 app = typer.Typer(name="vibelens", help="Agent Trajectory analysis and visualization platform.")
 
@@ -23,9 +22,7 @@ def serve(
     bind_host = host or settings.host
     bind_port = port or settings.port
 
-    log_file = setup_file_logging()
     typer.echo(f"VibeLens v{__version__}")
-    typer.echo(f"Log file: {log_file}")
     typer.echo(f"VibeLens running at http://{bind_host}:{bind_port}")
 
     uvicorn.run(
