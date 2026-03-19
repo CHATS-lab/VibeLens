@@ -61,7 +61,7 @@ export function App() {
   const [dialog, setDialog] = useState<DialogState>({ kind: "hidden" });
   const [showUploadDialog, setShowUploadDialog] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [viewMode, setViewMode] = useState<ViewMode>("time");
+  const [viewMode, setViewMode] = useState<ViewMode>("project");
   const [sidebarWidth, setSidebarWidth] = useState(320);
   const [appMode, setAppMode] = useState<AppMode>("self");
   const [maxZipBytes, setMaxZipBytes] = useState(DEFAULT_MAX_ZIP_BYTES);

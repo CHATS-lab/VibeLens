@@ -17,8 +17,6 @@ server:
   port: 12001
 
 upload:
-  allowed_extensions: ".json,.jsonl"
-  max_file_size_bytes: 10485760    # 10 MB per file (lower for public demo)
   max_zip_bytes: 524288000        # 500 MB
   max_extracted_bytes: 1073741824 # 1 GB
   max_file_count: 1000

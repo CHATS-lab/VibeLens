@@ -50,14 +50,6 @@ class Settings(BaseSettings):
         default=Path.home() / ".vibelens" / "uploads",
         description="Directory to store uploaded zip files.",
     )
-    upload_allowed_extensions: str = Field(
-        default=".json,.jsonl",
-        description="Comma-separated allowed file extensions for single-file upload.",
-    )
-    max_file_size_bytes: int = Field(
-        default=50 * 1024 * 1024,
-        description="Maximum single file upload size (50 MB).",
-    )
     max_zip_bytes: int = Field(
         default=500 * 1024 * 1024,
         description="Maximum zip file size (500 MB).",
@@ -69,14 +61,6 @@ class Settings(BaseSettings):
     max_file_count: int = Field(
         default=10_000,
         description="Maximum files in a zip archive.",
-    )
-    subagent_file_prefix: str = Field(
-        default="agent-",
-        description="Filename prefix identifying sub-agent session files.",
-    )
-    min_confidence: float = Field(
-        default=0.5,
-        description="Minimum fingerprint confidence to accept a format match.",
     )
     stream_chunk_size: int = Field(
         default=64 * 1024,

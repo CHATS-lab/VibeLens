@@ -17,8 +17,6 @@ sources:
 
 upload:
   dir: ~/.vibelens/uploads
-  allowed_extensions: ".json,.jsonl"
-  max_file_size_bytes: 52428800   # 50 MB per file
   max_zip_bytes: 209715200        # 200 MB
   max_extracted_bytes: 524288000  # 500 MB
   max_file_count: 10000

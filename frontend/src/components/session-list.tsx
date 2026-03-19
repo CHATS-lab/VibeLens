@@ -109,17 +109,6 @@ export function SessionList({
         {/* View Mode Toggle */}
         <div className="flex gap-0.5 bg-zinc-800 rounded p-0.5">
           <button
-            onClick={() => handleSetViewMode("time")}
-            className={`flex-1 flex items-center justify-center gap-1.5 text-xs py-1.5 rounded transition ${
-              viewMode === "time"
-                ? "bg-zinc-700 text-zinc-100"
-                : "text-zinc-500 hover:text-zinc-300"
-            }`}
-          >
-            <Clock className="w-3.5 h-3.5" />
-            By Time
-          </button>
-          <button
             onClick={() => handleSetViewMode("project")}
             className={`flex-1 flex items-center justify-center gap-1.5 text-xs py-1.5 rounded transition ${
               viewMode === "project"
@@ -129,6 +118,17 @@ export function SessionList({
           >
             <FolderOpen className="w-3.5 h-3.5" />
             By Project
+          </button>
+          <button
+            onClick={() => handleSetViewMode("time")}
+            className={`flex-1 flex items-center justify-center gap-1.5 text-xs py-1.5 rounded transition ${
+              viewMode === "time"
+                ? "bg-zinc-700 text-zinc-100"
+                : "text-zinc-500 hover:text-zinc-300"
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5" />
+            By Time
           </button>
         </div>
 

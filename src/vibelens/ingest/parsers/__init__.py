@@ -9,7 +9,6 @@ from vibelens.ingest.parsers.claude_code import ClaudeCodeParser, count_history_
 from vibelens.ingest.parsers.codex import CodexParser
 from vibelens.ingest.parsers.dataclaw import DataclawParser
 from vibelens.ingest.parsers.gemini import GeminiParser
-from vibelens.ingest.parsers.vibelens import VibeLensParser
 
 __all__ = [
     "BaseParser",
@@ -17,6 +16,5 @@ __all__ = [
     "CodexParser",
     "DataclawParser",
     "GeminiParser",
-    "VibeLensParser",
     "count_history_entries",
 ]

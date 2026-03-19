@@ -22,7 +22,7 @@ class FormatMatch(BaseModel):
     """A candidate format match with confidence score."""
 
     format_name: str = Field(
-        description="Format identifier: claude_code, codex, gemini, dataclaw, vibelens."
+        description="Format identifier: claude_code, codex, gemini, dataclaw."
     )
     confidence: float = Field(description="Confidence from 0.0 to 1.0.")
     parser_class: str = Field(description="Parser class name to instantiate.")
@@ -70,7 +70,7 @@ def parse_auto(file_path: Path) -> list[Trajectory]:
 
 
 def _probe_json(file_path: Path) -> list[FormatMatch]:
-    """Probe a JSON file for VibeLens or Gemini format signatures."""
+    """Probe a JSON file for Gemini format signatures."""
     try:
         data = json.loads(file_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
@@ -81,18 +81,6 @@ def _probe_json(file_path: Path) -> list[FormatMatch]:
 
     matches: list[FormatMatch] = []
 
-    # VibeLens Export v1 check (higher priority than Gemini)
-    vibelens_score = _score_vibelens(data)
-    if vibelens_score > 0:
-        matches.append(
-            FormatMatch(
-                format_name="vibelens",
-                confidence=min(vibelens_score, 1.0),
-                parser_class="VibeLensParser",
-            )
-        )
-
-    # Gemini check
     gemini_score = _score_gemini(data)
     if gemini_score > 0:
         matches.append(
@@ -103,30 +91,7 @@ def _probe_json(file_path: Path) -> list[FormatMatch]:
             )
         )
 
-    matches.sort(key=lambda m: m.confidence, reverse=True)
     return matches
-
-
-def _score_vibelens(data: dict) -> float:
-    """Score a JSON object for VibeLens Export v1 format signatures.
-
-    Args:
-        data: Parsed JSON root object.
-
-    Returns:
-        Confidence score from 0.0 to 1.0.
-    """
-    score = 0.0
-    if "vibelens_version" in data:
-        score += 0.6
-    if "agent_format" in data:
-        score += 0.2
-    session = data.get("session")
-    if isinstance(session, dict) and "session_id" in session:
-        score += 0.1
-    if isinstance(data.get("messages"), list) or isinstance(data.get("steps"), list):
-        score += 0.1
-    return score
 
 
 def _score_gemini(data: dict) -> float:
@@ -242,7 +207,6 @@ _PARSER_CLASSES: dict[str, str] = {
     "codex": "CodexParser",
     "gemini": "GeminiParser",
     "dataclaw": "DataclawParser",
-    "vibelens": "VibeLensParser",
 }
 
 
@@ -259,13 +223,11 @@ def _instantiate_parser(class_name: str):
     from vibelens.ingest.parsers.codex import CodexParser
     from vibelens.ingest.parsers.dataclaw import DataclawParser
     from vibelens.ingest.parsers.gemini import GeminiParser
-    from vibelens.ingest.parsers.vibelens import VibeLensParser
 
     registry = {
         "ClaudeCodeParser": ClaudeCodeParser,
         "CodexParser": CodexParser,
         "GeminiParser": GeminiParser,
         "DataclawParser": DataclawParser,
-        "VibeLensParser": VibeLensParser,
     }
     return registry[class_name]()
