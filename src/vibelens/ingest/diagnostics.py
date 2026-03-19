@@ -1,8 +1,23 @@
 """Parse diagnostics collection for tracking data quality during ingestion."""
 
-from vibelens.models.session import ParseDiagnostics
+from pydantic import BaseModel, Field
 
 MAX_WARNINGS = 20
+
+
+class ParseDiagnostics(BaseModel):
+    """Diagnostics collected during session parsing."""
+
+    skipped_lines: int = Field(default=0, description="JSONL lines that failed JSON decode.")
+    orphaned_tool_calls: int = Field(
+        default=0, description="tool_use blocks with no matching tool_result."
+    )
+    orphaned_tool_results: int = Field(
+        default=0, description="tool_result blocks with no matching tool_use."
+    )
+    completeness_score: float = Field(
+        default=1.0, description="Quality score from 0.0 (poor) to 1.0 (perfect)."
+    )
 
 
 class DiagnosticsCollector:
@@ -69,9 +84,6 @@ class DiagnosticsCollector:
         total = max(self.total_lines, 1)
         total_calls = max(self._total_tool_calls, 1)
         total_results = max(self._total_tool_results, 1)
-        # Weights reflect data loss severity: skipped lines (0.5) lose
-        # entire messages; orphaned calls (0.3) lose tool output context;
-        # orphaned results (0.2) lose output data but the call still exists.
         score = (
             1.0
             - (self.skipped_lines / total) * 0.5

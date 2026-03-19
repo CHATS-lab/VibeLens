@@ -10,8 +10,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from vibelens.models.message import Message
-from vibelens.models.session import SessionSummary
+from vibelens.models.trajectories import Trajectory
 
 MAX_PROBE_LINES = 10
 MAX_PROBE_BYTES = 8192
@@ -49,16 +48,14 @@ def fingerprint_file(file_path: Path) -> list[FormatMatch]:
     return []
 
 
-def parse_auto(
-    file_path: Path,
-) -> list[tuple[SessionSummary, list[Message]]]:
+def parse_auto(file_path: Path) -> list[Trajectory]:
     """Auto-detect format and parse a file.
 
     Args:
         file_path: Path to the data file.
 
     Returns:
-        List of (SessionSummary, messages) tuples.
+        List of Trajectory objects.
 
     Raises:
         ValueError: If no format matches with >= 0.5 confidence.
@@ -127,7 +124,7 @@ def _score_vibelens(data: dict) -> float:
     session = data.get("session")
     if isinstance(session, dict) and "session_id" in session:
         score += 0.1
-    if isinstance(data.get("messages"), list):
+    if isinstance(data.get("messages"), list) or isinstance(data.get("steps"), list):
         score += 0.1
     return score
 

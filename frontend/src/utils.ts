@@ -40,15 +40,22 @@ export function formatDuration(seconds: number | null | undefined): string {
   return parts.join(" ");
 }
 
-export function extractUserText(message: {
-  content: string | Array<{ type: string; text?: string }>;
-}): string {
-  if (typeof message.content === "string") {
-    return sanitizeText(message.content);
+export function extractUserText(step: { message: string }): string {
+  return sanitizeText(step.message);
+}
+
+export function baseProjectName(path: string): string {
+  if (!path) return "Unknown";
+  const segments = path.replace(/\/+$/, "").split("/");
+  return segments[segments.length - 1] || path;
+}
+
+export function formatElapsed(totalSeconds: number): string {
+  const hours = Math.floor(totalSeconds / HOUR);
+  const minutes = Math.floor((totalSeconds % HOUR) / MINUTE);
+  const seconds = Math.floor(totalSeconds % MINUTE);
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
   }
-  return message.content
-    .filter((b) => b.type === "text" && b.text)
-    .map((b) => sanitizeText(b.text || ""))
-    .join("\n")
-    .trim();
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }

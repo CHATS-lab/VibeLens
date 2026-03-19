@@ -20,18 +20,8 @@ YAML_FIELD_MAP: dict[str, dict[str, str]] = {
         "host": "host",
         "port": "port",
     },
-    "database": {
-        "path": "db_path",
-    },
-    "mongodb": {
-        "uri": "mongodb_uri",
-        "db_name": "mongodb_db",
-    },
     "sources": {
         "claude_dir": "claude_dir",
-    },
-    "integrations": {
-        "hf_token": "hf_token",
     },
     "upload": {
         "dir": "upload_dir",
@@ -48,10 +38,7 @@ YAML_FIELD_MAP: dict[str, dict[str, str]] = {
         "mode": "app_mode",
     },
     "demo": {
-        "storage": "demo_storage",
         "example_sessions": "demo_example_sessions",
-        "session_ttl": "demo_session_ttl",
-        "persist_uploads": "demo_persist_uploads",
     },
 }
 

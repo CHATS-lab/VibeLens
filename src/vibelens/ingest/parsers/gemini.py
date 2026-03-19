@@ -48,8 +48,6 @@ logger = get_logger(__name__)
 # Gemini CLI uses "gemini" instead of "assistant" for model responses.
 RELEVANT_TYPES = {"user", "gemini"}
 
-AGENT_NAME = "gemini"
-
 
 class GeminiParser(BaseParser):
     """Parser for Gemini CLI's native session JSON format.
@@ -57,6 +55,8 @@ class GeminiParser(BaseParser):
     Handles session JSON files with user and gemini messages,
     embedded tool calls, and structured thinking process.
     """
+
+    AGENT_NAME = "gemini"
 
     def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
         """Parse Gemini CLI session JSON content into a Trajectory.
@@ -89,14 +89,16 @@ class GeminiParser(BaseParser):
         file_path = Path(source_path) if source_path else None
         project_path = _resolve_project(file_path, data, steps) if file_path else None
         extra = _build_diagnostics_extra(collector)
-        agent = self.build_agent(AGENT_NAME)
-        return [self.assemble_trajectory(
-            session_id=session_id,
-            agent=agent,
-            steps=steps,
-            project_path=project_path,
-            extra=extra,
-        )]
+        agent = self.build_agent()
+        return [
+            self.assemble_trajectory(
+                session_id=session_id,
+                agent=agent,
+                steps=steps,
+                project_path=project_path,
+                extra=extra,
+            )
+        ]
 
 
 def _build_diagnostics_extra(collector: DiagnosticsCollector) -> dict | None:
@@ -114,9 +116,7 @@ def _build_diagnostics_extra(collector: DiagnosticsCollector) -> dict | None:
 _DEFAULT_GEMINI_DIR = Path.home() / ".gemini"
 
 
-def _resolve_project(
-    file_path: Path, data: dict, steps: list[Step]
-) -> str:
+def _resolve_project(file_path: Path, data: dict, steps: list[Step]) -> str:
     """Resolve the project path using all available strategies.
 
     Strategy chain:
@@ -203,9 +203,7 @@ _PATH_ARG_KEYS = {"file_path", "path", "filename", "directory"}
 _MIN_PATH_DEPTH = 3
 
 
-def resolve_project_path(
-    hash_dir: str, gemini_dir: Path, steps: list[Step] | None = None
-) -> str:
+def resolve_project_path(hash_dir: str, gemini_dir: Path, steps: list[Step] | None = None) -> str:
     """Resolve a Gemini SHA-256 hash directory to the original project path.
 
     Uses four strategies in order of speed:

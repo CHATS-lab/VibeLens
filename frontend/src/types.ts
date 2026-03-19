@@ -1,97 +1,78 @@
 export type AgentType = "claude_code" | "codex" | "gemini";
 export type OSPlatform = "macos" | "linux" | "windows";
-export type DataSourceType = "local" | "huggingface" | "mongodb" | "upload";
-export type DataTargetType = "mongodb" | "huggingface";
+
+export interface Agent {
+  name: string;
+  version?: string | null;
+  model_name?: string | null;
+}
+
+export interface FinalMetrics {
+  duration: number;
+  total_steps?: number | null;
+  tool_call_count: number;
+  total_prompt_tokens?: number | null;
+  total_completion_tokens?: number | null;
+  total_cache_write: number;
+  total_cache_read: number;
+  total_cost_usd?: number | null;
+}
+
+export interface TrajectoryRef {
+  session_id: string;
+  step_id?: string | null;
+  tool_call_id?: string | null;
+}
+
+export interface Metrics {
+  prompt_tokens: number;
+  completion_tokens: number;
+  cached_tokens: number;
+  cache_creation_tokens: number;
+  cost_usd?: number | null;
+}
 
 export interface ToolCall {
-  id: string;
-  name: string;
-  input: unknown;
-  output?: string;
-  is_error: boolean;
+  tool_call_id: string;
+  function_name: string;
+  arguments: unknown;
 }
 
-export interface TokenUsage {
-  input_tokens: number;
-  output_tokens: number;
-  cache_creation_tokens: number;
-  cache_read_tokens: number;
+export interface ObservationResult {
+  source_call_id?: string | null;
+  content?: string | null;
+  subagent_trajectory_ref?: TrajectoryRef[] | null;
 }
 
-export interface ContentBlock {
-  type: "text" | "thinking" | "tool_use" | "tool_result";
-  text?: string;
-  thinking?: string;
-  id?: string;
-  name?: string;
-  input?: unknown;
-  tool_use_id?: string;
-  content?: string | ContentBlock[];
-  is_error?: boolean;
+export interface Observation {
+  results: ObservationResult[];
 }
 
-export interface Message {
-  uuid: string;
-  session_id: string;
-  parent_uuid: string;
-  role: "user" | "assistant" | "system";
-  type: string;
-  content: string | ContentBlock[];
-  thinking?: string;
-  model: string;
-  timestamp: string;
-  is_sidechain: boolean;
-  usage?: TokenUsage;
+export interface Step {
+  step_id: string;
+  timestamp?: string | null;
+  source: "user" | "agent" | "system";
+  model_name?: string | null;
+  message: string;
+  reasoning_content?: string | null;
   tool_calls: ToolCall[];
+  observation?: Observation | null;
+  metrics?: Metrics | null;
+  is_copied_context?: boolean | null;
 }
 
-export interface SessionSummary {
+export interface Trajectory {
+  schema_version: string;
   session_id: string;
-  project_id: string;
-  project_name: string;
-  timestamp: string;
-  duration: number;
-  message_count: number;
-  tool_call_count: number;
-  models: string[];
-  first_message: string;
-  source_type: DataSourceType;
-  source_name?: string;
-  source_host?: string;
-  total_input_tokens?: number;
-  total_output_tokens?: number;
-  total_cache_read?: number;
-  total_cache_write?: number;
-  sub_agent_count?: number;
-  agent_format?: string;
-}
-
-export interface SubAgentSession {
-  agent_id: string;
-  spawn_index: number | null;
-  spawn_tool_call_id: string;
-  messages: Message[];
-  sub_sessions: SubAgentSession[];
-}
-
-export interface SessionDetail {
-  summary: SessionSummary;
-  messages: Message[];
-  sub_sessions: SubAgentSession[];
-}
-
-export interface PushResult {
-  total: number;
-  uploaded: number;
-  skipped: number;
-  errors: Array<{ session_id: string; error: string }>;
-}
-
-export interface PullResult {
-  repo_id: string;
-  sessions_imported: number;
-  messages_imported: number;
-  skipped: number;
+  project_path?: string | null;
+  first_message?: string | null;
+  agent: Agent;
+  final_metrics?: FinalMetrics | null;
+  last_trajectory_ref?: TrajectoryRef | null;
+  parent_trajectory_ref?: TrajectoryRef | null;
+  extra?: Record<string, unknown> | null;
+  steps?: Step[];
+  timestamp?: string | null;
 }
 
 export interface UploadCommands {
@@ -102,7 +83,7 @@ export interface UploadCommands {
 export interface UploadResult {
   files_received: number;
   sessions_parsed: number;
-  messages_stored: number;
+  steps_stored: number;
   skipped: number;
   errors: Array<{ filename: string; error: string }>;
 }
@@ -118,7 +99,7 @@ export interface TimePattern {
   hour_distribution: Record<number, number>;
   weekday_distribution: Record<number, number>;
   avg_session_duration: number;
-  avg_messages_per_session: number;
+  avg_steps_per_session: number;
 }
 
 export interface UserPreferenceResult {
@@ -129,6 +110,12 @@ export interface UserPreferenceResult {
   model_distribution: Record<string, number>;
   project_distribution: Record<string, number>;
   top_tool_sequences: string[][];
+}
+
+export interface DonateResult {
+  total: number;
+  donated: number;
+  errors: Array<{ session_id: string; error: string }>;
 }
 
 export type ToolType =

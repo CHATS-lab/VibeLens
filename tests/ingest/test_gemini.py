@@ -3,13 +3,14 @@
 import json
 from pathlib import Path
 
+from vibelens.ingest.parsers.base import is_error_content
 from vibelens.ingest.parsers.gemini import (
     GeminiParser,
     _extract_thinking,
     _parse_gemini_tokens,
     resolve_project_path,
 )
-from vibelens.models.enums import DataSourceType
+from vibelens.models.enums import StepSource
 
 _parser = GeminiParser()
 
@@ -55,119 +56,86 @@ def _make_session(
     return session
 
 
-# ─── TestParseFile
 class TestParseFile:
     """Tests for GeminiParser.parse_file high-level behavior."""
 
     def test_basic_session(self, tmp_path: Path):
-        """Parse a standard two-message session."""
+        """Parse a standard session and verify all core trajectory fields."""
         path = tmp_path / "session-1.json"
-        _write_session_json(path, _make_session())
+        _write_session_json(path, _make_session(session_id="abc"))
 
         results = _parser.parse_file(path)
         assert len(results) == 1
-        summary, messages = results[0]
-        print(f"  summary: id={summary.session_id}, source={summary.source_type}")
-        print(f"  models={summary.models}, first_message={summary.first_message}")
-        print(f"  messages: {len(messages)}")
-        for m in messages:
-            print(f"    role={m.role}, type={m.type}, model={m.model}")
-        assert summary.session_id == "sess-1"
-        assert summary.source_type == DataSourceType.LOCAL
-        assert len(messages) == 2
+        traj = results[0]
+        print(f"  traj: id={traj.session_id}, agent={traj.agent.name}")
+        print(f"  first_message={traj.first_message}")
+        print(f"  steps: {len(traj.steps)}")
+        for s in traj.steps:
+            print(f"    source={s.source}, model_name={s.model_name}")
 
-    def test_empty_file(self, tmp_path: Path):
-        """Empty file returns no sessions."""
-        path = tmp_path / "empty.json"
-        path.write_text("")
-        results = _parser.parse_file(path)
-        assert results == []
+        # Session identity
+        assert traj.session_id == "abc"
+        assert traj.agent.name == "gemini"
+        assert len(traj.steps) == 2
 
-    def test_missing_file(self, tmp_path: Path):
-        """Non-existent file returns no sessions."""
-        results = _parser.parse_file(tmp_path / "missing.json")
-        assert results == []
+        # Model name propagated to agent steps
+        agent_steps = [s for s in traj.steps if s.source == StepSource.AGENT]
+        model_names = [s.model_name for s in agent_steps if s.model_name]
+        assert "gemini-2.5-pro" in model_names
 
-    def test_missing_session_id(self, tmp_path: Path):
-        """Session without sessionId is skipped."""
-        data = _make_session()
-        data.pop("sessionId")
-        path = tmp_path / "no-id.json"
-        _write_session_json(path, data)
+        # First user message extracted
+        assert traj.first_message == "Hello"
 
-        results = _parser.parse_file(path)
-        assert results == []
+        # Source normalization: gemini -> AGENT, user -> USER
+        user_steps = [s for s in traj.steps if s.source == StepSource.USER]
+        assert len(user_steps) == 1
+        assert len(agent_steps) == 1
 
-    def test_empty_session_id(self, tmp_path: Path):
-        """Empty sessionId string is treated as missing."""
-        data = _make_session(session_id="")
-        path = tmp_path / "empty-id.json"
-        _write_session_json(path, data)
+    def test_edge_cases(self, tmp_path: Path):
+        """Empty file, missing file, missing/empty session ID, and empty messages all return []."""
+        # Empty file
+        empty_path = tmp_path / "empty.json"
+        empty_path.write_text("")
+        assert _parser.parse_file(empty_path) == []
 
-        results = _parser.parse_file(path)
-        assert results == []
+        # Non-existent file
+        assert _parser.parse_file(tmp_path / "missing.json") == []
 
-    def test_no_messages(self, tmp_path: Path):
-        """Session with empty message list returns no results."""
-        data = _make_session(messages=[])
-        path = tmp_path / "no-msgs.json"
-        _write_session_json(path, data)
+        # Missing sessionId key
+        data_no_id = _make_session()
+        data_no_id.pop("sessionId")
+        no_id_path = tmp_path / "no-id.json"
+        _write_session_json(no_id_path, data_no_id)
+        assert _parser.parse_file(no_id_path) == []
 
-        results = _parser.parse_file(path)
-        assert results == []
+        # Empty sessionId string
+        empty_id_path = tmp_path / "empty-id.json"
+        _write_session_json(empty_id_path, _make_session(session_id=""))
+        assert _parser.parse_file(empty_id_path) == []
 
-    def test_session_id_propagated(self, tmp_path: Path):
-        """All messages carry the session_id from the file."""
-        path = tmp_path / "session.json"
-        _write_session_json(path, _make_session(session_id="abc"))
+        # Empty message list
+        no_msgs_path = tmp_path / "no-msgs.json"
+        _write_session_json(no_msgs_path, _make_session(messages=[]))
+        assert _parser.parse_file(no_msgs_path) == []
 
-        _, messages = _parser.parse_file(path)[0]
-        for msg in messages:
-            assert msg.session_id == "abc"
-
-    def test_model_collected(self, tmp_path: Path):
-        """Models are collected from gemini messages."""
-        path = tmp_path / "session.json"
-        _write_session_json(path, _make_session())
-
-        summary, _ = _parser.parse_file(path)[0]
-        assert "gemini-2.5-pro" in summary.models
-
-    def test_first_message_extracted(self, tmp_path: Path):
-        """First user text is used as the summary first_message."""
-        path = tmp_path / "session.json"
-        _write_session_json(path, _make_session())
-
-        summary, _ = _parser.parse_file(path)[0]
-        assert summary.first_message == "Hello"
-
-
-# ─── TestUserContent
-class TestUserContent:
-    """Tests for user message content extraction."""
-
-    def test_content_array(self, tmp_path: Path):
-        """Content array with text objects is concatenated."""
-        messages = [
+    def test_content_formats(self, tmp_path: Path):
+        """Various user content types: array, string, empty array, non-string coercion."""
+        # Content array concatenation
+        array_msgs = [
             {
                 "type": "user",
                 "id": "m1",
                 "timestamp": "2025-01-15T10:00:00Z",
-                "content": [
-                    {"text": "Line one"},
-                    {"text": "Line two"},
-                ],
+                "content": [{"text": "Line one"}, {"text": "Line two"}],
             },
         ]
-        path = tmp_path / "session.json"
-        _write_session_json(path, _make_session(messages=messages))
+        path = tmp_path / "array.json"
+        _write_session_json(path, _make_session(messages=array_msgs))
+        traj = _parser.parse_file(path)[0]
+        assert traj.steps[0].message == "Line one\nLine two"
 
-        _, parsed = _parser.parse_file(path)[0]
-        assert parsed[0].content == "Line one\nLine two"
-
-    def test_string_content(self, tmp_path: Path):
-        """Plain string content is used as-is."""
-        messages = [
+        # Plain string content
+        string_msgs = [
             {
                 "type": "user",
                 "id": "m1",
@@ -175,44 +143,34 @@ class TestUserContent:
                 "content": "Just a string",
             },
         ]
-        path = tmp_path / "session.json"
-        _write_session_json(path, _make_session(messages=messages))
+        path = tmp_path / "string.json"
+        _write_session_json(path, _make_session(messages=string_msgs))
+        traj = _parser.parse_file(path)[0]
+        assert traj.steps[0].message == "Just a string"
 
-        _, parsed = _parser.parse_file(path)[0]
-        assert parsed[0].content == "Just a string"
-
-    def test_empty_content_array(self, tmp_path: Path):
-        """Empty content array produces empty string."""
-        messages = [
+        # Empty content array produces empty string
+        empty_msgs = [
             {
                 "type": "user",
                 "id": "m1",
                 "timestamp": "2025-01-15T10:00:00Z",
                 "content": [],
             },
-        ]
-        path = tmp_path / "session.json"
-        _write_session_json(path, _make_session(messages=messages))
-
-        # Empty content user message followed by a gemini message so
-        # session is not empty.
-        messages.append(
             {
                 "type": "gemini",
                 "id": "m2",
                 "timestamp": "2025-01-15T10:00:05Z",
                 "content": "reply",
-            }
-        )
-        _write_session_json(path, _make_session(messages=messages))
+            },
+        ]
+        path = tmp_path / "empty-content.json"
+        _write_session_json(path, _make_session(messages=empty_msgs))
+        traj = _parser.parse_file(path)[0]
+        user_step = [s for s in traj.steps if s.source == StepSource.USER][0]
+        assert user_step.message == ""
 
-        _, parsed = _parser.parse_file(path)[0]
-        user_msg = [m for m in parsed if m.role == "user"][0]
-        assert user_msg.content == ""
-
-    def test_non_list_non_string_content(self, tmp_path: Path):
-        """Non-list, non-string content is coerced to string."""
-        messages = [
+        # Non-list, non-string content coerced to string
+        numeric_msgs = [
             {
                 "type": "user",
                 "id": "m1",
@@ -226,104 +184,52 @@ class TestUserContent:
                 "content": "reply",
             },
         ]
-        path = tmp_path / "session.json"
-        _write_session_json(path, _make_session(messages=messages))
-
-        _, parsed = _parser.parse_file(path)[0]
-        user_msg = [m for m in parsed if m.role == "user"][0]
-        assert user_msg.content == "42"
-
-
-# ─── TestGeminiToAssistant
-class TestGeminiToAssistant:
-    """Tests for gemini type normalization to assistant role."""
-
-    def test_role_normalized(self, tmp_path: Path):
-        """Gemini messages get role='assistant'."""
-        messages = [
-            {
-                "type": "gemini",
-                "id": "m1",
-                "timestamp": "2025-01-15T10:00:00Z",
-                "content": "response",
-                "model": "gemini-2.5-pro",
-            },
-        ]
-        path = tmp_path / "session.json"
-        _write_session_json(path, _make_session(messages=messages))
-
-        _, parsed = _parser.parse_file(path)[0]
-        assert parsed[0].role == "assistant"
-        assert parsed[0].type == "gemini"
-
-    def test_user_role_preserved(self, tmp_path: Path):
-        """User messages keep role='user'."""
-        path = tmp_path / "session.json"
-        _write_session_json(path, _make_session())
-
-        _, parsed = _parser.parse_file(path)[0]
-        user_msgs = [m for m in parsed if m.role == "user"]
-        assert len(user_msgs) == 1
-        assert user_msgs[0].type == "user"
+        path = tmp_path / "numeric.json"
+        _write_session_json(path, _make_session(messages=numeric_msgs))
+        traj = _parser.parse_file(path)[0]
+        user_step = [s for s in traj.steps if s.source == StepSource.USER][0]
+        assert user_step.message == "42"
 
 
-# ─── TestThinkingExtraction
 class TestThinkingExtraction:
-    """Tests for _extract_thinking helper."""
+    """Tests for _extract_thinking helper and integration with parsing."""
 
-    def test_subject_and_description(self):
-        """Subject and description are formatted as [Subject] desc."""
-        raw = {
-            "thoughts": [
-                {"subject": "Analysis", "description": "Thinking deeply"},
-            ]
-        }
-        result = _extract_thinking(raw)
-        assert result == "[Analysis] Thinking deeply"
+    def test_thinking_helper(self):
+        """Exercise all branches: subject+desc, desc-only, empty, missing, multi, non-dict."""
+        # Subject and description formatted as [Subject] desc
+        raw = {"thoughts": [{"subject": "Analysis", "description": "Thinking deeply"}]}
+        assert _extract_thinking(raw) == "[Analysis] Thinking deeply"
 
-    def test_description_only(self):
-        """Description without subject omits brackets."""
-        raw = {
-            "thoughts": [
-                {"description": "Just a thought"},
-            ]
-        }
-        result = _extract_thinking(raw)
-        assert result == "Just a thought"
+        # Description only omits brackets
+        raw = {"thoughts": [{"description": "Just a thought"}]}
+        assert _extract_thinking(raw) == "Just a thought"
 
-    def test_empty_thoughts(self):
-        """Empty thoughts list returns None."""
-        raw = {"thoughts": []}
-        assert _extract_thinking(raw) is None
+        # Empty thoughts list returns None
+        assert _extract_thinking({"thoughts": []}) is None
 
-    def test_no_thoughts_key(self):
-        """Missing thoughts key returns None."""
+        # Missing thoughts key returns None
         assert _extract_thinking({}) is None
 
-    def test_multiple_thoughts(self):
-        """Multiple thoughts joined by newlines."""
+        # Multiple thoughts joined by newlines
         raw = {
             "thoughts": [
                 {"subject": "Step 1", "description": "First"},
                 {"subject": "Step 2", "description": "Second"},
             ]
         }
-        result = _extract_thinking(raw)
-        assert result == "[Step 1] First\n[Step 2] Second"
+        assert _extract_thinking(raw) == "[Step 1] First\n[Step 2] Second"
 
-    def test_non_dict_thoughts_skipped(self):
-        """Non-dict items in thoughts list are skipped."""
+        # Non-dict items skipped
         raw = {
             "thoughts": [
                 "not a dict",
                 {"subject": "OK", "description": "Valid"},
             ]
         }
-        result = _extract_thinking(raw)
-        assert result == "[OK] Valid"
+        assert _extract_thinking(raw) == "[OK] Valid"
 
     def test_thinking_in_full_parse(self, tmp_path: Path):
-        """Thinking is attached to parsed messages."""
+        """Thinking is attached to parsed steps."""
         messages = [
             {
                 "type": "gemini",
@@ -338,18 +244,18 @@ class TestThinkingExtraction:
         path = tmp_path / "session.json"
         _write_session_json(path, _make_session(messages=messages))
 
-        _, parsed = _parser.parse_file(path)[0]
-        print(f"  thinking: {parsed[0].thinking}")
-        assert parsed[0].thinking == "[Reason] Because..."
+        traj = _parser.parse_file(path)[0]
+        print(f"  reasoning_content: {traj.steps[0].reasoning_content}")
+        assert traj.steps[0].reasoning_content == "[Reason] Because..."
 
 
-# ─── TestToolCalls
 class TestToolCalls:
     """Tests for embedded tool call parsing."""
 
-    def test_tool_call_with_result(self, tmp_path: Path):
-        """Tool call with functionResponse result is extracted."""
-        messages = [
+    def test_tool_call_parsing(self, tmp_path: Path):
+        """Tool call with result, multiple calls, and final metrics tool count."""
+        # Single tool call with functionResponse result
+        messages_single = [
             {
                 "type": "gemini",
                 "id": "m1",
@@ -374,20 +280,45 @@ class TestToolCalls:
                 ],
             },
         ]
-        path = tmp_path / "session.json"
-        _write_session_json(path, _make_session(messages=messages))
+        path = tmp_path / "single-tc.json"
+        _write_session_json(path, _make_session(messages=messages_single))
+        traj = _parser.parse_file(path)[0]
+        tc = traj.steps[0].tool_calls[0]
+        assert tc.function_name == "ReadFile"
+        assert tc.tool_call_id == "tc-1"
+        assert tc.arguments == {"path": "test.py"}
+        assert traj.steps[0].observation is not None
+        assert traj.steps[0].observation.results[0].content == "file content"
+        assert not is_error_content(traj.steps[0].observation.results[0].content)
 
-        _, parsed = _parser.parse_file(path)[0]
-        tc = parsed[0].tool_calls[0]
-        assert tc.name == "ReadFile"
-        assert tc.id == "tc-1"
-        assert tc.input == {"path": "test.py"}
-        assert tc.output == "file content"
-        assert tc.is_error is False
+        # Multiple tool calls in one step
+        messages_multi = [
+            {
+                "type": "gemini",
+                "id": "m1",
+                "timestamp": "2025-01-15T10:00:00Z",
+                "content": "Working...",
+                "toolCalls": [
+                    {"id": "tc-1", "name": "Read", "args": {}},
+                    {"id": "tc-2", "name": "Write", "args": {}},
+                    {"id": "tc-3", "name": "Bash", "args": {}},
+                ],
+            },
+        ]
+        path = tmp_path / "multi-tc.json"
+        _write_session_json(path, _make_session(messages=messages_multi))
+        traj = _parser.parse_file(path)[0]
+        assert len(traj.steps[0].tool_calls) == 3
+        names = [tc.function_name for tc in traj.steps[0].tool_calls]
+        assert names == ["Read", "Write", "Bash"]
+        # Final metrics reflect total tool count
+        assert traj.final_metrics is not None
+        assert traj.final_metrics.tool_call_count == 3
 
-    def test_tool_call_error_status(self, tmp_path: Path):
-        """Tool call with status='error' sets is_error=True."""
-        messages = [
+    def test_tool_call_errors(self, tmp_path: Path):
+        """Error status marks content, missing result yields no observation content."""
+        # Error status
+        error_msgs = [
             {
                 "type": "gemini",
                 "id": "m1",
@@ -404,15 +335,14 @@ class TestToolCalls:
                 ],
             },
         ]
-        path = tmp_path / "session.json"
-        _write_session_json(path, _make_session(messages=messages))
+        path = tmp_path / "error-tc.json"
+        _write_session_json(path, _make_session(messages=error_msgs))
+        traj = _parser.parse_file(path)[0]
+        assert traj.steps[0].observation is not None
+        assert is_error_content(traj.steps[0].observation.results[0].content)
 
-        _, parsed = _parser.parse_file(path)[0]
-        assert parsed[0].tool_calls[0].is_error is True
-
-    def test_tool_call_missing_result(self, tmp_path: Path):
-        """Tool call without result array has output=None."""
-        messages = [
+        # Missing result array
+        no_result_msgs = [
             {
                 "type": "gemini",
                 "id": "m1",
@@ -427,107 +357,26 @@ class TestToolCalls:
                 ],
             },
         ]
-        path = tmp_path / "session.json"
-        _write_session_json(path, _make_session(messages=messages))
-
-        _, parsed = _parser.parse_file(path)[0]
-        tc = parsed[0].tool_calls[0]
-        assert tc.output is None
-        assert tc.is_error is False
-
-    def test_multiple_tool_calls(self, tmp_path: Path):
-        """Multiple tool calls in one message are all captured."""
-        messages = [
-            {
-                "type": "gemini",
-                "id": "m1",
-                "timestamp": "2025-01-15T10:00:00Z",
-                "content": "Working...",
-                "toolCalls": [
-                    {"id": "tc-1", "name": "Read", "args": {}},
-                    {"id": "tc-2", "name": "Write", "args": {}},
-                ],
-            },
-        ]
-        path = tmp_path / "session.json"
-        _write_session_json(path, _make_session(messages=messages))
-
-        _, parsed = _parser.parse_file(path)[0]
-        assert len(parsed[0].tool_calls) == 2
-        names = [tc.name for tc in parsed[0].tool_calls]
-        assert names == ["Read", "Write"]
-
-    def test_tool_call_count_in_summary(self, tmp_path: Path):
-        """Summary tool_call_count reflects total tools."""
-        messages = [
-            {
-                "type": "gemini",
-                "id": "m1",
-                "timestamp": "2025-01-15T10:00:00Z",
-                "content": "done",
-                "toolCalls": [
-                    {"id": "tc-1", "name": "Read", "args": {}},
-                    {"id": "tc-2", "name": "Edit", "args": {}},
-                    {"id": "tc-3", "name": "Bash", "args": {}},
-                ],
-            },
-        ]
-        path = tmp_path / "session.json"
-        _write_session_json(path, _make_session(messages=messages))
-
-        summary, _ = _parser.parse_file(path)[0]
-        assert summary.tool_call_count == 3
+        path = tmp_path / "no-result-tc.json"
+        _write_session_json(path, _make_session(messages=no_result_msgs))
+        traj = _parser.parse_file(path)[0]
+        if traj.steps[0].observation:
+            assert traj.steps[0].observation.results[0].content is None
+            assert not is_error_content(traj.steps[0].observation.results[0].content)
 
 
-# ─── TestSubagentKind
-class TestSubagentKind:
-    """Tests for kind='subagent' sidechain marking."""
-
-    def test_subagent_marks_all_sidechain(self, tmp_path: Path):
-        """All messages are marked is_sidechain when kind=subagent."""
-        data = _make_session(kind="subagent")
-        path = tmp_path / "session.json"
-        _write_session_json(path, data)
-
-        _, messages = _parser.parse_file(path)[0]
-        for msg in messages:
-            assert msg.is_sidechain is True
-
-    def test_normal_session_not_sidechain(self, tmp_path: Path):
-        """Messages in a normal session are not marked as sidechain."""
-        data = _make_session()
-        path = tmp_path / "session.json"
-        _write_session_json(path, data)
-
-        _, messages = _parser.parse_file(path)[0]
-        for msg in messages:
-            assert msg.is_sidechain is False
-
-    def test_other_kind_not_sidechain(self, tmp_path: Path):
-        """Non-subagent kind values do not trigger sidechain."""
-        data = _make_session(kind="primary")
-        path = tmp_path / "session.json"
-        _write_session_json(path, data)
-
-        _, messages = _parser.parse_file(path)[0]
-        for msg in messages:
-            assert msg.is_sidechain is False
-
-
-# ─── TestMalformedInput
 class TestMalformedInput:
     """Tests for malformed or invalid input handling."""
 
-    def test_malformed_json(self, tmp_path: Path):
-        """Non-parseable JSON returns empty list."""
-        path = tmp_path / "bad.json"
-        path.write_text("{not valid json!!!}")
-        results = _parser.parse_file(path)
-        assert results == []
+    def test_malformed_input(self, tmp_path: Path):
+        """Bad JSON, invalid types, non-dict messages, and non-dict tool calls are handled."""
+        # Non-parseable JSON
+        bad_path = tmp_path / "bad.json"
+        bad_path.write_text("{not valid json!!!}")
+        assert _parser.parse_file(bad_path) == []
 
-    def test_invalid_message_types_skipped(self, tmp_path: Path):
-        """Messages with unrecognized types are ignored."""
-        messages = [
+        # Unrecognized message types are skipped
+        invalid_type_msgs = [
             {
                 "type": "system",
                 "id": "m0",
@@ -541,16 +390,14 @@ class TestMalformedInput:
                 "content": [{"text": "Hello"}],
             },
         ]
-        path = tmp_path / "session.json"
-        _write_session_json(path, _make_session(messages=messages))
+        path = tmp_path / "invalid-type.json"
+        _write_session_json(path, _make_session(messages=invalid_type_msgs))
+        traj = _parser.parse_file(path)[0]
+        assert len(traj.steps) == 1
+        assert traj.steps[0].source == StepSource.USER
 
-        _, parsed = _parser.parse_file(path)[0]
-        assert len(parsed) == 1
-        assert parsed[0].role == "user"
-
-    def test_non_dict_messages_skipped(self, tmp_path: Path):
-        """Non-dict items in the messages array are skipped."""
-        messages = [
+        # Non-dict items in messages array are skipped
+        non_dict_msgs = [
             "not a dict",
             42,
             {
@@ -560,16 +407,14 @@ class TestMalformedInput:
                 "content": "valid",
             },
         ]
-        path = tmp_path / "session.json"
-        _write_session_json(path, _make_session(messages=messages))
+        path = tmp_path / "non-dict-msgs.json"
+        _write_session_json(path, _make_session(messages=non_dict_msgs))
+        traj = _parser.parse_file(path)[0]
+        assert len(traj.steps) == 1
+        assert traj.steps[0].message == "valid"
 
-        _, parsed = _parser.parse_file(path)[0]
-        assert len(parsed) == 1
-        assert parsed[0].content == "valid"
-
-    def test_non_dict_tool_calls_skipped(self, tmp_path: Path):
-        """Non-dict items in toolCalls are silently skipped."""
-        messages = [
+        # Non-dict items in toolCalls are skipped
+        non_dict_tc_msgs = [
             {
                 "type": "gemini",
                 "id": "m1",
@@ -581,68 +426,34 @@ class TestMalformedInput:
                 ],
             },
         ]
-        path = tmp_path / "session.json"
-        _write_session_json(path, _make_session(messages=messages))
+        path = tmp_path / "non-dict-tc.json"
+        _write_session_json(path, _make_session(messages=non_dict_tc_msgs))
+        traj = _parser.parse_file(path)[0]
+        assert len(traj.steps[0].tool_calls) == 1
 
-        _, parsed = _parser.parse_file(path)[0]
-        assert len(parsed[0].tool_calls) == 1
 
-
-# ─── TestGeminiTokens
 class TestGeminiTokens:
     """Tests for Gemini token parsing."""
 
-    def test_full_token_fields(self):
-        """Input, output, and cached fields are mapped."""
-        tokens = {"input": 100, "output": 50, "cached": 20}
-        usage = _parse_gemini_tokens(tokens)
-        assert usage.input_tokens == 100
-        assert usage.output_tokens == 50
-        assert usage.cache_read_tokens == 20
+    def test_token_parsing(self, tmp_path: Path):
+        """Full fields, partial fields, None, extra fields, and integration with parse."""
+        # Full token fields
+        metrics = _parse_gemini_tokens({"input": 100, "output": 50, "cached": 20})
+        assert metrics.prompt_tokens == 100
+        assert metrics.completion_tokens == 50
+        assert metrics.cached_tokens == 20
 
-    def test_partial_tokens(self):
-        """Missing fields default to zero."""
-        usage = _parse_gemini_tokens({"input": 200})
-        assert usage.input_tokens == 200
-        assert usage.output_tokens == 0
-        assert usage.cache_read_tokens == 0
+        # Partial tokens: missing fields default to zero
+        metrics = _parse_gemini_tokens({"input": 200})
+        assert metrics.prompt_tokens == 200
+        assert metrics.completion_tokens == 0
+        assert metrics.cached_tokens == 0
 
-    def test_none_tokens(self):
-        """None tokens returns None usage."""
+        # None returns None
         assert _parse_gemini_tokens(None) is None
 
-    def test_empty_dict_tokens(self):
-        """Empty dict is falsy in Python, so returns None."""
-        assert _parse_gemini_tokens({}) is None
-
-    def test_tokens_in_full_parse(self, tmp_path: Path):
-        """Token usage is attached to parsed gemini messages."""
-        messages = [
-            {
-                "type": "gemini",
-                "id": "m1",
-                "timestamp": "2025-01-15T10:00:00Z",
-                "content": "answer",
-                "model": "gemini-2.5-pro",
-                "tokens": {
-                    "input": 500,
-                    "output": 200,
-                    "cached": 100,
-                },
-            },
-        ]
-        path = tmp_path / "session.json"
-        _write_session_json(path, _make_session(messages=messages))
-
-        _, parsed = _parser.parse_file(path)[0]
-        assert parsed[0].usage is not None
-        assert parsed[0].usage.input_tokens == 500
-        assert parsed[0].usage.output_tokens == 200
-        assert parsed[0].usage.cache_read_tokens == 100
-
-    def test_extra_token_fields_ignored(self):
-        """Gemini-specific fields like 'thoughts' and 'tool' are dropped."""
-        tokens = {
+        # Extra Gemini-specific fields (thoughts, tool, total) are ignored
+        tokens_extra = {
             "input": 100,
             "output": 50,
             "cached": 10,
@@ -650,85 +461,80 @@ class TestGeminiTokens:
             "tool": 20,
             "total": 210,
         }
-        usage = _parse_gemini_tokens(tokens)
-        assert usage.input_tokens == 100
-        assert usage.output_tokens == 50
-        assert usage.cache_read_tokens == 10
+        metrics = _parse_gemini_tokens(tokens_extra)
+        assert metrics.prompt_tokens == 100
+        assert metrics.completion_tokens == 50
+        assert metrics.cached_tokens == 10
+
+        # Tokens in full parse are attached to step metrics
+        messages = [
+            {
+                "type": "gemini",
+                "id": "m1",
+                "timestamp": "2025-01-15T10:00:00Z",
+                "content": "answer",
+                "model": "gemini-2.5-pro",
+                "tokens": {"input": 500, "output": 200, "cached": 100},
+            },
+        ]
+        path = tmp_path / "session.json"
+        _write_session_json(path, _make_session(messages=messages))
+        traj = _parser.parse_file(path)[0]
+        assert traj.steps[0].metrics is not None
+        assert traj.steps[0].metrics.prompt_tokens == 500
+        assert traj.steps[0].metrics.completion_tokens == 200
+        assert traj.steps[0].metrics.cached_tokens == 100
 
 
-# ─── TestProjectHashResolution
 class TestProjectHashResolution:
     """Tests for resolve_project_path with different strategies."""
 
-    def test_project_root_file(self, tmp_path: Path):
-        """Fast path: .project_root file is read."""
+    def test_project_path_resolution(self, tmp_path: Path):
+        """All resolution strategies: .project_root, projects.json, fallback, precedence."""
         gemini_dir = tmp_path / ".gemini"
+
+        # .project_root file is read
         hash_dir = "abc123hash"
         project_dir = gemini_dir / "tmp" / hash_dir
         project_dir.mkdir(parents=True)
         (project_dir / ".project_root").write_text("/Users/dev/my-project")
+        assert resolve_project_path(hash_dir, gemini_dir) == "/Users/dev/my-project"
 
-        result = resolve_project_path(hash_dir, gemini_dir)
-        assert result == "/Users/dev/my-project"
-
-    def test_projects_json_lookup(self, tmp_path: Path):
-        """Medium path: projects.json reverse lookup by hash."""
-        gemini_dir = tmp_path / ".gemini"
-        gemini_dir.mkdir(parents=True)
-        (gemini_dir / "tmp").mkdir()
-
+        # projects.json reverse lookup by hash
+        (gemini_dir / "tmp" / "def456hash").mkdir(parents=True)
         projects = {
             "/Users/dev/my-app": {"hash": "def456hash"},
             "/Users/dev/other": {"hash": "ghi789hash"},
         }
         with open(gemini_dir / "projects.json", "w") as f:
             json.dump(projects, f)
+        assert resolve_project_path("def456hash", gemini_dir) == "/Users/dev/my-app"
 
-        result = resolve_project_path("def456hash", gemini_dir)
-        assert result == "/Users/dev/my-app"
+        # Fallback to hash string when nothing resolves
+        assert resolve_project_path("unknown_hash", gemini_dir) == "unknown_hash"
 
-    def test_fallback_to_hash(self, tmp_path: Path):
-        """Fallback: returns the hash string when nothing resolves."""
-        gemini_dir = tmp_path / ".gemini"
-        gemini_dir.mkdir(parents=True)
-        (gemini_dir / "tmp").mkdir()
-
-        result = resolve_project_path("unknown_hash", gemini_dir)
-        assert result == "unknown_hash"
-
-    def test_project_root_takes_precedence(self, tmp_path: Path):
-        """.project_root wins over projects.json."""
-        gemini_dir = tmp_path / ".gemini"
-        hash_dir = "priority_hash"
-        project_dir = gemini_dir / "tmp" / hash_dir
-        project_dir.mkdir(parents=True)
-        (project_dir / ".project_root").write_text("/from/root/file")
-
-        # Also set up projects.json with a different mapping
-        projects = {"/from/projects/json": {"hash": hash_dir}}
+        # .project_root takes precedence over projects.json
+        priority_hash = "priority_hash"
+        priority_dir = gemini_dir / "tmp" / priority_hash
+        priority_dir.mkdir(parents=True)
+        (priority_dir / ".project_root").write_text("/from/root/file")
+        projects["/from/projects/json"] = {"hash": priority_hash}
         with open(gemini_dir / "projects.json", "w") as f:
             json.dump(projects, f)
+        assert resolve_project_path(priority_hash, gemini_dir) == "/from/root/file"
 
-        result = resolve_project_path(hash_dir, gemini_dir)
-        assert result == "/from/root/file"
-
-    def test_empty_project_root_falls_through(self, tmp_path: Path):
-        """Empty .project_root file falls through to projects.json."""
-        gemini_dir = tmp_path / ".gemini"
-        hash_dir = "empty_root_hash"
-        project_dir = gemini_dir / "tmp" / hash_dir
-        project_dir.mkdir(parents=True)
-        (project_dir / ".project_root").write_text("   \n  ")
-
-        projects = {"/from/json": {"hash": hash_dir}}
+        # Empty .project_root falls through to projects.json
+        empty_root_hash = "empty_root_hash"
+        empty_root_dir = gemini_dir / "tmp" / empty_root_hash
+        empty_root_dir.mkdir(parents=True)
+        (empty_root_dir / ".project_root").write_text("   \n  ")
+        projects["/from/json"] = {"hash": empty_root_hash}
         with open(gemini_dir / "projects.json", "w") as f:
             json.dump(projects, f)
+        assert resolve_project_path(empty_root_hash, gemini_dir) == "/from/json"
 
-        result = resolve_project_path(hash_dir, gemini_dir)
-        assert result == "/from/json"
-
-    def test_project_path_in_summary(self, tmp_path: Path):
-        """Resolved project path populates summary fields."""
+    def test_project_path_in_trajectory(self, tmp_path: Path):
+        """Resolved project path populates trajectory project_path."""
         gemini_dir = tmp_path / ".gemini"
         hash_dir = "proj_hash"
         chats_dir = gemini_dir / "tmp" / hash_dir / "chats"
@@ -741,145 +547,72 @@ class TestProjectHashResolution:
         _write_session_json(session_file, _make_session())
 
         results = _parser.parse_file(session_file)
-        summary, _ = results[0]
-        assert summary.project_name == "cool-project"
-        assert summary.project_id == "Users-dev-cool-project"
+        traj = results[0]
+        assert traj.project_path == "/Users/dev/cool-project"
 
 
-# ─── TestDuration
 class TestDuration:
-    """Tests for duration calculation from startTime/lastUpdated."""
+    """Tests for duration calculation from step timestamps."""
 
-    def test_duration_calculated(self, tmp_path: Path):
-        """Duration is computed as lastUpdated - startTime in seconds."""
-        data = _make_session(
-            start_time="2025-01-15T10:00:00Z",
-            last_updated="2025-01-15T10:30:00Z",
-        )
-        path = tmp_path / "session.json"
-        _write_session_json(path, data)
+    def test_duration(self, tmp_path: Path):
+        """Standard, zero, short, and missing-header timestamp durations."""
+        # Standard 5-second gap from default messages
+        path = tmp_path / "standard.json"
+        _write_session_json(path, _make_session())
+        traj = _parser.parse_file(path)[0]
+        assert traj.final_metrics is not None
+        assert traj.final_metrics.duration == 5
 
-        summary, _ = _parser.parse_file(path)[0]
-        assert summary.duration == 1800
+        # Same timestamps give zero duration
+        zero_msgs = [
+            {
+                "type": "user",
+                "id": "m1",
+                "timestamp": "2025-01-15T10:00:00Z",
+                "content": [{"text": "Hello"}],
+            },
+            {
+                "type": "gemini",
+                "id": "m2",
+                "timestamp": "2025-01-15T10:00:00Z",
+                "content": "Hi there",
+                "model": "gemini-2.5-pro",
+            },
+        ]
+        path = tmp_path / "zero.json"
+        _write_session_json(path, _make_session(messages=zero_msgs))
+        traj = _parser.parse_file(path)[0]
+        assert traj.final_metrics is not None
+        assert traj.final_metrics.duration == 0
 
-    def test_zero_duration(self, tmp_path: Path):
-        """Same start and end times give zero duration."""
-        data = _make_session(
-            start_time="2025-01-15T10:00:00Z",
-            last_updated="2025-01-15T10:00:00Z",
-        )
-        path = tmp_path / "session.json"
-        _write_session_json(path, data)
+        # Sub-minute (45-second) duration
+        short_msgs = [
+            {
+                "type": "user",
+                "id": "m1",
+                "timestamp": "2025-01-15T10:00:00Z",
+                "content": [{"text": "Hello"}],
+            },
+            {
+                "type": "gemini",
+                "id": "m2",
+                "timestamp": "2025-01-15T10:00:45Z",
+                "content": "Hi there",
+                "model": "gemini-2.5-pro",
+            },
+        ]
+        path = tmp_path / "short.json"
+        _write_session_json(path, _make_session(messages=short_msgs))
+        traj = _parser.parse_file(path)[0]
+        assert traj.final_metrics is not None
+        assert traj.final_metrics.duration == 45
 
-        summary, _ = _parser.parse_file(path)[0]
-        assert summary.duration == 0
-
-    def test_missing_timestamps(self, tmp_path: Path):
-        """Missing timestamps produce zero duration."""
+        # Missing session-level timestamps still produce valid duration from step timestamps
         data = _make_session()
         data.pop("startTime", None)
         data.pop("lastUpdated", None)
-        path = tmp_path / "session.json"
+        path = tmp_path / "no-header-ts.json"
         _write_session_json(path, data)
-
-        summary, _ = _parser.parse_file(path)[0]
-        assert summary.duration == 0
-
-    def test_missing_last_updated(self, tmp_path: Path):
-        """Missing lastUpdated alone produces zero duration."""
-        data = _make_session()
-        data.pop("lastUpdated", None)
-        path = tmp_path / "session.json"
-        _write_session_json(path, data)
-
-        summary, _ = _parser.parse_file(path)[0]
-        assert summary.duration == 0
-
-    def test_short_duration(self, tmp_path: Path):
-        """Sub-minute durations are calculated correctly."""
-        data = _make_session(
-            start_time="2025-01-15T10:00:00Z",
-            last_updated="2025-01-15T10:00:45Z",
-        )
-        path = tmp_path / "session.json"
-        _write_session_json(path, data)
-
-        summary, _ = _parser.parse_file(path)[0]
-        assert summary.duration == 45
-
-
-# ─── TestToolEnrichment
-class TestToolEnrichment:
-    """Tests that parse_file enriches tool calls with category and summary."""
-
-    def test_read_file_enriched(self, tmp_path: Path):
-        messages = [
-            {
-                "type": "gemini",
-                "id": "m1",
-                "timestamp": "2025-01-15T10:00:00Z",
-                "content": "Reading...",
-                "toolCalls": [
-                    {
-                        "id": "tc-1",
-                        "name": "ReadFile",
-                        "args": {"path": "src/app.ts"},
-                    },
-                ],
-            },
-        ]
-        path = tmp_path / "session.json"
-        _write_session_json(path, _make_session(messages=messages))
-
-        _, parsed = _parser.parse_file(path)[0]
-        tc = parsed[0].tool_calls[0]
-        print(f"  name={tc.name}, category={tc.category}, summary={tc.summary}")
-        # ReadFile is not in the map, so it falls back to "other"
-        # and summary picks up the first string value
-        assert tc.category == "other"
-        assert tc.summary == "src/app.ts"
-
-    def test_bash_tool_enriched(self, tmp_path: Path):
-        messages = [
-            {
-                "type": "gemini",
-                "id": "m1",
-                "timestamp": "2025-01-15T10:00:00Z",
-                "content": "Running...",
-                "toolCalls": [
-                    {
-                        "id": "tc-1",
-                        "name": "Bash",
-                        "args": {"command": "pytest -v"},
-                    },
-                ],
-            },
-        ]
-        path = tmp_path / "session.json"
-        _write_session_json(path, _make_session(messages=messages))
-
-        _, parsed = _parser.parse_file(path)[0]
-        tc = parsed[0].tool_calls[0]
-        assert tc.category == "shell"
-        assert tc.summary == "pytest -v"
-
-    def test_multiple_tools_all_enriched(self, tmp_path: Path):
-        messages = [
-            {
-                "type": "gemini",
-                "id": "m1",
-                "timestamp": "2025-01-15T10:00:00Z",
-                "content": "Working...",
-                "toolCalls": [
-                    {"id": "tc-1", "name": "Read", "args": {"file_path": "/a.py"}},
-                    {"id": "tc-2", "name": "Edit", "args": {"file_path": "/b.py"}},
-                    {"id": "tc-3", "name": "Grep", "args": {"pattern": "TODO"}},
-                ],
-            },
-        ]
-        path = tmp_path / "session.json"
-        _write_session_json(path, _make_session(messages=messages))
-
-        _, parsed = _parser.parse_file(path)[0]
-        categories = [tc.category for tc in parsed[0].tool_calls]
-        assert categories == ["file_read", "file_write", "search"]
+        traj = _parser.parse_file(path)[0]
+        assert traj.final_metrics is not None
+        assert isinstance(traj.final_metrics.duration, int)

@@ -55,8 +55,6 @@ RELEVANT_TYPES = {"user", "assistant"}
 # ATIF source mapping for Claude Code role names
 _ROLE_TO_SOURCE = {"user": StepSource.USER, "assistant": StepSource.AGENT}
 
-AGENT_NAME = "claude-code"
-
 # Number of lines to probe for project path extraction
 PROJECT_PATH_PROBE_LIMIT = 10
 
@@ -76,12 +74,14 @@ class ClaudeCodeParser(BaseParser):
     session files, including subagent conversations.
     """
 
+    AGENT_NAME = "claude-code"
+
     def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
         """Parse JSONL session content into Trajectory objects.
 
         Returns a list containing the main session trajectory and any
         sub-agent trajectories. Sub-agents are separate Trajectory objects
-        with parent_session_ref pointing back to the main session.
+        with parent_trajectory_ref pointing back to the main session.
 
         Args:
             content: Raw JSONL content string.
@@ -92,7 +92,8 @@ class ClaudeCodeParser(BaseParser):
         """
         collector = DiagnosticsCollector()
         project_path = _extract_project_path(content)
-        session_id, parent_sid, model_name, version = _extract_session_metadata(content)
+        git_branches = _extract_git_branches(content)
+        session_id, last_session_id, model_name, version = _extract_session_metadata(content)
 
         # Use extracted session_id, fallback to filename stem, then UUID
         if not session_id:
@@ -100,10 +101,20 @@ class ClaudeCodeParser(BaseParser):
 
         steps = self._parse_content(content, diagnostics=collector, session_id=session_id)
         if not steps:
+            if collector.parsed_lines == 0 and collector.total_lines > 0:
+                source = source_path or "unknown"
+                raise ValueError(
+                    f"No parseable entries in {source}"
+                    f" ({collector.total_lines} lines, {collector.skipped_lines} skipped)"
+                )
             return []
 
-        agent = self.build_agent(AGENT_NAME, version=version, model=model_name)
+        agent = self.build_agent(version=version, model=model_name)
         extra = _build_diagnostics_extra(collector)
+
+        if git_branches:
+            extra = extra or {}
+            extra["git_branches"] = git_branches
 
         # Sub-agent trajectories require filesystem access via source_path
         sub_trajectories: list[Trajectory] = []
@@ -115,13 +126,13 @@ class ClaudeCodeParser(BaseParser):
                 extra = extra or {}
                 extra["sub_agent_count"] = len(sub_trajectories)
 
-        parent_ref = TrajectoryRef(session_id=parent_sid) if parent_sid else None
+        last_trajectory_ref = TrajectoryRef(session_id=last_session_id) if last_session_id else None
         main_trajectory = self.assemble_trajectory(
             session_id=session_id,
             agent=agent,
             steps=steps,
             project_path=project_path,
-            parent_trajectory_ref=parent_ref,
+            last_trajectory_ref=last_trajectory_ref,
             extra=extra,
         )
 
@@ -177,7 +188,7 @@ class ClaudeCodeParser(BaseParser):
                     session_id=session_id,
                     project_path=project_path,
                     first_message=first_message,
-                    agent=Agent(name=AGENT_NAME),
+                    agent=Agent(name=self.AGENT_NAME),
                     steps=[skeleton_step],
                     final_metrics=FinalMetrics(total_steps=data["message_count"]),
                     extra={"is_skeleton": True, "total_entries": data["message_count"]},
@@ -210,7 +221,7 @@ class ClaudeCodeParser(BaseParser):
     ) -> list[Trajectory]:
         """Parse sub-agent JSONL files into separate Trajectory objects.
 
-        Each sub-agent trajectory has a parent_session_ref pointing back
+        Each sub-agent trajectory has a parent_trajectory_ref pointing back
         to the parent session, and the parent step's observation is
         updated with a subagent_trajectory_ref.
 
@@ -277,29 +288,26 @@ class ClaudeCodeParser(BaseParser):
         """
         try:
             sub_content = agent_file.read_text(encoding="utf-8")
-        except OSError:
-            logger.warning("Cannot read sub-agent file: %s", agent_file)
-            return None
+        except OSError as exc:
+            raise OSError(f"Cannot read sub-agent file: {agent_file}") from exc
 
         sub_steps = self._parse_content(sub_content)
         if not sub_steps:
             return None
 
         _, _, sub_model, sub_version = _extract_session_metadata(sub_content)
-        parent_ref = TrajectoryRef(
-            session_id=parent_sid,
-            step_id=spawn_step_id,
-            tool_call_id=spawn_tool_call_id,
-            trajectory_path=str(source_path),
-        )
 
         return self.assemble_trajectory(
             session_id=agent_file.stem,
-            agent=self.build_agent(AGENT_NAME, version=sub_version, model=sub_model),
+            agent=self.build_agent(version=sub_version, model=sub_model),
             steps=sub_steps,
             project_path=_extract_project_path(sub_content),
-            parent_trajectory_ref=TrajectoryRef(session_id=parent_sid),
-            parent_ref=parent_ref,
+            parent_trajectory_ref=TrajectoryRef(
+                session_id=parent_sid,
+                step_id=spawn_step_id,
+                tool_call_id=spawn_tool_call_id,
+                trajectory_path=str(source_path),
+            ),
         )
 
     @staticmethod
@@ -333,8 +341,9 @@ class ClaudeCodeParser(BaseParser):
     ) -> list[Step]:
         """Parse JSONL content string into Step objects.
 
-        Uses _decompose_raw_content() to convert Claude Code's polymorphic
-        content block arrays into separated Step fields.
+        Merges consecutive assistant entries sharing the same message.id
+        into a single step (streaming chunk consolidation), then converts
+        each merged entry into an ATIF Step.
 
         Args:
             content: Raw JSONL content string.
@@ -350,12 +359,14 @@ class ClaudeCodeParser(BaseParser):
         # then construct Steps with results already paired
         tool_results = _collect_tool_results(raw_entries)
         tool_use_ids: set[str] = set()
-        seen_message_ids: set[str] = set()
+
+        # Merge assistant entries with the same message.id into single steps
+        step_groups = _group_entries_by_step(raw_entries)
 
         steps = []
-        for entry in raw_entries:
+        for group in step_groups:
+            entry = _merge_entry_group(group)
             msg = entry.get("message", {})
-            uuid = entry.get("uuid", str(uuid4()))
             timestamp = normalize_timestamp(entry.get("timestamp"))
 
             role = msg.get("role", entry.get("type", ""))
@@ -363,16 +374,17 @@ class ClaudeCodeParser(BaseParser):
             model_name = msg.get("model") or None
             raw_content = msg.get("content", "")
 
-            # Deduplicate metrics: Claude Code emits the same message.id
-            # across multiple JSONL lines (e.g. streaming chunks). Only
-            # count usage from the first occurrence of each message.id.
-            msg_id = msg.get("id")
-            if msg_id and msg_id in seen_message_ids:
-                metrics = None
+            # Use message.id as step_id for assistant entries (stable across
+            # streaming chunks); fall back to entry uuid for user entries.
+            # Only assistant entries get message.id — user entries sharing the
+            # same message.id (tool-relay pairs) must use their own uuid to
+            # avoid duplicate step IDs.
+            if source == StepSource.AGENT:
+                step_id = msg.get("id") or entry.get("uuid", str(uuid4()))
             else:
-                metrics = _parse_metrics(msg.get("usage"))
-                if msg_id:
-                    seen_message_ids.add(msg_id)
+                step_id = entry.get("uuid", str(uuid4()))
+
+            metrics = _parse_metrics(msg.get("usage"))
 
             # Decompose Anthropic Messages API content blocks into
             # separated ATIF Step fields with pre-scanned tool results
@@ -384,12 +396,6 @@ class ClaudeCodeParser(BaseParser):
             # tool_result blocks with no human-authored text. Their content
             # is already injected into the preceding assistant step via the
             # pre-scan tool_results map (tool_use_id linkage).
-            #
-            # This intentionally produces fewer steps than Harbor, which
-            # preserves the raw API message structure (one step per API
-            # message). VibeLens omits tool-relay messages for cleaner
-            # analytical semantics: each user step represents a genuine
-            # human turn, not an API bookkeeping artifact.
             if source == StepSource.USER and not message and not tool_calls and observation is None:
                 continue
 
@@ -407,7 +413,7 @@ class ClaudeCodeParser(BaseParser):
 
             steps.append(
                 Step(
-                    step_id=uuid,
+                    step_id=step_id,
                     source=source,
                     message=message,
                     reasoning_content=reasoning_content,
@@ -425,6 +431,71 @@ class ClaudeCodeParser(BaseParser):
             _detect_orphans(tool_use_ids, tool_results, diagnostics)
 
         return steps
+
+
+def _group_entries_by_step(entries: list[dict]) -> list[list[dict]]:
+    """Group entries by logical step using message.id for assistant entries.
+
+    Assistant entries sharing a message.id are collected into a single group
+    even when separated by user tool-relay entries (which become their own
+    singleton groups). Groups are ordered by first appearance.
+
+    Args:
+        entries: Flat list of parsed JSONL entries.
+
+    Returns:
+        List of entry groups; each group becomes one Step.
+    """
+    groups: list[list[dict]] = []
+    msg_id_to_group: dict[str, list[dict]] = {}
+
+    for entry in entries:
+        entry_type = entry.get("type")
+        msg_id = entry.get("message", {}).get("id", "")
+
+        if entry_type == "assistant" and msg_id:
+            if msg_id in msg_id_to_group:
+                msg_id_to_group[msg_id].append(entry)
+            else:
+                group: list[dict] = [entry]
+                groups.append(group)
+                msg_id_to_group[msg_id] = group
+        else:
+            groups.append([entry])
+
+    return groups
+
+
+def _merge_entry_group(group: list[dict]) -> dict:
+    """Merge a group of streaming chunks into a single pseudo-entry.
+
+    Concatenates message.content lists from all entries in the group.
+    Uses the first entry's uuid, timestamp, and metadata as the base.
+
+    Args:
+        group: One or more JSONL entries sharing the same message.id.
+
+    Returns:
+        Single merged entry dict.
+    """
+    if len(group) == 1:
+        return group[0]
+
+    merged = dict(group[0])
+    merged_msg = dict(merged.get("message", {}))
+
+    # Concatenate content lists from all chunks
+    all_content: list = []
+    for entry in group:
+        chunk_content = entry.get("message", {}).get("content", "")
+        if isinstance(chunk_content, list):
+            all_content.extend(chunk_content)
+        elif chunk_content:
+            all_content.append({"type": "text", "text": str(chunk_content)})
+
+    merged_msg["content"] = all_content
+    merged["message"] = merged_msg
+    return merged
 
 
 def _parse_jsonl_content(
@@ -543,7 +614,8 @@ def _build_step_extra(entry: dict) -> dict[str, Any] | None:
     """Build step-level extra dict from Claude Code entry fields.
 
     Extracts format-specific metadata mirroring Harbor's convention:
-    is_sidechain, stop_reason, cwd, request_id, and service_tier.
+    is_sidechain, stop_reason, stop_sequence, cwd, request_id,
+    service_tier, and user_type.
 
     Args:
         entry: Raw JSONL entry dict.
@@ -566,6 +638,10 @@ def _build_step_extra(entry: dict) -> dict[str, Any] | None:
     if stop_reason is not None:
         extra["stop_reason"] = stop_reason
 
+    stop_sequence = msg.get("stop_sequence")
+    if stop_sequence is not None:
+        extra["stop_sequence"] = stop_sequence
+
     cwd = entry.get("cwd")
     if cwd:
         extra["cwd"] = cwd
@@ -577,6 +653,10 @@ def _build_step_extra(entry: dict) -> dict[str, Any] | None:
     service_tier = msg.get("service_tier")
     if service_tier:
         extra["service_tier"] = service_tier
+
+    user_type = entry.get("userType")
+    if user_type and user_type != "external":
+        extra["user_type"] = user_type
 
     return extra or None
 
@@ -598,6 +678,33 @@ def _build_diagnostics_extra(collector: DiagnosticsCollector) -> dict | None:
     if not has_issues:
         return None
     return {"diagnostics": collector.to_diagnostics().model_dump()}
+
+
+def _extract_git_branches(content: str) -> list[str] | None:
+    """Extract unique git branch names from JSONL entries.
+
+    Claude Code events carry a ``gitBranch`` field. Collects unique
+    values across all entries.
+
+    Args:
+        content: Raw JSONL content string.
+
+    Returns:
+        Sorted list of branch names, or None if none found.
+    """
+    branches: set[str] = set()
+    for line in content.split("\n"):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            entry = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        branch = entry.get("gitBranch", "")
+        if branch:
+            branches.add(branch)
+    return sorted(branches) if branches else None
 
 
 def _extract_project_path(content: str) -> str | None:
@@ -634,7 +741,7 @@ def _extract_project_path(content: str) -> str | None:
 def _extract_session_metadata(
     content: str,
 ) -> tuple[str | None, str | None, str | None, str | None]:
-    """Extract session_id, parent_sid, model_name, and version from JSONL.
+    """Extract session_id, last_session_id, model_name, and version from JSONL.
 
     Scans all lines to find the most common sessionId (current session),
     any divergent sessionId (parent/continued session), the most common
@@ -644,7 +751,7 @@ def _extract_session_metadata(
         content: Raw JSONL content string.
 
     Returns:
-        Tuple of (session_id, parent_sid, model_name, version).
+        Tuple of (session_id, last_session_id, model_name, version).
     """
     session_counter: Counter[str] = Counter()
     model_counter: Counter[str] = Counter()
@@ -676,14 +783,14 @@ def _extract_session_metadata(
                 model_counter[model] += 1
 
     session_id = session_counter.most_common(1)[0][0] if session_counter else None
-    parent_sid = None
+    last_session_id = None
     for sid in session_counter:
         if sid != session_id:
-            parent_sid = sid
+            last_session_id = sid
             break
 
     model_name = model_counter.most_common(1)[0][0] if model_counter else None
-    return session_id, parent_sid, model_name, version
+    return session_id, last_session_id, model_name, version
 
 
 def _decompose_raw_content(
@@ -805,7 +912,7 @@ def _extract_tool_result_metadata(result: dict) -> dict[str, Any] | None:
 
     When the tool result cache contains a ``tool_use_result`` dict (captured
     from the event-level ``toolUseResult`` field), extracts salient fields:
-    exit_code, stdout_length, stderr_length, and interrupted.
+    exit_code, stdout, stderr, and interrupted.
 
     Args:
         result: A single entry from the tool_results cache dict.
@@ -825,12 +932,12 @@ def _extract_tool_result_metadata(result: dict) -> dict[str, Any] | None:
         meta["exit_code"] = exit_code
 
     stdout = tur.get("stdout")
-    if stdout is not None:
-        meta["stdout_length"] = len(stdout) if isinstance(stdout, str) else 0
+    if isinstance(stdout, str):
+        meta["stdout"] = stdout
 
     stderr = tur.get("stderr")
-    if stderr is not None:
-        meta["stderr_length"] = len(stderr) if isinstance(stderr, str) else 0
+    if isinstance(stderr, str):
+        meta["stderr"] = stderr
 
     if tur.get("interrupted"):
         meta["interrupted"] = True
@@ -1065,21 +1172,19 @@ def _collect_tool_results(raw_entries: list[dict]) -> dict[str, dict]:
 def _parse_metrics(usage_data: dict | None) -> Metrics | None:
     """Parse Anthropic usage dict into VibeLens Metrics model.
 
-    Token field mapping (VibeLens convention):
-    - ``prompt_tokens`` = fresh input tokens only (Anthropic ``input_tokens``).
+    Token field mapping (aligned with Harbor convention):
+    - ``prompt_tokens`` = total context window
+      (Anthropic ``input_tokens + cache_read_input_tokens``).
     - ``cached_tokens`` = cache-read tokens (Anthropic ``cache_read_input_tokens``).
     - ``cache_creation_tokens`` = tokens written to cache
       (Anthropic ``cache_creation_input_tokens``).
-    - Total context window = ``prompt_tokens + cached_tokens``.
-
-    Note: Harbor uses a different convention where
-    ``prompt_tokens = input_tokens + cache_read_input_tokens`` (i.e. total
-    context). VibeLens keeps them separated for finer-grained analysis.
     """
     if not usage_data:
         return None
     return Metrics(
-        prompt_tokens=usage_data.get("input_tokens", 0),
+        prompt_tokens=(
+            usage_data.get("input_tokens", 0) + usage_data.get("cache_read_input_tokens", 0)
+        ),
         completion_tokens=usage_data.get("output_tokens", 0),
         cache_creation_tokens=usage_data.get("cache_creation_input_tokens", 0),
         cached_tokens=usage_data.get("cache_read_input_tokens", 0),

@@ -30,11 +30,11 @@ logger = get_logger(__name__)
 # ATIF source mapping for dataclaw role names
 _ROLE_TO_SOURCE = {"user": StepSource.USER, "assistant": StepSource.AGENT}
 
-AGENT_NAME = "dataclaw"
-
 
 class DataclawParser(BaseParser):
     """Parser for dataclaw-exported conversation datasets."""
+
+    AGENT_NAME = "dataclaw"
 
     def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
         """Parse dataclaw JSONL content into Trajectory objects.
@@ -117,7 +117,7 @@ class DataclawParser(BaseParser):
             if any(v for v in diag.values()):
                 extra["diagnostics"] = diag
 
-        agent = self.build_agent(AGENT_NAME, model=model or None)
+        agent = self.build_agent(model=model or None)
         return self.assemble_trajectory(
             session_id=session_id,
             agent=agent,
@@ -165,9 +165,7 @@ def _build_steps(raw_messages: list, session_id: str, session_model: str) -> lis
     return steps
 
 
-def _build_tool_calls(
-    raw_tool_uses: list, session_id: str, msg_idx: int
-) -> list[ToolCall]:
+def _build_tool_calls(raw_tool_uses: list, session_id: str, msg_idx: int) -> list[ToolCall]:
     """Convert dataclaw tool_uses into ToolCall objects.
 
     Dataclaw only records tool name and input; outputs are stripped

@@ -58,8 +58,6 @@ _OUTPUT_PREFIX_RE = re.compile(
 # ATIF source mapping for Codex role names
 _ROLE_TO_SOURCE = {"user": StepSource.USER, "assistant": StepSource.AGENT}
 
-AGENT_NAME = "codex"
-
 
 class _CodexParseState(BaseModel):
     """Mutable state carried across response_item processing.
@@ -94,6 +92,8 @@ class CodexParser(BaseParser):
     turn_context, and event_msg entries.
     """
 
+    AGENT_NAME = "codex"
+
     def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
         """Parse Codex rollout JSONL content into a Trajectory.
 
@@ -118,14 +118,16 @@ class CodexParser(BaseParser):
 
         project_path = meta.get("cwd") or None
         extra = _build_diagnostics_extra(collector)
-        agent = self.build_agent(AGENT_NAME)
-        return [self.assemble_trajectory(
-            session_id=session_id,
-            agent=agent,
-            steps=steps,
-            project_path=project_path,
-            extra=extra,
-        )]
+        agent = self.build_agent()
+        return [
+            self.assemble_trajectory(
+                session_id=session_id,
+                agent=agent,
+                steps=steps,
+                project_path=project_path,
+                extra=extra,
+            )
+        ]
 
 
 def _build_diagnostics_extra(collector: DiagnosticsCollector) -> dict | None:
@@ -250,7 +252,12 @@ def _build_steps(
 
         if entry_type == "response_item":
             _handle_response_item(
-                payload, timestamp, session_id, tool_outputs, steps, state,
+                payload,
+                timestamp,
+                session_id,
+                tool_outputs,
+                steps,
+                state,
             )
             continue
 
@@ -419,7 +426,7 @@ def _parse_structured_output(raw: str) -> tuple[str, bool]:
     if not match:
         return raw, False
     exit_code = int(match.group(1))
-    cleaned = raw[match.end():]
+    cleaned = raw[match.end() :]
     return cleaned, exit_code != 0
 
 

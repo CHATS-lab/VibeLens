@@ -90,7 +90,12 @@ class BaseParser(ABC):
     and delegates to ``parse``.
     ``assemble_trajectory`` auto-computes derived fields
     (first_message, final_metrics) from steps.
+
+    Subclasses must set ``AGENT_NAME`` to their agent identifier
+    (e.g. ``"claude-code"``, ``"codex"``).
     """
+
+    AGENT_NAME: str
 
     @abstractmethod
     def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
@@ -165,19 +170,17 @@ class BaseParser(ABC):
                 return self.truncate_first_message(step.message)
         return None
 
-    @staticmethod
-    def build_agent(name: str, version: str | None = None, model: str | None = None) -> Agent:
-        """Create an ATIF Agent model.
+    def build_agent(self, version: str | None = None, model: str | None = None) -> Agent:
+        """Create an ATIF Agent model using this parser's AGENT_NAME.
 
         Args:
-            name: Agent system name (e.g. 'claude-code', 'codex').
             version: Agent system version.
             model: Default LLM model name.
 
         Returns:
             Agent instance.
         """
-        return Agent(name=name, version=version, model_name=model)
+        return Agent(name=self.AGENT_NAME, version=version, model_name=model)
 
     def assemble_trajectory(
         self,
@@ -185,8 +188,8 @@ class BaseParser(ABC):
         agent: Agent,
         steps: list[Step],
         project_path: str | None = None,
+        last_trajectory_ref: TrajectoryRef | None = None,
         parent_trajectory_ref: TrajectoryRef | None = None,
-        parent_ref: TrajectoryRef | None = None,
         extra: dict | None = None,
     ) -> Trajectory:
         """Assemble a Trajectory from parts with auto-computed derived fields.
@@ -200,28 +203,27 @@ class BaseParser(ABC):
             agent: Agent configuration.
             steps: Complete step list.
             project_path: Inferred working directory path.
-            parent_trajectory_ref: Reference to the parent/continued-from trajectory.
-            parent_ref: Optional reference to parent session for sub-agents.
+            last_trajectory_ref: Reference to previous session (continuation).
+            parent_trajectory_ref: Reference to parent trajectory (sub-agent spawn).
             extra: Optional metadata dict for format-specific fields.
 
         Returns:
             Populated Trajectory instance.
         """
-        # Derive session start timestamp from the earliest step
         timestamp = steps[0].timestamp if steps and steps[0].timestamp else None
 
         return Trajectory(
             schema_version=DEFAULT_ATIF_VERSION,
             session_id=session_id,
             project_path=project_path,
+            timestamp=timestamp,
             first_message=self.find_first_user_text(steps),
             agent=agent,
             steps=steps,
             final_metrics=_compute_final_metrics(steps),
+            last_trajectory_ref=last_trajectory_ref,
             parent_trajectory_ref=parent_trajectory_ref,
-            parent_session_ref=parent_ref,
             extra=extra,
-            timestamp=timestamp,
         )
 
     @staticmethod
@@ -269,7 +271,6 @@ def _compute_final_metrics(steps: list[Step]) -> FinalMetrics:
     """
     total_prompt = 0
     total_completion = 0
-    total_cached = 0
     total_cost: float | None = None
     total_cache_write = 0
     total_cache_read = 0
@@ -280,9 +281,8 @@ def _compute_final_metrics(steps: list[Step]) -> FinalMetrics:
         if step.metrics:
             total_prompt += step.metrics.prompt_tokens
             total_completion += step.metrics.completion_tokens
-            total_cached += step.metrics.cached_tokens
-            total_cache_write += step.metrics.cache_creation_tokens
             total_cache_read += step.metrics.cached_tokens
+            total_cache_write += step.metrics.cache_creation_tokens
             if step.metrics.cost_usd is not None:
                 total_cost = (total_cost or 0.0) + step.metrics.cost_usd
 
@@ -295,7 +295,6 @@ def _compute_final_metrics(steps: list[Step]) -> FinalMetrics:
     return FinalMetrics(
         total_prompt_tokens=total_prompt,
         total_completion_tokens=total_completion,
-        total_cached_tokens=total_cached,
         total_cost_usd=total_cost,
         total_steps=len(steps),
         tool_call_count=tool_call_count,

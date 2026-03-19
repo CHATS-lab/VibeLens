@@ -15,11 +15,7 @@
 # Environment Variables:
 #   VIBELENS_HOST         Server bind address (default: 127.0.0.1)
 #   VIBELENS_PORT         Server port (default: 12001)
-#   VIBELENS_DB_PATH      SQLite database file (default: ~/.vibelens/vibelens.db)
 #   VIBELENS_CLAUDE_DIR   Claude Code history root (default: ~/.claude)
-#   VIBELENS_MONGODB_URI  MongoDB connection URI (default: empty, disabled)
-#   VIBELENS_MONGODB_DB   MongoDB database name (default: vibelens)
-#   VIBELENS_HF_TOKEN     HuggingFace API token (default: empty)
 #   VIBELENS_CONFIG       Path to this YAML config file (default: auto-discover)
 
 # Application mode: "self" (default) or "demo" (public-facing)
@@ -28,27 +24,14 @@ app:
 
 # Demo mode settings (only used when app.mode is "demo")
 demo:
-  storage: memory                  # "memory" (ephemeral) or "sqlite" (persistent)
   example_sessions: ""             # Comma-separated file paths to pre-load
-  session_ttl: 3600                # Seconds before orphaned uploads are cleaned up
-  persist_uploads: false           # Save raw uploaded files to disk
 
 server:
   host: 127.0.0.1
   port: 12001
 
-database:
-  path: ~/.vibelens/vibelens.db
-
-mongodb:
-  uri: ""
-  db_name: vibelens
-
 sources:
   claude_dir: ~/.claude
-
-integrations:
-  hf_token: ""            # HuggingFace API token for pulling dataclaw datasets
 
 upload:
   dir: ~/.vibelens/uploads

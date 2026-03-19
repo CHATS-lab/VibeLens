@@ -12,10 +12,11 @@ import {
   Pencil,
   ChevronDown,
   ChevronRight,
+  Layers,
 } from "lucide-react";
 import { useState } from "react";
 import { createTwoFilesPatch } from "diff";
-import type { ContentBlock, Message } from "../types";
+import type { Step, ToolCall, ObservationResult } from "../types";
 import { sanitizeText } from "../utils";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { CopyButton } from "./copy-button";
@@ -23,68 +24,73 @@ import { CopyButton } from "./copy-button";
 const MAX_COLLAPSED_LINES = 8;
 const WRITE_PREVIEW_MAX_CHARS = 500;
 
-interface MessageBlockProps {
-  message: Message;
+interface StepBlockProps {
+  step: Step;
 }
 
-export function MessageBlock({ message }: MessageBlockProps) {
-  if (message.role === "user") {
-    return <UserMessage message={message} />;
+export function StepBlock({ step }: StepBlockProps) {
+  if (step.source === "user") {
+    return <UserStep step={step} />;
   }
-  if (message.role === "assistant") {
-    return <AssistantMessage message={message} />;
+  if (step.source === "agent") {
+    return <AgentStep step={step} />;
   }
   return null;
 }
 
-function UserMessage({ message }: { message: Message }) {
-  const content = message.content;
-  if (typeof content === "string") {
-    const text = sanitizeText(content);
-    if (!text) return null;
-    return (
-      <div className="flex justify-end">
-        <div className="max-w-[85%] bg-indigo-600/80 text-white rounded-2xl rounded-br-md px-4 py-2.5 text-sm">
-          <MarkdownRenderer content={text} className="user-markdown" />
-        </div>
-      </div>
-    );
-  }
-  const textBlocks = (content as ContentBlock[]).filter(
-    (b) => b.type === "text" && b.text
-  );
-  if (textBlocks.length === 0) return null;
-  const combined = textBlocks.map((b) => sanitizeText(b.text || "")).join("\n");
-  if (!combined.trim()) return null;
+/** @deprecated Use StepBlock instead. Kept for backward compatibility during migration. */
+export const MessageBlock = StepBlock;
+
+function UserStep({ step }: { step: Step }) {
+  const text = sanitizeText(step.message);
+  if (!text) return null;
   return (
     <div className="flex justify-end">
       <div className="max-w-[85%] bg-indigo-600/80 text-white rounded-2xl rounded-br-md px-4 py-2.5 text-sm">
-        <MarkdownRenderer content={combined} className="user-markdown" />
+        <MarkdownRenderer content={text} className="user-markdown" />
       </div>
     </div>
   );
 }
 
-function AssistantMessage({ message }: { message: Message }) {
-  const blocks =
-    typeof message.content === "string"
-      ? [{ type: "text", text: message.content } as ContentBlock]
-      : (message.content as ContentBlock[]);
+function AgentStep({ step }: { step: Step }) {
+  // Build observation results indexed by source_call_id for pairing
+  const obsMap = new Map<string, ObservationResult>();
+  if (step.observation) {
+    for (const r of step.observation.results) {
+      if (r.source_call_id) {
+        obsMap.set(r.source_call_id, r);
+      }
+    }
+  }
 
-  const textBlocks = blocks.filter((b) => b.type === "text");
-  const toolBlocks = blocks.filter(
-    (b) => b.type === "tool_use" || b.type === "tool_result" || b.type === "thinking"
-  );
+  const orphanResults = step.observation?.results.filter(
+    (r) => !r.source_call_id || !step.tool_calls.some((tc) => tc.tool_call_id === r.source_call_id)
+  ) ?? [];
+
+  const hasConcurrentCalls = step.tool_calls.length > 1;
 
   return (
     <div className="space-y-1">
-      {textBlocks.map((block, i) => (
-        <TextBlock key={`text-${i}`} text={block.text || ""} />
-      ))}
-      {toolBlocks.length > 0 && (
+      {step.message && <TextBlock text={step.message} />}
+      {step.reasoning_content && <ThinkingBlock text={step.reasoning_content} />}
+      {(step.tool_calls.length > 0 || orphanResults.length > 0) && (
         <div className="flex flex-col gap-1 mt-1.5">
-          {toolBlocks.map((block, i) => (
-            <ContentBlockRenderer key={`tool-${i}`} block={block} />
+          {hasConcurrentCalls ? (
+            <ConcurrentToolsBlock toolCalls={step.tool_calls} obsMap={obsMap} />
+          ) : (
+            step.tool_calls.map((tc, i) => {
+              const result = obsMap.get(tc.tool_call_id);
+              return (
+                <div key={`tc-${i}`}>
+                  <ToolUseBlock toolCall={tc} />
+                  {result && <ToolResultBlock result={result} />}
+                </div>
+              );
+            })
+          )}
+          {orphanResults.map((r, i) => (
+            <ToolResultBlock key={`orphan-${i}`} result={r} />
           ))}
         </div>
       )}
@@ -92,17 +98,50 @@ function AssistantMessage({ message }: { message: Message }) {
   );
 }
 
-function ContentBlockRenderer({ block }: { block: ContentBlock }) {
-  switch (block.type) {
-    case "thinking":
-      return <ThinkingBlock text={block.thinking || ""} />;
-    case "tool_use":
-      return <ToolUseBlock block={block} />;
-    case "tool_result":
-      return <ToolResultBlock block={block} />;
-    default:
-      return null;
-  }
+function ConcurrentToolsBlock({
+  toolCalls,
+  obsMap,
+}: {
+  toolCalls: ToolCall[];
+  obsMap: Map<string, ObservationResult>;
+}) {
+  const [open, setOpen] = useState(true);
+  const toolNames = toolCalls.map((tc) => tc.function_name || "unknown");
+  const uniqueNames = [...new Set(toolNames)];
+  const preview = uniqueNames.length <= 3
+    ? uniqueNames.join(", ")
+    : `${uniqueNames.slice(0, 2).join(", ")} +${uniqueNames.length - 2}`;
+
+  return (
+    <div className="max-w-[85%] rounded-lg border bg-cyan-500/5 border-cyan-500/20 overflow-hidden">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-2 w-full px-3 py-2 text-xs text-cyan-300 hover:bg-white/5 transition-colors"
+      >
+        {open ? <ChevronDown className="w-3 h-3 shrink-0" /> : <ChevronRight className="w-3 h-3 shrink-0" />}
+        <Layers className="w-3.5 h-3.5" />
+        <span className="font-medium">{toolCalls.length} parallel calls</span>
+        {!open && (
+          <span className="text-zinc-500 truncate ml-1">{preview}</span>
+        )}
+      </button>
+      {open && (
+        <div className="border-t border-cyan-500/20">
+          <div className="border-l-2 border-cyan-500/30 ml-3 pl-3 py-2 space-y-1">
+            {toolCalls.map((tc, i) => {
+              const result = obsMap.get(tc.tool_call_id);
+              return (
+                <div key={`tc-${i}`}>
+                  <ToolUseBlock toolCall={tc} />
+                  {result && <ToolResultBlock result={result} />}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function TextBlock({ text }: { text: string }) {
@@ -139,11 +178,11 @@ function ThinkingBlock({ text }: { text: string }) {
   );
 }
 
-function ToolUseBlock({ block }: { block: ContentBlock }) {
+function ToolUseBlock({ toolCall }: { toolCall: ToolCall }) {
   const [open, setOpen] = useState(false);
-  const name = block.name || "unknown";
+  const name = toolCall.function_name || "unknown";
   const { icon, color } = getToolIconAndColor(name);
-  const preview = getToolPreview(name, block.input);
+  const preview = getToolPreview(name, toolCall.arguments);
 
   return (
     <div className="max-w-[85%]">
@@ -160,17 +199,20 @@ function ToolUseBlock({ block }: { block: ContentBlock }) {
       </button>
       {open && (
         <div className="mt-1">
-          <ToolInputRenderer name={name} input={block.input} />
+          <ToolInputRenderer name={name} input={toolCall.arguments} />
         </div>
       )}
     </div>
   );
 }
 
-function ToolResultBlock({ block }: { block: ContentBlock }) {
+const ERROR_PREFIX = "[ERROR] ";
+
+function ToolResultBlock({ result }: { result: ObservationResult }) {
   const [open, setOpen] = useState(false);
-  const isError = block.is_error === true;
-  const content = extractResultText(block.content);
+  const rawContent = result.content || "";
+  const isError = typeof rawContent === "string" && rawContent.startsWith(ERROR_PREFIX);
+  const content = isError ? rawContent.slice(ERROR_PREFIX.length) : rawContent;
   if (!content) return null;
 
   const previewSnippet = content.split("\n")[0].slice(0, 80);
@@ -534,21 +576,4 @@ function getToolPreview(name: string, input: unknown): string {
   }
   if (n === "grep" || n === "glob") return String(data.pattern || "").slice(0, 40);
   return "";
-}
-
-function extractResultText(content: unknown): string {
-  if (!content) return "";
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    return content
-      .map((item) => {
-        if (typeof item === "string") return item;
-        if (typeof item === "object" && item !== null && "text" in item)
-          return String((item as { text: string }).text);
-        return "";
-      })
-      .filter(Boolean)
-      .join("\n");
-  }
-  return String(content);
 }

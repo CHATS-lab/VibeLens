@@ -1,24 +1,35 @@
 import { Bot, MessageSquare, Wrench } from "lucide-react";
-import { useState } from "react";
-import type { SubAgentSession } from "../types";
+import { useMemo, useState } from "react";
+import type { Trajectory } from "../types";
 import { CollapsiblePill } from "./collapsible-pill";
-import { MessageBlock } from "./message-block";
+import { StepBlock } from "./message-block";
 
 interface SubAgentBlockProps {
-  subSession: SubAgentSession;
+  trajectory: Trajectory;
+  allTrajectories: Trajectory[];
 }
 
-export function SubAgentBlock({ subSession }: SubAgentBlockProps) {
+export function SubAgentBlock({ trajectory, allTrajectories }: SubAgentBlockProps) {
   const [open, setOpen] = useState(false);
 
-  const messageCount = subSession.messages.length;
-  const toolCallCount = subSession.messages.reduce(
-    (sum, m) => sum + (m.tool_calls?.length || 0),
+  const steps = trajectory.steps || [];
+  const stepCount = steps.length;
+  const toolCallCount = steps.reduce(
+    (sum, s) => sum + (s.tool_calls?.length || 0),
     0,
   );
 
-  const label = subSession.agent_id || "Sub-agent";
-  const preview = `${messageCount} msgs • ${toolCallCount} tools`;
+  // Find child sub-agents whose parent_trajectory_ref points to this trajectory
+  const childSubAgents = useMemo(
+    () =>
+      allTrajectories.filter(
+        (t) => t.parent_trajectory_ref?.session_id === trajectory.session_id
+      ),
+    [allTrajectories, trajectory.session_id]
+  );
+
+  const label = trajectory.session_id.slice(0, 12);
+  const preview = `${stepCount} steps • ${toolCallCount} tools`;
 
   return (
     <CollapsiblePill
@@ -33,20 +44,24 @@ export function SubAgentBlock({ subSession }: SubAgentBlockProps) {
         <div className="flex items-center gap-3 text-[10px] text-violet-400 px-1 pb-1">
           <span className="flex items-center gap-1">
             <MessageSquare className="w-3 h-3" />
-            {messageCount}
+            {stepCount}
           </span>
           <span className="flex items-center gap-1">
             <Wrench className="w-3 h-3" />
             {toolCallCount}
           </span>
         </div>
-        {subSession.messages
-          .filter((m) => m.role === "user" || m.role === "assistant")
-          .map((msg) => (
-            <MessageBlock key={msg.uuid} message={msg} />
+        {steps
+          .filter((s) => s.source === "user" || s.source === "agent")
+          .map((step) => (
+            <StepBlock key={step.step_id} step={step} />
           ))}
-        {subSession.sub_sessions.map((nested) => (
-          <SubAgentBlock key={nested.agent_id} subSession={nested} />
+        {childSubAgents.map((child) => (
+          <SubAgentBlock
+            key={child.session_id}
+            trajectory={child}
+            allTrajectories={allTrajectories}
+          />
         ))}
       </div>
     </CollapsiblePill>
