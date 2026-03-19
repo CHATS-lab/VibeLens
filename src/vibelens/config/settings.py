@@ -59,12 +59,12 @@ class Settings(BaseSettings):
         description="Maximum single file upload size (50 MB).",
     )
     max_zip_bytes: int = Field(
-        default=200 * 1024 * 1024,
-        description="Maximum zip file size (200 MB).",
+        default=500 * 1024 * 1024,
+        description="Maximum zip file size (500 MB).",
     )
     max_extracted_bytes: int = Field(
-        default=500 * 1024 * 1024,
-        description="Maximum total extracted size (500 MB).",
+        default=1024 * 1024 * 1024,
+        description="Maximum total extracted size (1 GB).",
     )
     max_file_count: int = Field(
         default=10_000,

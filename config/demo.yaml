@@ -19,6 +19,6 @@ server:
 upload:
   allowed_extensions: ".json,.jsonl"
   max_file_size_bytes: 10485760    # 10 MB per file (lower for public demo)
-  max_zip_bytes: 52428800         # 50 MB
-  max_extracted_bytes: 104857600  # 100 MB
+  max_zip_bytes: 524288000        # 500 MB
+  max_extracted_bytes: 1073741824 # 1 GB
   max_file_count: 1000
