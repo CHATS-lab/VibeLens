@@ -461,10 +461,10 @@ function EditRenderer({
         <Pencil className="w-3.5 h-3.5 text-blue-400" />
         <span className="text-[11px] font-mono text-zinc-300 truncate flex-1">{filePath}</span>
         {addCount > 0 && (
-          <span className="text-[10px] text-emerald-400 font-mono">+{addCount}</span>
+          <span className="text-[10px] text-emerald-400 font-mono" title={`${addCount} line${addCount !== 1 ? "s" : ""} added`}>+{addCount}</span>
         )}
         {removeCount > 0 && (
-          <span className="text-[10px] text-rose-400 font-mono">-{removeCount}</span>
+          <span className="text-[10px] text-rose-400 font-mono" title={`${removeCount} line${removeCount !== 1 ? "s" : ""} removed`}>-{removeCount}</span>
         )}
       </div>
       {diffLines.length > 0 && (

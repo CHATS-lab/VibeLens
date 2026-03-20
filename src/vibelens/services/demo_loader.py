@@ -6,6 +6,8 @@ from pathlib import Path
 from vibelens.config.settings import Settings
 from vibelens.ingest.discovery import discover_all_session_files
 from vibelens.ingest.fingerprint import parse_auto
+from vibelens.ingest.parsers.base import MAX_FIRST_MESSAGE_LENGTH, _is_meaningful_prompt
+from vibelens.models.enums import StepSource
 from vibelens.models.trajectories import Trajectory
 from vibelens.stores.disk import DiskStore
 from vibelens.utils import get_logger
@@ -141,6 +143,30 @@ def _try_load_atif_json(file_path: Path) -> list[Trajectory]:
     return trajectories
 
 
+def _fix_first_message(traj: Trajectory) -> None:
+    """Recompute first_message from steps if current value is not a real user prompt.
+
+    Pre-parsed ATIF files may have stale first_message pointing to system
+    or skill content. This scans steps for the first meaningful user prompt.
+
+    Args:
+        traj: Trajectory to fix in-place.
+    """
+    if traj.first_message and _is_meaningful_prompt(traj.first_message):
+        return
+    for step in traj.steps:
+        if step.source != StepSource.USER:
+            continue
+        if step.extra and step.extra.get("is_skill_output"):
+            continue
+        if isinstance(step.message, str) and _is_meaningful_prompt(step.message):
+            text = step.message
+            if len(text) > MAX_FIRST_MESSAGE_LENGTH:
+                text = text[:MAX_FIRST_MESSAGE_LENGTH] + "..."
+            traj.first_message = text
+            return
+
+
 def _save_trajectories(trajectories: list[Trajectory], store: DiskStore) -> int:
     """Save a list of trajectories to the store.
 
@@ -157,5 +183,6 @@ def _save_trajectories(trajectories: list[Trajectory], store: DiskStore) -> int:
     if not trajectories:
         return 0
     main = next((t for t in trajectories if not t.parent_trajectory_ref), trajectories[0])
+    _fix_first_message(main)
     store.save(main.session_id, trajectories, main.to_summary())
     return 1
