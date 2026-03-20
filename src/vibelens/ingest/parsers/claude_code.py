@@ -18,7 +18,7 @@ import re
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 from uuid import uuid4
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
@@ -66,6 +66,41 @@ _SUBAGENT_TOOL_NAMES = {"Agent", "Task"}
 # Claude Code embeds "agentId: {hex_hash}" in the tool output text.
 _AGENT_ID_PATTERN = re.compile(r"agentId:\s*([a-f0-9]+)")
 
+# XML tags injected by the system into user message content.
+# Their presence means the "user" entry is actually system-generated.
+_SYSTEM_XML_TAGS = frozenset(
+    {
+        "system-reminder",
+        "local-command-caveat",
+        "local-command-stdout",
+        "command-message",
+        "task-notification",
+        "user-prompt-submit-hook",
+        "command-name",
+    }
+)
+
+_SYSTEM_TAG_PATTERN = re.compile(
+    r"^\s*<(" + "|".join(re.escape(t) for t in _SYSTEM_XML_TAGS) + r")[\s>]"
+)
+
+# Plain-text prefixes that indicate system-injected content
+_SYSTEM_PREFIXES = ("[Request interrupted", "This session is being continued")
+
+# Skill output injected after a Skill tool_use
+_SKILL_PREFIX = "Base directory for this skill:"
+
+
+class _SessionMeta(NamedTuple):
+    """Aggregated metadata from a single pass over raw JSONL content."""
+
+    session_id: str | None
+    last_session_id: str | None
+    model_name: str | None
+    version: str | None
+    project_path: str | None
+    git_branches: list[str] | None
+
 
 class ClaudeCodeParser(BaseParser):
     """Parser for Claude Code's native JSONL format.
@@ -91,9 +126,13 @@ class ClaudeCodeParser(BaseParser):
             List of Trajectory objects (main + sub-agents).
         """
         collector = DiagnosticsCollector()
-        project_path = _extract_project_path(content)
-        git_branches = _extract_git_branches(content)
-        session_id, last_session_id, model_name, version = _extract_session_metadata(content)
+        meta = _scan_session_metadata(content)
+        project_path = meta.project_path
+        git_branches = meta.git_branches
+        session_id = meta.session_id
+        last_session_id = meta.last_session_id
+        model_name = meta.model_name
+        version = meta.version
 
         # Use extracted session_id, fallback to filename stem, then UUID
         if not session_id:
@@ -110,7 +149,15 @@ class ClaudeCodeParser(BaseParser):
             return []
 
         agent = self.build_agent(version=version, model=model_name)
-        extra = _build_diagnostics_extra(collector)
+
+        has_diagnostics_issues = (
+            collector.skipped_lines > 0
+            or collector.orphaned_tool_calls > 0
+            or collector.orphaned_tool_results > 0
+        )
+        extra: dict | None = None
+        if has_diagnostics_issues:
+            extra = {"diagnostics": collector.to_diagnostics().model_dump()}
 
         if git_branches:
             extra = extra or {}
@@ -295,13 +342,13 @@ class ClaudeCodeParser(BaseParser):
         if not sub_steps:
             return None
 
-        _, _, sub_model, sub_version = _extract_session_metadata(sub_content)
+        sub_meta = _scan_session_metadata(sub_content)
 
         return self.assemble_trajectory(
             session_id=agent_file.stem,
-            agent=self.build_agent(version=sub_version, model=sub_model),
+            agent=self.build_agent(version=sub_meta.version, model=sub_meta.model_name),
             steps=sub_steps,
-            project_path=_extract_project_path(sub_content),
+            project_path=sub_meta.project_path,
             parent_trajectory_ref=TrajectoryRef(
                 session_id=parent_sid,
                 step_id=spawn_step_id,
@@ -405,11 +452,21 @@ class ClaudeCodeParser(BaseParser):
                     if diagnostics:
                         diagnostics.record_tool_call()
 
+            # Reclassify user messages that contain system-injected or
+            # skill content so they get the correct source label and metadata.
+            extra_classify: dict[str, Any] | None = None
+            if source == StepSource.USER and message:
+                source, extra_classify = classify_user_message(message, entry)
+
             # Detect steps copied from a previous session for context
             entry_session_id = entry.get("sessionId", "")
             is_copied = (
                 session_id is not None and entry_session_id and entry_session_id != session_id
             )
+
+            extra = _build_step_extra(entry)
+            if extra_classify:
+                extra = {**(extra or {}), **extra_classify}
 
             steps.append(
                 Step(
@@ -423,7 +480,7 @@ class ClaudeCodeParser(BaseParser):
                     tool_calls=tool_calls,
                     observation=observation,
                     is_copied_context=True if is_copied else None,
-                    extra=_build_step_extra(entry),
+                    extra=extra or None,
                 )
             )
 
@@ -431,6 +488,43 @@ class ClaudeCodeParser(BaseParser):
             _detect_orphans(tool_use_ids, tool_results, diagnostics)
 
         return steps
+
+
+def classify_user_message(
+    text: str, entry: dict[str, Any]
+) -> tuple[StepSource, dict[str, Any] | None]:
+    """Classify a user-role message as real user, system, or skill content.
+
+    Claude Code injects system content (XML tags, continuation notices) and
+    skill output (after Skill tool_use) into user-type entries. This function
+    detects those patterns and returns the correct source classification.
+
+    Args:
+        text: The text content of a user-type message.
+        entry: Raw JSONL entry dict, used to extract sourceToolUseID for skills.
+
+    Returns:
+        Tuple of (source, extra_metadata). Extra is None for system/plain user,
+        or {"is_skill_output": True, "sourceToolUseID": ...} for skill content.
+    """
+    if not text:
+        return StepSource.USER, None
+
+    stripped = text.lstrip()
+    if stripped.startswith(_SKILL_PREFIX):
+        extra: dict[str, Any] = {"is_skill_output": True}
+        source_tool_id = entry.get("sourceToolUseID")
+        if source_tool_id:
+            extra["sourceToolUseID"] = source_tool_id
+        return StepSource.USER, extra
+
+    if _SYSTEM_TAG_PATTERN.match(stripped):
+        return StepSource.SYSTEM, None
+
+    for prefix in _SYSTEM_PREFIXES:
+        if stripped.startswith(prefix):
+            return StepSource.SYSTEM, None
+    return StepSource.USER, None
 
 
 def _group_entries_by_step(entries: list[dict]) -> list[list[dict]]:
@@ -602,10 +696,7 @@ def _make_enqueue_user_entry(entry: dict) -> dict:
         "uuid": unique_id,
         "sessionId": entry.get("sessionId", ""),
         "timestamp": entry.get("timestamp"),
-        "message": {
-            "role": "user",
-            "content": entry["content"],
-        },
+        "message": {"role": "user", "content": entry["content"]},
         "_queue_operation": "enqueue",
     }
 
@@ -634,128 +725,45 @@ def _build_step_extra(entry: dict) -> dict[str, Any] | None:
     if entry.get("isSidechain", False):
         extra["is_sidechain"] = True
 
-    stop_reason = msg.get("stop_reason")
-    if stop_reason is not None:
-        extra["stop_reason"] = stop_reason
+    if msg.get("stop_reason") is not None:
+        extra["stop_reason"] = msg["stop_reason"]
 
-    stop_sequence = msg.get("stop_sequence")
-    if stop_sequence is not None:
-        extra["stop_sequence"] = stop_sequence
+    if msg.get("stop_sequence") is not None:
+        extra["stop_sequence"] = msg["stop_sequence"]
 
-    cwd = entry.get("cwd")
-    if cwd:
-        extra["cwd"] = cwd
+    if entry.get("cwd"):
+        extra["cwd"] = entry["cwd"]
 
-    request_id = msg.get("requestId")
-    if request_id:
-        extra["request_id"] = request_id
+    if msg.get("requestId"):
+        extra["request_id"] = msg["requestId"]
 
-    service_tier = msg.get("service_tier")
-    if service_tier:
-        extra["service_tier"] = service_tier
+    if msg.get("service_tier"):
+        extra["service_tier"] = msg["service_tier"]
 
-    user_type = entry.get("userType")
-    if user_type and user_type != "external":
-        extra["user_type"] = user_type
+    if entry.get("userType") and entry["userType"] != "external":
+        extra["user_type"] = entry["userType"]
 
     return extra or None
 
 
-def _build_diagnostics_extra(collector: DiagnosticsCollector) -> dict | None:
-    """Build trajectory extra dict from diagnostics if there are issues.
+def _scan_session_metadata(content: str) -> _SessionMeta:
+    """Extract all session-level metadata in a single JSONL pass.
 
-    Args:
-        collector: Diagnostics collector from parsing.
-
-    Returns:
-        Extra dict with diagnostics, or None if no issues.
-    """
-    has_issues = (
-        collector.skipped_lines > 0
-        or collector.orphaned_tool_calls > 0
-        or collector.orphaned_tool_results > 0
-    )
-    if not has_issues:
-        return None
-    return {"diagnostics": collector.to_diagnostics().model_dump()}
-
-
-def _extract_git_branches(content: str) -> list[str] | None:
-    """Extract unique git branch names from JSONL entries.
-
-    Claude Code events carry a ``gitBranch`` field. Collects unique
-    values across all entries.
+    Collects sessionId, model, version, cwd (project path), and
+    gitBranch from raw JSONL entries. Project path probing respects
+    PROJECT_PATH_PROBE_LIMIT for consistency with the original behavior.
 
     Args:
         content: Raw JSONL content string.
 
     Returns:
-        Sorted list of branch names, or None if none found.
-    """
-    branches: set[str] = set()
-    for line in content.split("\n"):
-        stripped = line.strip()
-        if not stripped:
-            continue
-        try:
-            entry = json.loads(stripped)
-        except json.JSONDecodeError:
-            continue
-        branch = entry.get("gitBranch", "")
-        if branch:
-            branches.add(branch)
-    return sorted(branches) if branches else None
-
-
-def _extract_project_path(content: str) -> str | None:
-    """Extract the project working directory from the first JSONL entries.
-
-    Claude Code entries carry a ``cwd`` field with the absolute working
-    directory. We probe the first few lines to find the most common one.
-
-    Args:
-        content: Raw JSONL content string.
-
-    Returns:
-        Project path string, or None if not found.
-    """
-    cwd_values: list[str] = []
-    for line in content.split("\n"):
-        if len(cwd_values) >= PROJECT_PATH_PROBE_LIMIT:
-            break
-        stripped = line.strip()
-        if not stripped:
-            continue
-        try:
-            entry = json.loads(stripped)
-        except json.JSONDecodeError:
-            continue
-        cwd = entry.get("cwd", "")
-        if cwd:
-            cwd_values.append(cwd)
-    if not cwd_values:
-        return None
-    return Counter(cwd_values).most_common(1)[0][0]
-
-
-def _extract_session_metadata(
-    content: str,
-) -> tuple[str | None, str | None, str | None, str | None]:
-    """Extract session_id, last_session_id, model_name, and version from JSONL.
-
-    Scans all lines to find the most common sessionId (current session),
-    any divergent sessionId (parent/continued session), the most common
-    model name from assistant messages, and the CLI version string.
-
-    Args:
-        content: Raw JSONL content string.
-
-    Returns:
-        Tuple of (session_id, last_session_id, model_name, version).
+        _SessionMeta with all extracted fields.
     """
     session_counter: Counter[str] = Counter()
     model_counter: Counter[str] = Counter()
     version: str | None = None
+    cwd_values: list[str] = []
+    branches: set[str] = set()
 
     for line in content.split("\n"):
         stripped = line.strip()
@@ -775,10 +783,19 @@ def _extract_session_metadata(
             if raw_version:
                 version = str(raw_version)
 
+        # Project path: only probe first N entries that have cwd
+        if len(cwd_values) < PROJECT_PATH_PROBE_LIMIT:
+            cwd = entry.get("cwd", "")
+            if cwd:
+                cwd_values.append(cwd)
+
+        branch = entry.get("gitBranch", "")
+        if branch:
+            branches.add(branch)
+
         msg = entry.get("message", {})
         if isinstance(msg, dict):
             model = msg.get("model", "")
-            # Exclude synthetic markers like "<synthetic>" from model detection
             if model and not model.startswith("<"):
                 model_counter[model] += 1
 
@@ -790,7 +807,32 @@ def _extract_session_metadata(
             break
 
     model_name = model_counter.most_common(1)[0][0] if model_counter else None
-    return session_id, last_session_id, model_name, version
+    project_path = Counter(cwd_values).most_common(1)[0][0] if cwd_values else None
+    git_branches = sorted(branches) if branches else None
+
+    return _SessionMeta(
+        session_id=session_id,
+        last_session_id=last_session_id,
+        model_name=model_name,
+        version=version,
+        project_path=project_path,
+        git_branches=git_branches,
+    )
+
+
+def _extract_git_branches(content: str) -> list[str] | None:
+    """Extract unique git branch names from JSONL entries.
+
+    Thin wrapper around _scan_session_metadata for backward compatibility
+    with tests that import this function directly.
+
+    Args:
+        content: Raw JSONL content string.
+
+    Returns:
+        Sorted list of branch names, or None if none found.
+    """
+    return _scan_session_metadata(content).git_branches
 
 
 def _decompose_raw_content(
@@ -1067,8 +1109,11 @@ def _build_agent_spawn_map(
     Returns:
         Dict mapping agentId to (step_id, tool_call_id).
     """
-    # Pass 1: collect Task/Agent tool_use_ids from assistant messages
+    # Single pass: collect spawn tool_use_ids from assistant messages
+    # and tool_result candidates from user messages simultaneously
     spawn_tc_ids: set[str] = set()
+    result_candidates: list[tuple[str, str]] = []  # (tool_use_id, text_content)
+
     for line in raw_content.split("\n"):
         stripped = line.strip()
         if not stripped:
@@ -1077,53 +1122,46 @@ def _build_agent_spawn_map(
             entry = json.loads(stripped)
         except json.JSONDecodeError:
             continue
-        if entry.get("type") != "assistant":
-            continue
+
+        entry_type = entry.get("type")
         msg = entry.get("message", {})
         if not isinstance(msg, dict):
             continue
-        for block in msg.get("content", []):
-            if not isinstance(block, dict):
-                continue
-            if block.get("type") == "tool_use" and block.get("name") in _SUBAGENT_TOOL_NAMES:
-                tc_id = block.get("id", "")
-                if tc_id:
-                    spawn_tc_ids.add(tc_id)
+
+        if entry_type == "assistant":
+            for block in msg.get("content", []):
+                if not isinstance(block, dict):
+                    continue
+                if block.get("type") == "tool_use" and block.get("name") in _SUBAGENT_TOOL_NAMES:
+                    tc_id = block.get("id", "")
+                    if tc_id:
+                        spawn_tc_ids.add(tc_id)
+
+        elif entry_type == "user":
+            for block in msg.get("content", []):
+                if not isinstance(block, dict) or block.get("type") != "tool_result":
+                    continue
+                tc_id = block.get("tool_use_id", "")
+                if not tc_id:
+                    continue
+                result_content = block.get("content", "")
+                if isinstance(result_content, list):
+                    result_content = " ".join(
+                        b.get("text", "") for b in result_content if isinstance(b, dict)
+                    )
+                result_candidates.append((tc_id, str(result_content)))
 
     if not spawn_tc_ids:
         return {}
 
-    # Pass 2: find tool_results for these tool_use_ids, extract agentId
+    # Filter candidates against spawn_tc_ids and extract agentId
     agent_to_tc: dict[str, str] = {}
-    for line in raw_content.split("\n"):
-        stripped = line.strip()
-        if not stripped:
+    for tc_id, text in result_candidates:
+        if tc_id not in spawn_tc_ids:
             continue
-        try:
-            entry = json.loads(stripped)
-        except json.JSONDecodeError:
-            continue
-        if entry.get("type") != "user":
-            continue
-        msg = entry.get("message", {})
-        if not isinstance(msg, dict):
-            continue
-        for block in msg.get("content", []):
-            if not isinstance(block, dict):
-                continue
-            if block.get("type") != "tool_result":
-                continue
-            tc_id = block.get("tool_use_id", "")
-            if tc_id not in spawn_tc_ids:
-                continue
-            result_content = block.get("content", "")
-            if isinstance(result_content, list):
-                result_content = " ".join(
-                    b.get("text", "") for b in result_content if isinstance(b, dict)
-                )
-            match = _AGENT_ID_PATTERN.search(str(result_content))
-            if match:
-                agent_to_tc[match.group(1)] = tc_id
+        match = _AGENT_ID_PATTERN.search(text)
+        if match:
+            agent_to_tc[match.group(1)] = tc_id
 
     # Resolve tool_call_id → step_id via parsed steps
     tc_to_step_id: dict[str, str] = {}

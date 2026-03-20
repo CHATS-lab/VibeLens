@@ -10,13 +10,13 @@ app:
   mode: demo
 
 demo:
-  example_sessions: "examples/claude-codex-example"
+  example_sessions: "datasets/redteam, examples/claude-codex-example"
 
 server:
-  host: 0.0.0.0                   # Bind to all interfaces for public access
+  host: 0.0.0.0                      # Bind to all interfaces for public access
   port: 12001
 
 upload:
-  max_zip_bytes: 10737418240      # 10 GB
-  max_extracted_bytes: 21474836480 # 20 GB
+  max_zip_bytes: 10737418240         # 10 GB
+  max_extracted_bytes: 21474836480   # 20 GB
   max_file_count: 10000

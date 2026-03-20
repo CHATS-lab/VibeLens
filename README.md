@@ -50,7 +50,7 @@ VibeLens supports donating your agent conversation data to advance research on c
 
 We welcome contributions of real-world coding agent trajectories across all supported formats. Your data helps the research community better understand how developers interact with AI coding assistants.
 
-To donate, upload your data, select your sessions, and click the **Donate** button.
+To donate, upload your data, select the sessions you want to donate, and click the **Donate** button.
 
 ## Development
 

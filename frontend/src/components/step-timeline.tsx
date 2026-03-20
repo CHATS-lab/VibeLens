@@ -50,7 +50,11 @@ export function StepTimeline({ entries, sessionStartMs }: StepTimelineProps) {
 
         const hasNext = index < entries.length - 1;
         const dotColor =
-          entry.step.source === "user" ? "bg-indigo-500" : "bg-cyan-500";
+          entry.step.source === "user"
+            ? entry.step.extra?.is_skill_output ? "bg-amber-500" : "bg-indigo-500"
+            : entry.step.source === "system"
+              ? "bg-zinc-500"
+              : "bg-cyan-500";
 
         return (
           <div key={entry.step.step_id} className="flex gap-3">

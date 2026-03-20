@@ -12,6 +12,9 @@ from vibelens.models.enums import AgentType
 HISTORY_INDEX_FILENAME = "history.jsonl"
 SUBAGENTS_DIR_NAME = "subagents"
 
+# Directories to skip during recursive discovery
+_SKIP_DIR_NAMES = {SUBAGENTS_DIR_NAME, "parsed"}
+
 PARSEABLE_EXTENSIONS = {".json", ".jsonl"}
 
 
@@ -59,7 +62,7 @@ def discover_all_session_files(directory: Path) -> list[Path]:
     files: list[Path] = []
     for ext in sorted(PARSEABLE_EXTENSIONS):
         for filepath in directory.rglob(f"*{ext}"):
-            if SUBAGENTS_DIR_NAME in filepath.parts:
+            if _SKIP_DIR_NAMES.intersection(filepath.parts):
                 continue
             if filepath.name == HISTORY_INDEX_FILENAME:
                 continue
@@ -71,7 +74,9 @@ def _discover_claude_code(extracted_dir: Path) -> list[Path]:
     """Find Claude Code session files, excluding sub-agents and history index."""
     files = sorted(extracted_dir.rglob("*.jsonl"))
     return [
-        f for f in files if SUBAGENTS_DIR_NAME not in f.parts and f.name != HISTORY_INDEX_FILENAME
+        f
+        for f in files
+        if not _SKIP_DIR_NAMES.intersection(f.parts) and f.name != HISTORY_INDEX_FILENAME
     ]
 
 

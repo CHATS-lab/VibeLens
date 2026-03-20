@@ -21,6 +21,7 @@ venv/
 .env
 vibelens.yaml
 vibelens.yml
+config/redteam.yaml
 
 # Database
 *.db

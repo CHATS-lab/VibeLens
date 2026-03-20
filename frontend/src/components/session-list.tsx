@@ -173,25 +173,58 @@ export function SessionList({
           ))
         ) : (
           Array.from(groupedByProject.entries()).map(
-            ([projectName, projectSessions]) => (
+            ([projectName, projectSessions]) => {
+              const projectIds = projectSessions.map((s) => s.session_id);
+              const allProjectChecked = projectIds.every((id) =>
+                checkedIds.has(id)
+              );
+              const someProjectChecked =
+                !allProjectChecked &&
+                projectIds.some((id) => checkedIds.has(id));
+              const handleToggleProject = (e: React.MouseEvent) => {
+                e.stopPropagation();
+                const next = new Set(checkedIds);
+                if (allProjectChecked) {
+                  for (const id of projectIds) next.delete(id);
+                } else {
+                  for (const id of projectIds) next.add(id);
+                }
+                onCheckedChange(next);
+              };
+              return (
               <div key={projectName}>
-                <button
-                  onClick={() => toggleProjectExpanded(projectName)}
-                  className="sticky top-0 z-10 w-full flex items-center gap-2 px-3 py-2 bg-zinc-900 border-b border-zinc-800 text-xs text-zinc-300 hover:text-zinc-100 transition"
-                >
-                  {expandedProjects.has(projectName) ? (
-                    <ChevronDown className="w-3.5 h-3.5 shrink-0" />
-                  ) : (
-                    <ChevronRight className="w-3.5 h-3.5 shrink-0" />
-                  )}
-                  <FolderOpen className="w-3.5 h-3.5 shrink-0 text-zinc-500" />
-                  <span className="truncate font-medium" title={projectName}>
-                    {baseProjectName(projectName)}
-                  </span>
-                  <span className="ml-auto text-zinc-500 shrink-0">
-                    {projectSessions.length}
-                  </span>
-                </button>
+                <div className="sticky top-0 z-10 w-full flex items-center gap-1 bg-zinc-900 border-b border-zinc-800 text-xs text-zinc-300">
+                  <button
+                    onClick={handleToggleProject}
+                    className="shrink-0 pl-3 pr-1 py-2 text-zinc-500 hover:text-cyan-400 transition"
+                    title={allProjectChecked ? "Deselect project" : "Select project"}
+                  >
+                    {allProjectChecked ? (
+                      <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
+                    ) : someProjectChecked ? (
+                      <MinusSquare className="w-3.5 h-3.5 text-cyan-400" />
+                    ) : (
+                      <Square className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                  <button
+                    onClick={() => toggleProjectExpanded(projectName)}
+                    className="flex-1 flex items-center gap-2 pr-3 py-2 hover:text-zinc-100 transition min-w-0"
+                  >
+                    {expandedProjects.has(projectName) ? (
+                      <ChevronDown className="w-3.5 h-3.5 shrink-0" />
+                    ) : (
+                      <ChevronRight className="w-3.5 h-3.5 shrink-0" />
+                    )}
+                    <FolderOpen className="w-3.5 h-3.5 shrink-0 text-zinc-500" />
+                    <span className="truncate font-medium" title={projectName}>
+                      {baseProjectName(projectName)}
+                    </span>
+                    <span className="ml-auto text-zinc-500 shrink-0">
+                      {projectSessions.length}
+                    </span>
+                  </button>
+                </div>
                 {expandedProjects.has(projectName) &&
                   projectSessions.map((session) => (
                     <SessionRow
@@ -204,8 +237,8 @@ export function SessionList({
                     />
                   ))}
               </div>
-            )
-          )
+              );
+            })
         )}
       </div>
     </div>

@@ -11,7 +11,7 @@ export function formatTime(timestamp: string | null): string {
   return `${Math.floor(diff / DAY)}d`;
 }
 
-const SYSTEM_TAG_RE = /<(?:system-reminder|command-name|user-prompt-submit-hook)[^>]*>[\s\S]*?<\/(?:system-reminder|command-name|user-prompt-submit-hook)>/g;
+const SYSTEM_TAG_RE = /<(?:system-reminder|command-name|command-message|user-prompt-submit-hook|local-command-caveat|local-command-stdout|task-notification)[^>]*>[\s\S]*?<\/(?:system-reminder|command-name|command-message|user-prompt-submit-hook|local-command-caveat|local-command-stdout|task-notification)>/g;
 
 export function sanitizeText(text: string): string {
   return text.replace(SYSTEM_TAG_RE, "").trim();
@@ -46,8 +46,12 @@ export function extractUserText(step: { message: string }): string {
 
 export function baseProjectName(path: string): string {
   if (!path) return "Unknown";
-  const segments = path.replace(/\/+$/, "").split("/");
-  return segments[segments.length - 1] || path;
+  const normalized = path.replace(/[\\/]+$/, "");
+  const segments = normalized.split(/[\\/]/).filter(Boolean);
+  const LAST_N_SEGMENTS = 2;
+  if (segments.length === 0) return path;
+  const tail = segments.slice(-LAST_N_SEGMENTS);
+  return tail.join("/");
 }
 
 export function formatElapsed(totalSeconds: number): string {
