@@ -13,7 +13,6 @@ interface PromptEntry {
   turnNumber: number;
   stepId: string;
   preview: string;
-  followingCount: number;
 }
 
 interface PromptNavPanelProps {
@@ -39,17 +38,10 @@ function buildPromptEntries(steps: Step[]): PromptEntry[] {
 
     turnNumber++;
 
-    let followingCount = 0;
-    for (let j = i + 1; j < steps.length; j++) {
-      if (steps[j].source === "user") break;
-      followingCount++;
-    }
-
     entries.push({
       turnNumber,
       stepId: step.step_id,
       preview: truncate(text.replace(/\n/g, " "), PREVIEW_MAX_CHARS),
-      followingCount,
     });
   }
 
@@ -148,11 +140,6 @@ export function PromptNavPanel({
                       >
                         #{entry.turnNumber}
                       </span>
-                      {entry.followingCount > 0 && (
-                        <span className="text-[10px] text-zinc-600">
-                          +{entry.followingCount}
-                        </span>
-                      )}
                     </div>
                     <p
                       className={`line-clamp-2 leading-snug ${

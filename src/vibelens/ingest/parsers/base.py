@@ -67,10 +67,30 @@ def mark_error_content(content: str | None) -> str:
     return f"{ERROR_PREFIX}{text}"
 
 
+_SYSTEM_TAG_PREFIXES = (
+    "<system-reminder",
+    "<command-name",
+    "<command-message",
+    "<command-args",
+    "<user-prompt-submit-hook",
+    "<local-command-caveat",
+    "<local-command-stdout",
+    "<task-notification",
+)
+
+_SKILL_PREFIX = "Base directory for this skill:"
+
+
 def _is_meaningful_prompt(text: str) -> bool:
     """Return True if the text is a real user prompt, not a slash command or system message."""
     stripped = text.strip()
     if not stripped:
+        return False
+    # System XML tags injected into user entries
+    if stripped.startswith(_SYSTEM_TAG_PREFIXES):
+        return False
+    # Skill output injected after a Skill tool_use
+    if stripped.startswith(_SKILL_PREFIX):
         return False
     is_single_line = "\n" not in stripped
     # Single slash commands like "/permissions", "/compact"
@@ -165,6 +185,8 @@ class BaseParser(ABC):
             if step.is_copied_context:
                 continue
             if not isinstance(step.message, str):
+                continue
+            if step.extra and step.extra.get("is_skill_output"):
                 continue
             if _is_meaningful_prompt(step.message):
                 return self.truncate_first_message(step.message)
