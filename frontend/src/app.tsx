@@ -1,8 +1,6 @@
 import {
   Menu,
   PanelLeftClose,
-  Copy,
-  Check,
   ChevronUp,
   ChevronDown,
   Download,
@@ -17,7 +15,6 @@ import { SessionList, type ViewMode } from "./components/session-list";
 import { SessionView } from "./components/session-view";
 import { UploadDialog } from "./components/upload-dialog";
 import type { DonateResult, Trajectory } from "./types";
-import { baseProjectName } from "./utils";
 
 type AppMode = "self" | "demo";
 
@@ -54,7 +51,6 @@ export function App() {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
     null
   );
-  const [copied, setCopied] = useState(false);
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(false);
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
@@ -65,7 +61,7 @@ export function App() {
   const [sidebarWidth, setSidebarWidth] = useState(320);
   const [appMode, setAppMode] = useState<AppMode>("self");
   const [maxZipBytes, setMaxZipBytes] = useState(DEFAULT_MAX_ZIP_BYTES);
-  const [resolvedFirstMessage, setResolvedFirstMessage] = useState<string | null>(null);
+
 
   // Ephemeral token: new on every page load, never persisted
   const [sessionToken] = useState(() =>
@@ -130,27 +126,9 @@ export function App() {
       .finally(() => setLoading(false));
   }, [page, refreshKey, fetchWithToken]);
 
-  const selectedSession = sessions.find(
-    (s) => s.session_id === selectedSessionId
-  );
-
   const handleSelectSession = useCallback((id: string | null) => {
     setSelectedSessionId(id);
-    setResolvedFirstMessage(null);
   }, []);
-
-  const handleFirstMessageResolved = useCallback((msg: string) => {
-    setResolvedFirstMessage(msg);
-  }, []);
-
-  const displayFirstMessage = resolvedFirstMessage || selectedSession?.first_message || "";
-
-  const handleCopyResume = () => {
-    if (!selectedSessionId) return;
-    navigator.clipboard.writeText(`claude --resume ${selectedSessionId}`);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
 
   const handleDownloadClick = async () => {
     if (checkedIds.size === 0) return;
@@ -224,8 +202,6 @@ export function App() {
     }
     setDialog({ kind: "hidden" });
   };
-
-  const isDemo = appMode === "demo";
 
   const renderDialog = () => {
     switch (dialog.kind) {
@@ -371,64 +347,19 @@ export function App() {
 
         {/* Main Content */}
         <main className="flex-1 flex flex-col min-w-0 bg-zinc-950">
-          {/* Header */}
-          <header className="flex items-center gap-3 px-6 h-[50px] border-b border-zinc-800 shrink-0 bg-zinc-900/50 backdrop-blur-sm">
+          {/* Content Area */}
+          <div className="flex-1 min-h-0 relative">
             {!sidebarOpen && (
               <button
                 onClick={() => setSidebarOpen(true)}
-                className="text-zinc-500 hover:text-zinc-300 transition"
+                className="absolute top-3 left-3 z-10 p-1.5 text-zinc-500 hover:text-zinc-300 bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-700/50 rounded transition"
                 title="Expand sidebar"
               >
                 <Menu className="w-4 h-4" />
               </button>
             )}
-
-            {selectedSession ? (
-              <>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-zinc-200 truncate font-medium">
-                    {displayFirstMessage || "Session"}
-                  </p>
-                  <p className="text-[10px] text-zinc-500 mt-0.5">
-                    <span title={selectedSession.project_path || ""}>
-                      {baseProjectName(selectedSession.project_path || "")}
-                    </span>
-                    {selectedSession.agent?.model_name &&
-                      ` • ${selectedSession.agent.name}@${selectedSession.agent.model_name}`}
-                  </p>
-                </div>
-
-                {!isDemo && (
-                  <button
-                    onClick={handleCopyResume}
-                    className="flex items-center gap-1.5 text-[10px] text-zinc-400 hover:text-zinc-200 border border-zinc-700 hover:border-zinc-600 rounded px-2.5 py-1.5 transition whitespace-nowrap shrink-0"
-                    title="Copy resume command to clipboard"
-                  >
-                    {copied ? (
-                      <>
-                        <Check className="w-3.5 h-3.5 text-green-400" />
-                        Copied!
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3.5 h-3.5" />
-                        Resume
-                      </>
-                    )}
-                  </button>
-                )}
-              </>
-            ) : (
-              <div className="text-xs text-zinc-500">
-                Select a session to view
-              </div>
-            )}
-          </header>
-
-          {/* Content Area */}
-          <div className="flex-1 min-h-0">
             {selectedSessionId ? (
-              <SessionView sessionId={selectedSessionId} onFirstMessageResolved={handleFirstMessageResolved} />
+              <SessionView sessionId={selectedSessionId} />
             ) : (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center">

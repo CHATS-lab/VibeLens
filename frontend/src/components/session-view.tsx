@@ -11,6 +11,7 @@ import {
   Calendar,
   Hash,
   Layers,
+  Zap,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppContext } from "../app";
@@ -23,10 +24,9 @@ import { formatTokens, formatDuration, extractUserText, baseProjectName } from "
 
 interface SessionViewProps {
   sessionId: string;
-  onFirstMessageResolved?: (firstMessage: string) => void;
 }
 
-export function SessionView({ sessionId, onFirstMessageResolved }: SessionViewProps) {
+export function SessionView({ sessionId }: SessionViewProps) {
   const { fetchWithToken } = useAppContext();
   const [trajectories, setTrajectories] = useState<Trajectory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,14 +58,10 @@ export function SessionView({ sessionId, onFirstMessageResolved }: SessionViewPr
       })
       .then((data: Trajectory[]) => {
         setTrajectories(data);
-        const mainTraj = data.find((t) => !t.parent_trajectory_ref);
-        if (mainTraj?.first_message && onFirstMessageResolved) {
-          onFirstMessageResolved(mainTraj.first_message);
-        }
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [sessionId, fetchWithToken, onFirstMessageResolved]);
+  }, [sessionId, fetchWithToken]);
 
   const main = useMemo(
     () => trajectories.find((t) => !t.parent_trajectory_ref) ?? null,
@@ -228,16 +224,19 @@ export function SessionView({ sessionId, onFirstMessageResolved }: SessionViewPr
   if (!main) return null;
 
   const metrics = main.final_metrics;
-  const promptCount = userStepIds.length;
+  const promptCount = steps.filter(
+    (s) => s.source === "user" && !s.extra?.is_skill_output && extractUserText(s)
+  ).length;
+  const skillCount = steps.filter(
+    (s) => s.source === "user" && s.extra?.is_skill_output
+  ).length;
   const totalTokens =
     (metrics?.total_prompt_tokens || 0) +
     (metrics?.total_completion_tokens || 0);
 
   const isVisibleStep = (s: Step): boolean => {
-    if (s.source === "user") {
-      if (!s.message.trim()) return false;
-    }
-    return s.source === "user" || s.source === "agent";
+    if (s.source === "user" && !s.message.trim()) return false;
+    return s.source === "user" || s.source === "agent" || s.source === "system";
   };
 
   return (
@@ -249,10 +248,12 @@ export function SessionView({ sessionId, onFirstMessageResolved }: SessionViewPr
           <div className="flex items-start justify-between mb-3">
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-800/60 text-[11px] text-zinc-500 shrink-0">
-                  <Hash className="w-3 h-3" />
-                  {main.session_id.slice(0, 8)}
-                </span>
+                <MetaPill
+                  icon={<Hash className="w-3 h-3" />}
+                  label={main.session_id.slice(0, 8)}
+                  color="text-zinc-500"
+                  tooltip={`Session ID: ${main.session_id}`}
+                />
                 <h2 className="text-sm font-semibold text-zinc-100 truncate">
                   {main.first_message || "Session"}
                 </h2>
@@ -263,6 +264,7 @@ export function SessionView({ sessionId, onFirstMessageResolved }: SessionViewPr
                     icon={<Cpu className="w-3 h-3" />}
                     label={`${main.agent.name}@${main.agent.model_name}`}
                     color="text-amber-300"
+                    tooltip="Agent model used for this session"
                   />
                 )}
                 {main.timestamp && (
@@ -270,6 +272,7 @@ export function SessionView({ sessionId, onFirstMessageResolved }: SessionViewPr
                     icon={<Calendar className="w-3 h-3" />}
                     label={formatCreatedTime(main.timestamp)}
                     color="text-zinc-400"
+                    tooltip="Session start time"
                   />
                 )}
                 {metrics && (
@@ -277,25 +280,37 @@ export function SessionView({ sessionId, onFirstMessageResolved }: SessionViewPr
                     icon={<Clock className="w-3 h-3" />}
                     label={formatDuration(metrics.duration)}
                     color="text-cyan-400"
+                    tooltip="Total wall-clock duration of this session"
                   />
                 )}
                 <MetaPill
                   icon={<MessageSquare className="w-3 h-3" />}
-                  label={`${promptCount} turn${promptCount !== 1 ? "s" : ""}`}
+                  label={`${promptCount} prompt${promptCount !== 1 ? "s" : ""}`}
                   color="text-blue-400"
+                  tooltip="User prompts — messages typed by the human operator"
                 />
+                {skillCount > 0 && (
+                  <MetaPill
+                    icon={<Zap className="w-3 h-3" />}
+                    label={`${skillCount} skill${skillCount !== 1 ? "s" : ""}`}
+                    color="text-amber-300"
+                    tooltip="Skill invocations — reusable prompts auto-injected by the agent"
+                  />
+                )}
                 {metrics && (
                   <>
                     <MetaPill
                       icon={<Wrench className="w-3 h-3" />}
                       label={`${metrics.tool_call_count} tools`}
                       color="text-amber-400"
+                      tooltip="Total tool calls made by the agent (Bash, Read, Edit, etc.)"
                     />
                     {metrics.total_steps && (
                       <MetaPill
                         icon={<Layers className="w-3 h-3" />}
                         label={`${metrics.total_steps} steps`}
                         color="text-zinc-300"
+                        tooltip="Total conversation steps including user, agent, and system turns"
                       />
                     )}
                   </>
@@ -305,14 +320,15 @@ export function SessionView({ sessionId, onFirstMessageResolved }: SessionViewPr
                     icon={<Bot className="w-3 h-3" />}
                     label={`${subAgents.length} sub-agent${subAgents.length !== 1 ? "s" : ""}`}
                     color="text-violet-400"
+                    tooltip="Sub-agent tasks spawned during this session"
                   />
                 )}
                 {main.project_path && (
                   <MetaPill
                     icon={<FolderOpen className="w-3 h-3" />}
                     label={baseProjectName(main.project_path)}
-                    title={main.project_path}
                     color="text-zinc-300"
+                    tooltip={main.project_path}
                   />
                 )}
               </div>
@@ -424,20 +440,30 @@ function MetaPill({
   icon,
   label,
   color,
-  title,
+  tooltip,
 }: {
   icon: React.ReactNode;
   label: string;
   color: string;
-  title?: string;
+  tooltip?: string;
 }) {
+  const [show, setShow] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+
   return (
     <span
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-800/60 text-[11px] ${color}`}
-      title={title ?? label}
+      ref={ref}
+      className={`relative inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-800/60 text-[11px] ${color}`}
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
     >
       {icon}
       <span>{label}</span>
+      {tooltip && show && (
+        <span className="absolute left-1/2 -translate-x-1/2 top-full mt-1.5 z-50 px-2.5 py-1.5 rounded-md bg-zinc-950 border border-zinc-700 text-[11px] text-zinc-300 whitespace-nowrap shadow-lg pointer-events-none">
+          {tooltip}
+        </span>
+      )}
     </span>
   );
 }

@@ -1,10 +1,23 @@
 # Changelog
 
-## [0.6.2] - 2026-03-18
+## [0.6.2] - 2026-03-20
+
+### Added
+- **Session header tooltips**: All metadata pills show descriptive tooltips on hover with instant response.
+- **Prompts / Skills split**: "Turns" tag replaced with separate "prompts" and "skills" counts in session header.
+- **System tag detection**: Added `<local-command-stdout>` and `<command-message>` to system content classification.
+- **Auto-expand short results**: Tool results with 20 lines or fewer display inline without collapse.
 
 ### Changed
+- **Parser consolidation**: Merged redundant JSONL passes (`_extract_git_branches`, `_extract_project_path`, `_extract_session_metadata`) into single-pass `_scan_session_metadata`. Consolidated two-pass `_build_agent_spawn_map` into one loop.
+- **Demo store root**: Store reads directly from `datasets/redteam/parsed/` — no redundant `datasets/parsed/` copy.
+- **Discovery**: `parsed/` directories excluded from session file discovery.
+- **UI cleanup**: Removed redundant header bar, fixed text overflow for long strings, improved message type differentiation (user/system/skill).
 - **Logging**: One log file per module, overwritten each restart. Removed combined root log and timestamped per-module duplicates.
-- **README**: Added live demo link.
+
+### Removed
+- `reclassify_user_steps` — classification now handled by `parse_redteam.py` pre-processing.
+- Frontend content-sniffing (`looksLikeSystemContent`, `looksLikeSkillContent`) — frontend reads `is_skill_output` and `source` fields directly.
 
 ## [0.6.1] - 2026-03-18
 

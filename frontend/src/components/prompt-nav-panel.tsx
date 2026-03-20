@@ -32,6 +32,7 @@ function buildPromptEntries(steps: Step[]): PromptEntry[] {
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
     if (step.source !== "user") continue;
+    if (step.extra?.is_skill_output) continue;
 
     const text = extractUserText(step);
     if (!text) continue;

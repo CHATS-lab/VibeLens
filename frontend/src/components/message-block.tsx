@@ -13,6 +13,8 @@ import {
   ChevronDown,
   ChevronRight,
   Layers,
+  Monitor,
+  Zap,
 } from "lucide-react";
 import { useState } from "react";
 import { createTwoFilesPatch } from "diff";
@@ -23,13 +25,20 @@ import { CopyButton } from "./copy-button";
 
 const MAX_COLLAPSED_LINES = 8;
 const WRITE_PREVIEW_MAX_CHARS = 500;
+const AUTO_EXPAND_LINE_THRESHOLD = 20;
 
 interface StepBlockProps {
   step: Step;
 }
 
 export function StepBlock({ step }: StepBlockProps) {
+  if (step.source === "system") {
+    return <SystemStep step={step} />;
+  }
   if (step.source === "user") {
+    if (step.extra?.is_skill_output) {
+      return <SkillStep step={step} />;
+    }
     return <UserStep step={step} />;
   }
   if (step.source === "agent") {
@@ -46,9 +55,72 @@ function UserStep({ step }: { step: Step }) {
   if (!text) return null;
   return (
     <div className="flex justify-end">
-      <div className="max-w-[85%] bg-indigo-600/80 text-white rounded-2xl rounded-br-md px-4 py-2.5 text-sm">
+      <div className="max-w-[85%] bg-indigo-600/80 text-white rounded-2xl rounded-br-md px-4 py-2.5 text-sm overflow-hidden break-words">
         <MarkdownRenderer content={text} className="user-markdown" />
       </div>
+    </div>
+  );
+}
+
+function SystemStep({ step }: { step: Step }) {
+  const [open, setOpen] = useState(false);
+  const text = sanitizeText(step.message);
+  if (!text) return null;
+  const previewSnippet = text.split("\n")[0].slice(0, 80);
+
+  return (
+    <div className="max-w-[85%]">
+      <button
+        onClick={() => setOpen(!open)}
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] border transition-colors bg-zinc-800/50 hover:bg-zinc-800/80 text-zinc-500 border-zinc-700"
+      >
+        {open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        <Monitor className="w-3.5 h-3.5" />
+        <span className="font-medium">System</span>
+        {!open && (
+          <span className="text-zinc-600 truncate max-w-[250px] ml-0.5">{previewSnippet}</span>
+        )}
+      </button>
+      {open && (
+        <div className="mt-1 bg-zinc-900/60 border border-zinc-700 rounded-lg p-3">
+          <pre className="text-xs text-zinc-500 whitespace-pre-wrap break-words overflow-x-auto max-h-96 overflow-y-auto">
+            {text}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function extractSkillName(text: string): string | null {
+  const match = text.match(/\/skills\/([^/\s]+)/);
+  return match ? match[1] : null;
+}
+
+function SkillStep({ step }: { step: Step }) {
+  const [open, setOpen] = useState(false);
+  const text = sanitizeText(step.message);
+  if (!text) return null;
+  const skillName = extractSkillName(text);
+
+  return (
+    <div className="max-w-[85%]">
+      <button
+        onClick={() => setOpen(!open)}
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] border transition-colors bg-amber-500/10 hover:bg-amber-500/15 text-amber-300 border-amber-500/20"
+      >
+        {open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        <Zap className="w-3.5 h-3.5" />
+        <span className="font-medium">Skill</span>
+        {skillName && <span className="text-amber-400/70 ml-0.5">/{skillName}</span>}
+      </button>
+      {open && (
+        <div className="mt-1 bg-amber-500/5 border border-amber-500/20 rounded-lg p-3">
+          <pre className="text-xs text-amber-200/70 whitespace-pre-wrap overflow-x-auto max-h-96 overflow-y-auto">
+            {text}
+          </pre>
+        </div>
+      )}
     </div>
   );
 }
@@ -148,7 +220,7 @@ function TextBlock({ text }: { text: string }) {
   const cleaned = sanitizeText(text);
   if (!cleaned) return null;
   return (
-    <div className="max-w-[85%] text-zinc-100 text-sm break-words">
+    <div className="max-w-[85%] text-zinc-100 text-sm break-words overflow-hidden">
       <MarkdownRenderer content={cleaned} />
     </div>
   );
@@ -209,11 +281,22 @@ function ToolUseBlock({ toolCall }: { toolCall: ToolCall }) {
 const ERROR_PREFIX = "[ERROR] ";
 
 function ToolResultBlock({ result }: { result: ObservationResult }) {
-  const [open, setOpen] = useState(false);
   const rawContent = result.content || "";
   const isError = typeof rawContent === "string" && rawContent.startsWith(ERROR_PREFIX);
   const content = isError ? rawContent.slice(ERROR_PREFIX.length) : rawContent;
   if (!content) return null;
+
+  const lineCount = content.split("\n").length;
+  const isShort = lineCount <= AUTO_EXPAND_LINE_THRESHOLD;
+  const [open, setOpen] = useState(isShort);
+
+  if (isShort) {
+    return (
+      <div className="max-w-[85%] mt-1 bg-zinc-900/60 border border-zinc-800 rounded-lg overflow-hidden">
+        <ToolOutput text={content} isError={isError} />
+      </div>
+    );
+  }
 
   const previewSnippet = content.split("\n")[0].slice(0, 80);
 
@@ -497,7 +580,7 @@ function ToolOutput({ text, isError }: { text: string; isError: boolean }) {
   return (
     <div className="relative">
       <pre
-        className={`text-xs p-3 overflow-x-auto whitespace-pre-wrap max-h-96 overflow-y-auto ${
+        className={`text-xs p-3 overflow-x-auto whitespace-pre-wrap break-words max-h-96 overflow-y-auto ${
           isError ? "text-rose-300" : "text-teal-200/80"
         }`}
       >

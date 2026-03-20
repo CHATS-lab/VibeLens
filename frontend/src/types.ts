@@ -59,6 +59,7 @@ export interface Step {
   observation?: Observation | null;
   metrics?: Metrics | null;
   is_copied_context?: boolean | null;
+  extra?: Record<string, unknown> | null;
 }
 
 export interface Trajectory {

@@ -27,6 +27,19 @@ def is_demo_mode() -> bool:
     return get_settings().app_mode == AppMode.DEMO
 
 
+def _resolve_demo_store_root() -> Path:
+    """Derive the DiskStore root for demo mode.
+
+    If a directory-based example_sessions path is configured, the store
+    root is ``{example_dir}/parsed/`` so parsed output is co-located
+    with the raw example files.  Falls back to DATASETS_ROOT.
+    """
+    for path in get_settings().example_session_paths:
+        if path.is_dir():
+            return path / "parsed"
+    return DATASETS_ROOT
+
+
 def get_store() -> TrajectoryStore:
     """Return cached TrajectoryStore singleton.
 
@@ -35,7 +48,7 @@ def get_store() -> TrajectoryStore:
     global _store
     if _store is None:
         if is_demo_mode():
-            _store = DiskStore(DATASETS_ROOT)
+            _store = DiskStore(_resolve_demo_store_root())
         else:
             _store = LocalStore(get_settings().claude_dir)
     return _store

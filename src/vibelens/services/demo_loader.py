@@ -13,8 +13,25 @@ from vibelens.utils import get_logger
 logger = get_logger(__name__)
 
 
+def _has_cached_examples(root: Path) -> bool:
+    """Check if previously cached example trajectories exist.
+
+    Args:
+        root: DiskStore root directory.
+
+    Returns:
+        True if at least one .meta.json sidecar file is present.
+    """
+    if not root.exists():
+        return False
+    return any(root.glob("*.meta.json"))
+
+
 def load_demo_examples(settings: Settings, store: DiskStore) -> int:
     """Parse configured example paths and save via the disk store.
+
+    On subsequent startups, skips parsing entirely when cached .meta.json
+    files are found in the store root directory.
 
     Each path can be either a JSON file (array of Trajectory dicts) or
     a directory containing raw session files to auto-detect and parse.
@@ -26,6 +43,11 @@ def load_demo_examples(settings: Settings, store: DiskStore) -> int:
     Returns:
         Number of sessions loaded.
     """
+    if _has_cached_examples(store.root):
+        cached = list(store.root.glob("*.meta.json"))
+        logger.info("Skipping parse — %d cached examples found", len(cached))
+        return len(cached)
+
     loaded = 0
     for example_path in settings.example_session_paths:
         if not example_path.exists():
@@ -62,8 +84,11 @@ def _load_json_file(file_path: Path, store: DiskStore) -> int:
 def _load_directory(dir_path: Path, store: DiskStore) -> int:
     """Discover and parse raw session files from a directory.
 
+    Tries auto-detection first; falls back to loading pre-parsed
+    ATIF trajectory JSON for files that don't match any raw format.
+
     Args:
-        dir_path: Directory containing raw session files.
+        dir_path: Directory containing raw session files or ATIF JSON.
         store: DiskStore to persist parsed trajectories.
 
     Returns:
@@ -78,11 +103,42 @@ def _load_directory(dir_path: Path, store: DiskStore) -> int:
     for file_path in session_files:
         try:
             trajectories = parse_auto(file_path)
-            if trajectories:
-                loaded += _save_trajectories(trajectories, store)
-        except ValueError as exc:
-            logger.warning("Skipping %s: %s", file_path.name, exc)
+        except ValueError:
+            trajectories = _try_load_atif_json(file_path)
+        if trajectories:
+            loaded += _save_trajectories(trajectories, store)
     return loaded
+
+
+def _try_load_atif_json(file_path: Path) -> list[Trajectory]:
+    """Try loading a JSON file as a pre-parsed ATIF trajectory.
+
+    Handles both a single trajectory dict and an array of dicts.
+    Returns an empty list if the file is not a valid trajectory.
+
+    Args:
+        file_path: Path to a JSON file.
+
+    Returns:
+        List of Trajectory objects, empty if not ATIF format.
+    """
+    try:
+        raw = json.loads(file_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning("Skipping %s: %s", file_path.name, exc)
+        return []
+
+    items = raw if isinstance(raw, list) else [raw]
+    trajectories: list[Trajectory] = []
+    for item in items:
+        if not isinstance(item, dict) or "steps" not in item:
+            continue
+        try:
+            traj = Trajectory(**item)
+            trajectories.append(traj)
+        except (ValueError, TypeError) as exc:
+            logger.warning("Invalid trajectory in %s: %s", file_path.name, exc)
+    return trajectories
 
 
 def _save_trajectories(trajectories: list[Trajectory], store: DiskStore) -> int:
