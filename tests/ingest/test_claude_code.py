@@ -14,7 +14,13 @@ from vibelens.ingest.parsers.claude_code import (
     _extract_git_branches,
 )
 from vibelens.models.enums import StepSource
-from vibelens.models.trajectories import Metrics, Observation, ObservationResult, Step, ToolCall
+from vibelens.models.trajectories import (
+    Metrics,
+    Observation,
+    ObservationResult,
+    Step,
+    ToolCall,
+)
 
 _parser = ClaudeCodeParser()
 

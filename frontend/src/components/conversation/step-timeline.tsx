@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
-import type { Step } from "../types";
-import { formatElapsed } from "../utils";
+import type { Step } from "../../types";
+import { formatElapsed } from "../../utils";
 
 interface TimelineEntry {
   step: Step;

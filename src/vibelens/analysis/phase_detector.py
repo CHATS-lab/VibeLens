@@ -6,32 +6,18 @@ window over tool call categories.  Enables "what fraction of time is
 spent exploring vs coding?" analytics.
 """
 
-from datetime import datetime
-
-from pydantic import BaseModel, Field
-
+from vibelens.analysis.constants import TOOL_CATEGORY_MAP
 from vibelens.ingest.parsers.base import is_error_content
+from vibelens.models.analysis.phase import PhaseSegment
 from vibelens.models.enums import SessionPhase
 from vibelens.models.trajectories import Step
 
 PHASE_WINDOW_SIZE = 5
 
-# Minimum fraction of window tools that must match for a dominant phase.
+# 40% threshold balances sensitivity vs noise: lower values fragment
+# sessions into too many micro-phases, higher values miss genuine
+# phase transitions in mixed-activity windows.
 _DOMINANCE_THRESHOLD = 0.4
-
-
-class PhaseSegment(BaseModel):
-    """A contiguous range of steps sharing the same phase."""
-
-    phase: SessionPhase = Field(description="Detected phase for this segment.")
-    start_index: int = Field(description="First message index (inclusive).")
-    end_index: int = Field(description="Last message index (inclusive).")
-    start_time: datetime | None = Field(default=None, description="Timestamp of first message.")
-    end_time: datetime | None = Field(default=None, description="Timestamp of last message.")
-    dominant_tool_category: str = Field(
-        default="", description="Most frequent tool category in this segment."
-    )
-    tool_call_count: int = Field(default=0, description="Total tool calls in this segment.")
 
 
 def detect_phases(messages: list[Step]) -> list[PhaseSegment]:
@@ -77,7 +63,7 @@ def _classify_window(window: list[Step]) -> SessionPhase:
 
     for step in window:
         for tc in step.tool_calls:
-            cat = tc.category or "other"
+            cat = TOOL_CATEGORY_MAP.get(tc.function_name, "other")
             category_counts[cat] = category_counts.get(cat, 0) + 1
             total_tools += 1
         # Check observation results for errors via content prefix convention
@@ -170,7 +156,7 @@ def _make_segment(steps: list[Step], start: int, end: int, phase: SessionPhase) 
     tool_count = 0
     for step in segment_steps:
         for tc in step.tool_calls:
-            cat = tc.category or "other"
+            cat = TOOL_CATEGORY_MAP.get(tc.function_name, "other")
             category_counts[cat] = category_counts.get(cat, 0) + 1
             tool_count += 1
 

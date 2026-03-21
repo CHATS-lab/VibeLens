@@ -21,9 +21,7 @@ _MIN_CONFIDENCE = 0.5
 class FormatMatch(BaseModel):
     """A candidate format match with confidence score."""
 
-    format_name: str = Field(
-        description="Format identifier: claude_code, codex, gemini, dataclaw."
-    )
+    format_name: str = Field(description="Format identifier: claude_code, codex, gemini, dataclaw.")
     confidence: float = Field(description="Confidence from 0.0 to 1.0.")
     parser_class: str = Field(description="Parser class name to instantiate.")
 

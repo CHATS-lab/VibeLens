@@ -1,12 +1,14 @@
 """YAML config file loading and auto-discovery."""
 
-import logging
+import json
 import os
 from pathlib import Path
 
 import yaml
 
-logger = logging.getLogger(__name__)
+from vibelens.utils.log import get_logger
+
+logger = get_logger(__name__)
 
 ENV_PREFIX = "VIBELENS_"
 CONFIG_ENV_VAR = "VIBELENS_CONFIG"
@@ -22,6 +24,8 @@ YAML_FIELD_MAP: dict[str, dict[str, str]] = {
     },
     "sources": {
         "claude_dir": "claude_dir",
+        "codex_dir": "codex_dir",
+        "gemini_dir": "gemini_dir",
     },
     "upload": {
         "dir": "upload_dir",
@@ -32,6 +36,7 @@ YAML_FIELD_MAP: dict[str, dict[str, str]] = {
     },
     "app": {
         "mode": "app_mode",
+        "visible_agents": "visible_agents",
     },
     "demo": {
         "example_sessions": "demo_example_sessions",
@@ -102,6 +107,11 @@ def load_yaml_flat(config_path: Path) -> dict[str, str]:
             continue
         for yaml_key, settings_field in field_map.items():
             if yaml_key in section_data and section_data[yaml_key] is not None:
-                result[settings_field] = str(section_data[yaml_key])
+                value = section_data[yaml_key]
+                # pydantic-settings expects JSON for complex types (list, dict)
+                if isinstance(value, (list, dict)):
+                    result[settings_field] = json.dumps(value)
+                else:
+                    result[settings_field] = str(value)
 
     return result

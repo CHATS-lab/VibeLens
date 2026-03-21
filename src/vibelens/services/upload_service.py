@@ -247,7 +247,7 @@ async def process_zip(
     """
     settings = get_settings()
     store = _require_disk_store()
-    root = store.root
+    upload_root = store.upload_root
 
     filename = file.filename or "upload.zip"
     result = UploadResult(files_received=1)
@@ -255,7 +255,7 @@ async def process_zip(
 
     try:
         zip_path = await receive_zip(
-            file, root, upload_id, settings.max_zip_bytes, settings.stream_chunk_size
+            file, upload_root, upload_id, settings.max_zip_bytes, settings.stream_chunk_size
         )
         session_files = await asyncio.to_thread(
             extract_and_discover,
@@ -271,14 +271,15 @@ async def process_zip(
             _parse_and_store_files, session_files, store, upload_id, result
         )
         metadata = _build_upload_metadata(upload_id, agent_type, filename, session_details, result)
-        write_upload_metadata(root, upload_id, metadata)
+        write_upload_metadata(upload_root, upload_id, metadata)
 
         if session_token:
             store.register_upload(session_token, upload_id)
-    except ValueError as exc:
+    except Exception as exc:
+        logger.warning("Upload processing failed for %s: %s", filename, exc)
         result.errors.append({"filename": filename, "error": str(exc)})
     finally:
-        cleanup_extraction(root, upload_id)
+        cleanup_extraction(upload_root, upload_id)
 
     return result
 
@@ -308,14 +309,23 @@ def _parse_and_store_files(
             # Count as skipped rather than surfacing as errors.
             result.skipped += 1
             continue
+        except Exception as exc:
+            logger.warning("Failed to parse %s: %s", file_path.name, exc)
+            result.errors.append({"filename": file_path.name, "error": str(exc)})
+            continue
 
         if not trajectories:
             result.skipped += 1
             continue
 
         session_id = trajectories[0].session_id
-        summary = trajectories[0].to_summary()
-        store.save(session_id, trajectories, summary, subdir=upload_id)
+        try:
+            summary = trajectories[0].to_summary()
+            store.save(session_id, trajectories, summary, subdir=upload_id)
+        except Exception as exc:
+            logger.warning("Failed to store %s: %s", file_path.name, exc)
+            result.errors.append({"filename": file_path.name, "error": str(exc)})
+            continue
 
         step_count = sum(len(t.steps) for t in trajectories)
         result.sessions_parsed += 1

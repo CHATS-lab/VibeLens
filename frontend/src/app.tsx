@@ -7,14 +7,17 @@ import {
   FileUp,
   Heart,
 } from "lucide-react";
-import { useEffect, useState, useCallback, createContext, useContext } from "react";
+import { useEffect, useState, useCallback, useMemo, createContext, useContext } from "react";
 import { ConfirmDialog } from "./components/confirm-dialog";
 import { DonateConsentDialog } from "./components/donate-consent-dialog";
 import { ResizeHandle } from "./components/resize-handle";
 import { SessionList, type ViewMode } from "./components/session-list";
-import { SessionView } from "./components/session-view";
+import { SessionView } from "./components/conversation/session-view";
 import { UploadDialog } from "./components/upload-dialog";
+import { DashboardView } from "./components/analysis/dashboard-view";
 import type { DonateResult, Trajectory } from "./types";
+
+type MainView = "browse" | "analyze";
 
 type AppMode = "self" | "demo";
 
@@ -61,6 +64,9 @@ export function App() {
   const [sidebarWidth, setSidebarWidth] = useState(320);
   const [appMode, setAppMode] = useState<AppMode>("self");
   const [maxZipBytes, setMaxZipBytes] = useState(DEFAULT_MAX_ZIP_BYTES);
+  const [agentFilter, setAgentFilter] = useState("all");
+  const [visibleAgents, setVisibleAgents] = useState<string[]>(["all"]);
+  const [mainView, setMainView] = useState<MainView>("browse");
 
 
   // Ephemeral token: new on every page load, never persisted
@@ -99,9 +105,10 @@ export function App() {
   useEffect(() => {
     fetchWithToken("/api/settings")
       .then((r) => r.json())
-      .then((data: { app_mode?: string; max_zip_bytes?: number }) => {
+      .then((data: { app_mode?: string; max_zip_bytes?: number; visible_agents?: string[] }) => {
         if (data.app_mode === "demo") setAppMode("demo");
         if (data.max_zip_bytes) setMaxZipBytes(data.max_zip_bytes);
+        if (data.visible_agents) setVisibleAgents(data.visible_agents);
       })
       .catch((err) => console.error("Failed to load settings:", err));
   }, [fetchWithToken]);
@@ -116,15 +123,34 @@ export function App() {
   useEffect(() => {
     setLoading(true);
     const params = new URLSearchParams();
-    params.set("limit", String(SESSIONS_PER_PAGE));
-    params.set("offset", String(page * SESSIONS_PER_PAGE));
+    if (viewMode === "project") {
+      // Load all sessions for complete project grouping
+      params.set("limit", "9999");
+      params.set("offset", "0");
+    } else {
+      params.set("limit", String(SESSIONS_PER_PAGE));
+      params.set("offset", String(page * SESSIONS_PER_PAGE));
+    }
 
     fetchWithToken(`/api/sessions?${params}`)
       .then((r) => r.json())
       .then((data: Trajectory[]) => setSessions(data))
       .catch((err) => console.error("Failed to load sessions:", err))
       .finally(() => setLoading(false));
-  }, [page, refreshKey, fetchWithToken]);
+  }, [page, refreshKey, fetchWithToken, viewMode]);
+
+  // Derive unique agent names from loaded sessions, filtered by config
+  const availableAgents = useMemo(() => {
+    const names = new Set<string>();
+    for (const s of sessions) {
+      if (s.agent?.name) names.add(s.agent.name);
+    }
+    const sorted = [...names].sort();
+    // If config restricts to specific agents, only show those
+    const isAllVisible = visibleAgents.length === 1 && visibleAgents[0] === "all";
+    if (isAllVisible) return sorted;
+    return sorted.filter((name) => visibleAgents.includes(name));
+  }, [sessions, visibleAgents]);
 
   const handleSelectSession = useCallback((id: string | null) => {
     setSelectedSessionId(id);
@@ -315,6 +341,9 @@ export function App() {
               onCheckedChange={setCheckedIds}
               viewMode={viewMode}
               onViewModeChange={setViewMode}
+              agentFilter={agentFilter}
+              onAgentFilterChange={setAgentFilter}
+              availableAgents={availableAgents}
             />
 
             {/* Footer: Session count + Pagination */}
@@ -347,18 +376,44 @@ export function App() {
 
         {/* Main Content */}
         <main className="flex-1 flex flex-col min-w-0 bg-zinc-950">
-          {/* Content Area */}
-          <div className="flex-1 min-h-0 relative">
+          {/* View Toggle */}
+          <div className="flex items-center gap-2 px-4 py-2 border-b border-zinc-800 bg-zinc-900/80">
             {!sidebarOpen && (
               <button
                 onClick={() => setSidebarOpen(true)}
-                className="absolute top-3 left-3 z-10 p-1.5 text-zinc-500 hover:text-zinc-300 bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-700/50 rounded transition"
+                className="p-1.5 mr-1 text-zinc-500 hover:text-zinc-300 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700/50 rounded transition"
                 title="Expand sidebar"
               >
                 <Menu className="w-4 h-4" />
               </button>
             )}
-            {selectedSessionId ? (
+            <button
+              onClick={() => setMainView("browse")}
+              className={`px-4 py-1.5 text-sm font-semibold rounded-md transition ${
+                mainView === "browse"
+                  ? "bg-cyan-600/20 text-cyan-300 border border-cyan-500/30"
+                  : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+              }`}
+            >
+              Conversation
+            </button>
+            <button
+              onClick={() => setMainView("analyze")}
+              className={`px-4 py-1.5 text-sm font-semibold rounded-md transition ${
+                mainView === "analyze"
+                  ? "bg-cyan-600/20 text-cyan-300 border border-cyan-500/30"
+                  : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+              }`}
+            >
+              Dashboard
+            </button>
+          </div>
+
+          {/* Content Area */}
+          <div className="flex-1 min-h-0 relative">
+            {mainView === "analyze" ? (
+              <DashboardView />
+            ) : selectedSessionId ? (
               <SessionView sessionId={selectedSessionId} />
             ) : (
               <div className="flex items-center justify-center h-full">
@@ -368,7 +423,7 @@ export function App() {
                     Welcome to VibeLens
                   </p>
                   <p className="text-sm text-zinc-500 mb-6">
-                    Select a session from the sidebar to explore Claude Code
+                    Select a session from the sidebar to explore agent
                     conversations
                   </p>
                   <div className="text-xs text-zinc-600">

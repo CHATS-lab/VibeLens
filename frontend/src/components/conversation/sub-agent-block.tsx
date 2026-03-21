@@ -1,7 +1,7 @@
 import { Bot, MessageSquare, Wrench } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { Trajectory } from "../types";
-import { CollapsiblePill } from "./collapsible-pill";
+import type { Trajectory } from "../../types";
+import { CollapsiblePill } from "../collapsible-pill";
 import { StepBlock } from "./message-block";
 
 interface SubAgentBlockProps {

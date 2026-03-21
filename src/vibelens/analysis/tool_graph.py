@@ -8,39 +8,10 @@ strategy beyond a flat chronological list.
 
 from pydantic import BaseModel, Field
 
+from vibelens.analysis.constants import TOOL_CATEGORY_MAP
 from vibelens.models.trajectories import Step
 
 _FILE_PATH_KEYS = {"file_path", "path", "filename", "notebook_path", "directory"}
-
-# Inline tool category mapping for graph analysis.
-# Avoids dependency on tool_normalizers module.
-_TOOL_CATEGORY_MAP: dict[str, str] = {
-    "Read": "file_read",
-    "read_file": "file_read",
-    "cat": "file_read",
-    "Glob": "search",
-    "glob": "search",
-    "Grep": "search",
-    "grep": "search",
-    "find": "search",
-    "Edit": "file_write",
-    "Write": "file_write",
-    "write_file": "file_write",
-    "NotebookEdit": "file_write",
-    "MultiEdit": "file_write",
-    "apply_patch": "file_write",
-    "apply-patch": "file_write",
-    "Bash": "shell",
-    "bash": "shell",
-    "shell": "shell",
-    "execute_command": "shell",
-    "WebSearch": "web",
-    "WebFetch": "web",
-    "web_search": "web",
-    "Agent": "agent",
-    "Task": "agent",
-    "Skill": "agent",
-}
 
 
 class ToolEdge(BaseModel):
@@ -107,7 +78,7 @@ def _flatten_tool_calls(steps: list[Step]) -> list[tuple[str, str, str, dict | s
         for tc in step.tool_calls:
             if not tc.tool_call_id:
                 continue
-            category = _TOOL_CATEGORY_MAP.get(tc.function_name, "other")
+            category = TOOL_CATEGORY_MAP.get(tc.function_name, "other")
             result.append((tc.tool_call_id, tc.function_name, category, tc.arguments))
     return result
 

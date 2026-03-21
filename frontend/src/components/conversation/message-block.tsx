@@ -18,10 +18,10 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { createTwoFilesPatch } from "diff";
-import type { Step, ToolCall, ObservationResult } from "../types";
-import { sanitizeText } from "../utils";
-import { MarkdownRenderer } from "./markdown-renderer";
-import { CopyButton } from "./copy-button";
+import type { Step, ToolCall, ObservationResult } from "../../types";
+import { sanitizeText } from "../../utils";
+import { MarkdownRenderer } from "../markdown-renderer";
+import { CopyButton } from "../copy-button";
 
 const MAX_COLLAPSED_LINES = 8;
 const WRITE_PREVIEW_MAX_CHARS = 500;

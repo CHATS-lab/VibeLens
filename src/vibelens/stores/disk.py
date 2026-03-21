@@ -23,18 +23,30 @@ class DiskStore(TrajectoryStore):
     Implements TrajectoryStore for read operations and provides write methods
     for saving parsed trajectories.
 
+    Pre-loaded example sessions live under ``root`` (e.g.
+    ``datasets/redteam/parsed/``).  User uploads are stored under a
+    separate ``upload_root`` (e.g. ``datasets/``) so each upload gets
+    a clean top-level directory like ``datasets/{upload_id}/``.
+
     Args:
-        root: Base directory (e.g. Path("datasets")).
+        root: Base directory for pre-loaded example sessions.
+        upload_root: Base directory for user uploads. Defaults to root.
     """
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, upload_root: Path | None = None) -> None:
         self._root = root
+        self._upload_root = upload_root or root
         self._token_uploads: dict[str, set[str]] = {}
 
     @property
     def root(self) -> Path:
-        """Base directory for all stored trajectories."""
+        """Base directory for pre-loaded example sessions."""
         return self._root
+
+    @property
+    def upload_root(self) -> Path:
+        """Base directory for user uploads."""
+        return self._upload_root
 
     def initialize(self) -> None:
         """Create the root directory."""
@@ -58,34 +70,44 @@ class DiskStore(TrajectoryStore):
     ) -> None:
         """Write a trajectory group to disk as .json and .meta.json.
 
+        When ``subdir`` is provided (user upload), the full trajectory
+        goes into ``{upload_root}/{subdir}/parsed/`` and the lightweight
+        meta sidecar stays at ``{upload_root}/{subdir}/``.
+
         Args:
             session_id: Storage key (typically the main trajectory's session_id).
             trajectories: Related trajectories (main + sub-agents).
             summary: Pre-built summary dict for the meta sidecar file.
-            subdir: Optional subdirectory under root (e.g. an upload_id).
+            subdir: Optional subdirectory under upload_root (e.g. an upload_id).
         """
-        base = self._root / subdir if subdir else self._root
-        base.mkdir(parents=True, exist_ok=True)
+        if subdir:
+            meta_dir = self._upload_root / subdir
+            full_dir = meta_dir / "parsed"
+        else:
+            meta_dir = self._root
+            full_dir = self._root
 
-        full_path = base / f"{session_id}.json"
-        meta_path = base / f"{session_id}.meta.json"
+        meta_dir.mkdir(parents=True, exist_ok=True)
+        full_dir.mkdir(parents=True, exist_ok=True)
+
+        full_path = full_dir / f"{session_id}.json"
+        meta_path = meta_dir / f"{session_id}.meta.json"
 
         full_data = [t.model_dump(mode="json") for t in trajectories]
         full_path.write_text(
-            json.dumps(full_data, indent=2, default=str, ensure_ascii=False),
-            encoding="utf-8",
+            json.dumps(full_data, indent=2, default=str, ensure_ascii=False), encoding="utf-8"
         )
 
         meta_path.write_text(
-            json.dumps(summary, indent=2, default=str, ensure_ascii=False),
-            encoding="utf-8",
+            json.dumps(summary, indent=2, default=str, ensure_ascii=False), encoding="utf-8"
         )
 
     def list_metadata(self, session_token: str | None = None) -> list[dict]:
         """Read .meta.json files scoped by session token.
 
         Root-level meta files (demo examples) are always included.
-        Upload subdirectories are only included when the token owns them.
+        Upload subdirectories under upload_root are only included when
+        the token owns them.
 
         Args:
             session_token: Browser tab token. None returns root-level only.
@@ -103,19 +125,20 @@ class DiskStore(TrajectoryStore):
             except (json.JSONDecodeError, OSError) as exc:
                 logger.warning("Skipping corrupt meta file %s: %s", meta_file.name, exc)
 
-        # Upload subdirectories: only include if token owns them
+        # Upload subdirectories under upload_root: only include if token owns them
         allowed_uploads = self._token_uploads.get(session_token, set()) if session_token else set()
-        for upload_dir in self._root.iterdir():
-            if not upload_dir.is_dir() or upload_dir.name.startswith("."):
-                continue
-            if upload_dir.name not in allowed_uploads:
-                continue
-            for meta_file in upload_dir.glob("*.meta.json"):
-                try:
-                    data = json.loads(meta_file.read_text(encoding="utf-8"))
-                    summaries.append(data)
-                except (json.JSONDecodeError, OSError) as exc:
-                    logger.warning("Skipping corrupt meta file %s: %s", meta_file.name, exc)
+        if self._upload_root.exists():
+            for upload_dir in self._upload_root.iterdir():
+                if not upload_dir.is_dir() or upload_dir.name.startswith("."):
+                    continue
+                if upload_dir.name not in allowed_uploads:
+                    continue
+                for meta_file in upload_dir.glob("*.meta.json"):
+                    try:
+                        data = json.loads(meta_file.read_text(encoding="utf-8"))
+                        summaries.append(data)
+                    except (json.JSONDecodeError, OSError) as exc:
+                        logger.warning("Skipping corrupt meta file %s: %s", meta_file.name, exc)
 
         return summaries
 
@@ -173,8 +196,9 @@ class DiskStore(TrajectoryStore):
     def _find_session_file(self, session_id: str, session_token: str | None = None) -> Path | None:
         """Locate a session JSON file, respecting token-based access control.
 
-        Root-level files are always accessible. Subdirectory files require
-        the session token to own the upload directory.
+        Root-level files (demo examples) are always accessible. Upload
+        subdirectory files under upload_root require the token to own
+        the upload directory.
 
         Args:
             session_id: Session identifier to search for.
@@ -188,13 +212,14 @@ class DiskStore(TrajectoryStore):
             return root_path
 
         allowed_uploads = self._token_uploads.get(session_token, set()) if session_token else set()
-        for upload_dir in self._root.iterdir():
-            if not upload_dir.is_dir() or upload_dir.name.startswith("."):
-                continue
-            if upload_dir.name not in allowed_uploads:
-                continue
-            candidate = upload_dir / f"{session_id}.json"
-            if candidate.exists():
-                return candidate
+        if self._upload_root.exists():
+            for upload_dir in self._upload_root.iterdir():
+                if not upload_dir.is_dir() or upload_dir.name.startswith("."):
+                    continue
+                if upload_dir.name not in allowed_uploads:
+                    continue
+                candidate = upload_dir / "parsed" / f"{session_id}.json"
+                if candidate.exists():
+                    return candidate
 
         return None

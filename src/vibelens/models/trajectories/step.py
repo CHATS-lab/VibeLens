@@ -1,6 +1,5 @@
 """Step model for ATIF trajectories."""
 
-import logging
 from datetime import datetime
 from typing import Any
 
@@ -11,8 +10,9 @@ from vibelens.models.trajectories.content import ContentPart
 from vibelens.models.trajectories.metrics import Metrics
 from vibelens.models.trajectories.observation import Observation
 from vibelens.models.trajectories.tool_call import ToolCall
+from vibelens.utils.log import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class Step(BaseModel):

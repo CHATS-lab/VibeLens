@@ -19,6 +19,7 @@ async def get_server_settings() -> dict:
         "claude_dir": str(settings.claude_dir),
         "app_mode": settings.app_mode.value,
         "max_zip_bytes": settings.max_zip_bytes,
+        "visible_agents": settings.visible_agents,
     }
 
 

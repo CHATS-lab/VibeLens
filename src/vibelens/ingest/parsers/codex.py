@@ -21,24 +21,33 @@ per-session.
 import hashlib
 import json
 import re
+import sqlite3
 from collections import OrderedDict
 from pathlib import Path
+from typing import NamedTuple
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
-from vibelens.ingest.parsers.base import BaseParser, mark_error_content
+from vibelens.ingest.parsers.base import (
+    _SYSTEM_TAG_PREFIXES,
+    ROLE_TO_SOURCE,
+    BaseParser,
+    mark_error_content,
+)
 from vibelens.models.enums import StepSource
 from vibelens.models.trajectories import (
+    FinalMetrics,
     Metrics,
     Observation,
     ObservationResult,
     Step,
     ToolCall,
     Trajectory,
+    TrajectoryRef,
 )
-from vibelens.utils import coerce_to_string, get_logger, parse_iso_timestamp
+from vibelens.utils import coerce_to_string, get_logger, normalize_timestamp, parse_iso_timestamp
 
 logger = get_logger(__name__)
 
@@ -51,12 +60,29 @@ MAX_TOOL_RESULT_CACHE = 500
 # Matches the metadata prefix Codex prepends to tool outputs:
 #   Exit code: 0\nWall time: 1.23s\nOutput:\n<actual output>
 _OUTPUT_PREFIX_RE = re.compile(
-    r"^Exit code:\s*(\d+)\nWall time:.*?\nOutput:\n",
-    re.DOTALL,
+    r"^Exit code:\s*(\d+)\nWall time:\s*([0-9.]+)s?\nOutput:\n", re.DOTALL
 )
 
-# ATIF source mapping for Codex role names
-_ROLE_TO_SOURCE = {"user": StepSource.USER, "assistant": StepSource.AGENT}
+# Tool output types that carry results linked by call_id
+_TOOL_OUTPUT_TYPES = {"function_call_output", "custom_tool_call_output"}
+
+# Tool call types that initiate tool invocations
+_TOOL_CALL_TYPES = {"function_call", "custom_tool_call"}
+
+
+class _CodexSessionMeta(NamedTuple):
+    """Aggregated metadata from a single pass over raw JSONL content."""
+
+    session_id: str | None
+    cli_version: str | None
+    model_name: str | None
+    project_path: str | None
+    source: str | None
+    originator: str | None
+    effort: str | None
+    sandbox_policy: str | None
+    approval_policy: str | None
+    forked_from_id: str | None
 
 
 class _CodexParseState(BaseModel):
@@ -77,6 +103,12 @@ class _CodexParseState(BaseModel):
     current_model: str = Field(
         default="", description="Active model name from the most recent turn_context."
     )
+    current_cwd: str = Field(
+        default="", description="Working directory from the most recent turn_context."
+    )
+    current_effort: str = Field(
+        default="", description="Reasoning effort from the most recent turn_context."
+    )
     pending_thinking: list[str] = Field(
         default_factory=list, description="Reasoning text blocks buffered for attachment."
     )
@@ -93,6 +125,7 @@ class CodexParser(BaseParser):
     """
 
     AGENT_NAME = "codex"
+    LOCAL_DATA_DIR: Path | None = Path.home() / ".codex"
 
     def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
         """Parse Codex rollout JSONL content into a Trajectory.
@@ -109,59 +142,145 @@ class CodexParser(BaseParser):
         if not entries:
             return []
 
-        meta = _extract_session_meta(entries)
+        meta = _scan_session_metadata(entries)
         fallback_id = Path(source_path).stem if source_path else str(uuid4())
-        session_id = meta.get("id", fallback_id)
+        session_id = meta.session_id or fallback_id
         steps = _build_steps(entries, session_id, collector)
         if not steps:
             return []
 
-        project_path = meta.get("cwd") or None
-        extra = _build_diagnostics_extra(collector)
-        agent = self.build_agent()
+        agent = self.build_agent(version=meta.cli_version, model=meta.model_name)
+
+        extra = self.build_diagnostics_extra(collector)
+
+        total_usage = _extract_final_token_usage(entries)
+        if total_usage:
+            extra = extra or {}
+            extra["total_token_usage"] = total_usage
+
+        session_extra = _build_session_extra(meta)
+        if session_extra:
+            extra = extra or {}
+            extra.update(session_extra)
+
+        parent_ref = None
+        if meta.forked_from_id:
+            parent_ref = TrajectoryRef(session_id=meta.forked_from_id)
+
         return [
             self.assemble_trajectory(
                 session_id=session_id,
                 agent=agent,
                 steps=steps,
-                project_path=project_path,
+                project_path=meta.project_path,
+                parent_trajectory_ref=parent_ref,
                 extra=extra,
             )
         ]
 
+    def parse_session_index(self, data_dir: Path) -> list[Trajectory]:
+        """Build skeleton trajectories from Codex SQLite index.
 
-def _build_diagnostics_extra(collector: DiagnosticsCollector) -> dict | None:
-    """Build trajectory extra dict from diagnostics if there are issues."""
-    has_issues = (
-        collector.skipped_lines > 0
-        or collector.orphaned_tool_calls > 0
-        or collector.orphaned_tool_results > 0
-    )
-    if not has_issues:
-        return None
-    return {"diagnostics": collector.to_diagnostics().model_dump()}
+        Reads ~/.codex/state_5.sqlite threads table for fast listing
+        without parsing individual rollout files.
 
+        Args:
+            data_dir: Path to the Codex data directory (~/.codex).
 
-def compute_session_tokens_max(steps: list[Step]) -> tuple[int, int]:
-    """Compute session token totals using MAX strategy.
+        Returns:
+            List of skeleton Trajectory objects (no steps).
+        """
+        db_path = data_dir / "state_5.sqlite"
+        if not db_path.exists():
+            return []
 
-    Codex token_count events report cumulative per-turn totals, so
-    summing them would double-count. Instead, take the maximum prompt
-    and completion values seen across all steps.
+        trajectories: list[Trajectory] = []
+        try:
+            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                "SELECT id, rollout_path, created_at, source, cwd, "
+                "title, tokens_used, model, first_user_message, cli_version "
+                "FROM threads"
+            )
+            for row in cursor:
+                traj = self._build_skeleton_from_row(row)
+                if traj:
+                    trajectories.append(traj)
+            conn.close()
+        except (sqlite3.Error, OSError) as exc:
+            logger.warning("Failed to read Codex SQLite index: %s", exc)
+            return []
 
-    Args:
-        steps: Parsed steps with optional metrics data.
+        logger.info("Codex SQLite index: %d sessions", len(trajectories))
+        return trajectories
 
-    Returns:
-        Tuple of (max_prompt_tokens, max_completion_tokens).
-    """
-    max_prompt = 0
-    max_completion = 0
-    for step in steps:
-        if step.metrics:
-            max_prompt = max(max_prompt, step.metrics.prompt_tokens)
-            max_completion = max(max_completion, step.metrics.completion_tokens)
-    return max_prompt, max_completion
+    def _build_skeleton_from_row(self, row: sqlite3.Row) -> Trajectory | None:
+        """Build a skeleton Trajectory from a SQLite threads row.
+
+        Args:
+            row: sqlite3.Row with columns from the threads table.
+
+        Returns:
+            Skeleton Trajectory, or None if row lacks a valid id.
+        """
+        session_id = row["id"]
+        if not session_id:
+            return None
+
+        # Sub-agent threads have a JSON source with "subagent" key —
+        # skip them so they only appear as children of their parent.
+        source_val = row["source"] or ""
+        if source_val.startswith("{") and "subagent" in source_val:
+            return None
+
+        timestamp = normalize_timestamp(row["created_at"])
+        agent = self.build_agent(
+            version=row["cli_version"],
+            model=row["model"],
+        )
+
+        first_message = row["first_user_message"]
+        if first_message:
+            first_message = self.truncate_first_message(first_message)
+
+        # Skeleton step so Trajectory validation passes (min_length=1)
+        skeleton_step = Step(
+            step_id="index-0",
+            source=StepSource.USER,
+            message=first_message or "",
+            timestamp=timestamp,
+        )
+
+        tokens_used = row["tokens_used"] or 0
+        final_metrics = FinalMetrics(
+            total_prompt_tokens=tokens_used,
+            total_completion_tokens=0,
+            total_steps=0,
+            tool_call_count=0,
+            duration=0,
+            total_cache_write=0,
+            total_cache_read=0,
+        )
+
+        extra: dict = {"is_skeleton": True}
+        if row["rollout_path"]:
+            extra["rollout_path"] = row["rollout_path"]
+        if row["source"]:
+            extra["source"] = row["source"]
+        if row["title"]:
+            extra["title"] = row["title"]
+
+        return Trajectory(
+            session_id=session_id,
+            project_path=row["cwd"],
+            timestamp=timestamp,
+            first_message=first_message,
+            agent=agent,
+            steps=[skeleton_step],
+            final_metrics=final_metrics,
+            extra=extra,
+        )
 
 
 def _load_rollout_content(
@@ -185,19 +304,95 @@ def _load_rollout_content(
     return entries
 
 
-def _extract_session_meta(entries: list[dict]) -> dict:
-    """Extract session_meta payload from entries."""
+def _scan_session_metadata(entries: list[dict]) -> _CodexSessionMeta:
+    """Extract session metadata from a single pass over entries.
+
+    Collects fields from:
+    - ``session_meta.payload``: id, cli_version, cwd, source, originator
+    - First ``turn_context.payload``: model, effort, sandbox_policy, approval_policy
+
+    Args:
+        entries: Parsed JSONL entries.
+
+    Returns:
+        Populated _CodexSessionMeta.
+    """
+    session_id: str | None = None
+    cli_version: str | None = None
+    model_name: str | None = None
+    project_path: str | None = None
+    source: str | None = None
+    originator: str | None = None
+    effort: str | None = None
+    sandbox_policy: str | None = None
+    approval_policy: str | None = None
+    forked_from_id: str | None = None
+    found_session_meta = False
+    found_turn_context = False
+
     for entry in entries:
-        if entry.get("type") == "session_meta":
-            return entry.get("payload", {})
-    return {}
+        entry_type = entry.get("type", "")
+        payload = entry.get("payload", {})
+
+        # Sub-agent rollouts contain two session_meta entries: the child
+        # (this rollout) and the parent (forked-from context). Only use
+        # the first one to avoid session_id collisions.
+        if entry_type == "session_meta" and not found_session_meta:
+            found_session_meta = True
+            session_id = payload.get("id") or None
+            cli_version = payload.get("cli_version") or None
+            project_path = payload.get("cwd") or None
+            source = payload.get("source") or None
+            originator = payload.get("originator") or None
+            forked_from_id = payload.get("forked_from_id") or None
+
+        elif entry_type == "turn_context" and not found_turn_context:
+            found_turn_context = True
+            model_name = payload.get("model") or None
+            effort = payload.get("reasoning_effort") or payload.get("effort") or None
+            sandbox_policy = payload.get("sandbox") or payload.get("sandbox_policy") or None
+            approval_policy = payload.get("approval_policy") or None
+
+    return _CodexSessionMeta(
+        session_id=session_id,
+        cli_version=cli_version,
+        model_name=model_name,
+        project_path=project_path,
+        source=source,
+        originator=originator,
+        effort=effort,
+        sandbox_policy=sandbox_policy,
+        approval_policy=approval_policy,
+        forked_from_id=forked_from_id,
+    )
+
+
+def _build_session_extra(meta: _CodexSessionMeta) -> dict | None:
+    """Build trajectory-level extra dict from session metadata.
+
+    Args:
+        meta: Scanned session metadata.
+
+    Returns:
+        Dict with non-None metadata fields, or None if all empty.
+    """
+    pairs = [
+        ("source", meta.source),
+        ("originator", meta.originator),
+        ("reasoning_effort", meta.effort),
+        ("sandbox_policy", meta.sandbox_policy),
+        ("approval_policy", meta.approval_policy),
+    ]
+    extra = {k: v for k, v in pairs if v}
+    return extra or None
 
 
 def _collect_tool_outputs(
     entries: list[dict], diagnostics: DiagnosticsCollector | None = None
 ) -> OrderedDict[str, dict]:
-    """Build a bounded call_id → result mapping from function_call_output entries.
+    """Build a bounded call_id -> result mapping from tool output entries.
 
+    Handles both ``function_call_output`` and ``custom_tool_call_output``.
     Uses an OrderedDict bounded at MAX_TOOL_RESULT_CACHE entries.
     """
     outputs: OrderedDict[str, dict] = OrderedDict()
@@ -205,15 +400,16 @@ def _collect_tool_outputs(
         if entry.get("type") != "response_item":
             continue
         payload = entry.get("payload", {})
-        if payload.get("type") != "function_call_output":
+        if payload.get("type") not in _TOOL_OUTPUT_TYPES:
             continue
         call_id = payload.get("call_id", "")
         if call_id:
             raw_output = payload.get("output", "")
-            cleaned, has_error = _parse_structured_output(raw_output)
+            cleaned, has_error, metadata = _parse_structured_output(raw_output)
             outputs[call_id] = {
                 "output": cleaned,
                 "is_error": has_error,
+                "metadata": metadata,
             }
             if len(outputs) > MAX_TOOL_RESULT_CACHE:
                 outputs.popitem(last=False)
@@ -223,9 +419,7 @@ def _collect_tool_outputs(
 
 
 def _build_steps(
-    entries: list[dict],
-    session_id: str,
-    diagnostics: DiagnosticsCollector | None = None,
+    entries: list[dict], session_id: str, diagnostics: DiagnosticsCollector | None = None
 ) -> list[Step]:
     """Build Step objects from rollout entries.
 
@@ -248,17 +442,14 @@ def _build_steps(
 
         if entry_type == "turn_context":
             state.current_model = payload.get("model", state.current_model)
+            state.current_cwd = payload.get("cwd", state.current_cwd)
+            effort = payload.get("reasoning_effort") or payload.get("effort") or ""
+            if effort:
+                state.current_effort = effort
             continue
 
         if entry_type == "response_item":
-            _handle_response_item(
-                payload,
-                timestamp,
-                session_id,
-                tool_outputs,
-                steps,
-                state,
-            )
+            _handle_response_item(payload, timestamp, session_id, tool_outputs, steps, state)
             continue
 
         # token_count events carry per-turn usage stats from the OpenAI API;
@@ -271,6 +462,23 @@ def _build_steps(
     # Flush any trailing tool calls / thinking from the last agent turn.
     _flush_pending(steps, state)
     return steps
+
+
+def _build_step_extra(state: _CodexParseState) -> dict | None:
+    """Build step-level extra dict from current parse state.
+
+    Args:
+        state: Current parse state with cwd and effort.
+
+    Returns:
+        Dict with non-empty fields, or None if all empty.
+    """
+    extra: dict = {}
+    if state.current_cwd:
+        extra["cwd"] = state.current_cwd
+    if state.current_effort:
+        extra["reasoning_effort"] = state.current_effort
+    return extra or None
 
 
 def _handle_response_item(
@@ -291,8 +499,18 @@ def _handle_response_item(
         # A new message boundary: flush any tool calls / thinking buffered
         # from the preceding agent turn before creating the next step.
         _flush_pending(steps, state)
-        source = _ROLE_TO_SOURCE.get(role, StepSource.USER)
         content_text = _extract_message_text(payload)
+        source = ROLE_TO_SOURCE.get(role, StepSource.USER)
+        # Reclassify agent-injected context (e.g. <environment_context>)
+        # that arrives as role=user but is system boilerplate.
+        if source == StepSource.USER and content_text.lstrip().startswith(_SYSTEM_TAG_PREFIXES):
+            source = StepSource.SYSTEM
+        extra = _build_step_extra(state) if role == "assistant" else None
+        status = payload.get("status")
+        if status and extra is not None:
+            extra["status"] = status
+        elif status:
+            extra = {"status": status}
         steps.append(
             Step(
                 step_id=str(uuid4()),
@@ -300,17 +518,20 @@ def _handle_response_item(
                 message=content_text,
                 model_name=(state.current_model or None) if role == "assistant" else None,
                 timestamp=timestamp,
+                extra=extra,
             )
         )
 
-    elif payload_type == "function_call":
+    elif payload_type in _TOOL_CALL_TYPES:
         call_id = payload.get("call_id", "")
+        # custom_tool_call uses "input" for arguments, function_call uses "arguments"
+        raw_args = payload.get("arguments", "") or payload.get("input", "")
         result = tool_outputs.get(call_id, {})
         state.pending_tools.append(
             ToolCall(
                 tool_call_id=call_id,
                 function_name=payload.get("name", "unknown"),
-                arguments=_parse_arguments(payload.get("arguments", "")),
+                arguments=_parse_arguments(raw_args),
             )
         )
         # Buffer observation result for the tool output
@@ -318,10 +539,12 @@ def _handle_response_item(
             content = result.get("output")
             if result.get("is_error", False):
                 content = mark_error_content(content)
+            obs_extra = result.get("metadata")
             state.pending_obs_results.append(
                 ObservationResult(
                     source_call_id=call_id,
                     content=content,
+                    extra=obs_extra,
                 )
             )
 
@@ -396,57 +619,106 @@ def _extract_message_text(payload: dict) -> str:
     return "\n".join(parts)
 
 
-def _parse_arguments(arguments: str) -> dict | str | None:
+def _parse_arguments(arguments: str | dict) -> dict | str | None:
     """Parse function_call arguments JSON string.
 
     OpenAI serialises function_call arguments as a JSON *string* rather
-    than an inline object.  We decode it back to a dict; if the JSON is
-    malformed, return the raw string so no data is lost.
+    than an inline object.  custom_tool_call may pass arguments as a dict
+    directly.  We decode strings back to dicts; if the JSON is malformed,
+    return the raw string so no data is lost.
     """
     if not arguments:
         return None
+    if isinstance(arguments, dict):
+        return arguments
     try:
         return json.loads(arguments)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, TypeError):
         return arguments
 
 
-def _parse_structured_output(raw: str) -> tuple[str, bool]:
+def _parse_structured_output(raw: str) -> tuple[str, bool, dict | None]:
     """Parse Codex structured tool output, stripping metadata prefix.
 
     Args:
         raw: Raw tool output string.
 
     Returns:
-        Tuple of (cleaned_output, is_error).
+        Tuple of (cleaned_output, is_error, metadata).
+        metadata contains exit_code and wall_time_sec when the prefix is present.
     """
     if not raw:
-        return "", False
+        return "", False, None
     match = _OUTPUT_PREFIX_RE.match(raw)
     if not match:
-        return raw, False
+        return raw, False, None
     exit_code = int(match.group(1))
+    wall_time_sec = float(match.group(2))
     cleaned = raw[match.end() :]
-    return cleaned, exit_code != 0
+    metadata = {"exit_code": exit_code, "wall_time_sec": wall_time_sec}
+    return cleaned, exit_code != 0, metadata
 
 
 def _parse_token_count(payload: dict) -> Metrics | None:
     """Parse token_count event_msg payload into Metrics.
 
-    Accepts both old (``prompt_tokens``/``completion_tokens``) and new
+    Per-turn usage is nested under ``info.last_token_usage``; falls back
+    to top-level ``info`` fields for older formats. Accepts both old
+    (``prompt_tokens``/``completion_tokens``) and new
     (``input_tokens``/``output_tokens``) field names.
     """
     info = payload.get("info", {})
     if not info:
         return None
-    prompt_tokens = info.get("input_tokens", 0) or info.get("prompt_tokens", 0)
-    completion_tokens = info.get("output_tokens", 0) or info.get("completion_tokens", 0)
-    input_details = info.get("input_tokens_details", {}) or {}
-    cached_tokens = input_details.get("cached_tokens", 0)
-    if prompt_tokens == 0 and completion_tokens == 0 and cached_tokens == 0:
+
+    # Per-turn usage is nested under last_token_usage; fall back to
+    # top-level fields for older formats.
+    usage = info.get("last_token_usage") or info
+
+    input_tokens = usage.get("input_tokens", 0) or usage.get("prompt_tokens", 0)
+    completion_tokens = usage.get("output_tokens", 0) or usage.get("completion_tokens", 0)
+
+    cached_tokens = usage.get("cached_input_tokens", 0)
+    if not cached_tokens:
+        input_details = usage.get("input_tokens_details", {}) or {}
+        cached_tokens = input_details.get("cached_tokens", 0)
+
+    prompt_tokens = input_tokens + cached_tokens
+
+    if prompt_tokens == 0 and completion_tokens == 0:
         return None
+
+    reasoning_tokens = usage.get("reasoning_output_tokens", 0)
+    metrics_extra = {"reasoning_output_tokens": reasoning_tokens} if reasoning_tokens else None
+
     return Metrics(
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
         cached_tokens=cached_tokens,
+        extra=metrics_extra,
     )
+
+
+def _extract_final_token_usage(entries: list[dict]) -> dict | None:
+    """Extract cumulative total_token_usage from the last token_count event.
+
+    Codex includes a ``total_token_usage`` block in token_count events
+    that represents the cumulative usage across the entire session.
+
+    Args:
+        entries: Parsed JSONL entries.
+
+    Returns:
+        The total_token_usage dict, or None if not found.
+    """
+    for entry in reversed(entries):
+        if entry.get("type") != "event_msg":
+            continue
+        payload = entry.get("payload", {})
+        if payload.get("type") != "token_count":
+            continue
+        info = payload.get("info", {})
+        total_usage = info.get("total_token_usage")
+        if isinstance(total_usage, dict) and total_usage:
+            return total_usage
+    return None

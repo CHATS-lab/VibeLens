@@ -7,6 +7,8 @@
 
 app:
   mode: self
+  visible_agents:
+    - all
 
 server:
   host: 127.0.0.1
@@ -14,6 +16,8 @@ server:
 
 sources:
   claude_dir: ~/.claude
+  codex_dir: ~/.codex
+  gemini_dir: ~/.gemini
 
 upload:
   dir: ~/.vibelens/uploads

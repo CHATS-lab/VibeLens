@@ -57,6 +57,7 @@ class GeminiParser(BaseParser):
     """
 
     AGENT_NAME = "gemini"
+    LOCAL_DATA_DIR: Path | None = Path.home() / ".gemini"
 
     def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
         """Parse Gemini CLI session JSON content into a Trajectory.
@@ -88,7 +89,7 @@ class GeminiParser(BaseParser):
 
         file_path = Path(source_path) if source_path else None
         project_path = _resolve_project(file_path, data, steps) if file_path else None
-        extra = _build_diagnostics_extra(collector)
+        extra = self.build_diagnostics_extra(collector)
         agent = self.build_agent()
         return [
             self.assemble_trajectory(
@@ -99,18 +100,6 @@ class GeminiParser(BaseParser):
                 extra=extra,
             )
         ]
-
-
-def _build_diagnostics_extra(collector: DiagnosticsCollector) -> dict | None:
-    """Build trajectory extra dict from diagnostics if there are issues."""
-    has_issues = (
-        collector.skipped_lines > 0
-        or collector.orphaned_tool_calls > 0
-        or collector.orphaned_tool_results > 0
-    )
-    if not has_issues:
-        return None
-    return {"diagnostics": collector.to_diagnostics().model_dump()}
 
 
 _DEFAULT_GEMINI_DIR = Path.home() / ".gemini"

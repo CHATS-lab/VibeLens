@@ -29,14 +29,12 @@ export function formatTokens(n: number): string {
 }
 
 export function formatDuration(seconds: number | null | undefined): string {
-  if (!seconds || seconds <= 0) return "0s";
+  if (!seconds || seconds <= 0) return "0m";
   const hours = Math.floor(seconds / HOUR);
   const minutes = Math.floor((seconds % HOUR) / MINUTE);
-  const secs = Math.floor(seconds % MINUTE);
   const parts: string[] = [];
   if (hours > 0) parts.push(`${hours}h`);
-  if (minutes > 0) parts.push(`${minutes}m`);
-  if (secs > 0 || parts.length === 0) parts.push(`${secs}s`);
+  if (minutes > 0 || parts.length === 0) parts.push(`${minutes}m`);
   return parts.join(" ");
 }
 

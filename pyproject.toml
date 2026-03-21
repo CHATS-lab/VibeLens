@@ -1,6 +1,6 @@
 [project]
 name = "vibelens"
-version = "0.6.2"
+version = "0.7.0"
 description = "Agent Trajectory analysis and visualization platform"
 readme = "README.md"
 requires-python = ">=3.12"

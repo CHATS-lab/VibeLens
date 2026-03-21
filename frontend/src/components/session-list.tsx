@@ -7,6 +7,7 @@ import {
   FolderOpen,
   ChevronDown,
   ChevronRight,
+  Bot,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { Trajectory } from "../types";
@@ -22,6 +23,9 @@ interface SessionListProps {
   onCheckedChange: (ids: Set<string>) => void;
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
+  agentFilter: string;
+  onAgentFilterChange: (agent: string) => void;
+  availableAgents: string[];
 }
 
 export function SessionList({
@@ -32,6 +36,9 @@ export function SessionList({
   onCheckedChange,
   viewMode,
   onViewModeChange,
+  agentFilter,
+  onAgentFilterChange,
+  availableAgents,
 }: SessionListProps) {
   const [search, setSearch] = useState("");
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(
@@ -39,6 +46,7 @@ export function SessionList({
   );
 
   const filtered = sessions.filter((s) => {
+    if (agentFilter !== "all" && s.agent?.name !== agentFilter) return false;
     if (!search) return true;
     const q = search.toLowerCase();
     return (
@@ -142,6 +150,25 @@ export function SessionList({
             className="w-full bg-zinc-800 text-zinc-200 text-sm rounded pl-7 pr-2 py-1.5 border border-zinc-700 focus:outline-none focus:border-cyan-600 placeholder:text-zinc-500"
           />
         </div>
+
+        {/* Agent Filter */}
+        {availableAgents.length > 0 && (
+          <div className="relative">
+            <Bot className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500" />
+            <select
+              value={agentFilter}
+              onChange={(e) => onAgentFilterChange(e.target.value)}
+              className="w-full bg-zinc-800 text-zinc-200 text-xs rounded pl-7 pr-2 py-1.5 border border-zinc-700 focus:outline-none focus:border-cyan-600 appearance-none cursor-pointer"
+            >
+              <option value="all">All agents</option>
+              {availableAgents.map((agent) => (
+                <option key={agent} value={agent}>
+                  {agent}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* Select All */}
         <button

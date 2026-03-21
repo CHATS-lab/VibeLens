@@ -1,6 +1,5 @@
 """Core settings model and loader."""
 
-import logging
 from pathlib import Path
 
 from pydantic import Field, model_validator
@@ -8,8 +7,9 @@ from pydantic_settings import BaseSettings
 
 from vibelens.config.loader import apply_yaml_defaults, discover_config_path
 from vibelens.models.enums import AppMode
+from vibelens.utils.log import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 ENV_PREFIX = "VIBELENS_"
 
@@ -44,6 +44,14 @@ class Settings(BaseSettings):
         default=Path.home() / ".claude",
         description="Root directory containing Claude Code conversation history.",
     )
+    codex_dir: Path = Field(
+        default=Path.home() / ".codex",
+        description="Root directory for Codex CLI session data.",
+    )
+    gemini_dir: Path = Field(
+        default=Path.home() / ".gemini",
+        description="Root directory for Gemini CLI session data.",
+    )
 
     # Upload
     upload_dir: Path = Field(
@@ -67,6 +75,16 @@ class Settings(BaseSettings):
         description="Chunk size in bytes for streaming uploads to disk.",
     )
 
+    # Agent visibility
+    visible_agents: list[str] = Field(
+        default=["all"],
+        description=(
+            "Agent names to display in the session list. "
+            'Use ["all"] to show every agent, or specify names like '
+            '["claude-code", "codex"].'
+        ),
+    )
+
     # Demo mode
     demo_example_sessions: str = Field(
         default="",
@@ -86,6 +104,8 @@ class Settings(BaseSettings):
     def expand_paths(self) -> "Settings":
         """Expand ~ in Path fields so YAML values like ~/.claude work."""
         self.claude_dir = self.claude_dir.expanduser()
+        self.codex_dir = self.codex_dir.expanduser()
+        self.gemini_dir = self.gemini_dir.expanduser()
         self.upload_dir = self.upload_dir.expanduser()
         return self
 

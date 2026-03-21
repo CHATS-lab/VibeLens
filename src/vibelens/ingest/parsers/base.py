@@ -7,7 +7,6 @@ the file and delegates to ``parse``.
 """
 
 import json
-import logging
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from pathlib import Path
@@ -22,11 +21,12 @@ from vibelens.models.trajectories import (
     TrajectoryRef,
 )
 from vibelens.models.trajectories.trajectory import DEFAULT_ATIF_VERSION
+from vibelens.utils.log import get_logger
 
 if TYPE_CHECKING:
     from vibelens.ingest.diagnostics import DiagnosticsCollector
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Keeps session-list previews short enough for UI display while preserving
 # enough context for the user to recognise the conversation at a glance.
@@ -36,6 +36,9 @@ MAX_FIRST_MESSAGE_LENGTH = 200
 # Since ATIF ObservationResult has no is_error field, errors are signalled
 # by prefixing the content string with this marker.
 ERROR_PREFIX = "[ERROR] "
+
+# ATIF source mapping shared across parsers that use standard role names.
+ROLE_TO_SOURCE: dict[str, StepSource] = {"user": StepSource.USER, "assistant": StepSource.AGENT}
 
 
 def is_error_content(content: str | list | None) -> bool:
@@ -76,6 +79,12 @@ _SYSTEM_TAG_PREFIXES = (
     "<local-command-caveat",
     "<local-command-stdout",
     "<task-notification",
+    # Generic agent-injected context tags (Codex, Gemini, etc.)
+    "<environment_context",
+    "<environment-details",
+    "<context",
+    "<tool-",
+    "<instructions",
 )
 
 _SKILL_PREFIX = "Base directory for this skill:"
@@ -113,9 +122,20 @@ class BaseParser(ABC):
 
     Subclasses must set ``AGENT_NAME`` to their agent identifier
     (e.g. ``"claude-code"``, ``"codex"``).
+
+    Parsers that read from a local data directory set ``LOCAL_DATA_DIR``
+    to the default path (e.g. ``Path.home() / ".claude"``). Parsers for
+    imported formats (dataclaw) leave it as ``None`` to opt out of local
+    discovery.
     """
 
     AGENT_NAME: str
+    LOCAL_DATA_DIR: Path | None = None
+
+    @classmethod
+    def local_parsers(cls) -> list[type["BaseParser"]]:
+        """Return all parser subclasses that support local data directories."""
+        return [sub for sub in cls.__subclasses__() if sub.LOCAL_DATA_DIR is not None]
 
     @abstractmethod
     def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
@@ -191,6 +211,25 @@ class BaseParser(ABC):
             if _is_meaningful_prompt(step.message):
                 return self.truncate_first_message(step.message)
         return None
+
+    @staticmethod
+    def build_diagnostics_extra(collector: "DiagnosticsCollector") -> dict | None:
+        """Build trajectory extra dict from diagnostics if there are issues.
+
+        Args:
+            collector: Diagnostics collector with parse quality metrics.
+
+        Returns:
+            Dict with diagnostics data, or None if no issues were recorded.
+        """
+        has_issues = (
+            collector.skipped_lines > 0
+            or collector.orphaned_tool_calls > 0
+            or collector.orphaned_tool_results > 0
+        )
+        if not has_issues:
+            return None
+        return {"diagnostics": collector.to_diagnostics().model_dump()}
 
     def build_agent(self, version: str | None = None, model: str | None = None) -> Agent:
         """Create an ATIF Agent model using this parser's AGENT_NAME.
@@ -280,6 +319,21 @@ class BaseParser(ABC):
                         continue
         except OSError:
             logger.warning("Cannot read file: %s", file_path)
+
+
+def _import_all_parsers() -> None:
+    """Import all parser modules so ``__subclasses__()`` discovers them.
+
+    Python only tracks subclasses that have been imported. This function
+    ensures every concrete parser module is loaded before calling
+    ``BaseParser.local_parsers()``.
+    """
+    from vibelens.ingest.parsers import (  # noqa: F401
+        claude_code,
+        codex,
+        dataclaw,
+        gemini,
+    )
 
 
 def _compute_final_metrics(steps: list[Step]) -> FinalMetrics:

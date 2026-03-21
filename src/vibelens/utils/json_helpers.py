@@ -2,13 +2,14 @@
 
 import hashlib
 import json
-import logging
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel
 
-logger = logging.getLogger(__name__)
+from vibelens.utils.log import get_logger
+
+logger = get_logger(__name__)
 
 
 def safe_json_loads(text: str) -> dict | list | None:

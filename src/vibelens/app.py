@@ -1,6 +1,5 @@
 """FastAPI application factory."""
 
-import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -15,8 +14,9 @@ from vibelens.deps import get_store
 from vibelens.models.enums import AppMode
 from vibelens.services.demo_loader import load_demo_examples
 from vibelens.stores.disk import DiskStore
+from vibelens.utils import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 STATIC_DIR = Path(__file__).parent / "static"
 

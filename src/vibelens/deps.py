@@ -48,7 +48,7 @@ def get_store() -> TrajectoryStore:
     global _store
     if _store is None:
         if is_demo_mode():
-            _store = DiskStore(_resolve_demo_store_root())
+            _store = DiskStore(_resolve_demo_store_root(), upload_root=DATASETS_ROOT)
         else:
-            _store = LocalStore(get_settings().claude_dir)
+            _store = LocalStore(settings=get_settings())
     return _store

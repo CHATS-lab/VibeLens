@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.0] - 2026-03-21
+
+### Added
+- **Analytics dashboard**: Full-page dashboard with stat cards (sessions, messages, tokens, tool calls, duration), usage-over-time chart with metric/time-group toggles, GitHub-style activity heatmap, peak hours distribution, model distribution bar, and project activity ranking. Supports project filtering and CSV/JSON export.
+- **Browse/Analytics view toggle**: Main content area switches between session browser and analytics dashboard via tab buttons.
+- **Agent filter**: Sidebar dropdown filters sessions by agent type (Claude Code, Codex, Gemini). Configurable via `visible_agents` in settings.
+- **Codex parser improvements**: Structured output parsing, reasoning extraction and deduplication, session metadata (CLI version, sandbox mode, approval policy), error detection via rollout, tool result metadata (exit code, wall time).
+
 ## [0.6.2] - 2026-03-20
 
 ### Added
@@ -11,7 +19,6 @@
 ### Changed
 - **UI cleanup**: Removed redundant header bar, fixed text overflow for long strings, improved message type differentiation (user/system/skill).
 - **Logging**: One log file per module, overwritten each restart. Removed combined root log and timestamped per-module duplicates.
-
 
 ## [0.6.1] - 2026-03-18
 

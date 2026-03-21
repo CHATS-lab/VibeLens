@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { Bot, MessageSquare } from "lucide-react";
-import { extractUserText, truncate } from "../utils";
-import { ResizeHandle } from "./resize-handle";
-import type { Step, Trajectory } from "../types";
+import { extractUserText, truncate } from "../../utils";
+import { ResizeHandle } from "../resize-handle";
+import type { Step, Trajectory } from "../../types";
 
 const PREVIEW_MAX_CHARS = 80;
-const MIN_PROMPTS_FOR_NAV = 2;
+const MIN_PROMPTS_FOR_NAV = 1;
 
 type NavMode = "prompts" | "sub-agents";
 

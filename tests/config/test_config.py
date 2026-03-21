@@ -42,6 +42,19 @@ class TestSettings:
         settings = Settings()
         assert settings.claude_dir == tmp_path / "env-claude"
 
+    def test_visible_agents_default(self):
+        settings = Settings()
+        assert settings.visible_agents == ["all"]
+
+    def test_visible_agents_override(self):
+        settings = Settings(visible_agents=["claude-code", "codex"])
+        assert settings.visible_agents == ["claude-code", "codex"]
+
+    def test_visible_agents_from_env(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("VIBELENS_VISIBLE_AGENTS", '["codex", "gemini"]')
+        settings = Settings()
+        assert settings.visible_agents == ["codex", "gemini"]
+
 
 class TestLoadSettings:
     """Test load_settings function."""
@@ -91,6 +104,15 @@ class TestLoadSettings:
         settings = load_settings(config_path=config_file)
         assert settings.host == "custom-host"
 
+    def test_visible_agents_from_yaml(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        """visible_agents list flows from YAML through loader to Settings."""
+        config_file = tmp_path / "agents.yaml"
+        config_file.write_text("app:\n  visible_agents:\n    - codex\n    - gemini\n")
+        monkeypatch.delenv("VIBELENS_VISIBLE_AGENTS", raising=False)
+
+        settings = load_settings(config_path=config_file)
+        assert settings.visible_agents == ["codex", "gemini"]
+
 
 class TestLoadYamlFlat:
     """Test YAML flattening logic."""
@@ -134,6 +156,13 @@ class TestLoadYamlFlat:
 
         assert "host" not in result
         assert result["port"] == "8080"
+
+    def test_list_values_json_serialized(self, tmp_path: Path):
+        config_file = tmp_path / "list.yaml"
+        config_file.write_text("app:\n  visible_agents:\n    - claude-code\n    - codex\n")
+        result = load_yaml_flat(config_file)
+
+        assert result["visible_agents"] == '["claude-code", "codex"]'
 
 
 class TestDiscoverConfigPath:

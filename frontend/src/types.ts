@@ -119,6 +119,51 @@ export interface DonateResult {
   errors: Array<{ session_id: string; error: string }>;
 }
 
+export interface DailyStat {
+  date: string;
+  session_count: number;
+  total_messages: number;
+  total_tokens: number;
+  total_duration: number;
+  total_duration_hours: number;
+}
+
+export interface PeriodStats {
+  sessions: number;
+  messages: number;
+  tokens: number;
+  tool_calls: number;
+  duration: number;
+}
+
+export interface DashboardStats {
+  total_sessions: number;
+  total_messages: number;
+  total_tokens: number;
+  total_tool_calls: number;
+  total_duration: number;
+  total_duration_hours: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_cache_tokens: number;
+  this_year: PeriodStats;
+  this_month: PeriodStats;
+  this_week: PeriodStats;
+  avg_messages_per_session: number;
+  avg_tokens_per_session: number;
+  avg_tool_calls_per_session: number;
+  avg_duration_per_session: number;
+  project_count: number;
+  daily_activity: Record<string, number>;
+  daily_stats: DailyStat[];
+  model_distribution: Record<string, number>;
+  agent_distribution: Record<string, number>;
+  project_distribution: Record<string, number>;
+  hourly_distribution: Record<number, number>;
+  weekday_hour_heatmap: Record<string, number>;
+  timezone: string;
+}
+
 export type ToolType =
   | "bash"
   | "edit"

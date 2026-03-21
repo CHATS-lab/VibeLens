@@ -2,6 +2,9 @@
 
 from vibelens.models.analysis import (
     AgentBehaviorResult,
+    DailyStat,
+    DashboardStats,
+    SessionAnalytics,
     TimePattern,
     ToolUsageStat,
     UserPreferenceResult,
@@ -41,6 +44,8 @@ __all__ = [
     "Base64Source",
     "ContentPart",
     "ContentType",
+    "DailyStat",
+    "DashboardStats",
     "DataSourceType",
     "DataTargetType",
     "FinalMetrics",
@@ -49,6 +54,7 @@ __all__ = [
     "Observation",
     "ObservationResult",
     "RemoteSessionsQuery",
+    "SessionAnalytics",
     "SessionPhase",
     "Step",
     "StepSource",

@@ -10,8 +10,9 @@ from vibelens.analysis.correlator import (
     CorrelatedSession,
     correlate_sessions,
 )
-from vibelens.analysis.phase_detector import PhaseSegment, detect_phases
+from vibelens.analysis.phase_detector import detect_phases
 from vibelens.analysis.tool_graph import ToolDependencyGraph, ToolEdge, build_tool_graph
+from vibelens.models.analysis.phase import PhaseSegment
 
 __all__ = [
     "CorrelatedGroup",

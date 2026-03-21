@@ -23,6 +23,7 @@ from uuid import uuid4
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
 from vibelens.ingest.parsers.base import (
+    ROLE_TO_SOURCE,
     BaseParser,
     _is_meaningful_prompt,
     mark_error_content,
@@ -51,9 +52,6 @@ logger = get_logger(__name__)
 # Only "user" and "assistant" carry conversation content.
 # Other types (e.g. "result", "progress") are internal bookkeeping.
 RELEVANT_TYPES = {"user", "assistant"}
-
-# ATIF source mapping for Claude Code role names
-_ROLE_TO_SOURCE = {"user": StepSource.USER, "assistant": StepSource.AGENT}
 
 # Number of lines to probe for project path extraction
 PROJECT_PATH_PROBE_LIMIT = 10
@@ -110,6 +108,7 @@ class ClaudeCodeParser(BaseParser):
     """
 
     AGENT_NAME = "claude-code"
+    LOCAL_DATA_DIR: Path | None = Path.home() / ".claude"
 
     def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
         """Parse JSONL session content into Trajectory objects.
@@ -335,8 +334,9 @@ class ClaudeCodeParser(BaseParser):
         """
         try:
             sub_content = agent_file.read_text(encoding="utf-8")
-        except OSError as exc:
-            raise OSError(f"Cannot read sub-agent file: {agent_file}") from exc
+        except OSError:
+            logger.warning("Cannot read sub-agent file: %s", agent_file)
+            return None
 
         sub_steps = self._parse_content(sub_content)
         if not sub_steps:
@@ -417,7 +417,7 @@ class ClaudeCodeParser(BaseParser):
             timestamp = normalize_timestamp(entry.get("timestamp"))
 
             role = msg.get("role", entry.get("type", ""))
-            source = _ROLE_TO_SOURCE.get(role, StepSource.USER)
+            source = ROLE_TO_SOURCE.get(role, StepSource.USER)
             model_name = msg.get("model") or None
             raw_content = msg.get("content", "")
 
@@ -1219,13 +1219,17 @@ def _parse_metrics(usage_data: dict | None) -> Metrics | None:
     """
     if not usage_data:
         return None
+
+    input_tok = usage_data.get("input_tokens") or 0
+    cache_read = usage_data.get("cache_read_input_tokens") or 0
+    output_tok = usage_data.get("output_tokens") or 0
+    cache_write = usage_data.get("cache_creation_input_tokens") or 0
+
     return Metrics(
-        prompt_tokens=(
-            usage_data.get("input_tokens", 0) + usage_data.get("cache_read_input_tokens", 0)
-        ),
-        completion_tokens=usage_data.get("output_tokens", 0),
-        cache_creation_tokens=usage_data.get("cache_creation_input_tokens", 0),
-        cached_tokens=usage_data.get("cache_read_input_tokens", 0),
+        prompt_tokens=input_tok + cache_read,
+        completion_tokens=output_tok,
+        cache_creation_tokens=cache_write,
+        cached_tokens=cache_read,
     )
 
 

@@ -14,13 +14,13 @@ import {
   Zap,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAppContext } from "../app";
-import type { Step, Trajectory } from "../types";
+import { useAppContext } from "../../app";
+import type { Step, Trajectory } from "../../types";
 import { StepBlock } from "./message-block";
 import { SubAgentBlock } from "./sub-agent-block";
 import { StepTimeline } from "./step-timeline";
 import { PromptNavPanel } from "./prompt-nav-panel";
-import { formatTokens, formatDuration, extractUserText, baseProjectName } from "../utils";
+import { formatTokens, formatDuration, extractUserText, baseProjectName } from "../../utils";
 
 interface SessionViewProps {
   sessionId: string;
@@ -64,7 +64,7 @@ export function SessionView({ sessionId }: SessionViewProps) {
   }, [sessionId, fetchWithToken]);
 
   const main = useMemo(
-    () => trajectories.find((t) => !t.parent_trajectory_ref) ?? null,
+    () => trajectories.find((t) => !t.parent_trajectory_ref) ?? trajectories[0] ?? null,
     [trajectories]
   );
 

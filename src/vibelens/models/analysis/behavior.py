@@ -1,4 +1,4 @@
-"""Analysis result models."""
+"""Behavior and preference analysis result models."""
 
 from pydantic import BaseModel, Field
 
@@ -9,17 +9,17 @@ class ToolUsageStat(BaseModel):
     tool_name: str = Field(description="Name of the tool (e.g. 'Bash', 'Read', 'Edit').")
     call_count: int = Field(description="Total number of times this tool was invoked.")
     avg_per_session: float = Field(description="Average invocations per session.")
-    error_rate: float = Field(description="Fraction of calls that resulted in an error (0.0–1.0).")
+    error_rate: float = Field(description="Fraction of calls that resulted in an error (0.0-1.0).")
 
 
 class TimePattern(BaseModel):
     """Time pattern statistics."""
 
     hour_distribution: dict[int, int] = Field(
-        description="Session counts keyed by hour of day (0–23)."
+        description="Session counts keyed by hour of day (0-23)."
     )
     weekday_distribution: dict[int, int] = Field(
-        description="Session counts keyed by weekday (0=Mon … 6=Sun)."
+        description="Session counts keyed by weekday (0=Mon ... 6=Sun)."
     )
     avg_session_duration: float = Field(description="Mean session duration in seconds.")
     avg_messages_per_session: float = Field(description="Mean number of messages per session.")
@@ -53,12 +53,12 @@ class AgentBehaviorResult(BaseModel):
         description="Mean total tokens (input + output) per session."
     )
     tool_selection_variability: float = Field(
-        description="Entropy-based measure of tool selection diversity (0.0–1.0)."
+        description="Entropy-based measure of tool selection diversity (0.0-1.0)."
     )
     common_tool_patterns: list[dict] = Field(
         description="Frequently observed tool-call sequences and their counts."
     )
     thinking_action_consistency: float | None = Field(
         default=None,
-        description="Correlation between thinking content and subsequent actions (0.0–1.0).",
+        description="Correlation between thinking content and subsequent actions (0.0-1.0).",
     )

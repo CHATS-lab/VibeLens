@@ -20,15 +20,12 @@ from collections.abc import Iterator
 from pathlib import Path
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
-from vibelens.ingest.parsers.base import BaseParser
+from vibelens.ingest.parsers.base import ROLE_TO_SOURCE, BaseParser
 from vibelens.models.enums import StepSource
 from vibelens.models.trajectories import Step, ToolCall, Trajectory
 from vibelens.utils import coerce_to_string, deterministic_id, get_logger, parse_iso_timestamp
 
 logger = get_logger(__name__)
-
-# ATIF source mapping for dataclaw role names
-_ROLE_TO_SOURCE = {"user": StepSource.USER, "assistant": StepSource.AGENT}
 
 
 class DataclawParser(BaseParser):
@@ -143,7 +140,7 @@ def _build_steps(raw_messages: list, session_id: str, session_model: str) -> lis
         if role not in ("user", "assistant"):
             continue
 
-        source = _ROLE_TO_SOURCE.get(role, StepSource.USER)
+        source = ROLE_TO_SOURCE.get(role, StepSource.USER)
         content = coerce_to_string(raw.get("content", ""))
         reasoning_content = raw.get("thinking") or None
         timestamp = parse_iso_timestamp(raw.get("timestamp"))

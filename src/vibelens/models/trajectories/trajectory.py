@@ -1,6 +1,5 @@
 """Trajectory model for ATIF (Agent Trajectory Interchange Format)."""
 
-import logging
 from datetime import datetime
 from typing import Any, Literal
 
@@ -10,8 +9,9 @@ from vibelens.models.trajectories.agent import Agent
 from vibelens.models.trajectories.final_metrics import FinalMetrics
 from vibelens.models.trajectories.step import Step
 from vibelens.models.trajectories.trajectory_ref import TrajectoryRef
+from vibelens.utils.log import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 ATIF_VERSION = Literal[
     "ATIF-v1.0",

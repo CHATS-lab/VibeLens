@@ -115,6 +115,33 @@ def normalize_timestamp(value: int | float | str | None) -> datetime | None:
         return None
 
 
+def parse_metadata_timestamp(meta: dict) -> datetime | None:
+    """Extract and parse a timestamp from a metadata dict.
+
+    Handles datetime objects directly and delegates string values
+    to ``parse_iso_timestamp``. Ensures the result is timezone-aware
+    (naive datetimes are assumed UTC).
+
+    Args:
+        meta: Metadata dict potentially containing a "timestamp" key.
+
+    Returns:
+        Timezone-aware datetime, or None if missing or unparseable.
+    """
+    ts = meta.get("timestamp")
+    if ts is None:
+        return None
+    if isinstance(ts, datetime):
+        return ts if ts.tzinfo else ts.replace(tzinfo=UTC)
+    if isinstance(ts, str):
+        try:
+            dt = datetime.fromisoformat(ts)
+            return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+        except ValueError:
+            return None
+    return None
+
+
 def safe_int(value: int | float | str | None, default: int = 0) -> int:
     """Safely convert a value to int, handling None, NaN, Inf, and strings.
 

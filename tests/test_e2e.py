@@ -25,7 +25,17 @@ def test_settings(tmp_path):
     test_project = projects_dir / "-Users-TestProject-Agent-Test"
     test_project.mkdir()
 
-    return Settings(claude_dir=claude_dir), claude_dir, test_project
+    # Point all agent dirs to temp paths so real ~/.codex and ~/.gemini
+    # don't leak into test results.
+    return (
+        Settings(
+            claude_dir=claude_dir,
+            codex_dir=tmp_path / ".codex",
+            gemini_dir=tmp_path / ".gemini",
+        ),
+        claude_dir,
+        test_project,
+    )
 
 
 @pytest.fixture
@@ -396,7 +406,7 @@ class TestDataParsing:
     def test_local_source_loads_index(self, test_settings, sample_history):
         """Test LocalSource can load history index."""
         settings, claude_dir, _ = test_settings
-        source = LocalSource(claude_dir)
+        source = LocalSource(settings=settings)
 
         summaries = source.list_metadata()
         assert len(summaries) == 0  # No sessions with files yet
@@ -404,7 +414,7 @@ class TestDataParsing:
     def test_local_source_with_session_files(self, test_settings, sample_history, sample_sessions):
         """Test LocalSource with actual session files."""
         settings, claude_dir, _ = test_settings
-        source = LocalSource(claude_dir)
+        source = LocalSource(settings=settings)
 
         summaries = source.list_metadata()
         assert len(summaries) == 2
@@ -415,7 +425,7 @@ class TestDataParsing:
     ):
         """Test trajectory metadata is correctly computed."""
         settings, claude_dir, _ = test_settings
-        source = LocalSource(claude_dir)
+        source = LocalSource(settings=settings)
 
         group = source.load("session-002")
         assert group is not None
@@ -431,7 +441,7 @@ class TestErrorHandling:
 
     def test_malformed_jsonl_line(self, test_settings):
         """Test handling of malformed JSONL data."""
-        _, claude_dir, test_project = test_settings
+        settings, claude_dir, test_project = test_settings
 
         # Create history with valid data
         history_file = claude_dir / "history.jsonl"
@@ -475,7 +485,7 @@ class TestErrorHandling:
                 + "\n"
             )
 
-        source = LocalSource(claude_dir)
+        source = LocalSource(settings=settings)
 
         # Should still parse valid lines
         group = source.load("session-bad")
@@ -532,8 +542,13 @@ class TestEdgeCases:
         import tempfile
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            claude_dir = Path(tmpdir)
-            source = LocalSource(claude_dir)
+            base = Path(tmpdir)
+            settings = Settings(
+                claude_dir=base / ".claude",
+                codex_dir=base / ".codex",
+                gemini_dir=base / ".gemini",
+            )
+            source = LocalSource(settings=settings)
 
             summaries = source.list_metadata()
             assert len(summaries) == 0
