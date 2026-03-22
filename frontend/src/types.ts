@@ -38,9 +38,15 @@ export interface ToolCall {
   arguments: unknown;
 }
 
+export interface ContentPart {
+  type: "text" | "image" | "pdf";
+  text?: string | null;
+  source?: { media_type: string; base64: string; path?: string } | null;
+}
+
 export interface ObservationResult {
   source_call_id?: string | null;
-  content?: string | null;
+  content?: string | ContentPart[] | null;
   subagent_trajectory_ref?: TrajectoryRef[] | null;
 }
 
@@ -53,7 +59,7 @@ export interface Step {
   timestamp?: string | null;
   source: "user" | "agent" | "system";
   model_name?: string | null;
-  message: string;
+  message: string | ContentPart[];
   reasoning_content?: string | null;
   tool_calls: ToolCall[];
   observation?: Observation | null;
@@ -134,6 +140,10 @@ export interface PeriodStats {
   tokens: number;
   tool_calls: number;
   duration: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
 }
 
 export interface DashboardStats {
@@ -146,6 +156,8 @@ export interface DashboardStats {
   total_input_tokens: number;
   total_output_tokens: number;
   total_cache_tokens: number;
+  total_cache_read_tokens: number;
+  total_cache_creation_tokens: number;
   this_year: PeriodStats;
   this_month: PeriodStats;
   this_week: PeriodStats;

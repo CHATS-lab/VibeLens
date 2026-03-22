@@ -24,6 +24,12 @@ class PeriodStats(BaseModel):
     tokens: int = Field(default=0, description="Total tokens in this period.")
     tool_calls: int = Field(default=0, description="Tool call count in this period.")
     duration: int = Field(default=0, description="Duration in seconds in this period.")
+    input_tokens: int = Field(default=0, description="Prompt/input tokens in this period.")
+    output_tokens: int = Field(default=0, description="Completion/output tokens in this period.")
+    cache_read_tokens: int = Field(default=0, description="Cache read tokens in this period.")
+    cache_creation_tokens: int = Field(
+        default=0, description="Cache creation tokens in this period."
+    )
 
 
 class DashboardStats(BaseModel):
@@ -45,6 +51,10 @@ class DashboardStats(BaseModel):
     total_input_tokens: int = Field(default=0, description="Total prompt/input tokens.")
     total_output_tokens: int = Field(default=0, description="Total completion/output tokens.")
     total_cache_tokens: int = Field(default=0, description="Total cache read + write tokens.")
+    total_cache_read_tokens: int = Field(default=0, description="Total cache read tokens.")
+    total_cache_creation_tokens: int = Field(
+        default=0, description="Total cache creation/write tokens."
+    )
 
     # Period breakdowns
     this_year: PeriodStats = Field(default_factory=PeriodStats, description="Current year stats.")

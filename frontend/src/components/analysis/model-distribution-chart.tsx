@@ -34,7 +34,7 @@ export function ModelDistribution({
         {segments.map((seg) => (
           <div
             key={seg.model}
-            className={`h-full ${seg.color} first:rounded-l-full last:rounded-r-full cursor-default`}
+            className={`h-full ${seg.color} cursor-default`}
             style={{ width: `${seg.pct}%` }}
             onMouseEnter={(e) =>
               onHover(

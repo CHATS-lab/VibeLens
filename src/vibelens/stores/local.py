@@ -181,16 +181,25 @@ class LocalStore(TrajectoryStore):
                 # Tier 3: Full-file parse fallback
                 self._parse_files_for_index(parser, all_trajectories)
 
-        # Deduplicate: some agents (e.g. Gemini) reuse session_id across
-        # main and sub-agent files. Keep only the first occurrence.
+        # Deduplicate and validate: drop sessions with no first_message
+        # (empty/corrupt files that exist on disk but have no parseable
+        # content — they show in the sidebar but return 404 when clicked).
         seen_ids: set[str] = set()
-        deduped: list[Trajectory] = []
+        valid: list[Trajectory] = []
+        dropped = 0
         for t in all_trajectories:
-            if t.session_id not in seen_ids:
-                seen_ids.add(t.session_id)
-                deduped.append(t)
+            if t.session_id in seen_ids:
+                continue
+            seen_ids.add(t.session_id)
+            if not t.first_message:
+                self._file_index.pop(t.session_id, None)
+                dropped += 1
+                continue
+            valid.append(t)
 
-        self._index_cache = deduped
+        self._index_cache = valid
+        if dropped:
+            logger.info("Dropped %d empty sessions from index", dropped)
         logger.info(
             "Indexed %d sessions across %d agents", len(self._index_cache), len(self._parsers)
         )

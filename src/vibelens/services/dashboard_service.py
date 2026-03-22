@@ -99,7 +99,7 @@ def get_dashboard_stats(
         project_path, date_from, date_to, session_token
     )
     result = compute_dashboard_stats(trajectories)
-    _reconcile_session_counts(result, filtered_metadata)
+    _reconcile_session_counts(result, trajectories, filtered_metadata)
     _dashboard_cache[cache_key] = (time.monotonic(), result)
     return result
 
@@ -236,17 +236,23 @@ def export_dashboard_json(
     )
 
 
-def _reconcile_session_counts(stats: DashboardStats, metadata: list[dict]) -> None:
+def _reconcile_session_counts(
+    stats: DashboardStats,
+    trajectories: list[Trajectory],
+    metadata: list[dict],
+) -> None:
     """Override session counts to include sessions that failed to parse.
 
     The sidebar shows all metadata entries (from skeleton parsing), but
     some sessions fail to load as full trajectories. Without reconciliation,
     the dashboard would show fewer sessions than the sidebar — confusing
     users who see N sessions listed but only M < N in the stats. This
-    recomputes period counts from metadata timestamps to match.
+    recomputes period counts from metadata timestamps and adds failed
+    sessions to project_distribution and daily_activity.
 
     Args:
         stats: DashboardStats to mutate in place.
+        trajectories: Successfully parsed trajectories.
         metadata: Filtered metadata list (matches sidebar count).
     """
     local_tz = datetime.now().astimezone().tzinfo
@@ -256,6 +262,8 @@ def _reconcile_session_counts(stats: DashboardStats, metadata: list[dict]) -> No
     week_start = (now - timedelta(days=now.weekday())).replace(
         hour=0, minute=0, second=0, microsecond=0
     )
+
+    parsed_ids = {t.session_id for t in trajectories}
 
     year_count = month_count = week_count = 0
     for meta in metadata:
@@ -269,6 +277,18 @@ def _reconcile_session_counts(stats: DashboardStats, metadata: list[dict]) -> No
             month_count += 1
         if local_ts >= week_start:
             week_count += 1
+
+        # Add failed-to-parse sessions to distributions so counts match
+        session_id = meta.get("session_id", "")
+        if session_id and session_id not in parsed_ids:
+            project = meta.get("project_path") or "(no project)"
+            date_key = local_ts.strftime("%Y-%m-%d")
+            stats.project_distribution[project] = (
+                stats.project_distribution.get(project, 0) + 1
+            )
+            stats.daily_activity[date_key] = (
+                stats.daily_activity.get(date_key, 0) + 1
+            )
 
     stats.total_sessions = len(metadata)
     stats.this_year.sessions = year_count

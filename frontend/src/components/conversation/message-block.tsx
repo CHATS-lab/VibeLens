@@ -18,9 +18,10 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { createTwoFilesPatch } from "diff";
-import type { Step, ToolCall, ObservationResult } from "../../types";
-import { sanitizeText } from "../../utils";
+import type { Step, ToolCall, ObservationResult, ContentPart } from "../../types";
+import { sanitizeText, extractMessageText } from "../../utils";
 import { MarkdownRenderer } from "../markdown-renderer";
+import { ContentRenderer } from "./content-renderer";
 import { CopyButton } from "../copy-button";
 
 const MAX_COLLAPSED_LINES = 8;
@@ -51,12 +52,13 @@ export function StepBlock({ step }: StepBlockProps) {
 export const MessageBlock = StepBlock;
 
 function UserStep({ step }: { step: Step }) {
-  const text = sanitizeText(step.message);
-  if (!text) return null;
+  const text = extractMessageText(step.message);
+  if (!text && typeof step.message === "string") return null;
+  if (!text && Array.isArray(step.message) && step.message.length === 0) return null;
   return (
     <div className="flex justify-end">
       <div className="max-w-[85%] bg-indigo-600/80 text-white rounded-2xl rounded-br-md px-4 py-2.5 text-sm overflow-hidden break-words">
-        <MarkdownRenderer content={text} className="user-markdown" />
+        <ContentRenderer content={step.message} className="user-markdown" />
       </div>
     </div>
   );
@@ -64,7 +66,7 @@ function UserStep({ step }: { step: Step }) {
 
 function SystemStep({ step }: { step: Step }) {
   const [open, setOpen] = useState(false);
-  const text = sanitizeText(step.message);
+  const text = extractMessageText(step.message);
   if (!text) return null;
   const previewSnippet = text.split("\n")[0].slice(0, 80);
 
@@ -99,7 +101,7 @@ function extractSkillName(text: string): string | null {
 
 function SkillStep({ step }: { step: Step }) {
   const [open, setOpen] = useState(false);
-  const text = sanitizeText(step.message);
+  const text = extractMessageText(step.message);
   if (!text) return null;
   const skillName = extractSkillName(text);
 
@@ -144,7 +146,9 @@ function AgentStep({ step }: { step: Step }) {
 
   return (
     <div className="space-y-1">
-      {step.message && <TextBlock text={step.message} />}
+      {step.message && (typeof step.message !== "string" || step.message.trim()) && (
+        <TextBlock content={step.message} />
+      )}
       {step.reasoning_content && <ThinkingBlock text={step.reasoning_content} />}
       {(step.tool_calls.length > 0 || orphanResults.length > 0) && (
         <div className="flex flex-col gap-1 mt-1.5">
@@ -216,12 +220,19 @@ function ConcurrentToolsBlock({
   );
 }
 
-function TextBlock({ text }: { text: string }) {
-  const cleaned = sanitizeText(text);
-  if (!cleaned) return null;
+function TextBlock({ content }: { content: string | ContentPart[] }) {
+  if (typeof content === "string") {
+    const cleaned = sanitizeText(content);
+    if (!cleaned) return null;
+    return (
+      <div className="max-w-[85%] text-zinc-100 text-sm break-words overflow-hidden">
+        <MarkdownRenderer content={cleaned} />
+      </div>
+    );
+  }
   return (
     <div className="max-w-[85%] text-zinc-100 text-sm break-words overflow-hidden">
-      <MarkdownRenderer content={cleaned} />
+      <ContentRenderer content={content} />
     </div>
   );
 }
@@ -281,8 +292,19 @@ function ToolUseBlock({ toolCall }: { toolCall: ToolCall }) {
 const ERROR_PREFIX = "[ERROR] ";
 
 function ToolResultBlock({ result }: { result: ObservationResult }) {
-  const rawContent = result.content || "";
-  const isError = typeof rawContent === "string" && rawContent.startsWith(ERROR_PREFIX);
+  const rawContent = result.content;
+  if (!rawContent) return null;
+
+  // Handle multimodal content (images in tool results)
+  if (Array.isArray(rawContent)) {
+    return (
+      <div className="max-w-[85%] mt-1 bg-zinc-900/60 border border-zinc-800 rounded-lg overflow-hidden p-3">
+        <ContentRenderer content={rawContent} />
+      </div>
+    );
+  }
+
+  const isError = rawContent.startsWith(ERROR_PREFIX);
   const content = isError ? rawContent.slice(ERROR_PREFIX.length) : rawContent;
   if (!content) return null;
 

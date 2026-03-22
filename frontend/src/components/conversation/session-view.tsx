@@ -235,8 +235,11 @@ export function SessionView({ sessionId }: SessionViewProps) {
     (metrics?.total_completion_tokens || 0);
 
   const isVisibleStep = (s: Step): boolean => {
-    if (s.source === "user" && !s.message.trim()) return false;
-    return s.source === "user" || s.source === "agent" || s.source === "system";
+    if (s.source === "user") {
+      if (typeof s.message === "string") return !!s.message.trim();
+      return s.message.length > 0;
+    }
+    return s.source === "agent" || s.source === "system";
   };
 
   return (
@@ -251,7 +254,7 @@ export function SessionView({ sessionId }: SessionViewProps) {
                 <MetaPill
                   icon={<Hash className="w-3 h-3" />}
                   label={main.session_id.slice(0, 8)}
-                  color="text-zinc-500"
+                  color="text-zinc-300"
                   tooltip={`Session ID: ${main.session_id}`}
                 />
                 <h2 className="text-sm font-semibold text-zinc-100 truncate">
@@ -271,7 +274,7 @@ export function SessionView({ sessionId }: SessionViewProps) {
                   <MetaPill
                     icon={<Calendar className="w-3 h-3" />}
                     label={formatCreatedTime(main.timestamp)}
-                    color="text-zinc-400"
+                    color="text-zinc-200"
                     tooltip="Session start time"
                   />
                 )}
@@ -309,7 +312,7 @@ export function SessionView({ sessionId }: SessionViewProps) {
                       <MetaPill
                         icon={<Layers className="w-3 h-3" />}
                         label={`${metrics.total_steps} steps`}
-                        color="text-zinc-300"
+                        color="text-zinc-200"
                         tooltip="Total conversation steps including user, agent, and system turns"
                       />
                     )}
@@ -327,7 +330,7 @@ export function SessionView({ sessionId }: SessionViewProps) {
                   <MetaPill
                     icon={<FolderOpen className="w-3 h-3" />}
                     label={baseProjectName(main.project_path)}
-                    color="text-zinc-300"
+                    color="text-zinc-200"
                     tooltip={main.project_path}
                   />
                 )}
@@ -389,7 +392,7 @@ export function SessionView({ sessionId }: SessionViewProps) {
                       return {
                         step,
                         content: (
-                          <div id={`step-${step.step_id}`}>
+                          <div id={`step-${step.step_id}`} style={{ scrollMarginTop: "1rem" }}>
                             {visible && <StepBlock step={step} />}
                             {spawnedSubs?.map((sub) => (
                               <div key={sub.session_id} id={`subagent-${sub.session_id}`} className="mt-2">
@@ -408,6 +411,7 @@ export function SessionView({ sessionId }: SessionViewProps) {
                       ? new Date(main.timestamp).getTime()
                       : null
                   }
+                  sessionStartTimestamp={main.timestamp}
                 />
                 {subAgentsByStep.orphans.map((sub) => (
                   <div key={sub.session_id} id={`subagent-${sub.session_id}`}>
@@ -453,7 +457,7 @@ function MetaPill({
   return (
     <span
       ref={ref}
-      className={`relative inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-800/60 text-[11px] ${color}`}
+      className={`relative inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-800 border border-zinc-700/50 text-[11px] ${color}`}
       onMouseEnter={() => setShow(true)}
       onMouseLeave={() => setShow(false)}
     >

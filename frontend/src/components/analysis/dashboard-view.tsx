@@ -164,6 +164,7 @@ export function DashboardView() {
           <StatCard
             icon={<MessageSquare className="w-4 h-4" />}
             label="Sessions"
+            description="Total agent conversation sessions"
             value={stats.total_sessions.toLocaleString()}
             rows={[
               {
@@ -193,6 +194,7 @@ export function DashboardView() {
           <StatCard
             icon={<Hash className="w-4 h-4" />}
             label="Messages"
+            description="User and agent turns (excludes system)"
             value={stats.total_messages.toLocaleString()}
             rows={[
               {
@@ -220,28 +222,48 @@ export function DashboardView() {
           <StatCard
             icon={<BarChart3 className="w-4 h-4" />}
             label="Tokens"
+            description="Total tokens (input + output)"
             value={formatTokens(stats.total_tokens)}
             rows={[
               {
                 label: "This Year",
                 value: formatTokens(stats.this_year.tokens),
+                tooltipText: [
+                  `This Year: ${stats.this_year.tokens.toLocaleString()}`,
+                  `Input: ${stats.this_year.input_tokens.toLocaleString()}`,
+                  `Output: ${stats.this_year.output_tokens.toLocaleString()}`,
+                  `Cache Read: ${stats.this_year.cache_read_tokens.toLocaleString()}`,
+                  `Cache Write: ${stats.this_year.cache_creation_tokens.toLocaleString()}`,
+                ].join("\n"),
               },
               {
-                label: "Input",
-                value: formatTokens(stats.total_input_tokens),
+                label: "This Month",
+                value: formatTokens(stats.this_month.tokens),
+                tooltipText: [
+                  `This Month: ${stats.this_month.tokens.toLocaleString()}`,
+                  `Input: ${stats.this_month.input_tokens.toLocaleString()}`,
+                  `Output: ${stats.this_month.output_tokens.toLocaleString()}`,
+                  `Cache Read: ${stats.this_month.cache_read_tokens.toLocaleString()}`,
+                  `Cache Write: ${stats.this_month.cache_creation_tokens.toLocaleString()}`,
+                ].join("\n"),
               },
               {
-                label: "Output",
-                value: formatTokens(stats.total_output_tokens),
+                label: "Avg/Session",
+                value: formatTokens(Math.round(stats.avg_tokens_per_session)),
+                tooltipText: [
+                  `Avg/Session: ${Math.round(stats.avg_tokens_per_session).toLocaleString()}`,
+                  `Total Input: ${stats.total_input_tokens.toLocaleString()}`,
+                  `Total Output: ${stats.total_output_tokens.toLocaleString()}`,
+                  `Total Cache Read: ${stats.total_cache_read_tokens.toLocaleString()}`,
+                  `Total Cache Write: ${stats.total_cache_creation_tokens.toLocaleString()}`,
+                ].join("\n"),
               },
             ]}
             tooltipText={[
               `Total: ${stats.total_tokens.toLocaleString()}`,
-              `This Year: ${stats.this_year.tokens.toLocaleString()}`,
               `Input: ${stats.total_input_tokens.toLocaleString()}`,
               `Output: ${stats.total_output_tokens.toLocaleString()}`,
               `Cache: ${stats.total_cache_tokens.toLocaleString()}`,
-              `Avg/Session: ${Math.round(stats.avg_tokens_per_session).toLocaleString()}`,
             ].join("\n")}
             onHover={show}
             onMove={move}
@@ -250,6 +272,7 @@ export function DashboardView() {
           <StatCard
             icon={<Wrench className="w-4 h-4" />}
             label="Tool Calls"
+            description="Bash, Read, Edit, Search, etc."
             value={stats.total_tool_calls.toLocaleString()}
             rows={[
               {
@@ -277,6 +300,7 @@ export function DashboardView() {
           <StatCard
             icon={<Clock className="w-4 h-4" />}
             label="Duration"
+            description="Total wall-clock time across sessions"
             value={formatDuration(stats.total_duration)}
             rows={[
               {
@@ -318,7 +342,6 @@ export function DashboardView() {
         <div className="rounded-xl border border-zinc-700/60 bg-zinc-900/80 p-5">
           <ActivityHeatmap
             data={stats.daily_activity}
-            totalSessions={stats.total_sessions}
             onHover={show}
             onMove={move}
             onLeave={hide}

@@ -11,9 +11,15 @@ import {
 } from "./chart-constants";
 import { getHeatmapColor } from "./chart-utils";
 
+function toLocalDateStr(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 interface ActivityHeatmapProps {
   data: Record<string, number>;
-  totalSessions: number;
   onHover: (e: React.MouseEvent, text: string) => void;
   onMove: (e: React.MouseEvent) => void;
   onLeave: () => void;
@@ -21,24 +27,24 @@ interface ActivityHeatmapProps {
 
 export function ActivityHeatmap({
   data,
-  totalSessions,
   onHover,
   onMove,
   onLeave,
 }: ActivityHeatmapProps) {
-  const { weeks, monthLabels, maxVal } = useMemo(() => {
+  const { weeks, monthLabels, maxVal, yearTotal } = useMemo(() => {
     const today = new Date();
     const weeksData: Array<
       Array<{ date: string; count: number; dayOfWeek: number }>
     > = [];
     const labels: Array<{ month: string; weekIndex: number }> = [];
 
+    // Monday of the current week, then back (HEATMAP_WEEKS - 1) full weeks
+    const daysToMonday = (today.getDay() + 6) % 7;
     const startDate = new Date(today);
-    startDate.setDate(
-      startDate.getDate() - (HEATMAP_WEEKS * 7 - 1) - today.getDay() + 1
-    );
+    startDate.setDate(today.getDate() - daysToMonday - (HEATMAP_WEEKS - 1) * 7);
 
     let lastMonth = -1;
+    let total = 0;
     for (let w = 0; w < HEATMAP_WEEKS; w++) {
       const week: Array<{
         date: string;
@@ -52,8 +58,9 @@ export function ActivityHeatmap({
           week.push({ date: "", count: 0, dayOfWeek: d });
           continue;
         }
-        const dateStr = current.toISOString().slice(0, 10);
+        const dateStr = toLocalDateStr(current);
         const count = data[dateStr] || 0;
+        total += count;
         week.push({ date: dateStr, count, dayOfWeek: d });
 
         if (d === 0 && current.getMonth() !== lastMonth) {
@@ -67,7 +74,7 @@ export function ActivityHeatmap({
     const allCounts = Object.values(data);
     const max = Math.max(1, ...allCounts);
 
-    return { weeks: weeksData, monthLabels: labels, maxVal: max };
+    return { weeks: weeksData, monthLabels: labels, maxVal: max, yearTotal: total };
   }, [data]);
 
   const width = LABEL_WIDTH + HEATMAP_WEEKS * (CELL_SIZE + CELL_GAP) + 10;
@@ -96,7 +103,7 @@ export function ActivityHeatmap({
           onMouseLeave={onLeave}
         >
           <span className="text-cyan-400 font-semibold">
-            {totalSessions.toLocaleString()}
+            {yearTotal.toLocaleString()}
           </span>{" "}
           sessions in the last year
         </p>

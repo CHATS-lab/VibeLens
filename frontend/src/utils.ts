@@ -1,3 +1,5 @@
+import type { ContentPart } from "./types";
+
 const MINUTE = 60;
 const HOUR = 3600;
 const DAY = 86400;
@@ -38,8 +40,18 @@ export function formatDuration(seconds: number | null | undefined): string {
   return parts.join(" ");
 }
 
-export function extractUserText(step: { message: string }): string {
-  return sanitizeText(step.message);
+export function extractMessageText(message: string | ContentPart[]): string {
+  if (typeof message === "string") return sanitizeText(message);
+  return sanitizeText(
+    message
+      .filter((p) => p.type === "text" && p.text)
+      .map((p) => p.text!)
+      .join("\n\n")
+  );
+}
+
+export function extractUserText(step: { message: string | ContentPart[] }): string {
+  return extractMessageText(step.message);
 }
 
 export function baseProjectName(path: string): string {
@@ -60,4 +72,42 @@ export function formatElapsed(totalSeconds: number): string {
     return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
   }
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+export function formatStepTime(timestamp: string, sessionStart?: string | null): string {
+  const date = new Date(timestamp);
+  if (isNaN(date.getTime())) return "";
+  const isSameDay =
+    sessionStart &&
+    (() => {
+      const start = new Date(sessionStart);
+      return (
+        start.getFullYear() === date.getFullYear() &&
+        start.getMonth() === date.getMonth() &&
+        start.getDate() === date.getDate()
+      );
+    })();
+  if (isSameDay) {
+    return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  }
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+export function formatFullDateTime(timestamp: string): string {
+  const date = new Date(timestamp);
+  if (isNaN(date.getTime())) return "";
+  return date.toLocaleString(undefined, {
+    weekday: "short",
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }

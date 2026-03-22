@@ -8,10 +8,14 @@ import {
   ChevronDown,
   ChevronRight,
   Bot,
+  SlidersHorizontal,
+  Loader2,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAppContext } from "../app";
 import type { Trajectory } from "../types";
 import { formatTime, truncate, baseProjectName } from "../utils";
+import { SearchOptionsDialog } from "./search-options-dialog";
 
 export type ViewMode = "time" | "project";
 
@@ -40,19 +44,68 @@ export function SessionList({
   onAgentFilterChange,
   availableAgents,
 }: SessionListProps) {
+  const { fetchWithToken } = useAppContext();
   const [search, setSearch] = useState("");
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(
     new Set()
   );
+  const [searchResults, setSearchResults] = useState<Set<string> | null>(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [showSearchOptions, setShowSearchOptions] = useState(false);
+  const [searchSources, setSearchSources] = useState<Set<string>>(
+    () => new Set(["user_prompts"])
+  );
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const SEARCH_DEBOUNCE_MS = 300;
+  const DEFAULT_SOURCES = new Set(["user_prompts"]);
+  const hasNonDefaultSources =
+    searchSources.size !== DEFAULT_SOURCES.size ||
+    ![...DEFAULT_SOURCES].every((s) => searchSources.has(s));
+
+  const runSearch = useCallback(
+    (query: string, sources: Set<string>) => {
+      if (!query.trim()) {
+        setSearchResults(null);
+        setSearchLoading(false);
+        return;
+      }
+
+      setSearchLoading(true);
+      const params = new URLSearchParams({
+        q: query.trim(),
+        sources: [...sources].join(","),
+      });
+
+      fetchWithToken(`/api/sessions/search?${params}`)
+        .then((r) => r.json())
+        .then((ids: string[]) => setSearchResults(new Set(ids)))
+        .catch((err) => {
+          console.error("Search failed:", err);
+          setSearchResults(null);
+        })
+        .finally(() => setSearchLoading(false));
+    },
+    [fetchWithToken]
+  );
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(
+      () => runSearch(search, searchSources),
+      SEARCH_DEBOUNCE_MS
+    );
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [search, searchSources, runSearch]);
 
   const filtered = sessions.filter((s) => {
     if (agentFilter !== "all" && s.agent?.name !== agentFilter) return false;
     if (!search) return true;
-    const q = search.toLowerCase();
-    return (
-      (s.first_message || "").toLowerCase().includes(q) ||
-      (s.project_path || "").toLowerCase().includes(q)
-    );
+    if (searchResults !== null) return searchResults.has(s.session_id);
+    // While search is pending, keep showing all to avoid flash
+    return true;
   });
 
   const filteredIds = new Set(filtered.map((s) => s.session_id));
@@ -141,15 +194,39 @@ export function SessionList({
         </div>
 
         <div className="relative">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500" />
+          {searchLoading ? (
+            <Loader2 className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-cyan-400 animate-spin" />
+          ) : (
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500" />
+          )}
           <input
             type="text"
             placeholder="Search sessions..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-zinc-800 text-zinc-200 text-sm rounded pl-7 pr-2 py-1.5 border border-zinc-700 focus:outline-none focus:border-cyan-600 placeholder:text-zinc-500"
+            className="w-full bg-zinc-800 text-zinc-200 text-sm rounded pl-7 pr-8 py-1.5 border border-zinc-700 focus:outline-none focus:border-cyan-600 placeholder:text-zinc-500"
           />
+          <button
+            onClick={() => setShowSearchOptions(true)}
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 text-zinc-500 hover:text-zinc-300 transition"
+            title="Search options"
+          >
+            <div className="relative">
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              {hasNonDefaultSources && (
+                <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-cyan-400 rounded-full" />
+              )}
+            </div>
+          </button>
         </div>
+
+        {showSearchOptions && (
+          <SearchOptionsDialog
+            sources={searchSources}
+            onApply={setSearchSources}
+            onClose={() => setShowSearchOptions(false)}
+          />
+        )}
 
         {/* Agent Filter */}
         {availableAgents.length > 0 && (

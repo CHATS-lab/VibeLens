@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.1] - 2026-03-21
+
+### Added
+- **Image support**: Full-stack multimodal content rendering. Claude Code parser extracts `type: "image"` content blocks from JSONL, frontend renders inline images with click-to-expand lightbox. Covers both user-pasted screenshots and Read tool image results.
+- **Step timestamps**: Conversation timeline shows actual clock time alongside elapsed time (`33:51 · 1:23 PM`), with gap-since-previous indicator. Title attribute shows full date/time on hover.
+- **Content renderer**: New `ContentRenderer` component handles `string | ContentPart[]` union, rendering text via Markdown and images as inline `<img>` with data URIs.
+- **Usage chart crosshair**: Hovering anywhere on the x-axis snaps to the nearest data point with a vertical dashed indicator line, replacing the old per-dot hover targets.
+- **Settings dialog**: Gear icon in the top nav bar opens a settings dialog.
+
+### Changed
+- **Timeline redesign**: Narrow 20px dot-and-line rail with inline time header (`elapsed · actual time +gap`), replacing the wide stacked layout.
+- **Dashboard stat cards**: Added description subtitles and per-row tooltips with token breakdowns (input, output, cache read, cache write).
+
 ## [0.7.0] - 2026-03-21
 
 ### Added

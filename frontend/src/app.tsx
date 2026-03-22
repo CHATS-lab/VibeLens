@@ -6,6 +6,7 @@ import {
   Download,
   FileUp,
   Heart,
+  Settings,
 } from "lucide-react";
 import { useEffect, useState, useCallback, useMemo, createContext, useContext } from "react";
 import { ConfirmDialog } from "./components/confirm-dialog";
@@ -15,6 +16,7 @@ import { SessionList, type ViewMode } from "./components/session-list";
 import { SessionView } from "./components/conversation/session-view";
 import { UploadDialog } from "./components/upload-dialog";
 import { DashboardView } from "./components/analysis/dashboard-view";
+import { SettingsDialog } from "./components/settings-dialog";
 import type { DonateResult, Trajectory } from "./types";
 
 type MainView = "browse" | "analyze";
@@ -67,6 +69,7 @@ export function App() {
   const [agentFilter, setAgentFilter] = useState("all");
   const [visibleAgents, setVisibleAgents] = useState<string[]>(["all"]);
   const [mainView, setMainView] = useState<MainView>("browse");
+  const [showSettingsDialog, setShowSettingsDialog] = useState(false);
 
 
   // Ephemeral token: new on every page load, never persisted
@@ -281,7 +284,7 @@ export function App() {
 
   return (
     <AppContext.Provider value={contextValue}>
-      <div className="flex h-screen overflow-hidden bg-zinc-950 text-zinc-100">
+      <div className="flex h-full overflow-hidden bg-zinc-950 text-zinc-100">
         {/* Sidebar */}
         {sidebarOpen && (
           <aside
@@ -377,35 +380,44 @@ export function App() {
         {/* Main Content */}
         <main className="flex-1 flex flex-col min-w-0 bg-zinc-950">
           {/* View Toggle */}
-          <div className="flex items-center gap-2 px-4 py-2 border-b border-zinc-800 bg-zinc-900/80">
-            {!sidebarOpen && (
+          <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-800 bg-zinc-900/80">
+            <div className="flex items-center gap-2">
+              {!sidebarOpen && (
+                <button
+                  onClick={() => setSidebarOpen(true)}
+                  className="p-1.5 mr-1 text-zinc-500 hover:text-zinc-300 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700/50 rounded transition"
+                  title="Expand sidebar"
+                >
+                  <Menu className="w-4 h-4" />
+                </button>
+              )}
               <button
-                onClick={() => setSidebarOpen(true)}
-                className="p-1.5 mr-1 text-zinc-500 hover:text-zinc-300 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700/50 rounded transition"
-                title="Expand sidebar"
+                onClick={() => setMainView("browse")}
+                className={`px-4 py-1.5 text-sm font-semibold rounded-md transition ${
+                  mainView === "browse"
+                    ? "bg-cyan-600/20 text-cyan-300 border border-cyan-500/30"
+                    : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+                }`}
               >
-                <Menu className="w-4 h-4" />
+                Conversation
               </button>
-            )}
+              <button
+                onClick={() => setMainView("analyze")}
+                className={`px-4 py-1.5 text-sm font-semibold rounded-md transition ${
+                  mainView === "analyze"
+                    ? "bg-cyan-600/20 text-cyan-300 border border-cyan-500/30"
+                    : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+                }`}
+              >
+                Dashboard
+              </button>
+            </div>
             <button
-              onClick={() => setMainView("browse")}
-              className={`px-4 py-1.5 text-sm font-semibold rounded-md transition ${
-                mainView === "browse"
-                  ? "bg-cyan-600/20 text-cyan-300 border border-cyan-500/30"
-                  : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
-              }`}
+              onClick={() => setShowSettingsDialog(true)}
+              className="p-1.5 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 rounded transition"
+              title="Settings"
             >
-              Conversation
-            </button>
-            <button
-              onClick={() => setMainView("analyze")}
-              className={`px-4 py-1.5 text-sm font-semibold rounded-md transition ${
-                mainView === "analyze"
-                  ? "bg-cyan-600/20 text-cyan-300 border border-cyan-500/30"
-                  : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
-              }`}
-            >
-              Dashboard
+              <Settings className="w-6 h-6" />
             </button>
           </div>
 
@@ -445,6 +457,11 @@ export function App() {
             onClose={() => setShowUploadDialog(false)}
             onComplete={() => setRefreshKey((k) => k + 1)}
           />
+        )}
+
+        {/* Settings dialog */}
+        {showSettingsDialog && (
+          <SettingsDialog onClose={() => setShowSettingsDialog(false)} />
         )}
       </div>
     </AppContext.Provider>

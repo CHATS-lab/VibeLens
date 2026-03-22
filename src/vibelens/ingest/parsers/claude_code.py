@@ -28,7 +28,7 @@ from vibelens.ingest.parsers.base import (
     _is_meaningful_prompt,
     mark_error_content,
 )
-from vibelens.models.enums import StepSource
+from vibelens.models.enums import ContentType, StepSource
 from vibelens.models.trajectories import (
     Agent,
     FinalMetrics,
@@ -40,6 +40,7 @@ from vibelens.models.trajectories import (
     Trajectory,
     TrajectoryRef,
 )
+from vibelens.models.trajectories.content import Base64Source, ContentPart
 from vibelens.models.trajectories.trajectory import DEFAULT_ATIF_VERSION
 from vibelens.utils import coerce_to_string, get_logger, normalize_timestamp
 
@@ -454,8 +455,10 @@ class ClaudeCodeParser(BaseParser):
 
             # Reclassify user messages that contain system-injected or
             # skill content so they get the correct source label and metadata.
+            # Only classify string messages; multimodal (list) messages are
+            # always genuine user content (e.g. pasted screenshots).
             extra_classify: dict[str, Any] | None = None
-            if source == StepSource.USER and message:
+            if source == StepSource.USER and message and isinstance(message, str):
                 source, extra_classify = classify_user_message(message, entry)
 
             # Detect steps copied from a previous session for context
@@ -862,6 +865,7 @@ def _decompose_raw_content(
         return ("", None, [], None)
 
     text_parts: list[str] = []
+    image_parts: list[ContentPart] = []
     thinking_parts: list[str] = []
     tool_calls: list[ToolCall] = []
     obs_results: list[ObservationResult] = []
@@ -876,6 +880,19 @@ def _decompose_raw_content(
             text = block.get("text", "")
             if text:
                 text_parts.append(text)
+
+        elif block_type == "image":
+            source = block.get("source", {})
+            if isinstance(source, dict) and source.get("type") == "base64":
+                image_parts.append(
+                    ContentPart(
+                        type=ContentType.IMAGE,
+                        source=Base64Source(
+                            media_type=source.get("media_type", "image/png"),
+                            base64=source.get("data", ""),
+                        ),
+                    )
+                )
 
         elif block_type == "thinking":
             thinking = block.get("thinking", "")
@@ -894,13 +911,14 @@ def _decompose_raw_content(
             # Inject pre-scanned tool result if available
             result = tool_results.get(tool_call_id) if tool_call_id else None
             if result:
-                output = result.get("output")
-                if result.get("is_error", False):
-                    output = mark_error_content(output)
+                raw_output = result.get("output")
+                obs_content = _extract_tool_result_content(raw_output)
+                if result.get("is_error", False) and isinstance(obs_content, str):
+                    obs_content = mark_error_content(obs_content)
                 obs_results.append(
                     ObservationResult(
                         source_call_id=tool_call_id,
-                        content=output,
+                        content=obs_content,
                         extra=_extract_tool_result_metadata(result),
                     )
                 )
@@ -911,41 +929,80 @@ def _decompose_raw_content(
             # processing to prevent duplicate ObservationResults.
             if tool_results:
                 continue
-            result_text = _extract_tool_result_content(block.get("content"))
+            result_content = _extract_tool_result_content(block.get("content"))
             if block.get("is_error"):
-                result_text = mark_error_content(result_text)
+                result_content = mark_error_content(result_content)
             obs_results.append(
-                ObservationResult(source_call_id=block.get("tool_use_id", ""), content=result_text)
+                ObservationResult(
+                    source_call_id=block.get("tool_use_id", ""),
+                    content=result_content,
+                )
             )
 
-    message = "\n\n".join(text_parts).strip() if text_parts else ""
+    # Build message: use list[ContentPart] when images are present
+    if image_parts:
+        content_parts: list[ContentPart] = []
+        joined_text = "\n\n".join(text_parts).strip()
+        if joined_text:
+            content_parts.append(ContentPart(type=ContentType.TEXT, text=joined_text))
+        content_parts.extend(image_parts)
+        message: str | list[ContentPart] = content_parts
+    else:
+        message = "\n\n".join(text_parts).strip() if text_parts else ""
+
     reasoning_content = "\n\n".join(thinking_parts).strip() if thinking_parts else None
     observation = Observation(results=obs_results) if obs_results else None
 
     return message, reasoning_content, tool_calls, observation
 
 
-def _extract_tool_result_content(content: str | list | None) -> str | None:
-    """Extract plain text from a tool_result content field.
+def _extract_tool_result_content(
+    content: str | list | None,
+) -> str | list[ContentPart] | None:
+    """Extract text (and optionally images) from a tool_result content field.
+
+    When the content list contains image blocks, returns a list[ContentPart]
+    combining text and image parts. Otherwise returns plain text string.
 
     Args:
         content: Raw content from a tool_result block (str, list, or None).
 
     Returns:
-        Extracted text, or None if empty.
+        Extracted content as str, list[ContentPart], or None if empty.
     """
     if content is None:
         return None
     if isinstance(content, str):
         return content
     if isinstance(content, list):
-        parts = []
+        text_parts: list[str] = []
+        image_parts: list[ContentPart] = []
         for item in content:
             if isinstance(item, str):
-                parts.append(item)
-            elif isinstance(item, dict) and "text" in item:
-                parts.append(str(item["text"]))
-        return "\n".join(parts) if parts else None
+                text_parts.append(item)
+            elif isinstance(item, dict):
+                if item.get("type") == "image":
+                    source = item.get("source", {})
+                    if isinstance(source, dict) and source.get("type") == "base64":
+                        image_parts.append(
+                            ContentPart(
+                                type=ContentType.IMAGE,
+                                source=Base64Source(
+                                    media_type=source.get("media_type", "image/png"),
+                                    base64=source.get("data", ""),
+                                ),
+                            )
+                        )
+                elif "text" in item:
+                    text_parts.append(str(item["text"]))
+        if image_parts:
+            parts: list[ContentPart] = []
+            joined = "\n".join(text_parts)
+            if joined:
+                parts.append(ContentPart(type=ContentType.TEXT, text=joined))
+            parts.extend(image_parts)
+            return parts
+        return "\n".join(text_parts) if text_parts else None
     return str(content)
 
 
@@ -1199,8 +1256,22 @@ def _collect_tool_results(raw_entries: list[dict]) -> dict[str, dict]:
                 if tool_use_id:
                     result_content = block.get("content", "")
                     is_error = block.get("is_error", False)
-                    output = coerce_to_string(result_content)
-                    result_entry: dict = {"output": output, "is_error": bool(is_error)}
+                    # Preserve raw content (may contain image blocks)
+                    has_images = (
+                        isinstance(result_content, list)
+                        and any(
+                            isinstance(b, dict) and b.get("type") == "image"
+                            for b in result_content
+                        )
+                    )
+                    output: str | list = (
+                        result_content if has_images
+                        else coerce_to_string(result_content)
+                    )
+                    result_entry: dict = {
+                        "output": output,
+                        "is_error": bool(is_error),
+                    }
                     if tool_use_result and isinstance(tool_use_result, dict):
                         result_entry["tool_use_result"] = tool_use_result
                     tool_results[tool_use_id] = result_entry

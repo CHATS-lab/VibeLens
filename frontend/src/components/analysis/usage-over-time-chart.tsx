@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import type { DailyStat } from "../../types";
 import { formatTokens } from "../../utils";
 import type { ChartMetric, TimeGroup } from "./chart-utils";
@@ -11,6 +11,15 @@ interface UsageOverTimeChartProps {
   onLeave: () => void;
 }
 
+const W = 800;
+const H = 200;
+const ML = 55;
+const MR = 15;
+const MT = 12;
+const MB = 28;
+const PW = W - ML - MR;
+const PH = H - MT - MB;
+
 export function UsageOverTimeChart({
   data,
   onHover,
@@ -19,6 +28,8 @@ export function UsageOverTimeChart({
 }: UsageOverTimeChartProps) {
   const [metric, setMetric] = useState<ChartMetric>("sessions");
   const [timeGroup, setTimeGroup] = useState<TimeGroup>("day");
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
 
   const filled = useMemo(() => fillDateGaps(data), [data]);
   const grouped = useMemo(
@@ -40,22 +51,18 @@ export function UsageOverTimeChart({
   }, [grouped, metric]);
 
   const maxVal = Math.max(1, ...values);
-
-  const W = 800;
-  const H = 200;
-  const ML = 55;
-  const MR = 15;
-  const MT = 12;
-  const MB = 28;
-  const PW = W - ML - MR;
-  const PH = H - MT - MB;
-
   const isSinglePoint = grouped.length === 1;
 
-  const points = values.map((v, i) => ({
-    x: ML + (grouped.length > 1 ? (i / (grouped.length - 1)) * PW : PW / 2),
-    y: MT + PH - (v / maxVal) * PH,
-  }));
+  const points = useMemo(
+    () =>
+      values.map((v, i) => ({
+        x:
+          ML +
+          (grouped.length > 1 ? (i / (grouped.length - 1)) * PW : PW / 2),
+        y: MT + PH - (v / maxVal) * PH,
+      })),
+    [values, maxVal, grouped.length]
+  );
 
   const lineD = points
     .map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`)
@@ -79,6 +86,50 @@ export function UsageOverTimeChart({
     if (timeGroup === "month") return date;
     return date.slice(5);
   };
+
+  const findNearestIndex = useCallback(
+    (clientX: number): number | null => {
+      const svg = svgRef.current;
+      if (!svg || points.length === 0) return null;
+      const rect = svg.getBoundingClientRect();
+      const svgX = ((clientX - rect.left) / rect.width) * W;
+
+      let nearest = 0;
+      let minDist = Math.abs(svgX - points[0].x);
+      for (let i = 1; i < points.length; i++) {
+        const dist = Math.abs(svgX - points[i].x);
+        if (dist < minDist) {
+          minDist = dist;
+          nearest = i;
+        }
+      }
+      return nearest;
+    },
+    [points]
+  );
+
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      const idx = findNearestIndex(e.clientX);
+      if (idx === null) return;
+      setActiveIndex(idx);
+      const d = grouped[idx];
+      const lines = [
+        d.date,
+        `Sessions: ${d.session_count}`,
+        `Messages: ${d.total_messages.toLocaleString()}`,
+        `Tokens: ${d.total_tokens.toLocaleString()}`,
+      ];
+      onHover(e, lines.join("\n"));
+      onMove(e);
+    },
+    [findNearestIndex, grouped, onHover, onMove]
+  );
+
+  const handleMouseLeave = useCallback(() => {
+    setActiveIndex(null);
+    onLeave();
+  }, [onLeave]);
 
   const metricButtons: Array<{ key: ChartMetric; label: string }> = [
     { key: "sessions", label: "Sessions" },
@@ -108,14 +159,7 @@ export function UsageOverTimeChart({
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <h3
-          className="text-base font-medium text-zinc-200 cursor-default"
-          onMouseEnter={(e) =>
-            onHover(e, "Daily/monthly/yearly trends for sessions, messages, and tokens")
-          }
-          onMouseMove={onMove}
-          onMouseLeave={onLeave}
-        >
+        <h3 className="text-base font-medium text-zinc-200">
           Usage Over Time
         </h3>
         <div className="flex items-center gap-3">
@@ -153,6 +197,7 @@ export function UsageOverTimeChart({
         </div>
       </div>
       <svg
+        ref={svgRef}
         viewBox={`0 0 ${W} ${H}`}
         className="w-full"
         preserveAspectRatio="xMidYMid meet"
@@ -207,42 +252,53 @@ export function UsageOverTimeChart({
         ) : (
           <>
             <path d={areaD} fill="url(#areaGrad)" />
-            <path d={lineD} fill="none" stroke="rgb(34,211,238)" strokeWidth={2} />
+            <path
+              d={lineD}
+              fill="none"
+              stroke="rgb(34,211,238)"
+              strokeWidth={2}
+            />
           </>
         )}
 
-        {points.map((p, i) => (
-          <g key={i}>
+        {/* Small dots on each data point */}
+        {!isSinglePoint &&
+          points.map((p, i) => (
             <circle
+              key={i}
               cx={p.x}
               cy={p.y}
-              r={isSinglePoint ? 30 : 12}
-              fill="transparent"
-              className="cursor-default"
-              onMouseEnter={(e) => {
-                const d = grouped[i];
-                const lines = [
-                  d.date,
-                  `Sessions: ${d.session_count}`,
-                  `Messages: ${d.total_messages.toLocaleString()}`,
-                  `Tokens: ${d.total_tokens.toLocaleString()}`,
-                ];
-                onHover(e, lines.join("\n"));
-              }}
-              onMouseMove={onMove}
-              onMouseLeave={onLeave}
+              r={activeIndex === i ? 5 : 3}
+              fill="rgb(34,211,238)"
+              className="pointer-events-none transition-all"
             />
-            {!isSinglePoint && (
-              <circle
-                cx={p.x}
-                cy={p.y}
-                r={3}
-                fill="rgb(34,211,238)"
-                className="pointer-events-none"
-              />
-            )}
-          </g>
-        ))}
+          ))}
+
+        {/* Vertical crosshair line at active point */}
+        {activeIndex !== null && points[activeIndex] && (
+          <line
+            x1={points[activeIndex].x}
+            y1={MT}
+            x2={points[activeIndex].x}
+            y2={MT + PH}
+            stroke="rgba(34,211,238,0.4)"
+            strokeWidth={1}
+            strokeDasharray="4 3"
+            className="pointer-events-none"
+          />
+        )}
+
+        {/* Invisible overlay for mouse tracking across entire chart area */}
+        <rect
+          x={ML}
+          y={MT}
+          width={PW}
+          height={PH}
+          fill="transparent"
+          className="cursor-crosshair"
+          onMouseMove={handleMouseMove}
+          onMouseLeave={handleMouseLeave}
+        />
 
         {grouped.map((d, i) => {
           if (i % labelInterval !== 0 && i !== grouped.length - 1) return null;

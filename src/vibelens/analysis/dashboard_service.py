@@ -164,7 +164,7 @@ class _SessionAggregate:
 
     __slots__ = (
         "messages", "input_tokens", "output_tokens",
-        "cache_tokens", "tool_calls", "duration",
+        "cache_read_tokens", "cache_creation_tokens", "tool_calls", "duration",
         "model", "project", "timestamp", "agent_name",
     )
 
@@ -172,7 +172,8 @@ class _SessionAggregate:
         self.messages: int = 0
         self.input_tokens: int = 0
         self.output_tokens: int = 0
-        self.cache_tokens: int = 0
+        self.cache_read_tokens: int = 0
+        self.cache_creation_tokens: int = 0
         self.tool_calls: int = 0
         self.duration: int = 0
         self.model: str = UNKNOWN_MODEL
@@ -218,7 +219,8 @@ class _StatsAccumulator:
         self.total_messages = 0
         self.total_input_tokens = 0
         self.total_output_tokens = 0
-        self.total_cache_tokens = 0
+        self.total_cache_read_tokens = 0
+        self.total_cache_creation_tokens = 0
         self.total_tool_calls = 0
         self.total_duration = 0
 
@@ -248,7 +250,8 @@ class _StatsAccumulator:
         self.total_messages += session.messages
         self.total_input_tokens += session.input_tokens
         self.total_output_tokens += session.output_tokens
-        self.total_cache_tokens += session.cache_tokens
+        self.total_cache_read_tokens += session.cache_read_tokens
+        self.total_cache_creation_tokens += session.cache_creation_tokens
         self.total_tool_calls += session.tool_calls
         self.total_duration += session.duration
 
@@ -307,6 +310,10 @@ class _StatsAccumulator:
         period.tokens += tokens
         period.tool_calls += session.tool_calls
         period.duration += session.duration
+        period.input_tokens += session.input_tokens
+        period.output_tokens += session.output_tokens
+        period.cache_read_tokens += session.cache_read_tokens
+        period.cache_creation_tokens += session.cache_creation_tokens
 
     def build(self, total_sessions: int) -> DashboardStats:
         """Build the final DashboardStats from accumulated data."""
@@ -338,7 +345,9 @@ class _StatsAccumulator:
             total_duration_hours=total_hours,
             total_input_tokens=self.total_input_tokens,
             total_output_tokens=self.total_output_tokens,
-            total_cache_tokens=self.total_cache_tokens,
+            total_cache_tokens=self.total_cache_read_tokens + self.total_cache_creation_tokens,
+            total_cache_read_tokens=self.total_cache_read_tokens,
+            total_cache_creation_tokens=self.total_cache_creation_tokens,
             this_year=self.year,
             this_month=self.month,
             this_week=self.week,
@@ -399,7 +408,8 @@ def _aggregate_session(traj: Trajectory) -> _SessionAggregate:
         if step.metrics:
             agg.input_tokens += step.metrics.prompt_tokens
             agg.output_tokens += step.metrics.completion_tokens
-            agg.cache_tokens += step.metrics.cached_tokens + step.metrics.cache_creation_tokens
+            agg.cache_read_tokens += step.metrics.cached_tokens
+            agg.cache_creation_tokens += step.metrics.cache_creation_tokens
 
     # Duration from final_metrics or from timestamp span
     if traj.final_metrics and traj.final_metrics.duration > 0:

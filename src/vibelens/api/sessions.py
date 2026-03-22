@@ -8,6 +8,7 @@ from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from vibelens.models.requests import DonateRequest, DonateResult, DownloadRequest
+from vibelens.services.search_service import search_sessions
 from vibelens.services.session_service import (
     donate_sessions,
     get_session,
@@ -37,6 +38,26 @@ async def list_sessions_endpoint(
         List of trajectory summary dicts.
     """
     return list_sessions(project_name, limit, offset, session_token=x_session_token)
+
+
+@router.get("/sessions/search")
+async def search_sessions_endpoint(
+    q: str = "", sources: str = "user_prompts", x_session_token: str | None = Header(None)
+) -> list[str]:
+    """Search sessions by query across selected text sources.
+
+    Args:
+        q: Search query string.
+        sources: Comma-separated source names (user_prompts, agent_content, session_id).
+        x_session_token: Browser tab token for upload scoping.
+
+    Returns:
+        List of matching session IDs.
+    """
+    if not q:
+        return []
+    source_list = [s.strip() for s in sources.split(",") if s.strip()]
+    return search_sessions(q, source_list, session_token=x_session_token)
 
 
 @router.get("/sessions/{session_id}")
@@ -78,8 +99,7 @@ async def export_session(
     payload = [t.model_dump(mode="json") for t in group]
     filename = f"vibelens-{session_id[:8]}.json"
     return JSONResponse(
-        content=payload,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        content=payload, headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
 
 
@@ -104,10 +124,7 @@ async def download_sessions(
                 continue
             payload = [t.model_dump(mode="json") for t in group]
             filename = f"vibelens-{session_id[:8]}.json"
-            zf.writestr(
-                filename,
-                json.dumps(payload, indent=2, default=str, ensure_ascii=False),
-            )
+            zf.writestr(filename, json.dumps(payload, indent=2, default=str, ensure_ascii=False))
 
     buf.seek(0)
     return StreamingResponse(
