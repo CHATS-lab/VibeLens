@@ -1,21 +1,60 @@
-# VibeLens
+<p align="center">
+  <img src="figures/icon.png" alt="VibeLens" width="120">
+</p>
 
-[![PyPI version](https://img.shields.io/pypi/v/vibelens.svg)](https://pypi.org/project/vibelens/)
-[![Python 3.12+](https://img.shields.io/pypi/pyversions/vibelens.svg)](https://pypi.org/project/vibelens/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+<h1 align="center">VibeLens</h1>
 
-Agent trajectory visualization and analysis platform. Parses, normalizes, and visualizes conversation histories from coding agent CLIs using the [ATIF v1.6](https://github.com/harbor-framework/harbor/blob/main/docs/rfcs/0001-trajectory-format.md) trajectory model.
+<p align="center">
+  <strong>See what your AI coding agents are actually doing.</strong>
+</p>
 
-![Session list with step timeline](https://raw.githubusercontent.com/yejh123/VibeLens/main/figures/demo1.png)
+<p align="center">
+  <a href="https://pypi.org/project/vibelens/"><img src="https://img.shields.io/pypi/v/vibelens?color=%2334D058" alt="PyPI"></a>
+  <a href="https://pypi.org/project/vibelens/"><img src="https://img.shields.io/pypi/pyversions/vibelens" alt="Python"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License"></a>
+  <a href="https://vibelens.chats-lab.org/"><img src="https://img.shields.io/badge/demo-live-brightgreen" alt="Live Demo"></a>
+</p>
 
-![Session detail with sub-agent view](https://raw.githubusercontent.com/yejh123/VibeLens/main/figures/demo2.png)
+<p align="center">
+  <a href="https://vibelens.chats-lab.org/">Live Demo</a> &middot;
+  <a href="#quick-start">Quick Start</a> &middot;
+  <a href="https://pypi.org/project/vibelens/">PyPI</a> &middot;
+  <a href="CHANGELOG.md">Changelog</a>
+</p>
 
-**Live Demo:** [vibelens.chats-lab.org](https://vibelens.chats-lab.org/)
+---
+
+VibeLens parses, visualizes, and analyzes conversation histories from **Claude Code**, **Codex CLI**, **Gemini CLI**, and **Dataclaw** — giving you full observability into your AI-assisted development workflow.
+
+One command. No config. Works with your local `~/.claude/` sessions out of the box.
+
+```bash
+pip install vibelens && vibelens serve
+```
+
+![Dashboard with analytics](https://raw.githubusercontent.com/yejh123/VibeLens/main/figures/demo1.png)
+
+![Session detail with step timeline](https://raw.githubusercontent.com/yejh123/VibeLens/main/figures/demo2.png)
+
+## Why VibeLens?
+
+- **What did my agent actually do?** Step-by-step timeline with tool calls, token counts, and elapsed time
+- **How much is it costing me?** Per-session and aggregate cost estimation across 45+ models from 12 providers
+- **Where are the bottlenecks?** Conversation flow diagrams with phase detection and tool dependency graphs
+- **How do I share a session?** Shareable permalink URLs with read-only session replay
+- **What are my usage trends?** Analytics dashboard with heatmaps, model distribution, and project breakdowns
 
 ## Features
 
-- **Multi-agent parsing** — Claude Code, Codex CLI, Gemini CLI, and Dataclaw formats with auto-detection
-- **Step timeline** — Visual timeline with elapsed time, tool call details, and sub-agent spawn indicators
+| Feature | Description |
+|---------|-------------|
+| **Multi-agent parsing** | Claude Code, Codex CLI, Gemini CLI, Dataclaw with auto-detection |
+| **Step timeline** | Tool calls, sub-agent spawns, elapsed time, image content |
+| **Cost estimation** | 45+ models, 12 providers, per-session and aggregate cost |
+| **Flow diagrams** | Phase-grouped conversation flow with tool dependency highlighting |
+| **Session sharing** | Shareable permalink URLs with read-only view |
+| **Analytics dashboard** | Stat cards, usage trends, activity heatmap, model distribution |
+| **Tool distribution** | Per-tool call counts, error rates, avg/session |
 
 ## Quick Start
 
@@ -32,14 +71,14 @@ Or run without installing:
 uvx vibelens serve
 ```
 
-VibeLens opens your browser automatically and reads your local `~/.claude/` sessions by default. Use `--no-open` to disable the browser auto-open.
+VibeLens opens your browser and reads your local `~/.claude/` sessions by default.
 
 ### Development install
 
 ```bash
 git clone https://github.com/yejh123/VibeLens.git
 cd VibeLens
-uv sync
+uv sync --extra dev
 uv run vibelens serve
 ```
 
@@ -55,13 +94,20 @@ vibelens serve --config config/self-use.yaml
 vibelens serve --host 0.0.0.0 --port 8080
 ```
 
+## Supported Agents
+
+| Agent | Format | Data Location |
+|-------|--------|---------------|
+| **Claude Code** | JSONL | `~/.claude/projects/` |
+| **Codex CLI** | JSONL | `~/.codex/sessions/` |
+| **Gemini CLI** | JSON | `~/.gemini/tmp/` |
+| **Dataclaw** | JSONL | HuggingFace exports |
+
 ## Data Donation
 
 VibeLens supports donating your agent conversation data to advance research on coding agent behavior. Donated sessions are collected by [CHATS-Lab](https://github.com/CHATS-lab) (Conversation, Human-AI Technology, and Safety Lab) at Northeastern University.
 
-We welcome contributions of real-world coding agent trajectories across all supported formats. Your data helps the research community better understand how developers interact with AI coding assistants.
-
-To donate, upload your data, select the sessions you want to donate, and click the **Donate** button.
+To donate, upload your data, select the sessions you want to share, and click the **Donate** button.
 
 ## Development
 
@@ -77,3 +123,7 @@ cd frontend && npm install && npm run dev
 ## Contributing
 
 Contributions are welcome! Please ensure code passes `ruff check` and `pytest` before submitting.
+
+## License
+
+[MIT](LICENSE)
