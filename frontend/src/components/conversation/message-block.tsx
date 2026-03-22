@@ -57,7 +57,7 @@ function UserStep({ step }: { step: Step }) {
   if (!text && Array.isArray(step.message) && step.message.length === 0) return null;
   return (
     <div className="flex justify-end">
-      <div className="max-w-[85%] bg-indigo-600/80 text-white rounded-2xl rounded-br-md px-4 py-2.5 text-sm overflow-hidden break-words">
+      <div className="max-w-[85%] bg-gradient-to-br from-slate-600/70 to-slate-700/60 text-zinc-100 rounded-2xl rounded-br-md px-4 py-2.5 text-sm overflow-hidden break-words">
         <ContentRenderer content={step.message} className="user-markdown" />
       </div>
     </div>

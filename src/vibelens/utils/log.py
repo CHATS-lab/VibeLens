@@ -58,7 +58,7 @@ def _ensure_root_logger(log_dir: Path) -> None:
     console.setFormatter(formatter)
     root.addHandler(console)
 
-    overall_file = logging.FileHandler(log_dir / "vibelens.log", mode="w")
+    overall_file = logging.FileHandler(log_dir / "vibelens.log", mode="a")
     overall_file.setLevel(log_level)
     overall_file.setFormatter(formatter)
     root.addHandler(overall_file)
@@ -118,7 +118,7 @@ def get_logger(
         resolved_log_dir.mkdir(parents=True, exist_ok=True)
         short_name = name.rsplit(".", 1)[-1]
 
-        file_handler = logging.FileHandler(resolved_log_dir / f"{short_name}.log", mode="w")
+        file_handler = logging.FileHandler(resolved_log_dir / f"{short_name}.log", mode="a")
         file_handler.setLevel(_get_log_level())
         file_handler.setFormatter(_build_formatter())
         logger.addHandler(file_handler)

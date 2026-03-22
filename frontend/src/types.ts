@@ -148,6 +148,13 @@ export interface PeriodStats {
   cost_usd: number;
 }
 
+export interface ProjectDetail {
+  sessions: number;
+  messages: number;
+  tokens: number;
+  cost_usd: number;
+}
+
 export interface DashboardStats {
   total_sessions: number;
   total_messages: number;
@@ -176,6 +183,7 @@ export interface DashboardStats {
   model_distribution: Record<string, number>;
   agent_distribution: Record<string, number>;
   project_distribution: Record<string, number>;
+  project_details: Record<string, ProjectDetail>;
   hourly_distribution: Record<number, number>;
   weekday_hour_heatmap: Record<string, number>;
   timezone: string;

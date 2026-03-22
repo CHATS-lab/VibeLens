@@ -1,6 +1,6 @@
 [project]
 name = "vibelens"
-version = "0.8.0"
+version = "0.8.1"
 description = "Agent Trajectory visualization and analysis platform"
 readme = "README.md"
 license = "MIT"

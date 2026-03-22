@@ -16,6 +16,13 @@ import {
   Zap,
   GitBranch,
   List,
+  ChevronUp,
+  ChevronDown,
+  ArrowUpRight,
+  ArrowDownRight,
+  Database,
+  HardDrive,
+  DollarSign,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppContext } from "../../app";
@@ -27,6 +34,7 @@ import { PromptNavPanel } from "./prompt-nav-panel";
 import { FlowDiagram } from "./flow-diagram";
 import { computeFlow, type FlowPhaseGroup } from "./flow-layout";
 import { formatTokens, formatDuration, formatCost, extractUserText, baseProjectName } from "../../utils";
+import { LoadingSpinner } from "../loading-spinner";
 import { TOGGLE_ACTIVE, TOGGLE_INACTIVE, METRIC_LABEL } from "../../styles";
 
 interface SessionViewProps {
@@ -47,6 +55,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken }: Sessi
   const [viewMode, setViewMode] = useState<"timeline" | "flow">("timeline");
   const [flowData, setFlowData] = useState<FlowData | null>(null);
   const [flowLoading, setFlowLoading] = useState(false);
+  const [headerExpanded, setHeaderExpanded] = useState(true);
   const stepsRef = useRef<HTMLDivElement>(null);
   const isNavigatingRef = useRef(false);
   const isSharedView = !!sharedTrajectories;
@@ -263,24 +272,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken }: Sessi
   }, []);
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="flex flex-col items-center gap-5">
-          <div className="relative flex items-center justify-center">
-            {/* Ambient glow */}
-            <div className="absolute w-24 h-24 bg-cyan-500/10 rounded-full blur-2xl animate-pulse" />
-            {/* Track ring */}
-            <div className="w-16 h-16 rounded-full border-[3px] border-zinc-800" />
-            {/* Spinning arc */}
-            <div className="absolute w-16 h-16 rounded-full border-[3px] border-transparent border-t-cyan-400 animate-spin" />
-          </div>
-          <div className="text-center space-y-1">
-            <p className="text-base font-medium text-zinc-200">Loading session</p>
-            <p className="text-xs text-zinc-500">Parsing trajectory data…</p>
-          </div>
-        </div>
-      </div>
-    );
+    return <LoadingSpinner label="Loading session" sublabel="Parsing trajectory data…" />;
   }
 
   if (error) {
@@ -343,96 +335,23 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken }: Sessi
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Session Header */}
-      <div className="shrink-0 bg-zinc-900/95 border-b border-zinc-800 px-6 py-4">
+      <div className="shrink-0 bg-gradient-to-b from-zinc-900 to-zinc-900/80 border-b border-zinc-800 px-4 py-2">
         <div className="max-w-7xl mx-auto">
-          {/* Row 1: Title + Meta Pills */}
-          <div className="flex items-start justify-between mb-3">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <MetaPill
-                  icon={<Hash className="w-3 h-3" />}
-                  label={main.session_id.slice(0, 8)}
-                  color="text-zinc-300"
-                  tooltip={`Session ID: ${main.session_id}`}
-                />
-                <h2 className="text-sm font-semibold text-zinc-100 truncate">
-                  {main.first_message || "Session"}
-                </h2>
-              </div>
-              <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                {main.agent.model_name && (
-                  <MetaPill
-                    icon={<Cpu className="w-3 h-3" />}
-                    label={`${main.agent.name}@${main.agent.model_name}`}
-                    color="text-amber-300"
-                    tooltip="Agent model used for this session"
-                  />
-                )}
-                {main.timestamp && (
-                  <MetaPill
-                    icon={<Calendar className="w-3 h-3" />}
-                    label={formatCreatedTime(main.timestamp)}
-                    color="text-zinc-200"
-                    tooltip="Session start time"
-                  />
-                )}
-                {metrics && (
-                  <MetaPill
-                    icon={<Clock className="w-3 h-3" />}
-                    label={formatDuration(metrics.duration)}
-                    color="text-cyan-400"
-                    tooltip="Total wall-clock duration of this session"
-                  />
-                )}
-                <MetaPill
-                  icon={<MessageSquare className="w-3 h-3" />}
-                  label={`${promptCount} prompt${promptCount !== 1 ? "s" : ""}`}
-                  color="text-blue-400"
-                  tooltip="User prompts — messages typed by the human operator"
-                />
-                {skillCount > 0 && (
-                  <MetaPill
-                    icon={<Zap className="w-3 h-3" />}
-                    label={`${skillCount} skill${skillCount !== 1 ? "s" : ""}`}
-                    color="text-amber-300"
-                    tooltip="Skill invocations — reusable prompts auto-injected by the agent"
-                  />
-                )}
-                {metrics && (
-                  <>
-                    <MetaPill
-                      icon={<Wrench className="w-3 h-3" />}
-                      label={`${metrics.tool_call_count} tools`}
-                      color="text-amber-400"
-                      tooltip="Total tool calls made by the agent (Bash, Read, Edit, etc.)"
-                    />
-                    {metrics.total_steps && (
-                      <MetaPill
-                        icon={<Layers className="w-3 h-3" />}
-                        label={`${metrics.total_steps} steps`}
-                        color="text-zinc-200"
-                        tooltip="Total conversation steps including user, agent, and system turns"
-                      />
-                    )}
-                  </>
-                )}
-                {subAgents.length > 0 && (
-                  <MetaPill
-                    icon={<Bot className="w-3 h-3" />}
-                    label={`${subAgents.length} sub-agent${subAgents.length !== 1 ? "s" : ""}`}
-                    color="text-violet-400"
-                    tooltip="Sub-agent tasks spawned during this session"
-                  />
-                )}
-                {main.project_path && (
-                  <MetaPill
-                    icon={<FolderOpen className="w-3 h-3" />}
-                    label={baseProjectName(main.project_path)}
-                    color="text-zinc-200"
-                    tooltip={main.project_path}
-                  />
-                )}
-              </div>
+          {/* Row 1: Session ID + Title + Actions */}
+          <div className="flex items-center justify-between mb-1 gap-3">
+            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+              <MetaPill
+                icon={<Hash className="w-3 h-3" />}
+                label={main.session_id.slice(0, 8)}
+                color="text-zinc-300"
+                tooltip={`Session ID: ${main.session_id}`}
+              />
+              <h2
+                className="text-lg font-semibold text-zinc-100 truncate"
+                title={main.first_message || "Session"}
+              >
+                {main.first_message || "Session"}
+              </h2>
             </div>
             <div className="flex items-center gap-1 shrink-0 ml-3">
               {/* View mode toggle */}
@@ -486,22 +405,107 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken }: Sessi
               >
                 <Download className="w-4 h-4" />
               </button>
+              <button
+                onClick={() => setHeaderExpanded((v) => !v)}
+                className="p-2 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded transition text-xs"
+                title={headerExpanded ? "Collapse header" : "Expand header"}
+              >
+                {headerExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
             </div>
           </div>
 
-          {/* Row 2: Token Stats */}
+          {headerExpanded && <>
+          {/* Row 2: Meta Pills (full width) */}
+          <div className="flex flex-wrap items-center gap-1.5 mb-3">
+            {main.agent.model_name && (
+              <MetaPill
+                icon={<Cpu className="w-3 h-3" />}
+                label={`${main.agent.name}@${main.agent.model_name}`}
+                color="text-amber-300"
+                tooltip="Agent model used for this session"
+              />
+            )}
+            {main.timestamp && (
+              <MetaPill
+                icon={<Calendar className="w-3 h-3" />}
+                label={formatCreatedTime(main.timestamp)}
+                color="text-zinc-200"
+                tooltip="Session start time"
+              />
+            )}
+            {metrics && (
+              <MetaPill
+                icon={<Clock className="w-3 h-3" />}
+                label={formatDuration(metrics.duration)}
+                color="text-cyan-400"
+                tooltip="Total wall-clock duration of this session"
+              />
+            )}
+            <MetaPill
+              icon={<MessageSquare className="w-3 h-3" />}
+              label={`${promptCount} prompt${promptCount !== 1 ? "s" : ""}`}
+              color="text-blue-400"
+              tooltip="User prompts — messages typed by the human operator"
+            />
+            {skillCount > 0 && (
+              <MetaPill
+                icon={<Zap className="w-3 h-3" />}
+                label={`${skillCount} skill${skillCount !== 1 ? "s" : ""}`}
+                color="text-amber-300"
+                tooltip="Skill invocations — reusable prompts auto-injected by the agent"
+              />
+            )}
+            {metrics && (
+              <>
+                <MetaPill
+                  icon={<Wrench className="w-3 h-3" />}
+                  label={`${metrics.tool_call_count} tools`}
+                  color="text-amber-400"
+                  tooltip="Total tool calls made by the agent (Bash, Read, Edit, etc.)"
+                />
+                {metrics.total_steps && (
+                  <MetaPill
+                    icon={<Layers className="w-3 h-3" />}
+                    label={`${metrics.total_steps} steps`}
+                    color="text-zinc-200"
+                    tooltip="Total conversation steps including user, agent, and system turns"
+                  />
+                )}
+              </>
+            )}
+            {subAgents.length > 0 && (
+              <MetaPill
+                icon={<Bot className="w-3 h-3" />}
+                label={`${subAgents.length} sub-agent${subAgents.length !== 1 ? "s" : ""}`}
+                color="text-violet-400"
+                tooltip="Sub-agent tasks spawned during this session"
+              />
+            )}
+            {main.project_path && (
+              <MetaPill
+                icon={<FolderOpen className="w-3 h-3" />}
+                label={baseProjectName(main.project_path)}
+                color="text-zinc-200"
+                tooltip={main.project_path}
+              />
+            )}
+          </div>
+
+          {/* Row 3: Token Stats */}
           {metrics && (metrics.total_prompt_tokens != null || metrics.total_completion_tokens != null) && (
             <div className={`grid ${sessionCost != null ? "grid-cols-6" : "grid-cols-5"} gap-2 text-xs`}>
-              <TokenStat label="Input" value={metrics.total_prompt_tokens || 0} color="text-cyan-300" tooltip="Prompt tokens sent to the model" />
-              <TokenStat label="Output" value={metrics.total_completion_tokens || 0} color="text-cyan-300" tooltip="Completion tokens generated by the model" />
-              <TokenStat label="Cache Read" value={metrics.total_cache_read || 0} color="text-green-300" tooltip="Tokens served from prompt cache (reduced cost)" />
-              <TokenStat label="Cache Write" value={metrics.total_cache_write || 0} color="text-violet-300" tooltip="Tokens written to prompt cache for future reuse" />
-              <TokenStat label="Total" value={totalTokens} color="text-amber-300" tooltip="Total tokens (input + output)" />
+              <TokenStat icon={<ArrowUpRight className="w-3 h-3" />} label="Input" value={metrics.total_prompt_tokens || 0} color="text-cyan-300" tooltip="Prompt tokens sent to the model" />
+              <TokenStat icon={<ArrowDownRight className="w-3 h-3" />} label="Output" value={metrics.total_completion_tokens || 0} color="text-cyan-300" tooltip="Completion tokens generated by the model" />
+              <TokenStat icon={<Database className="w-3 h-3" />} label="Cache Read" value={metrics.total_cache_read || 0} color="text-green-300" tooltip="Tokens served from prompt cache (reduced cost)" />
+              <TokenStat icon={<HardDrive className="w-3 h-3" />} label="Cache Write" value={metrics.total_cache_write || 0} color="text-violet-300" tooltip="Tokens written to prompt cache for future reuse" />
+              <TokenStat icon={<BarChart3 className="w-3 h-3" />} label="Total" value={totalTokens} color="text-amber-300" tooltip="Total tokens (input + output)" />
               {sessionCost != null && (
                 <CostStat value={sessionCost} />
               )}
             </div>
           )}
+          </>}
         </div>
       </div>
 
@@ -564,12 +568,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken }: Sessi
               )}
             </div>
           ) : flowLoading ? (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center">
-                <Loader2 className="w-8 h-8 text-cyan-500 animate-spin mx-auto mb-2" />
-                <p className="text-sm text-zinc-400">Building flow diagram...</p>
-              </div>
-            </div>
+            <LoadingSpinner label="Building flow diagram" />
           ) : flowData ? (
             <div className="max-w-5xl mx-auto px-4 py-6">
               <FlowDiagram steps={steps} flowData={flowData} />
@@ -616,7 +615,7 @@ function MetaPill({
   return (
     <span
       ref={ref}
-      className={`relative inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-800 border border-zinc-700/50 text-[11px] ${color}`}
+      className={`relative inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-800 border border-zinc-700/50 text-[11px] hover:bg-zinc-700/80 transition-colors ${color}`}
       onMouseEnter={() => setShow(true)}
       onMouseLeave={() => setShow(false)}
     >
@@ -632,11 +631,13 @@ function MetaPill({
 }
 
 function TokenStat({
+  icon,
   label,
   value,
   color,
   tooltip,
 }: {
+  icon: React.ReactNode;
   label: string;
   value: number;
   color: string;
@@ -650,7 +651,7 @@ function TokenStat({
       onMouseEnter={() => setShow(true)}
       onMouseLeave={() => setShow(false)}
     >
-      <p className={METRIC_LABEL}>{label}</p>
+      <p className={`${METRIC_LABEL} flex items-center gap-1`}>{icon}{label}</p>
       <p className={`${color} font-mono`}>{formatTokens(value)}</p>
       {tooltip && show && (
         <span className="absolute left-1/2 -translate-x-1/2 top-full mt-1 z-[100] px-2.5 py-1.5 rounded-md bg-zinc-950 border border-zinc-700 text-[11px] text-zinc-300 whitespace-nowrap shadow-lg pointer-events-none">
@@ -670,7 +671,7 @@ function CostStat({ value }: { value: number }) {
       onMouseEnter={() => setShow(true)}
       onMouseLeave={() => setShow(false)}
     >
-      <p className={METRIC_LABEL}>Est. Cost</p>
+      <p className={`${METRIC_LABEL} flex items-center gap-1`}><DollarSign className="w-3 h-3" />Est. Cost</p>
       <p className="text-emerald-300 font-mono">{formatCost(value)}</p>
       {show && (
         <span className="absolute left-1/2 -translate-x-1/2 top-full mt-1 z-[100] px-2.5 py-1.5 rounded-md bg-zinc-950 border border-zinc-700 text-[11px] text-zinc-300 whitespace-nowrap shadow-lg pointer-events-none">

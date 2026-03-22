@@ -1,8 +1,8 @@
-import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useAppContext } from "../../app";
 import type { Trajectory } from "../../types";
 import { SessionView } from "./session-view";
+import { LoadingSpinner } from "../loading-spinner";
 
 interface SharedSessionViewProps {
   shareToken: string;
@@ -31,14 +31,7 @@ export function SharedSessionView({ shareToken }: SharedSessionViewProps) {
   }, [shareToken, fetchWithToken]);
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center">
-          <Loader2 className="w-8 h-8 text-cyan-500 animate-spin mx-auto mb-2" />
-          <p className="text-sm text-zinc-400">Loading shared session...</p>
-        </div>
-      </div>
-    );
+    return <LoadingSpinner label="Loading shared session" />;
   }
 
   if (error) {

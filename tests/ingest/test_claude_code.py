@@ -1122,13 +1122,13 @@ class TestSubagentLinkageValidation:
                 ],
             )
 
-        with caplog.at_level(logging.WARNING):
+        with caplog.at_level(logging.DEBUG, logger="vibelens.ingest.parsers.claude_code"):
             trajectories = _parser.parse_file(main_file)
 
         # Should succeed with main + 2 sub-agents
         assert len(trajectories) == 3
 
-        # agent-002 is not referenced by any parent step — should warn
+        # agent-002 is not referenced by any parent step — logged at DEBUG
         assert "not referenced by parent" in caplog.text
 
 

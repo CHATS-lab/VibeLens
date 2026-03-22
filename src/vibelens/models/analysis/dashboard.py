@@ -34,6 +34,15 @@ class PeriodStats(BaseModel):
     cost_usd: float = Field(default=0.0, description="Estimated cost in USD for this period.")
 
 
+class ProjectDetail(BaseModel):
+    """Per-project aggregate metrics for the project activity panel."""
+
+    sessions: int = Field(description="Number of sessions in this project.")
+    messages: int = Field(default=0, description="Total messages in this project.")
+    tokens: int = Field(default=0, description="Total tokens (input + output).")
+    cost_usd: float = Field(default=0.0, description="Estimated cost in USD.")
+
+
 class DashboardStats(BaseModel):
     """Aggregate statistics for the analysis dashboard.
 
@@ -93,6 +102,10 @@ class DashboardStats(BaseModel):
     daily_stats: list[DailyStat] = Field(description="Per-day aggregations for time series.")
     model_distribution: dict[str, int] = Field(description="Session count keyed by model name.")
     project_distribution: dict[str, int] = Field(description="Session count keyed by project path.")
+    project_details: dict[str, ProjectDetail] = Field(
+        default_factory=dict,
+        description="Per-project aggregate metrics (sessions, messages, tokens, cost).",
+    )
     hourly_distribution: dict[int, int] = Field(
         description="Session starts keyed by hour of day (0-23)."
     )

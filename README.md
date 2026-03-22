@@ -32,9 +32,13 @@ One command. No config. Works with your local `~/.claude/` sessions out of the b
 pip install vibelens && vibelens serve
 ```
 
-![Dashboard with analytics](https://raw.githubusercontent.com/yejh123/VibeLens/main/figures/demo1.png)
+![Analytics Dashboard](figures/02-dashboard.png)
 
-![Session detail with step timeline](https://raw.githubusercontent.com/yejh123/VibeLens/main/figures/demo2.png)
+![Dashboard Charts — Peak Hours, Model & Tool Distribution](figures/03-dashboard-charts.png)
+
+![Session Browser with Step Timeline](figures/01-session-browser.png)
+
+![Conversation Flow with Phase Detection](figures/04-flow-diagram.png)
 
 ## Why VibeLens?
 

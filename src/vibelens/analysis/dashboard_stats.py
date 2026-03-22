@@ -10,7 +10,7 @@ from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
 from vibelens.analysis.pricing import compute_trajectory_cost, normalize_model_name
-from vibelens.models.analysis.dashboard import DailyStat, DashboardStats, PeriodStats
+from vibelens.models.analysis.dashboard import DailyStat, DashboardStats, PeriodStats, ProjectDetail
 from vibelens.models.enums import StepSource
 from vibelens.models.trajectories import Trajectory
 from vibelens.utils import get_logger
@@ -170,6 +170,9 @@ class _StatsAccumulator:
         self.daily_activity: dict[str, int] = defaultdict(int)
         self.model_dist: dict[str, int] = defaultdict(int)
         self.project_dist: dict[str, int] = defaultdict(int)
+        self.project_messages: dict[str, int] = defaultdict(int)
+        self.project_tokens: dict[str, int] = defaultdict(int)
+        self.project_cost: dict[str, float] = defaultdict(float)
         self.agent_dist: dict[str, int] = defaultdict(int)
         self.hourly_dist: dict[int, int] = defaultdict(int)
         self.heatmap: dict[str, int] = defaultdict(int)
@@ -201,6 +204,9 @@ class _StatsAccumulator:
 
         self.model_dist[session.model] += 1
         self.project_dist[session.project] += 1
+        self.project_messages[session.project] += session.messages
+        self.project_tokens[session.project] += tokens
+        self.project_cost[session.project] += session.cost_usd
         self.agent_dist[session.agent_name] += 1
         if session.project != NO_PROJECT:
             self.projects_seen.add(session.project)
@@ -298,6 +304,15 @@ class _StatsAccumulator:
             agent_distribution=dict(self.agent_dist),
             model_distribution=dict(self.model_dist),
             project_distribution=dict(self.project_dist),
+            project_details={
+                project: ProjectDetail(
+                    sessions=self.project_dist[project],
+                    messages=self.project_messages[project],
+                    tokens=self.project_tokens[project],
+                    cost_usd=round(self.project_cost[project], 6),
+                )
+                for project in self.project_dist
+            },
             hourly_distribution=dict(self.hourly_dist),
             weekday_hour_heatmap=dict(self.heatmap),
             timezone=str(self.local_tz),

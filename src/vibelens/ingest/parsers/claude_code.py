@@ -61,9 +61,39 @@ PROJECT_PATH_PROBE_LIMIT = 10
 # Claude Code renamed "Agent" to "Task" in later versions.
 _SUBAGENT_TOOL_NAMES = {"Agent", "Task"}
 
+# Prefix for compaction sub-agents — system-internal context compaction,
+# not spawned via Agent/Task tool_use, so parent linkage never exists.
+COMPACTION_AGENT_PREFIX = "acompact-"
+
 # Pattern to extract agentId from Task/Agent tool_result content.
 # Claude Code embeds "agentId: {hex_hash}" in the tool output text.
 _AGENT_ID_PATTERN = re.compile(r"agentId:\s*([a-f0-9]+)")
+
+# Pattern to find the external file path in <persisted-output> blocks.
+# Claude Code saves tool results >100KB to external .txt files.
+_PERSISTED_PATH_PATTERN = re.compile(r"Full output saved to: (.+?)(?:\n|$)")
+
+
+def _read_persisted_agent_id(content: str) -> str:
+    """Read a persisted tool output file to extract agentId.
+
+    When tool_result content contains a <persisted-output> pointer,
+    read the referenced file and return its tail (agentId is near the end).
+    Returns original content if the file cannot be read.
+    """
+    match = _PERSISTED_PATH_PATTERN.search(content)
+    if not match:
+        return content
+    path = Path(match.group(1).strip())
+    if not path.is_file():
+        return content
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        # agentId is near the end of Agent tool output
+        TAIL_SIZE = 2000
+        return text[-TAIL_SIZE:] if len(text) > TAIL_SIZE else text
+    except OSError:
+        return content
 
 # XML tags injected by the system into user message content.
 # Their presence means the "user" entry is actually system-generated.
@@ -1206,7 +1236,10 @@ def _build_agent_spawn_map(
                     result_content = " ".join(
                         b.get("text", "") for b in result_content if isinstance(b, dict)
                     )
-                result_candidates.append((tc_id, str(result_content)))
+                result_content = str(result_content)
+                if "<persisted-output>" in result_content:
+                    result_content = _read_persisted_agent_id(result_content)
+                result_candidates.append((tc_id, result_content))
 
     if not spawn_tc_ids:
         return {}
@@ -1360,11 +1393,21 @@ def _validate_subagent_linkage(
             dangling_refs,
         )
 
-    # Sub-trajectories not referenced by any parent step
+    # Sub-trajectories not referenced by any parent step — expected for
+    # compaction agents (system-internal) and persisted-output edge cases.
     unreferenced = sub_ids - parent_refs
     if unreferenced:
-        logger.warning(
-            "Session %s: sub-trajectories not referenced by parent: %s",
-            main_trajectory.session_id,
-            unreferenced,
-        )
+        compaction = {sid for sid in unreferenced if COMPACTION_AGENT_PREFIX in sid}
+        regular = unreferenced - compaction
+        if compaction:
+            logger.debug(
+                "Session %s: %d compaction sub-agent(s) (system-internal, no parent linkage)",
+                main_trajectory.session_id,
+                len(compaction),
+            )
+        if regular:
+            logger.debug(
+                "Session %s: sub-trajectories not referenced by parent: %s",
+                main_trajectory.session_id,
+                regular,
+            )

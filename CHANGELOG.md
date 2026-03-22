@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.8.1] - 2026-03-22
+
+### Added
+
+**UI Polish**
+- **Session header collapse toggle**: Chevron button to expand/collapse meta pills and token stats rows, keeping the title row always visible.
+- **Title hover tooltip**: Hovering truncated first-message title shows the full text in a native tooltip.
+- **MetaPill hover interaction**: Subtle background brightness boost on hover for interactivity cue.
+- **Consistent icons**: Added icons to all token stat labels (Input, Output, Cache Read, Cache Write, Total, Est. Cost) and all dashboard section headers (Peak Hours, Agent/Model/Tool Distribution, Project Activity).
+
+**Dashboard**
+- **Per-project details**: Project Activity rows now show messages count, token count, and estimated cost per project with inline icons.
+- **Dashboard loading fallback**: Direct API fetch when background cache preload hasn't arrived, preventing stuck loading state.
+
+### Fixed
+- **Dashboard stuck loading**: Added fallback fetch when cache prop is null, resolving infinite loading spinner.
+- **Double dollar sign**: Removed redundant `DollarSign` icon from project row cost display where `formatCost()` already returns `$X.XX`.
+
 ## [0.8.0] - 2026-03-22
 
 ### Added
