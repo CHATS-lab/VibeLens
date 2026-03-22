@@ -14,6 +14,7 @@ class DailyStat(BaseModel):
     total_tokens: int = Field(description="Sum of prompt + completion tokens.")
     total_duration: int = Field(description="Sum of session durations in seconds.")
     total_duration_hours: float = Field(description="Duration in hours (for chart Y-axis).")
+    total_cost_usd: float = Field(default=0.0, description="Estimated cost in USD for this day.")
 
 
 class PeriodStats(BaseModel):
@@ -30,6 +31,7 @@ class PeriodStats(BaseModel):
     cache_creation_tokens: int = Field(
         default=0, description="Cache creation tokens in this period."
     )
+    cost_usd: float = Field(default=0.0, description="Estimated cost in USD for this period.")
 
 
 class DashboardStats(BaseModel):
@@ -71,6 +73,15 @@ class DashboardStats(BaseModel):
         default=0.0, description="Mean duration per session (seconds)."
     )
 
+    # Cost estimation
+    total_cost_usd: float = Field(default=0.0, description="Estimated total cost in USD.")
+    cost_by_model: dict[str, float] = Field(
+        default_factory=dict, description="Cost breakdown by canonical model name."
+    )
+    avg_cost_per_session: float = Field(
+        default=0.0, description="Mean estimated cost per session in USD."
+    )
+
     # Project count
     project_count: int = Field(default=0, description="Number of unique projects.")
 
@@ -108,4 +119,7 @@ class SessionAnalytics(BaseModel):
     )
     phase_segments: list[PhaseSegment] = Field(
         description="Conversation phase segments from PhaseDetector."
+    )
+    cost_usd: float | None = Field(
+        default=None, description="Estimated session cost in USD based on API pricing."
     )

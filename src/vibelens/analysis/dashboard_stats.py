@@ -1,24 +1,18 @@
-"""Dashboard aggregate analysis computation.
+"""Dashboard aggregate statistics computation.
 
 Pure functions that transform trajectories into dashboard statistics.
-Uses full Trajectory objects to get accurate token/tool/duration metrics.
+Includes single-pass accumulation of period breakdowns, daily/hourly
+distributions, model/project/agent counts, and cost estimation.
 """
 
 import time
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
-from vibelens.analysis.phase_detector import detect_phases
-from vibelens.ingest.parsers.base import is_error_content
-from vibelens.models.analysis.behavior import ToolUsageStat
-from vibelens.models.analysis.dashboard import (
-    DailyStat,
-    DashboardStats,
-    PeriodStats,
-    SessionAnalytics,
-)
+from vibelens.analysis.pricing import compute_trajectory_cost, normalize_model_name
+from vibelens.models.analysis.dashboard import DailyStat, DashboardStats, PeriodStats
 from vibelens.models.enums import StepSource
-from vibelens.models.trajectories import Step, Trajectory
+from vibelens.models.trajectories import Trajectory
 from vibelens.utils import get_logger
 from vibelens.utils.timestamps import parse_metadata_timestamp
 
@@ -29,8 +23,7 @@ NO_PROJECT = "(no project)"
 
 
 def compute_dashboard_stats(
-    trajectories: list[Trajectory],
-    total_sessions: int | None = None,
+    trajectories: list[Trajectory], total_sessions: int | None = None
 ) -> DashboardStats:
     """Compute aggregate dashboard statistics from full trajectories.
 
@@ -57,78 +50,8 @@ def compute_dashboard_stats(
     stats = acc.build(session_count)
 
     elapsed_ms = (time.monotonic() - start) * 1000
-    logger.info(
-        "Dashboard stats computed: %d sessions in %.1fms",
-        session_count,
-        elapsed_ms,
-    )
+    logger.info("Dashboard stats computed: %d sessions in %.1fms", session_count, elapsed_ms)
     return stats
-
-
-def compute_tool_usage(trajectories: list[Trajectory]) -> list[ToolUsageStat]:
-    """Compute per-tool usage statistics from full trajectories.
-
-    Args:
-        trajectories: Fully loaded Trajectory objects.
-
-    Returns:
-        ToolUsageStat list sorted by call_count descending.
-    """
-    tool_counts: dict[str, int] = defaultdict(int)
-    tool_errors: dict[str, int] = defaultdict(int)
-    session_count = len(trajectories)
-
-    for traj in trajectories:
-        for step in traj.steps:
-            for tc in step.tool_calls:
-                tool_counts[tc.function_name] += 1
-            if step.observation:
-                _count_observation_errors(step, tool_errors)
-
-    if session_count == 0:
-        return []
-
-    stats = []
-    for tool_name, count in tool_counts.items():
-        errors = tool_errors.get(tool_name, 0)
-        error_rate = round(errors / count, 3) if count > 0 else 0.0
-        stats.append(
-            ToolUsageStat(
-                tool_name=tool_name,
-                call_count=count,
-                avg_per_session=round(count / session_count, 2),
-                error_rate=error_rate,
-            )
-        )
-
-    stats.sort(key=lambda s: s.call_count, reverse=True)
-    return stats
-
-
-def compute_session_analytics(trajectories: list[Trajectory]) -> SessionAnalytics:
-    """Compute detailed analytics for a single session.
-
-    Args:
-        trajectories: Trajectory group for one session (main + sub-agents).
-
-    Returns:
-        SessionAnalytics with token breakdown, tool frequency, and phase segments.
-    """
-    if not trajectories:
-        raise ValueError("No trajectories provided for session analytics")
-
-    main = trajectories[0]
-    all_steps = []
-    for traj in trajectories:
-        all_steps.extend(traj.steps)
-
-    return SessionAnalytics(
-        session_id=main.session_id,
-        token_breakdown=_compute_token_breakdown(trajectories),
-        tool_frequency=_compute_tool_frequency(trajectories),
-        step_count_by_source=_compute_step_counts(trajectories),
-        phase_segments=detect_phases(all_steps),
-    )
 
 
 def filter_metadata(
@@ -163,9 +86,18 @@ class _SessionAggregate:
     """Aggregated metrics for a single session."""
 
     __slots__ = (
-        "messages", "input_tokens", "output_tokens",
-        "cache_read_tokens", "cache_creation_tokens", "tool_calls", "duration",
-        "model", "project", "timestamp", "agent_name",
+        "messages",
+        "input_tokens",
+        "output_tokens",
+        "cache_read_tokens",
+        "cache_creation_tokens",
+        "tool_calls",
+        "duration",
+        "model",
+        "project",
+        "timestamp",
+        "agent_name",
+        "cost_usd",
     )
 
     def __init__(self) -> None:
@@ -180,18 +112,26 @@ class _SessionAggregate:
         self.project: str = NO_PROJECT
         self.timestamp: datetime | None = None
         self.agent_name: str = "unknown"
+        self.cost_usd: float = 0.0
 
 
 class _DailyAccumulator:
     """Mutable accumulator for daily stat aggregation."""
 
-    __slots__ = ("session_count", "total_messages", "total_tokens", "total_duration")
+    __slots__ = (
+        "session_count",
+        "total_messages",
+        "total_tokens",
+        "total_duration",
+        "total_cost_usd",
+    )
 
     def __init__(self) -> None:
         self.session_count = 0
         self.total_messages = 0
         self.total_tokens = 0
         self.total_duration = 0
+        self.total_cost_usd = 0.0
 
 
 class _StatsAccumulator:
@@ -206,12 +146,8 @@ class _StatsAccumulator:
         # "this month" match the user's wall clock, not UTC.
         self.local_tz = local_tz
         now = datetime.now(tz=local_tz)
-        self.year_start = now.replace(
-            month=1, day=1, hour=0, minute=0, second=0, microsecond=0
-        )
-        self.month_start = now.replace(
-            day=1, hour=0, minute=0, second=0, microsecond=0
-        )
+        self.year_start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        self.month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         self.week_start = (now - timedelta(days=now.weekday())).replace(
             hour=0, minute=0, second=0, microsecond=0
         )
@@ -223,6 +159,8 @@ class _StatsAccumulator:
         self.total_cache_creation_tokens = 0
         self.total_tool_calls = 0
         self.total_duration = 0
+        self.total_cost_usd = 0.0
+        self.cost_by_model: dict[str, float] = defaultdict(float)
 
         self.year = PeriodStats()
         self.month = PeriodStats()
@@ -255,6 +193,12 @@ class _StatsAccumulator:
         self.total_tool_calls += session.tool_calls
         self.total_duration += session.duration
 
+        # Cost accumulation
+        if session.cost_usd > 0:
+            self.total_cost_usd += session.cost_usd
+            canonical = normalize_model_name(session.model) or session.model
+            self.cost_by_model[canonical] += session.cost_usd
+
         self.model_dist[session.model] += 1
         self.project_dist[session.project] += 1
         self.agent_dist[session.agent_name] += 1
@@ -267,18 +211,9 @@ class _StatsAccumulator:
         local_ts = self._to_local(session.timestamp)
 
         # Period breakdowns (year / month / week)
-        self._accumulate_period(
-            self.year, local_ts >= self.year_start,
-            session, tokens,
-        )
-        self._accumulate_period(
-            self.month, local_ts >= self.month_start,
-            session, tokens,
-        )
-        self._accumulate_period(
-            self.week, local_ts >= self.week_start,
-            session, tokens,
-        )
+        self._accumulate_period(self.year, local_ts >= self.year_start, session, tokens)
+        self._accumulate_period(self.month, local_ts >= self.month_start, session, tokens)
+        self._accumulate_period(self.week, local_ts >= self.week_start, session, tokens)
 
         # Daily bucket (local time)
         date_key = local_ts.strftime("%Y-%m-%d")
@@ -290,17 +225,14 @@ class _StatsAccumulator:
         bucket.total_messages += session.messages
         bucket.total_tokens += tokens
         bucket.total_duration += session.duration
+        bucket.total_cost_usd += session.cost_usd
 
         self.daily_activity[date_key] += 1
         self.hourly_dist[local_ts.hour] += 1
         self.heatmap[f"{local_ts.weekday()}_{local_ts.hour}"] += 1
 
     def _accumulate_period(
-        self,
-        period: PeriodStats,
-        in_period: bool,
-        session: _SessionAggregate,
-        tokens: int,
+        self, period: PeriodStats, in_period: bool, session: _SessionAggregate, tokens: int
     ) -> None:
         """Add session metrics to a period if it falls within the boundary."""
         if not in_period:
@@ -314,6 +246,7 @@ class _StatsAccumulator:
         period.output_tokens += session.output_tokens
         period.cache_read_tokens += session.cache_read_tokens
         period.cache_creation_tokens += session.cache_creation_tokens
+        period.cost_usd += session.cost_usd
 
     def build(self, total_sessions: int) -> DashboardStats:
         """Build the final DashboardStats from accumulated data."""
@@ -333,6 +266,7 @@ class _StatsAccumulator:
                     total_tokens=acc.total_tokens,
                     total_duration=acc.total_duration,
                     total_duration_hours=round(acc.total_duration / 3600, 2),
+                    total_cost_usd=round(acc.total_cost_usd, 6),
                 )
             )
 
@@ -355,6 +289,9 @@ class _StatsAccumulator:
             avg_tokens_per_session=round(total_tokens / safe_div, 0),
             avg_tool_calls_per_session=round(self.total_tool_calls / safe_div, 1),
             avg_duration_per_session=round(self.total_duration / safe_div, 0),
+            total_cost_usd=round(self.total_cost_usd, 6),
+            cost_by_model=dict(self.cost_by_model),
+            avg_cost_per_session=round(self.total_cost_usd / safe_div, 6),
             project_count=len(self.projects_seen),
             daily_activity=dict(self.daily_activity),
             daily_stats=daily_stats,
@@ -382,8 +319,6 @@ def _is_real_model(name: str | None) -> bool:
 def _aggregate_session(traj: Trajectory) -> _SessionAggregate:
     """Extract aggregate metrics from a single trajectory."""
     agg = _SessionAggregate()
-    # Count only user and agent steps as "messages" — system-injected
-    # steps (context continuations, tool result summaries) inflate counts.
     # Exclude system steps (context continuations, tool result summaries)
     # from the message count — they inflate numbers without representing
     # real user-agent interaction.
@@ -411,6 +346,11 @@ def _aggregate_session(traj: Trajectory) -> _SessionAggregate:
             agg.cache_read_tokens += step.metrics.cached_tokens
             agg.cache_creation_tokens += step.metrics.cache_creation_tokens
 
+    # Cost estimation from pricing table
+    traj_cost = compute_trajectory_cost(traj)
+    if traj_cost is not None:
+        agg.cost_usd = traj_cost
+
     # Duration from final_metrics or from timestamp span
     if traj.final_metrics and traj.final_metrics.duration > 0:
         agg.duration = traj.final_metrics.duration
@@ -432,59 +372,3 @@ def _in_date_range(meta: dict, date_from: str | None, date_to: str | None) -> bo
     if date_from and date_str < date_from:
         return False
     return not (date_to and date_str > date_to)
-
-
-def _compute_token_breakdown(trajectories: list[Trajectory]) -> dict[str, int]:
-    """Aggregate token counts by category across all trajectories."""
-    prompt = 0
-    completion = 0
-    cache_read = 0
-    cache_write = 0
-
-    for traj in trajectories:
-        for step in traj.steps:
-            if step.metrics:
-                prompt += step.metrics.prompt_tokens
-                completion += step.metrics.completion_tokens
-                cache_read += step.metrics.cached_tokens
-                cache_write += step.metrics.cache_creation_tokens
-
-    return {
-        "prompt": prompt,
-        "completion": completion,
-        "cache_read": cache_read,
-        "cache_write": cache_write,
-    }
-
-
-def _compute_tool_frequency(trajectories: list[Trajectory]) -> dict[str, int]:
-    """Count tool calls by function name across all trajectories."""
-    counts: dict[str, int] = defaultdict(int)
-    for traj in trajectories:
-        for step in traj.steps:
-            for tc in step.tool_calls:
-                counts[tc.function_name] += 1
-    return dict(sorted(counts.items(), key=lambda x: x[1], reverse=True))
-
-
-def _compute_step_counts(trajectories: list[Trajectory]) -> dict[str, int]:
-    """Count steps by source (user/agent/system) across all trajectories."""
-    counts: dict[str, int] = defaultdict(int)
-    for traj in trajectories:
-        for step in traj.steps:
-            counts[step.source.value] += 1
-    return dict(counts)
-
-
-def _count_observation_errors(step: Step, tool_errors: dict[str, int]) -> None:
-    """Count error results and attribute them to tool calls."""
-    if not step.observation:
-        return
-
-    call_map = {tc.tool_call_id: tc.function_name for tc in step.tool_calls}
-
-    for result in step.observation.results:
-        if is_error_content(result.content):
-            func_name = call_map.get(result.source_call_id or "", "")
-            if func_name:
-                tool_errors[func_name] += 1

@@ -1,7 +1,7 @@
 import type { DailyStat } from "../../types";
 import { HEATMAP_COLORS } from "./chart-constants";
 
-export type ChartMetric = "sessions" | "messages" | "tokens";
+export type ChartMetric = "sessions" | "messages" | "tokens" | "cost";
 export type TimeGroup = "day" | "month" | "year";
 
 export function fillDateGaps(data: DailyStat[]): DailyStat[] {
@@ -22,6 +22,7 @@ export function fillDateGaps(data: DailyStat[]): DailyStat[] {
         total_tokens: 0,
         total_duration: 0,
         total_duration_hours: 0,
+        total_cost_usd: 0,
       }
     );
   }
@@ -41,6 +42,7 @@ export function groupDailyStats(data: DailyStat[], group: TimeGroup): DailyStat[
       existing.total_tokens += d.total_tokens;
       existing.total_duration += d.total_duration;
       existing.total_duration_hours += d.total_duration_hours;
+      existing.total_cost_usd += d.total_cost_usd;
     } else {
       buckets.set(key, { ...d, date: key });
     }

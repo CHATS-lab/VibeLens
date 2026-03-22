@@ -1257,16 +1257,11 @@ def _collect_tool_results(raw_entries: list[dict]) -> dict[str, dict]:
                     result_content = block.get("content", "")
                     is_error = block.get("is_error", False)
                     # Preserve raw content (may contain image blocks)
-                    has_images = (
-                        isinstance(result_content, list)
-                        and any(
-                            isinstance(b, dict) and b.get("type") == "image"
-                            for b in result_content
-                        )
+                    has_images = isinstance(result_content, list) and any(
+                        isinstance(b, dict) and b.get("type") == "image" for b in result_content
                     )
                     output: str | list = (
-                        result_content if has_images
-                        else coerce_to_string(result_content)
+                        result_content if has_images else coerce_to_string(result_content)
                     )
                     result_entry: dict = {
                         "output": output,

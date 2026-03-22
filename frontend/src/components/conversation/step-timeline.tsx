@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { Step } from "../../types";
 import { formatElapsed, formatStepTime, formatFullDateTime } from "../../utils";
+import { Tooltip, useTooltip } from "../analysis/tooltip";
 
 interface TimelineEntry {
   step: Step;
@@ -18,6 +19,7 @@ export function StepTimeline({
   sessionStartMs,
   sessionStartTimestamp,
 }: StepTimelineProps) {
+  const { tip, show, move, hide } = useTooltip();
   const hasTimestamps = entries.some((e) => e.step.timestamp);
   if (!hasTimestamps) {
     return (
@@ -34,6 +36,7 @@ export function StepTimeline({
 
   return (
     <>
+      <Tooltip state={tip} />
       {entries.map((entry, index) => {
         const stepMs = entry.step.timestamp
           ? new Date(entry.step.timestamp).getTime()
@@ -78,33 +81,47 @@ export function StepTimeline({
                 className={`w-2 h-2 rounded-full ${dotColor} mt-[7px] shrink-0`}
               />
               {hasNext && (
-                <div className="w-px flex-1 bg-zinc-700/40 min-h-[16px]" />
+                <div className="w-0.5 flex-1 bg-zinc-600 min-h-[16px]" />
               )}
             </div>
 
             {/* Content with inline time header */}
             <div
-              className={`flex-1 min-w-0 pb-5 ${!isFirst ? "border-t border-zinc-700/40 pt-3" : ""}`}
+              className={`flex-1 min-w-0 pb-5 ${!isFirst ? "border-t border-zinc-600 pt-3" : ""}`}
             >
-              <div
-                className="flex items-baseline gap-1.5 mb-1.5 cursor-default"
-                title={fullDateTime}
-              >
+              <div className="flex items-baseline gap-1.5 mb-1.5 cursor-default">
                 {elapsedSeconds != null && (
-                  <span className="text-xs font-mono text-zinc-400">
+                  <span
+                    className="text-xs font-mono text-zinc-300"
+                    onMouseEnter={(e) => show(e, fullDateTime)}
+                    onMouseMove={move}
+                    onMouseLeave={hide}
+                  >
                     {formatElapsed(elapsedSeconds)}
                   </span>
                 )}
                 {actualTime && (
                   <>
-                    <span className="text-zinc-600 text-[11px]">&middot;</span>
-                    <span className="text-[11px] font-mono text-zinc-500">
+                    <span className="text-zinc-500 text-[11px]">&middot;</span>
+                    <span
+                      className="text-[11px] font-mono text-zinc-400"
+                      onMouseEnter={(e) => show(e, fullDateTime)}
+                      onMouseMove={move}
+                      onMouseLeave={hide}
+                    >
                       {actualTime}
                     </span>
                   </>
                 )}
                 {gapSeconds != null && gapSeconds > 0 && (
-                  <span className="text-[10px] font-mono text-zinc-600 ml-auto">
+                  <span
+                    className="text-[10px] font-mono text-zinc-400 ml-auto"
+                    onMouseEnter={(e) =>
+                      show(e, `+${formatElapsed(gapSeconds)} since previous step`)
+                    }
+                    onMouseMove={move}
+                    onMouseLeave={hide}
+                  >
                     +{formatElapsed(gapSeconds)}
                   </span>
                 )}

@@ -1,3 +1,5 @@
+import { CARD_DESCRIPTION } from "../../styles";
+
 export interface StatCardRow {
   label: string;
   value: string;
@@ -36,11 +38,11 @@ export function StatCard({
     >
       <div className="flex items-center justify-between">
         <div>
-          <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+          <span className="text-xs font-semibold text-zinc-200 uppercase tracking-wider">
             {label}
           </span>
           {description && (
-            <p className="text-[10px] text-zinc-500 mt-0.5 leading-tight">
+            <p className={CARD_DESCRIPTION}>
               {description}
             </p>
           )}

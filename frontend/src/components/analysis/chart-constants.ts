@@ -32,3 +32,18 @@ export const MODEL_COLORS = [
   "bg-cyan-400",
   "bg-fuchsia-500",
 ];
+
+export const TOOL_COLORS = [
+  "bg-cyan-500",
+  "bg-teal-400",
+  "bg-sky-500",
+  "bg-indigo-400",
+  "bg-emerald-500",
+  "bg-amber-400",
+  "bg-violet-500",
+  "bg-rose-400",
+  "bg-orange-400",
+  "bg-lime-400",
+  "bg-pink-400",
+  "bg-blue-400",
+];

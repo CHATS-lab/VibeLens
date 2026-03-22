@@ -30,6 +30,14 @@ export function formatTokens(n: number): string {
   return String(n);
 }
 
+export function formatCost(usd: number): string {
+  if (usd >= 1000) return `$${(usd / 1000).toFixed(1)}K`;
+  if (usd >= 1) return `$${usd.toFixed(2)}`;
+  if (usd >= 0.01) return `$${usd.toFixed(2)}`;
+  if (usd > 0) return "<$0.01";
+  return "$0.00";
+}
+
 export function formatDuration(seconds: number | null | undefined): string {
   if (!seconds || seconds <= 0) return "0m";
   const hours = Math.floor(seconds / HOUR);

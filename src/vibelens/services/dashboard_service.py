@@ -1,19 +1,11 @@
-"""Dashboard service — trajectory loading, caching, export, and reconciliation."""
+"""Dashboard service — trajectory loading, caching, and reconciliation."""
 
-import csv
-import io
-import json
 import time
 from datetime import datetime, timedelta
 
-from fastapi.responses import StreamingResponse
-
-from vibelens.analysis.dashboard_service import (
-    compute_dashboard_stats,
-    compute_session_analytics,
-    compute_tool_usage,
-    filter_metadata,
-)
+from vibelens.analysis.dashboard_stats import compute_dashboard_stats, filter_metadata
+from vibelens.analysis.session_analytics import compute_session_analytics
+from vibelens.analysis.tool_usage import compute_tool_usage
 from vibelens.deps import get_store
 from vibelens.models.analysis.behavior import ToolUsageStat
 from vibelens.models.analysis.dashboard import DashboardStats, SessionAnalytics
@@ -149,97 +141,23 @@ def get_session_analytics(session_id: str, session_token: str | None) -> Session
     return compute_session_analytics(group)
 
 
-def export_dashboard_csv(
-    project_path: str | None,
-    date_from: str | None,
-    date_to: str | None,
-    session_token: str | None,
-    timestamp: str,
-) -> StreamingResponse:
-    """Build CSV export from filtered trajectories.
-
-    Args:
-        project_path: Optional project path filter.
-        date_from: Optional start date (YYYY-MM-DD).
-        date_to: Optional end date (YYYY-MM-DD).
-        session_token: Browser tab token for upload scoping.
-        timestamp: YYYYMMDDHHMMSS string for the filename.
-
-    Returns:
-        StreamingResponse with CSV content.
-    """
-    trajectories, _meta = load_filtered_trajectories(
-        project_path, date_from, date_to, session_token
-    )
-
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    writer.writerow(
-        [
-            "session_id",
-            "project_path",
-            "model",
-            "timestamp",
-            "duration_s",
-            "input_tokens",
-            "output_tokens",
-            "tool_calls",
-            "messages",
-        ]
-    )
-
-    for traj in trajectories:
-        row = _build_csv_row(traj)
-        writer.writerow(row)
-
-    buf.seek(0)
-    return StreamingResponse(
-        iter([buf.getvalue()]),
-        media_type="text/csv",
-        headers={
-            "Content-Disposition": f'attachment; filename="vibelens-dashboard-{timestamp}.csv"',
-        },
-    )
+def warm_cache() -> None:
+    """Pre-compute global dashboard stats and tool usage into cache."""
+    logger.info("Warming dashboard cache...")
+    get_dashboard_stats(None, None, None, None)
+    get_tool_usage(None, None, None, None)
+    logger.info("Dashboard cache warmed")
 
 
-def export_dashboard_json(
-    project_path: str | None,
-    date_from: str | None,
-    date_to: str | None,
-    session_token: str | None,
-    timestamp: str,
-) -> StreamingResponse:
-    """Build JSON export with dashboard stats.
-
-    Args:
-        project_path: Optional project path filter.
-        date_from: Optional start date (YYYY-MM-DD).
-        date_to: Optional end date (YYYY-MM-DD).
-        session_token: Browser tab token for upload scoping.
-        timestamp: YYYYMMDDHHMMSS string for the filename.
-
-    Returns:
-        StreamingResponse with JSON content.
-    """
-    trajectories, _meta = load_filtered_trajectories(
-        project_path, date_from, date_to, session_token
-    )
-    stats = compute_dashboard_stats(trajectories)
-    payload = json.dumps(stats.model_dump(mode="json"), indent=2, ensure_ascii=False)
-
-    return StreamingResponse(
-        iter([payload]),
-        media_type="application/json",
-        headers={
-            "Content-Disposition": f'attachment; filename="vibelens-dashboard-{timestamp}.json"',
-        },
-    )
+def invalidate_cache() -> None:
+    """Clear all cached dashboard data, forcing recomputation on next request."""
+    _dashboard_cache.clear()
+    _tool_usage_cache.clear()
+    logger.info("Dashboard cache invalidated")
 
 
 def _reconcile_session_counts(
-    stats: DashboardStats,
-    trajectories: list[Trajectory],
-    metadata: list[dict],
+    stats: DashboardStats, trajectories: list[Trajectory], metadata: list[dict]
 ) -> None:
     """Override session counts to include sessions that failed to parse.
 
@@ -283,12 +201,8 @@ def _reconcile_session_counts(
         if session_id and session_id not in parsed_ids:
             project = meta.get("project_path") or "(no project)"
             date_key = local_ts.strftime("%Y-%m-%d")
-            stats.project_distribution[project] = (
-                stats.project_distribution.get(project, 0) + 1
-            )
-            stats.daily_activity[date_key] = (
-                stats.daily_activity.get(date_key, 0) + 1
-            )
+            stats.project_distribution[project] = stats.project_distribution.get(project, 0) + 1
+            stats.daily_activity[date_key] = stats.daily_activity.get(date_key, 0) + 1
 
     stats.total_sessions = len(metadata)
     stats.this_year.sessions = year_count
@@ -300,43 +214,3 @@ def _reconcile_session_counts(
     stats.avg_tokens_per_session = round(stats.total_tokens / safe_div, 0)
     stats.avg_tool_calls_per_session = round(stats.total_tool_calls / safe_div, 1)
     stats.avg_duration_per_session = round(stats.total_duration / safe_div, 0)
-
-
-def _build_csv_row(traj: Trajectory) -> list:
-    """Build a single CSV row from a trajectory."""
-    input_tok = 0
-    output_tok = 0
-    tool_count = 0
-    for step in traj.steps:
-        if step.metrics:
-            input_tok += step.metrics.prompt_tokens
-            output_tok += step.metrics.completion_tokens
-        tool_count += len(step.tool_calls)
-
-    duration = 0
-    if traj.final_metrics and traj.final_metrics.duration > 0:
-        duration = traj.final_metrics.duration
-    elif len(traj.steps) >= 2:
-        first_ts = traj.steps[0].timestamp
-        last_ts = traj.steps[-1].timestamp
-        if first_ts and last_ts:
-            duration = max(0, int((last_ts - first_ts).total_seconds()))
-
-    model = (traj.agent.model_name if traj.agent else None) or ""
-    if not model:
-        for step in traj.steps:
-            if step.model_name:
-                model = step.model_name
-                break
-
-    return [
-        traj.session_id,
-        traj.project_path or "",
-        model,
-        traj.timestamp.isoformat() if traj.timestamp else "",
-        duration,
-        input_tok,
-        output_tok,
-        tool_count,
-        len(traj.steps),
-    ]

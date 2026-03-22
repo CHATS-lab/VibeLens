@@ -1,100 +1,141 @@
 # Changelog
 
+## [0.8.0] - 2026-03-22
+
+### Added
+
+**Cost Tracking** *(Roadmap §1)*
+- **Cost estimation**: Model-aware pricing engine covering 45+ models across 12 providers. Per-step and per-trajectory USD cost computed from token metrics. Dashboard surfaces total cost, cost-by-model breakdown, and per-session cost.
+
+**Session Graphs** *(Roadmap §4)*
+- **Conversation flow diagram**: Phase-grouped visualization of user → agent → tool interactions with color-coded tool chips and hover-based dependency highlighting. Lazy-loaded via Timeline/Flow toggle.
+
+**Sharing & Integration** *(Roadmap §10)*
+- **Shareable session links**: Generate permalink URLs to share session details. Backend persists trajectory snapshots on disk; frontend renders a read-only shared view.
+
+**Dashboard**
+- **Tool distribution chart**: Horizontal stacked bar chart showing per-tool call counts, percentages, avg/session, and error rates.
+- **Cache warming**: Background pre-computation of dashboard stats on startup for instant first page load.
+
+**Packaging** *(Roadmap §7)*
+- **PyPI metadata**: MIT license, authors, classifiers, project URLs, PEP 561 `py.typed` marker.
+- **CI/CD**: GitHub Actions workflows for tests and PyPI publishing.
+- **Auto-open browser**: `vibelens serve` opens the browser automatically (`--no-open` to disable).
+
+### Changed
+
+**Architecture**
+- **Layered module split**: Enforced strict `api → services → analysis → models` dependency direction. All Pydantic models extracted from `analysis/` into `models/analysis/`. Monolithic `dashboard_service.py` split into focused computation modules (`dashboard_stats.py`, `session_analytics.py`, `tool_usage.py`). Request models split by domain. Export and flow logic extracted into dedicated services.
+- **`llm/` package**: New top-level package for LLM utilities — model name normalization (`llm/normalizer.py`) and pricing table + lookup (`llm/pricing.py`).
+- **`stores/` → `storage/`**: Renamed for clarity.
+- **Tool graph rework**: Nodes and edges now use tool call IDs with refined relation types (read_before_write, search_then_read, write_then_test, multi_edit, error_retry).
+
 ## [0.7.1] - 2026-03-21
 
 ### Added
-- **Image support**: Full-stack multimodal content rendering. Claude Code parser extracts `type: "image"` content blocks from JSONL, frontend renders inline images with click-to-expand lightbox. Covers both user-pasted screenshots and Read tool image results.
-- **Step timestamps**: Conversation timeline shows actual clock time alongside elapsed time (`33:51 · 1:23 PM`), with gap-since-previous indicator. Title attribute shows full date/time on hover.
-- **Content renderer**: New `ContentRenderer` component handles `string | ContentPart[]` union, rendering text via Markdown and images as inline `<img>` with data URIs.
-- **Usage chart crosshair**: Hovering anywhere on the x-axis snaps to the nearest data point with a vertical dashed indicator line, replacing the old per-dot hover targets.
-- **Settings dialog**: Gear icon in the top nav bar opens a settings dialog.
+- **Image support**: Multimodal content rendering for image content blocks with click-to-expand lightbox.
+- **Step timestamps**: Clock time alongside elapsed time (`33:51 · 1:23 PM`) with gap-since-previous indicator.
+- **Usage chart crosshair**: X-axis hover snaps to nearest data point with vertical dashed indicator line.
+- **Settings dialog**: Gear icon in top nav opens settings dialog.
 
 ### Changed
-- **Timeline redesign**: Narrow 20px dot-and-line rail with inline time header (`elapsed · actual time +gap`), replacing the wide stacked layout.
-- **Dashboard stat cards**: Added description subtitles and per-row tooltips with token breakdowns (input, output, cache read, cache write).
+- **Timeline redesign**: Narrow dot-and-line rail with inline time header, replacing wide stacked layout.
+- **Dashboard stat cards**: Added description subtitles and per-row tooltips with token breakdowns.
 
 ## [0.7.0] - 2026-03-21
 
 ### Added
-- **Analytics dashboard**: Full-page dashboard with stat cards (sessions, messages, tokens, tool calls, duration), usage-over-time chart with metric/time-group toggles, GitHub-style activity heatmap, peak hours distribution, model distribution bar, and project activity ranking. Supports project filtering and CSV/JSON export.
-- **Browse/Analytics view toggle**: Main content area switches between session browser and analytics dashboard via tab buttons.
-- **Agent filter**: Sidebar dropdown filters sessions by agent type (Claude Code, Codex, Gemini). Configurable via `visible_agents` in settings.
-- **Codex parser improvements**: Structured output parsing, reasoning extraction and deduplication, session metadata (CLI version, sandbox mode, approval policy), error detection via rollout, tool result metadata (exit code, wall time).
+
+**Session Graphs** *(Roadmap §4)*
+- **Analytics dashboard**: Stat cards (sessions, messages, tokens, duration), usage-over-time chart, GitHub-style activity heatmap, peak hours, model distribution, and project ranking. Supports project filtering and CSV/JSON export.
+
+**Multi-Agent Analytics** *(Roadmap §3)*
+- **Agent filter**: Sidebar dropdown filters sessions by agent type. Configurable via `visible_agents`.
+
+**Agent Parsers** *(Roadmap §5)*
+- **Codex parser improvements**: Structured output parsing, reasoning extraction, session metadata, error detection, tool result metadata.
 
 ## [0.6.2] - 2026-03-20
 
 ### Added
-- **Session header tooltips**: All metadata pills show descriptive tooltips on hover with instant response.
-- **Prompts / Skills split**: "Turns" tag replaced with separate "prompts" and "skills" counts in session header.
-- **System tag detection**: Added `<local-command-stdout>` and `<command-message>` to system content classification.
-- **Auto-expand short results**: Tool results with 20 lines or fewer display inline without collapse.
+- **Session header tooltips**: Metadata pills show descriptive tooltips on hover.
+- **Prompts / Skills split**: Separate prompt and skill counts in session header.
+- **Auto-expand short results**: Tool results ≤20 lines display inline without collapse.
 
 ### Changed
-- **UI cleanup**: Removed redundant header bar, fixed text overflow for long strings, improved message type differentiation (user/system/skill).
-- **Logging**: One log file per module, overwritten each restart. Removed combined root log and timestamped per-module duplicates.
+- **UI cleanup**: Removed redundant header, fixed text overflow, improved message type differentiation.
+- **Logging**: One log file per module, overwritten each restart.
 
 ## [0.6.1] - 2026-03-18
 
 ### Added
-- **Demo upload isolation**: Scoped uploads by browser tab token (`X-Session-Token`). Each tab only sees its own uploads; demo examples remain visible to all.
-- **Donate consent dialog**: Consent form with CHATS-Lab attribution and agreement checkbox required before donating.
-- **README**: Quick start guide, data donation section, contributing guidelines, screenshots.
+
+**Privacy & Security** *(Roadmap §8)*
+- **Upload isolation**: Session-token scoped uploads for multi-tab browser safety.
+- **Donate consent dialog**: Consent form with attribution and agreement checkbox.
 
 ### Changed
-- Upload result now reports main session count instead of total trajectory count.
+- Upload result reports main session count instead of total trajectory count.
 - Increased default upload limits: 10 GB zip, 20 GB extracted, 10K files.
 
 ### Removed
-- Unused settings: `max_file_size_bytes`, `upload_allowed_extensions`, `subagent_file_prefix`, `min_confidence`.
-- VibeLens Export parser and fingerprint scorer.
+- Unused settings and VibeLens Export parser.
 
 ## [0.6.0] - 2026-03-18
 
 ### Added
-- **ATIF v1.6 trajectory model**: Replaced session/message model with `Trajectory` → `Step` hierarchy in `models/trajectories/`. Full multimodal content support (text, image, PDF).
-- **Service layer** (`services/`): `session_service.py`, `upload_service.py`, `demo_loader.py` — business logic extracted from API routes and stores.
-- **`LocalStore`** (`stores/local.py`): Reads directly from `~/.claude/` with lazy parsing. No intermediate SQLite layer.
-- **`DiskStore`** (`stores/disk.py`): JSON-file-based storage for demo mode and uploads. Supports subdirectory organization.
-- **Step timeline** (`step-timeline.tsx`): Visual timeline with elapsed time between steps and step-source indicators.
-- **Session file discovery** (`ingest/discovery.py`): Recursive file finder for Claude Code, Codex, and Gemini session directories.
 
+**Architecture**
+- **ATIF v1.6 trajectory model**: `Trajectory` → `Step` hierarchy with multimodal content support (text, image, PDF).
+- **Service layer**: Business logic extracted from API routes into `session_service`, `upload_service`, `demo_loader`.
+- **Storage backends**: `LocalStore` reads from `~/.claude/`; `DiskStore` for demo mode and uploads.
+
+**Session Insights** *(Roadmap §2)*
+- **Step timeline**: Visual timeline with elapsed time between steps and step-source indicators.
+
+**Agent Parsers** *(Roadmap §5)*
+- **Session file discovery**: Recursive finder for Claude Code, Codex, and Gemini session directories.
 
 ## [0.5.0] - 2026-03-17
 
 ### Added
-- Two-mode system: self-use (default) and demo mode with in-memory or SQLite storage.
+- Two-mode system: self-use (default) and demo mode with in-memory storage.
 - Pre-loaded example sessions, per-tab client isolation, TTL cleanup for demo uploads.
-- Config templates (`config/`), example sessions (`examples/`).
-- VibeLens Export v1 parser, zip upload, batch download, sub-agent count.
+- Config templates and example sessions.
 
 ### Fixed
 - Claude Code parser: timestamp, duration, token counts, project path extraction.
-- Gemini: empty content handling, token aggregation, project resolution, JSON fingerprinting.
+- Gemini parser: empty content, token aggregation, project resolution.
 
 ## [0.4.0] - 2026-03-16
 
 ### Added
 - File upload with auto-format detection.
 - Session export, view modes (By Time / By Project), resizable panels.
-- Parsers refactored into `ingest/parsers/` sub-package.
 
 ## [0.3.0] - 2026-03-15
 
 ### Added
 - MongoDB target/source with push/pull API.
-- Config package with YAML-first configuration.
-- Frontend: session viewer, message rendering, sub-agent display, prompt navigation.
+- YAML-first configuration package.
+- Frontend session viewer with message rendering, sub-agent display, and prompt navigation.
 
 ## [0.2.0] - 2026-03-15
 
 ### Added
-- Codex CLI and Gemini CLI parsers.
-- Cross-agent correlation, tool normalization, parse diagnostics.
-- Tool dependency graph, phase detection, format auto-detection, parallel parsing.
+
+**Session Insights** *(Roadmap §2)*
+- Phase detection and tool dependency graph with typed edges.
+
+**Multi-Agent Analytics** *(Roadmap §3)*
+- Cross-agent correlation by project path with overlapping time windows.
+
+**Agent Parsers** *(Roadmap §5)*
+- Codex CLI and Gemini CLI parsers with auto-detection.
 
 ## [0.1.0] - 2026-03-14
 
 ### Added
-- Project skeleton: FastAPI backend, React frontend, CLI.
-- Claude Code and Dataclaw parsers, LocalSource, HuggingFace source.
+- Project skeleton: FastAPI backend, React frontend, Typer CLI.
+- Claude Code and Dataclaw parsers.
 - SQLite database, Pydantic models, test suite.

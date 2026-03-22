@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useRef } from "react";
 import type { DailyStat } from "../../types";
-import { formatTokens } from "../../utils";
+import { formatTokens, formatCost } from "../../utils";
+import { TOGGLE_ACTIVE, TOGGLE_INACTIVE } from "../../styles";
 import type { ChartMetric, TimeGroup } from "./chart-utils";
 import { fillDateGaps, groupDailyStats } from "./chart-utils";
 
@@ -46,6 +47,8 @@ export function UsageOverTimeChart({
           return d.total_messages;
         case "tokens":
           return d.total_tokens;
+        case "cost":
+          return d.total_cost_usd;
       }
     });
   }, [grouped, metric]);
@@ -76,6 +79,7 @@ export function UsageOverTimeChart({
 
   const formatY = (val: number) => {
     if (metric === "tokens") return formatTokens(val);
+    if (metric === "cost") return formatCost(val);
     return String(Math.round(val));
   };
 
@@ -119,6 +123,7 @@ export function UsageOverTimeChart({
         `Sessions: ${d.session_count}`,
         `Messages: ${d.total_messages.toLocaleString()}`,
         `Tokens: ${d.total_tokens.toLocaleString()}`,
+        `Cost: ${formatCost(d.total_cost_usd)}`,
       ];
       onHover(e, lines.join("\n"));
       onMove(e);
@@ -135,6 +140,7 @@ export function UsageOverTimeChart({
     { key: "sessions", label: "Sessions" },
     { key: "messages", label: "Messages" },
     { key: "tokens", label: "Tokens" },
+    { key: "cost", label: "Cost" },
   ];
 
   const timeGroupButtons: Array<{ key: TimeGroup; label: string }> = [
@@ -170,8 +176,8 @@ export function UsageOverTimeChart({
                 onClick={() => setTimeGroup(g.key)}
                 className={`px-2 py-1 text-xs font-medium rounded-md transition ${
                   timeGroup === g.key
-                    ? "bg-zinc-700 text-zinc-100"
-                    : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
+                    ? TOGGLE_ACTIVE
+                    : `${TOGGLE_INACTIVE} hover:bg-zinc-800`
                 }`}
               >
                 {g.label}

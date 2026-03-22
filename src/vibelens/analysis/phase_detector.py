@@ -6,7 +6,7 @@ window over tool call categories.  Enables "what fraction of time is
 spent exploring vs coding?" analytics.
 """
 
-from vibelens.analysis.constants import TOOL_CATEGORY_MAP
+from vibelens.analysis.tool_categories import TOOL_CATEGORY_MAP
 from vibelens.ingest.parsers.base import is_error_content
 from vibelens.models.analysis.phase import PhaseSegment
 from vibelens.models.enums import SessionPhase

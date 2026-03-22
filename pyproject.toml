@@ -1,9 +1,22 @@
 [project]
 name = "vibelens"
-version = "0.7.0"
-description = "Agent Trajectory analysis and visualization platform"
+version = "0.8.0"
+description = "Agent Trajectory visualization and analysis platform"
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.12"
+authors = [
+    { name = "VibeLens at ChatsLab", email = "chatslab001@gmail.com" },
+]
+keywords = ["agent", "trajectory", "analysis", "claude", "codex", "gemini", "visualization"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: FastAPI",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
@@ -23,6 +36,13 @@ dev = [
 
 [project.scripts]
 vibelens = "vibelens.cli:app"
+
+[project.urls]
+Homepage = "https://vibelens.chats-lab.org/"
+Repository = "https://github.com/yejh123/VibeLens"
+"Bug Tracker" = "https://github.com/yejh123/VibeLens/issues"
+Changelog = "https://github.com/yejh123/VibeLens/releases"
+Demo = "https://vibelens.chats-lab.org/"
 
 [build-system]
 requires = ["hatchling"]

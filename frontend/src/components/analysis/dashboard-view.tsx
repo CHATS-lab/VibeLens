@@ -1,47 +1,83 @@
 import {
   MessageSquare,
   Hash,
-  Wrench,
   Clock,
   BarChart3,
   Download,
+  DollarSign,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAppContext } from "../../app";
-import type { DashboardStats } from "../../types";
-import { formatTokens, formatDuration, baseProjectName } from "../../utils";
+import type { DashboardStats, ToolUsageStat } from "../../types";
+import { formatTokens, formatDuration, formatCost, baseProjectName } from "../../utils";
 import { ActivityHeatmap } from "./activity-heatmap";
 import { BarRow } from "./bar-row";
 import { ModelDistribution } from "./model-distribution-chart";
 import { PeakHoursChart } from "./peak-hours-chart";
 import { StatCard } from "./stat-card";
+import { ToolDistribution } from "./tool-distribution-chart";
 import { Tooltip, useTooltip } from "./tooltip";
 import { UsageOverTimeChart } from "./usage-over-time-chart";
 
-export function DashboardView() {
+interface DashboardViewProps {
+  cache: { stats: DashboardStats; toolUsage: ToolUsageStat[] } | null;
+}
+
+export function DashboardView({ cache }: DashboardViewProps) {
   const { fetchWithToken } = useAppContext();
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<DashboardStats | null>(cache?.stats ?? null);
+  const [toolUsage, setToolUsage] = useState<ToolUsageStat[]>(cache?.toolUsage ?? []);
+  const [loading, setLoading] = useState(!cache);
   const [error, setError] = useState<string | null>(null);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [exporting, setExporting] = useState<"csv" | "json" | null>(null);
+  const [showAllProjects, setShowAllProjects] = useState(false);
   const { tip, show, move, hide } = useTooltip();
 
+  // Populate from cache when it arrives (background preload)
   useEffect(() => {
+    if (cache && !stats) {
+      setStats(cache.stats);
+      setToolUsage(cache.toolUsage);
+      setLoading(false);
+    }
+  }, [cache, stats]);
+
+  // Fetch on-demand only when filtering by project
+  useEffect(() => {
+    if (!selectedProject) return;
+
     setLoading(true);
     setError(null);
     const params = new URLSearchParams();
-    if (selectedProject) params.set("project_path", selectedProject);
+    params.set("project_path", selectedProject);
 
-    fetchWithToken(`/api/analysis/dashboard?${params}`)
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
+    Promise.all([
+      fetchWithToken(`/api/analysis/dashboard?${params}`)
+        .then((r) => {
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          return r.json();
+        }),
+      fetchWithToken(`/api/analysis/tool-usage?${params}`)
+        .then((r) => (r.ok ? r.json() : []))
+        .catch(() => []),
+    ])
+      .then(([dashData, toolData]: [DashboardStats, ToolUsageStat[]]) => {
+        setStats(dashData);
+        setToolUsage(toolData);
       })
-      .then((data: DashboardStats) => setStats(data))
       .catch((err) => setError(String(err)))
       .finally(() => setLoading(false));
   }, [fetchWithToken, selectedProject]);
+
+  // Restore cached global data when clearing the project filter
+  const handleClearProject = useCallback(() => {
+    setSelectedProject(null);
+    if (cache) {
+      setStats(cache.stats);
+      setToolUsage(cache.toolUsage);
+    }
+  }, [cache]);
 
   const handleExport = async (format: "csv" | "json") => {
     setExporting(format);
@@ -85,10 +121,14 @@ export function DashboardView() {
     );
   }
 
-  const projectEntries = Object.entries(stats.project_distribution)
-    .sort(([, a], [, b]) => b - a)
-    .slice(0, 10);
-  const maxProjectCount = projectEntries[0]?.[1] ?? 0;
+  const DEFAULT_PROJECT_COUNT = 10;
+  const allProjectEntries = Object.entries(stats.project_distribution)
+    .sort(([, a], [, b]) => b - a);
+  const projectEntries = showAllProjects
+    ? allProjectEntries
+    : allProjectEntries.slice(0, DEFAULT_PROJECT_COUNT);
+  const hasMoreProjects = allProjectEntries.length > DEFAULT_PROJECT_COUNT;
+  const maxProjectCount = allProjectEntries[0]?.[1] ?? 0;
 
   const agentEntries = Object.entries(stats.agent_distribution)
     .sort(([, a], [, b]) => b - a);
@@ -105,7 +145,7 @@ export function DashboardView() {
             {selectedProject ? (
               <>
                 <button
-                  onClick={() => setSelectedProject(null)}
+                  onClick={handleClearProject}
                   className="text-sm text-cyan-400 hover:text-cyan-300 transition font-medium"
                 >
                   All Sessions
@@ -164,7 +204,7 @@ export function DashboardView() {
           <StatCard
             icon={<MessageSquare className="w-4 h-4" />}
             label="Sessions"
-            description="Total agent conversation sessions"
+            description="All agent sessions"
             value={stats.total_sessions.toLocaleString()}
             rows={[
               {
@@ -194,7 +234,7 @@ export function DashboardView() {
           <StatCard
             icon={<Hash className="w-4 h-4" />}
             label="Messages"
-            description="User and agent turns (excludes system)"
+            description="User + agent turns"
             value={stats.total_messages.toLocaleString()}
             rows={[
               {
@@ -222,7 +262,7 @@ export function DashboardView() {
           <StatCard
             icon={<BarChart3 className="w-4 h-4" />}
             label="Tokens"
-            description="Total tokens (input + output)"
+            description="Input + output tokens"
             value={formatTokens(stats.total_tokens)}
             rows={[
               {
@@ -270,37 +310,9 @@ export function DashboardView() {
             onLeave={hide}
           />
           <StatCard
-            icon={<Wrench className="w-4 h-4" />}
-            label="Tool Calls"
-            description="Bash, Read, Edit, Search, etc."
-            value={stats.total_tool_calls.toLocaleString()}
-            rows={[
-              {
-                label: "This Year",
-                value: stats.this_year.tool_calls.toLocaleString(),
-              },
-              {
-                label: "This Month",
-                value: stats.this_month.tool_calls.toLocaleString(),
-              },
-              {
-                label: "Avg/Session",
-                value: stats.avg_tool_calls_per_session.toFixed(1),
-              },
-            ]}
-            tooltipText={[
-              `Total: ${stats.total_tool_calls.toLocaleString()}`,
-              `This Year: ${stats.this_year.tool_calls.toLocaleString()}`,
-              `Avg: ${stats.avg_tool_calls_per_session.toFixed(1)} per session`,
-            ].join("\n")}
-            onHover={show}
-            onMove={move}
-            onLeave={hide}
-          />
-          <StatCard
             icon={<Clock className="w-4 h-4" />}
             label="Duration"
-            description="Total wall-clock time across sessions"
+            description="Total session time"
             value={formatDuration(stats.total_duration)}
             rows={[
               {
@@ -321,6 +333,35 @@ export function DashboardView() {
               `This Year: ${formatDuration(stats.this_year.duration)}`,
               `This Month: ${formatDuration(stats.this_month.duration)}`,
               `Avg/Session: ${formatDuration(stats.avg_duration_per_session)}`,
+            ].join("\n")}
+            onHover={show}
+            onMove={move}
+            onLeave={hide}
+          />
+          <StatCard
+            icon={<DollarSign className="w-4 h-4" />}
+            label="Estimated Cost"
+            description="API pricing estimate"
+            value={formatCost(stats.total_cost_usd)}
+            rows={[
+              {
+                label: "This Year",
+                value: formatCost(stats.this_year.cost_usd),
+              },
+              {
+                label: "This Month",
+                value: formatCost(stats.this_month.cost_usd),
+              },
+              {
+                label: "Avg/Session",
+                value: formatCost(stats.avg_cost_per_session),
+              },
+            ]}
+            tooltipText={[
+              `Total: ${formatCost(stats.total_cost_usd)}`,
+              `This Year: ${formatCost(stats.this_year.cost_usd)}`,
+              `This Month: ${formatCost(stats.this_month.cost_usd)}`,
+              `Avg/Session: ${formatCost(stats.avg_cost_per_session)}`,
             ].join("\n")}
             onHover={show}
             onMove={move}
@@ -348,40 +389,85 @@ export function DashboardView() {
           />
         </div>
 
-        {/* Bottom grid: Project Activity | Model Distribution + Peak Hours */}
+        {/* Bottom grid: Peak Hours + Project | Agent + Model + Tools */}
         <div className="grid grid-cols-2 gap-4">
-          <div className="rounded-xl border border-zinc-700/60 bg-zinc-900/80 p-5">
-            <h3
-              className="text-base font-medium text-zinc-200 mb-4 cursor-default"
-              onMouseEnter={(e) =>
-                show(e, "Session count per project (top 10). Click a project to filter.")
-              }
-              onMouseMove={move}
-              onMouseLeave={hide}
-            >
-              Project Activity
-            </h3>
-            <div className="space-y-1">
-              {projectEntries.map(([project, count]) => (
-                <BarRow
-                  key={project}
-                  label={baseProjectName(project)}
-                  value={count}
-                  max={maxProjectCount}
-                  tooltipText={[
-                    baseProjectName(project),
-                    `${count} session${count !== 1 ? "s" : ""}`,
-                    `${((count / stats.total_sessions) * 100).toFixed(1)}% of total`,
-                  ].join("\n")}
-                  onClick={() => setSelectedProject(project)}
-                  onHover={show}
-                  onMove={move}
-                  onLeave={hide}
-                />
-              ))}
-              {projectEntries.length === 0 && (
-                <p className="text-sm text-zinc-500">No data</p>
-              )}
+          <div className="space-y-4">
+            <div className="rounded-xl border border-zinc-700/60 bg-zinc-900/80 p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <h3
+                  className="text-base font-medium text-zinc-200 cursor-default"
+                  onMouseEnter={(e) =>
+                    show(e, "Distribution of session starts by hour of day")
+                  }
+                  onMouseMove={move}
+                  onMouseLeave={hide}
+                >
+                  Peak Hours
+                </h3>
+                <span
+                  className="text-xs text-zinc-500 cursor-default"
+                  onMouseEnter={(e) =>
+                    show(e, `All times shown in ${stats.timezone} timezone`)
+                  }
+                  onMouseMove={move}
+                  onMouseLeave={hide}
+                >
+                  ({stats.timezone})
+                </span>
+              </div>
+              <PeakHoursChart
+                data={stats.hourly_distribution}
+                onHover={show}
+                onMove={move}
+                onLeave={hide}
+              />
+            </div>
+
+            <div className="rounded-xl border border-zinc-700/60 bg-zinc-900/80 p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3
+                  className="text-base font-medium text-zinc-200 cursor-default"
+                  onMouseEnter={(e) =>
+                    show(e, `Session count per project (${allProjectEntries.length} total). Click a project to filter.`)
+                  }
+                  onMouseMove={move}
+                  onMouseLeave={hide}
+                >
+                  Project Activity
+                </h3>
+                {hasMoreProjects && (
+                  <button
+                    onClick={() => setShowAllProjects((v) => !v)}
+                    className="px-2.5 py-1 text-xs font-medium text-cyan-400 hover:text-cyan-300 bg-cyan-400/10 hover:bg-cyan-400/20 rounded-md border border-cyan-400/20 transition"
+                  >
+                    {showAllProjects
+                      ? "Top 10"
+                      : `All ${allProjectEntries.length}`}
+                  </button>
+                )}
+              </div>
+              <div className="space-y-1">
+                {projectEntries.map(([project, count]) => (
+                  <BarRow
+                    key={project}
+                    label={baseProjectName(project)}
+                    value={count}
+                    max={maxProjectCount}
+                    tooltipText={[
+                      baseProjectName(project),
+                      `${count} session${count !== 1 ? "s" : ""}`,
+                      `${((count / stats.total_sessions) * 100).toFixed(1)}% of total`,
+                    ].join("\n")}
+                    onClick={() => setSelectedProject(project)}
+                    onHover={show}
+                    onMove={move}
+                    onLeave={hide}
+                  />
+                ))}
+                {projectEntries.length === 0 && (
+                  <p className="text-sm text-zinc-500">No data</p>
+                )}
+              </div>
             </div>
           </div>
 
@@ -438,36 +524,32 @@ export function DashboardView() {
               />
             </div>
 
-            <div className="rounded-xl border border-zinc-700/60 bg-zinc-900/80 p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <h3
-                  className="text-base font-medium text-zinc-200 cursor-default"
-                  onMouseEnter={(e) =>
-                    show(e, "Distribution of session starts by hour of day")
-                  }
-                  onMouseMove={move}
-                  onMouseLeave={hide}
-                >
-                  Peak Hours
-                </h3>
-                <span
-                  className="text-xs text-zinc-500 cursor-default"
-                  onMouseEnter={(e) =>
-                    show(e, `All times shown in ${stats.timezone} timezone`)
-                  }
-                  onMouseMove={move}
-                  onMouseLeave={hide}
-                >
-                  ({stats.timezone})
-                </span>
+            {toolUsage.length > 0 && (
+              <div className="rounded-xl border border-zinc-700/60 bg-zinc-900/80 p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h3
+                    className="text-base font-medium text-zinc-200 cursor-default"
+                    onMouseEnter={(e) =>
+                      show(e, `Tool call distribution (${stats.total_tool_calls.toLocaleString()} total, avg ${stats.avg_tool_calls_per_session.toFixed(1)}/session)`)
+                    }
+                    onMouseMove={move}
+                    onMouseLeave={hide}
+                  >
+                    Tool Distribution
+                  </h3>
+                  <span className="text-xs text-zinc-500">
+                    {stats.total_tool_calls.toLocaleString()} total
+                  </span>
+                </div>
+                <ToolDistribution
+                  data={toolUsage}
+                  totalCalls={stats.total_tool_calls}
+                  onHover={show}
+                  onMove={move}
+                  onLeave={hide}
+                />
               </div>
-              <PeakHoursChart
-                data={stats.hourly_distribution}
-                onHover={show}
-                onMove={move}
-                onLeave={hide}
-              />
-            </div>
+            )}
           </div>
         </div>
       </div>

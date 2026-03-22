@@ -16,6 +16,7 @@ import { useAppContext } from "../app";
 import type { Trajectory } from "../types";
 import { formatTime, truncate, baseProjectName } from "../utils";
 import { SearchOptionsDialog } from "./search-options-dialog";
+import { TOGGLE_CONTAINER, TOGGLE_BUTTON_BASE, TOGGLE_ACTIVE, TOGGLE_INACTIVE } from "../styles";
 
 export type ViewMode = "time" | "project";
 
@@ -168,13 +169,11 @@ export function SessionList({
     <div className="flex flex-col flex-1 min-h-0">
       <div className="p-3 space-y-2 border-b border-zinc-800">
         {/* View Mode Toggle */}
-        <div className="flex gap-0.5 bg-zinc-800 rounded p-0.5">
+        <div className={TOGGLE_CONTAINER}>
           <button
             onClick={() => handleSetViewMode("project")}
-            className={`flex-1 flex items-center justify-center gap-1.5 text-xs py-1.5 rounded transition ${
-              viewMode === "project"
-                ? "bg-zinc-700 text-zinc-100"
-                : "text-zinc-500 hover:text-zinc-300"
+            className={`${TOGGLE_BUTTON_BASE} ${
+              viewMode === "project" ? TOGGLE_ACTIVE : TOGGLE_INACTIVE
             }`}
           >
             <FolderOpen className="w-3.5 h-3.5" />
@@ -182,10 +181,8 @@ export function SessionList({
           </button>
           <button
             onClick={() => handleSetViewMode("time")}
-            className={`flex-1 flex items-center justify-center gap-1.5 text-xs py-1.5 rounded transition ${
-              viewMode === "time"
-                ? "bg-zinc-700 text-zinc-100"
-                : "text-zinc-500 hover:text-zinc-300"
+            className={`${TOGGLE_BUTTON_BASE} ${
+              viewMode === "time" ? TOGGLE_ACTIVE : TOGGLE_INACTIVE
             }`}
           >
             <Clock className="w-3.5 h-3.5" />
@@ -235,7 +232,7 @@ export function SessionList({
             <select
               value={agentFilter}
               onChange={(e) => onAgentFilterChange(e.target.value)}
-              className="w-full bg-zinc-800 text-zinc-200 text-xs rounded pl-7 pr-2 py-1.5 border border-zinc-700 focus:outline-none focus:border-cyan-600 appearance-none cursor-pointer"
+              className="w-full bg-zinc-800 text-zinc-200 text-sm rounded pl-7 pr-2 py-1.5 border border-zinc-700 focus:outline-none focus:border-cyan-600 appearance-none cursor-pointer"
             >
               <option value="all">All agents</option>
               {availableAgents.map((agent) => (
@@ -250,7 +247,7 @@ export function SessionList({
         {/* Select All */}
         <button
           onClick={handleToggleAll}
-          className="flex items-center gap-1.5 text-[11px] text-zinc-400 hover:text-zinc-200 transition"
+          className="flex items-center gap-1.5 text-xs text-zinc-300 hover:text-zinc-100 transition"
         >
           {allChecked ? (
             <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
@@ -273,6 +270,7 @@ export function SessionList({
               checkedIds={checkedIds}
               onSelect={onSelect}
               onToggle={handleToggleOne}
+              showProject
             />
           ))
         ) : (
@@ -297,7 +295,7 @@ export function SessionList({
               };
               return (
               <div key={projectName}>
-                <div className="sticky top-0 z-10 w-full flex items-center gap-1 bg-zinc-900 border-b border-zinc-800 text-xs text-zinc-300">
+                <div className="sticky top-0 z-10 w-full flex items-center gap-1 bg-zinc-900 border-b border-zinc-800 text-sm text-zinc-200">
                   <button
                     onClick={handleToggleProject}
                     className="shrink-0 pl-3 pr-1 py-2 text-zinc-500 hover:text-cyan-400 transition"
@@ -338,6 +336,7 @@ export function SessionList({
                       checkedIds={checkedIds}
                       onSelect={onSelect}
                       onToggle={handleToggleOne}
+                      showProject={false}
                     />
                   ))}
               </div>
@@ -355,28 +354,32 @@ function SessionRow({
   checkedIds,
   onSelect,
   onToggle,
+  showProject,
 }: {
   session: Trajectory;
   selectedId: string | null;
   checkedIds: Set<string>;
   onSelect: (id: string) => void;
   onToggle: (id: string) => void;
+  showProject: boolean;
 }) {
   return (
     <div
-      className={`flex items-start border-b border-zinc-800/50 transition-all duration-200 ${
+      className={`flex items-center border-b border-zinc-800/50 transition-all duration-200 ${
         selectedId === session.session_id
           ? "bg-cyan-600/15 border-l-2 border-l-cyan-400"
           : "hover:bg-zinc-800/50 border-l-2 border-l-transparent"
       }`}
     >
-      {/* Checkbox */}
+      {/* Checkbox — indented under project header chevron when nested */}
       <button
         onClick={(e) => {
           e.stopPropagation();
           onToggle(session.session_id);
         }}
-        className="shrink-0 px-2 pt-3 text-zinc-500 hover:text-cyan-400 transition"
+        className={`shrink-0 pr-1 text-zinc-500 hover:text-cyan-400 transition ${
+          showProject ? "pl-3" : "pl-8"
+        }`}
       >
         {checkedIds.has(session.session_id) ? (
           <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
@@ -390,17 +393,26 @@ function SessionRow({
         onClick={() => onSelect(session.session_id)}
         className="flex-1 text-left pr-3 py-2.5 min-w-0"
       >
-        <div className="flex items-center justify-between mb-0.5">
-          <span className="text-[10px] text-zinc-500 uppercase tracking-wide" title={session.project_path || ""}>
-            {baseProjectName(session.project_path || "")}
-          </span>
-          <span className="text-[10px] text-zinc-500">
-            {formatTime(session.timestamp ?? null)}
-          </span>
+        {showProject && (
+          <div className="flex items-center justify-between mb-0.5">
+            <span className="text-xs text-zinc-400 uppercase tracking-wide" title={session.project_path || ""}>
+              {baseProjectName(session.project_path || "")}
+            </span>
+            <span className="text-xs text-zinc-400">
+              {formatTime(session.timestamp ?? null)}
+            </span>
+          </div>
+        )}
+        <div className="flex items-center gap-2">
+          <p className="text-sm text-zinc-200 line-clamp-2 leading-relaxed flex-1 min-w-0">
+            {truncate(session.first_message || "", 120) || "Empty session"}
+          </p>
+          {!showProject && (
+            <span className="text-xs text-zinc-400 shrink-0">
+              {formatTime(session.timestamp ?? null)}
+            </span>
+          )}
         </div>
-        <p className="text-xs text-zinc-300 line-clamp-2 leading-relaxed">
-          {truncate(session.first_message || "", 120) || "Empty session"}
-        </p>
       </button>
     </div>
   );

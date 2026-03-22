@@ -1,0 +1,45 @@
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: pypi
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Build package
+        run: uv build
+
+      - name: Verify static files in wheel
+        run: |
+          python3 -c "
+          import zipfile, sys, pathlib
+          wheels = list(pathlib.Path('dist').glob('*.whl'))
+          if not wheels:
+              print('ERROR: No wheel found in dist/')
+              sys.exit(1)
+          with zipfile.ZipFile(wheels[0]) as zf:
+              static_files = [n for n in zf.namelist() if '/static/' in n]
+              print(f'Found {len(static_files)} static files in wheel')
+              if not static_files:
+                  print('ERROR: No static files found — frontend not bundled')
+                  sys.exit(1)
+              for f in static_files[:10]:
+                  print(f'  {f}')
+              if len(static_files) > 10:
+                  print(f'  ... and {len(static_files) - 10} more')
+          "
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

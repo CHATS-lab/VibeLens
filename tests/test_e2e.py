@@ -8,7 +8,7 @@ import pytest
 
 from vibelens.app import create_app
 from vibelens.config import Settings
-from vibelens.stores.local import LocalStore as LocalSource
+from vibelens.storage.local import LocalStore as LocalSource
 
 
 @pytest.fixture

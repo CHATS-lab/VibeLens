@@ -4,12 +4,9 @@ from datetime import UTC, datetime
 
 import pytest
 
-from vibelens.analysis.dashboard_service import (
-    compute_dashboard_stats,
-    compute_session_analytics,
-    compute_tool_usage,
-    filter_metadata,
-)
+from vibelens.analysis.dashboard_stats import compute_dashboard_stats, filter_metadata
+from vibelens.analysis.session_analytics import compute_session_analytics
+from vibelens.analysis.tool_usage import compute_tool_usage
 from vibelens.models.trajectories import (
     Agent,
     FinalMetrics,
@@ -305,6 +302,81 @@ class TestComputeDashboardStats:
         assert result.this_year.sessions >= 1
         assert result.total_sessions == 2
 
+    def test_cost_aggregation(self):
+        """Cost aggregated from known models."""
+        traj = _make_trajectory(model="claude-sonnet-4-6")
+        result = compute_dashboard_stats([traj])
+
+        print(f"Cost: total={result.total_cost_usd}, avg={result.avg_cost_per_session}")
+
+        assert result.total_cost_usd > 0
+        assert result.avg_cost_per_session > 0
+
+    def test_cost_by_model(self):
+        """Cost broken down by canonical model name."""
+        trajs = [
+            _make_trajectory(session_id="s1", model="claude-sonnet-4-6"),
+            _make_trajectory(session_id="s2", model="claude-haiku-4-5"),
+        ]
+        result = compute_dashboard_stats(trajs)
+
+        print(f"Cost by model: {result.cost_by_model}")
+        print(f"Total cost: {result.total_cost_usd}")
+
+        assert len(result.cost_by_model) >= 1
+        assert result.total_cost_usd > 0
+        assert "claude-sonnet-4-6" in result.cost_by_model
+        assert "claude-haiku-4-5" in result.cost_by_model
+
+    def test_cost_in_period_stats(self):
+        """Period stats include cost accumulation."""
+        now = datetime.now(tz=UTC)
+        traj = _make_trajectory(model="claude-sonnet-4-6", timestamp=now)
+        result = compute_dashboard_stats([traj])
+
+        print(f"This year cost: {result.this_year.cost_usd}")
+
+        assert result.this_year.cost_usd > 0
+
+    def test_cost_in_daily_stats(self):
+        """Daily stats include cost."""
+        traj = _make_trajectory(model="claude-sonnet-4-6")
+        result = compute_dashboard_stats([traj])
+
+        assert len(result.daily_stats) > 0
+        total_daily_cost = sum(d.total_cost_usd for d in result.daily_stats)
+        print(f"Daily cost total: {total_daily_cost}")
+        assert total_daily_cost > 0
+
+    def test_unknown_model_zero_cost(self):
+        """Unknown models contribute zero cost."""
+        steps = [
+            Step(
+                step_id="s1",
+                source="user",
+                message="hi",
+                timestamp=datetime(2026, 3, 15, 10, 0, tzinfo=UTC),
+            ),
+            Step(
+                step_id="s2",
+                source="agent",
+                message="hello",
+                model_name="some-unknown-model",
+                timestamp=datetime(2026, 3, 15, 10, 1, tzinfo=UTC),
+                metrics=Metrics(prompt_tokens=100, completion_tokens=50),
+            ),
+        ]
+        traj = Trajectory(
+            session_id="test",
+            agent=Agent(name="test", model_name="some-unknown-model"),
+            steps=steps,
+            final_metrics=FinalMetrics(duration=60, total_steps=2),
+        )
+        result = compute_dashboard_stats([traj])
+
+        print(f"Unknown model cost: {result.total_cost_usd}")
+        assert result.total_cost_usd == 0.0
+
     def test_model_from_steps_fallback(self):
         """Model extracted from step.model_name when agent has none."""
         steps = [
@@ -400,6 +472,16 @@ class TestComputeSessionAnalytics:
 
         print(f"Phase segments: {len(result.phase_segments)}")
         assert len(result.phase_segments) >= 1
+
+    def test_cost_computed(self):
+        """Session analytics includes cost for known models."""
+        traj = _make_trajectory(model="claude-sonnet-4-6", tools=["Read", "Edit"])
+        result = compute_session_analytics([traj])
+
+        print(f"Session cost: {result.cost_usd}")
+
+        assert result.cost_usd is not None
+        assert result.cost_usd > 0
 
     def test_empty_trajectories_raises(self):
         """Empty trajectories raises ValueError."""

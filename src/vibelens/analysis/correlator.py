@@ -7,39 +7,8 @@ capability — it enables cross-agent workflow analysis.
 
 from datetime import timedelta
 
-from pydantic import BaseModel, Field
-
+from vibelens.models.analysis.correlator import CorrelatedGroup, CorrelatedSession
 from vibelens.models.trajectories import Trajectory
-
-
-class CorrelatedSession(BaseModel):
-    """A single session participating in a correlated group."""
-
-    agent_name: str = Field(description="Agent name (e.g. 'claude-code', 'codex').")
-    session_id: str = Field(description="Unique session identifier.")
-    is_main: bool = Field(
-        default=True,
-        description="Whether this is a main session or a sub-agent session.",
-    )
-
-
-class CorrelatedGroup(BaseModel):
-    """A group of trajectories from different agents on the same project.
-
-    Includes hierarchy details: which sessions are main-agent sessions
-    and which are sub-agent sessions, supporting cascade relationships
-    where sub-agents can themselves have subordinate sub-agents.
-    """
-
-    project_path: str = Field(description="Project path shared by all trajectories in the group.")
-    sessions: list[CorrelatedSession] = Field(
-        default_factory=list,
-        description="Sessions in this correlated group with main/sub-agent roles.",
-    )
-    time_overlap_seconds: int = Field(
-        default=0,
-        description="Maximum time overlap between any two sessions in seconds.",
-    )
 
 
 def correlate_sessions(trajectories: list[Trajectory]) -> list[CorrelatedGroup]:
@@ -126,7 +95,5 @@ def _find_overlapping(trajectories: list[Trajectory]) -> CorrelatedGroup | None:
 
     project_path = trajectories[0].project_path or ""
     return CorrelatedGroup(
-        project_path=project_path,
-        sessions=overlapping_entries,
-        time_overlap_seconds=max_overlap,
+        project_path=project_path, sessions=overlapping_entries, time_overlap_seconds=max_overlap
     )

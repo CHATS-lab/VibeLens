@@ -1,9 +1,9 @@
 """Session retrieval, export, and donation business logic."""
 
 from vibelens.deps import get_store
-from vibelens.models.requests import DonateResult
+from vibelens.models.session_requests import DonateResult
 from vibelens.models.trajectories import Trajectory
-from vibelens.stores.disk import DiskStore
+from vibelens.storage.disk import DiskStore
 from vibelens.utils import get_logger
 
 logger = get_logger(__name__)

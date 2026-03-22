@@ -2,13 +2,16 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { TOOLTIP_OFFSET } from "./chart-constants";
 
+export type TooltipContent = string | React.ReactNode;
+
 export interface TooltipState {
   x: number;
   y: number;
-  content: string;
+  content: TooltipContent;
 }
 
 const MAX_WIDTH = 300;
+const MAX_WIDTH_WIDE = 480;
 
 export function Tooltip({ state }: { state: TooltipState | null }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -17,10 +20,13 @@ export function Tooltip({ state }: { state: TooltipState | null }) {
     top: 0,
   });
 
+  const isRichContent = state != null && typeof state.content !== "string";
+  const maxW = isRichContent ? MAX_WIDTH_WIDE : MAX_WIDTH;
+
   useEffect(() => {
     if (!state) return;
     const el = ref.current;
-    const elW = el ? el.offsetWidth : MAX_WIDTH;
+    const elW = el ? el.offsetWidth : maxW;
     const elH = el ? el.offsetHeight : 40;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
@@ -41,18 +47,20 @@ export function Tooltip({ state }: { state: TooltipState | null }) {
     }
 
     setPos({ left, top });
-  }, [state]);
+  }, [state, maxW]);
 
   if (!state) return null;
 
   return createPortal(
     <div
       ref={ref}
-      className="fixed z-[9999] pointer-events-none px-3 py-2.5 rounded-lg bg-zinc-800/95 border border-zinc-600 text-[13px] leading-relaxed text-zinc-100 shadow-2xl whitespace-pre-line"
+      className={`fixed z-[9999] pointer-events-none px-3 py-2.5 rounded-lg bg-zinc-800/95 border border-zinc-600 text-[13px] leading-relaxed text-zinc-100 shadow-2xl ${
+        isRichContent ? "whitespace-pre-wrap" : "whitespace-pre-line"
+      }`}
       style={{
         left: pos.left,
         top: pos.top,
-        maxWidth: MAX_WIDTH,
+        maxWidth: maxW,
       }}
     >
       {state.content}
@@ -63,7 +71,7 @@ export function Tooltip({ state }: { state: TooltipState | null }) {
 
 export function useTooltip() {
   const [tip, setTip] = useState<TooltipState | null>(null);
-  const show = useCallback((e: React.MouseEvent, content: string) => {
+  const show = useCallback((e: React.MouseEvent, content: TooltipContent) => {
     setTip({ x: e.clientX, y: e.clientY, content });
   }, []);
   const move = useCallback((e: React.MouseEvent) => {

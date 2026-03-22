@@ -1,10 +1,14 @@
 # VibeLens
 
-Agent trajectory analysis and visualization platform. Parses, normalizes, and visualizes conversation histories from coding agent CLIs using the [ATIF v1.6](https://github.com/harbor-framework/harbor/blob/main/docs/rfcs/0001-trajectory-format.md) trajectory model.
+[![PyPI version](https://img.shields.io/pypi/v/vibelens.svg)](https://pypi.org/project/vibelens/)
+[![Python 3.12+](https://img.shields.io/pypi/pyversions/vibelens.svg)](https://pypi.org/project/vibelens/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-![Session list with step timeline](figures/demo1.png)
+Agent trajectory visualization and analysis platform. Parses, normalizes, and visualizes conversation histories from coding agent CLIs using the [ATIF v1.6](https://github.com/harbor-framework/harbor/blob/main/docs/rfcs/0001-trajectory-format.md) trajectory model.
 
-![Session detail with sub-agent view](figures/demo2.png)
+![Session list with step timeline](https://raw.githubusercontent.com/yejh123/VibeLens/main/figures/demo1.png)
+
+![Session detail with sub-agent view](https://raw.githubusercontent.com/yejh123/VibeLens/main/figures/demo2.png)
 
 **Live Demo:** [vibelens.chats-lab.org](https://vibelens.chats-lab.org/)
 
@@ -15,13 +19,22 @@ Agent trajectory analysis and visualization platform. Parses, normalizes, and vi
 
 ## Quick Start
 
-### Prerequisites
-
-- Python 3.12+
-- [uv](https://docs.astral.sh/uv/) package manager
-- Node.js 18+ (only for frontend development)
-
 ### Install and run
+
+```bash
+pip install vibelens
+vibelens serve
+```
+
+Or run without installing:
+
+```bash
+uvx vibelens serve
+```
+
+VibeLens opens your browser automatically and reads your local `~/.claude/` sessions by default. Use `--no-open` to disable the browser auto-open.
+
+### Development install
 
 ```bash
 git clone https://github.com/yejh123/VibeLens.git
@@ -30,18 +43,16 @@ uv sync
 uv run vibelens serve
 ```
 
-Open http://127.0.0.1:12001 in your browser. VibeLens reads your local `~/.claude/` sessions by default.
-
 ### Configuration
 
 YAML-based configuration with environment variable overrides (`VIBELENS_*`). See [`config/vibelens.example.yaml`](config/vibelens.example.yaml) for all options.
 
 ```bash
 # Use a config file
-uv run vibelens serve --config config/self-use.yaml
+vibelens serve --config config/self-use.yaml
 
 # Override host/port
-uv run vibelens serve --host 0.0.0.0 --port 8080
+vibelens serve --host 0.0.0.0 --port 8080
 ```
 
 ## Data Donation

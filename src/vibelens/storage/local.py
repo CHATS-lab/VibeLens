@@ -16,7 +16,7 @@ from vibelens.ingest.parsers.claude_code import ClaudeCodeParser
 from vibelens.ingest.parsers.codex import CodexParser
 from vibelens.models.enums import AgentType
 from vibelens.models.trajectories import Trajectory
-from vibelens.stores.base import TrajectoryStore
+from vibelens.storage.base import TrajectoryStore
 from vibelens.utils import get_logger
 
 if TYPE_CHECKING:
@@ -219,9 +219,7 @@ class LocalStore(TrajectoryStore):
             all_trajectories: Accumulator list to append skeletons to.
         """
         parser_entries = [
-            (sid, fpath, p)
-            for sid, (fpath, p) in self._file_index.items()
-            if p is parser
+            (sid, fpath, p) for sid, (fpath, p) in self._file_index.items() if p is parser
         ]
         for old_sid, fpath, p in parser_entries:
             try:

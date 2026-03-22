@@ -7,7 +7,8 @@ import zipfile
 from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from vibelens.models.requests import DonateRequest, DonateResult, DownloadRequest
+from vibelens.models.session_requests import DonateRequest, DonateResult, DownloadRequest
+from vibelens.services.flow_service import get_session_flow
 from vibelens.services.search_service import search_sessions
 from vibelens.services.session_service import (
     donate_sessions,
@@ -101,6 +102,23 @@ async def export_session(
     return JSONResponse(
         content=payload, headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
+
+
+@router.get("/sessions/{session_id}/flow")
+async def session_flow(session_id: str, x_session_token: str | None = Header(None)) -> dict:
+    """Compute tool dependency graph and phase segments for a session flow diagram.
+
+    Args:
+        session_id: Main session identifier.
+        x_session_token: Browser tab token for upload scoping.
+
+    Returns:
+        Dict with session_id, tool_graph, and phase_segments.
+    """
+    result = get_session_flow(session_id, x_session_token)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return result
 
 
 @router.post("/sessions/download")

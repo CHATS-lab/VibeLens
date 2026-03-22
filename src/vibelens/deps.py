@@ -4,12 +4,13 @@ from pathlib import Path
 
 from vibelens.config import Settings, load_settings
 from vibelens.models.enums import AppMode
-from vibelens.stores.base import TrajectoryStore
-from vibelens.stores.disk import DiskStore
-from vibelens.stores.local import LocalStore
+from vibelens.storage.base import TrajectoryStore
+from vibelens.storage.disk import DiskStore
+from vibelens.storage.local import LocalStore
 
 _settings: Settings | None = None
 _store: TrajectoryStore | None = None
+_share_service = None
 
 DATASETS_ROOT = Path("datasets")
 
@@ -38,6 +39,16 @@ def _resolve_demo_store_root() -> Path:
         if path.is_dir():
             return path / "parsed"
     return DATASETS_ROOT
+
+
+def get_share_service():
+    """Return cached ShareService singleton."""
+    from vibelens.services.share_service import ShareService
+
+    global _share_service
+    if _share_service is None:
+        _share_service = ShareService(get_settings().share_dir)
+    return _share_service
 
 
 def get_store() -> TrajectoryStore:

@@ -7,17 +7,19 @@ import {
   FileUp,
   Heart,
   Settings,
+  Share2,
 } from "lucide-react";
-import { useEffect, useState, useCallback, useMemo, createContext, useContext } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo, createContext, useContext } from "react";
 import { ConfirmDialog } from "./components/confirm-dialog";
 import { DonateConsentDialog } from "./components/donate-consent-dialog";
 import { ResizeHandle } from "./components/resize-handle";
 import { SessionList, type ViewMode } from "./components/session-list";
 import { SessionView } from "./components/conversation/session-view";
+import { SharedSessionView } from "./components/conversation/shared-session-view";
 import { UploadDialog } from "./components/upload-dialog";
 import { DashboardView } from "./components/analysis/dashboard-view";
 import { SettingsDialog } from "./components/settings-dialog";
-import type { DonateResult, Trajectory } from "./types";
+import type { DashboardStats, DonateResult, ToolUsageStat, Trajectory } from "./types";
 
 type MainView = "browse" | "analyze";
 
@@ -71,6 +73,11 @@ export function App() {
   const [mainView, setMainView] = useState<MainView>("browse");
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
 
+  // Detect ?share={token} in URL for shared session viewing
+  const [shareToken] = useState<string | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("share");
+  });
 
   // Ephemeral token: new on every page load, never persisted
   const [sessionToken] = useState(() =>
@@ -137,7 +144,13 @@ export function App() {
 
     fetchWithToken(`/api/sessions?${params}`)
       .then((r) => r.json())
-      .then((data: Trajectory[]) => setSessions(data))
+      .then((data: Trajectory[]) => {
+        setSessions(data);
+        // Auto-select the latest session on first load
+        if (!selectedSessionId && data.length > 0) {
+          setSelectedSessionId(data[0].session_id);
+        }
+      })
       .catch((err) => console.error("Failed to load sessions:", err))
       .finally(() => setLoading(false));
   }, [page, refreshKey, fetchWithToken, viewMode]);
@@ -155,8 +168,33 @@ export function App() {
     return sorted.filter((name) => visibleAgents.includes(name));
   }, [sessions, visibleAgents]);
 
+  // Preload dashboard data after session list loads to avoid blocking it
+  const [dashboardCache, setDashboardCache] = useState<{
+    stats: DashboardStats;
+    toolUsage: ToolUsageStat[];
+  } | null>(null);
+  const dashboardPreloaded = useRef(false);
+
+  useEffect(() => {
+    if (sessions.length === 0 || dashboardPreloaded.current) return;
+    dashboardPreloaded.current = true;
+
+    Promise.all([
+      fetchWithToken("/api/analysis/dashboard")
+        .then((r) => (r.ok ? r.json() : null)),
+      fetchWithToken("/api/analysis/tool-usage")
+        .then((r) => (r.ok ? r.json() : []))
+        .catch(() => []),
+    ])
+      .then(([stats, toolUsage]: [DashboardStats | null, ToolUsageStat[]]) => {
+        if (stats) setDashboardCache({ stats, toolUsage });
+      })
+      .catch(() => {});
+  }, [fetchWithToken, sessions]);
+
   const handleSelectSession = useCallback((id: string | null) => {
     setSelectedSessionId(id);
+    if (id) setMainView("browse");
   }, []);
 
   const handleDownloadClick = async () => {
@@ -281,6 +319,29 @@ export function App() {
         return null;
     }
   };
+
+  // Share mode: render shared session view without sidebar
+  if (shareToken) {
+    return (
+      <AppContext.Provider value={contextValue}>
+        <div className="flex flex-col h-full overflow-hidden bg-zinc-950 text-zinc-100">
+          <div className="shrink-0 flex items-center justify-between px-4 py-2 bg-violet-900/30 border-b border-violet-700/50">
+            <div className="flex items-center gap-2">
+              <Share2 className="w-4 h-4 text-violet-400" />
+              <span className="text-sm text-violet-300 font-medium">Shared session</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <img src="/icon.png" alt="VibeLens" className="w-6 h-6" />
+              <span className="text-sm font-bold text-cyan-400">VibeLens</span>
+            </div>
+          </div>
+          <div className="flex-1 min-h-0">
+            <SharedSessionView shareToken={shareToken} />
+          </div>
+        </div>
+      </AppContext.Provider>
+    );
+  }
 
   return (
     <AppContext.Provider value={contextValue}>
@@ -424,7 +485,7 @@ export function App() {
           {/* Content Area */}
           <div className="flex-1 min-h-0 relative">
             {mainView === "analyze" ? (
-              <DashboardView />
+              <DashboardView cache={dashboardCache} />
             ) : selectedSessionId ? (
               <SessionView sessionId={selectedSessionId} />
             ) : (

@@ -1,6 +1,8 @@
 import {
   Loader2,
   Download,
+  Share2,
+  Check,
   BarChart3,
   Bot,
   Clock,
@@ -12,29 +14,42 @@ import {
   Hash,
   Layers,
   Zap,
+  GitBranch,
+  List,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppContext } from "../../app";
-import type { Step, Trajectory } from "../../types";
+import type { Step, Trajectory, FlowData } from "../../types";
 import { StepBlock } from "./message-block";
 import { SubAgentBlock } from "./sub-agent-block";
 import { StepTimeline } from "./step-timeline";
 import { PromptNavPanel } from "./prompt-nav-panel";
-import { formatTokens, formatDuration, extractUserText, baseProjectName } from "../../utils";
+import { FlowDiagram } from "./flow-diagram";
+import { computeFlow, type FlowPhaseGroup } from "./flow-layout";
+import { formatTokens, formatDuration, formatCost, extractUserText, baseProjectName } from "../../utils";
+import { TOGGLE_ACTIVE, TOGGLE_INACTIVE, METRIC_LABEL } from "../../styles";
 
 interface SessionViewProps {
   sessionId: string;
+  sharedTrajectories?: Trajectory[];
+  shareToken?: string;
 }
 
-export function SessionView({ sessionId }: SessionViewProps) {
+export function SessionView({ sessionId, sharedTrajectories, shareToken }: SessionViewProps) {
   const { fetchWithToken } = useAppContext();
   const [trajectories, setTrajectories] = useState<Trajectory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [activeStepId, setActiveStepId] = useState<string | null>(null);
   const [promptNavWidth, setPromptNavWidth] = useState(224);
+  const [sessionCost, setSessionCost] = useState<number | null>(null);
+  const [shareStatus, setShareStatus] = useState<"idle" | "sharing" | "copied">("idle");
+  const [viewMode, setViewMode] = useState<"timeline" | "flow">("timeline");
+  const [flowData, setFlowData] = useState<FlowData | null>(null);
+  const [flowLoading, setFlowLoading] = useState(false);
   const stepsRef = useRef<HTMLDivElement>(null);
   const isNavigatingRef = useRef(false);
+  const isSharedView = !!sharedTrajectories;
 
   const MIN_PROMPT_NAV_WIDTH = 160;
   const MAX_PROMPT_NAV_WIDTH = 400;
@@ -46,10 +61,21 @@ export function SessionView({ sessionId }: SessionViewProps) {
   }, []);
 
   useEffect(() => {
+    setActiveStepId(null);
+    setSessionCost(null);
+    setFlowData(null);
+    setViewMode("timeline");
+
+    // When rendering shared data, skip the API fetch
+    if (sharedTrajectories) {
+      setTrajectories(sharedTrajectories);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError("");
     setTrajectories([]);
-    setActiveStepId(null);
 
     fetchWithToken(`/api/sessions/${sessionId}`)
       .then((res) => {
@@ -61,7 +87,34 @@ export function SessionView({ sessionId }: SessionViewProps) {
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [sessionId, fetchWithToken]);
+  }, [sessionId, fetchWithToken, sharedTrajectories]);
+
+  // Fetch session analytics for cost estimation (non-blocking, skip for shared views)
+  useEffect(() => {
+    if (!sessionId || loading || isSharedView) return;
+    fetchWithToken(`/api/analysis/sessions/${sessionId}/stats`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.cost_usd != null) setSessionCost(data.cost_usd);
+      })
+      .catch(() => {});
+  }, [sessionId, loading, fetchWithToken]);
+
+  // Fetch flow data lazily when user toggles to flow view
+  useEffect(() => {
+    if (viewMode !== "flow" || flowData || flowLoading || !sessionId) return;
+    setFlowLoading(true);
+    const url = isSharedView && shareToken
+      ? `/api/shares/${shareToken}/flow`
+      : `/api/sessions/${sessionId}/flow`;
+    fetchWithToken(url)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: FlowData | null) => {
+        if (data) setFlowData(data);
+      })
+      .catch(() => {})
+      .finally(() => setFlowLoading(false));
+  }, [viewMode, flowData, flowLoading, sessionId, fetchWithToken, isSharedView, shareToken]);
 
   const main = useMemo(
     () => trajectories.find((t) => !t.parent_trajectory_ref) ?? trajectories[0] ?? null,
@@ -147,6 +200,24 @@ export function SessionView({ sessionId }: SessionViewProps) {
       .map((s) => s.step_id);
   }, [steps]);
 
+  // Compute flow phases for the nav panel when in flow mode
+  const flowPhases: FlowPhaseGroup[] | undefined = useMemo(() => {
+    if (!flowData || viewMode !== "flow") return undefined;
+    const result = computeFlow(steps, flowData.tool_graph, flowData.phase_segments);
+    return result.phases;
+  }, [flowData, viewMode, steps]);
+
+  const [activePhaseIdx, setActivePhaseIdx] = useState<number | null>(null);
+
+  const SCROLL_SUPPRESS_MS = 800;
+
+  const handlePhaseNavigate = useCallback((phaseIdx: number) => {
+    const el = document.getElementById(`flow-phase-${phaseIdx}`);
+    if (!el) return;
+    setActivePhaseIdx(phaseIdx);
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
+
   // IntersectionObserver to track which user prompt is currently visible
   useEffect(() => {
     if (!stepsRef.current || userStepIds.length < 2) return;
@@ -180,8 +251,6 @@ export function SessionView({ sessionId }: SessionViewProps) {
     return () => observer.disconnect();
   }, [userStepIds]);
 
-  const SCROLL_SUPPRESS_MS = 800;
-
   const handlePromptNavigate = useCallback((stepId: string) => {
     const el = document.getElementById(`step-${stepId}`);
     if (!el) return;
@@ -196,9 +265,19 @@ export function SessionView({ sessionId }: SessionViewProps) {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="text-center">
-          <Loader2 className="w-8 h-8 text-cyan-500 animate-spin mx-auto mb-2" />
-          <p className="text-sm text-zinc-400">Loading session...</p>
+        <div className="flex flex-col items-center gap-5">
+          <div className="relative flex items-center justify-center">
+            {/* Ambient glow */}
+            <div className="absolute w-24 h-24 bg-cyan-500/10 rounded-full blur-2xl animate-pulse" />
+            {/* Track ring */}
+            <div className="w-16 h-16 rounded-full border-[3px] border-zinc-800" />
+            {/* Spinning arc */}
+            <div className="absolute w-16 h-16 rounded-full border-[3px] border-transparent border-t-cyan-400 animate-spin" />
+          </div>
+          <div className="text-center space-y-1">
+            <p className="text-base font-medium text-zinc-200">Loading session</p>
+            <p className="text-xs text-zinc-500">Parsing trajectory data…</p>
+          </div>
         </div>
       </div>
     );
@@ -220,6 +299,25 @@ export function SessionView({ sessionId }: SessionViewProps) {
       </div>
     );
   }
+
+  const handleShare = async () => {
+    setShareStatus("sharing");
+    try {
+      const res = await fetchWithToken("/api/shares", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId }),
+      });
+      if (!res.ok) throw new Error(`Failed to create share: ${res.status}`);
+      const data = await res.json();
+      await navigator.clipboard.writeText(data.url);
+      setShareStatus("copied");
+      setTimeout(() => setShareStatus("idle"), 2000);
+    } catch (err) {
+      console.error("Share failed:", err);
+      setShareStatus("idle");
+    }
+  };
 
   if (!main) return null;
 
@@ -336,7 +434,44 @@ export function SessionView({ sessionId }: SessionViewProps) {
                 )}
               </div>
             </div>
-            <div className="flex gap-2 shrink-0 ml-3">
+            <div className="flex items-center gap-1 shrink-0 ml-3">
+              {/* View mode toggle */}
+              <div className="flex rounded-md border border-zinc-700 mr-2">
+                <button
+                  onClick={() => setViewMode("timeline")}
+                  className={`flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-l-md transition ${
+                    viewMode === "timeline" ? TOGGLE_ACTIVE : TOGGLE_INACTIVE
+                  }`}
+                >
+                  <List className="w-3 h-3" />
+                  Timeline
+                </button>
+                <button
+                  onClick={() => setViewMode("flow")}
+                  className={`flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-r-md transition ${
+                    viewMode === "flow" ? TOGGLE_ACTIVE : TOGGLE_INACTIVE
+                  }`}
+                >
+                  <GitBranch className="w-3 h-3" />
+                  Flow
+                </button>
+              </div>
+              {!isSharedView && (
+                <button
+                  onClick={handleShare}
+                  disabled={shareStatus === "sharing"}
+                  className="p-2 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded transition text-xs disabled:opacity-50"
+                  title={shareStatus === "copied" ? "Link copied!" : "Share session"}
+                >
+                  {shareStatus === "copied" ? (
+                    <Check className="w-4 h-4 text-emerald-400" />
+                  ) : shareStatus === "sharing" ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Share2 className="w-4 h-4" />
+                  )}
+                </button>
+              )}
               <button
                 onClick={() => {
                   const link = document.createElement("a");
@@ -356,12 +491,15 @@ export function SessionView({ sessionId }: SessionViewProps) {
 
           {/* Row 2: Token Stats */}
           {metrics && (metrics.total_prompt_tokens != null || metrics.total_completion_tokens != null) && (
-            <div className="grid grid-cols-5 gap-2 text-xs">
+            <div className={`grid ${sessionCost != null ? "grid-cols-6" : "grid-cols-5"} gap-2 text-xs`}>
               <TokenStat label="Input" value={metrics.total_prompt_tokens || 0} color="text-cyan-300" tooltip="Prompt tokens sent to the model" />
               <TokenStat label="Output" value={metrics.total_completion_tokens || 0} color="text-cyan-300" tooltip="Completion tokens generated by the model" />
               <TokenStat label="Cache Read" value={metrics.total_cache_read || 0} color="text-green-300" tooltip="Tokens served from prompt cache (reduced cost)" />
               <TokenStat label="Cache Write" value={metrics.total_cache_write || 0} color="text-violet-300" tooltip="Tokens written to prompt cache for future reuse" />
               <TokenStat label="Total" value={totalTokens} color="text-amber-300" tooltip="Total tokens (input + output)" />
+              {sessionCost != null && (
+                <CostStat value={sessionCost} />
+              )}
             </div>
           )}
         </div>
@@ -369,61 +507,78 @@ export function SessionView({ sessionId }: SessionViewProps) {
 
       {/* Two-column body: Steps + Prompt Nav */}
       <div className="flex-1 flex min-h-0">
-        {/* Steps */}
+        {/* Steps / Flow */}
         <div ref={stepsRef} className="flex-1 overflow-y-auto">
-          <div className="max-w-5xl mx-auto px-4 py-6 space-y-3">
-            {steps.length === 0 ? (
-              <div className="text-center text-zinc-500 text-sm py-8">
-                <BarChart3 className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                <p>No steps to display</p>
+          {viewMode === "timeline" ? (
+            <div className="max-w-5xl mx-auto px-4 py-6 space-y-3">
+              {steps.length === 0 ? (
+                <div className="text-center text-zinc-500 text-sm py-8">
+                  <BarChart3 className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <p>No steps to display</p>
+                </div>
+              ) : (
+                <>
+                  <StepTimeline
+                    entries={steps
+                      .filter((step) => {
+                        const visible = isVisibleStep(step);
+                        const spawnedSubs = subAgentsByStep.map.get(step.step_id);
+                        return visible || !!spawnedSubs;
+                      })
+                      .map((step) => {
+                        const visible = isVisibleStep(step);
+                        const spawnedSubs = subAgentsByStep.map.get(step.step_id);
+                        return {
+                          step,
+                          content: (
+                            <div id={`step-${step.step_id}`} style={{ scrollMarginTop: "1rem" }}>
+                              {visible && <StepBlock step={step} />}
+                              {spawnedSubs?.map((sub) => (
+                                <div key={sub.session_id} id={`subagent-${sub.session_id}`} className="mt-2">
+                                  <SubAgentBlock
+                                    trajectory={sub}
+                                    allTrajectories={trajectories}
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          ),
+                        };
+                      })}
+                    sessionStartMs={
+                      main.timestamp
+                        ? new Date(main.timestamp).getTime()
+                        : null
+                    }
+                    sessionStartTimestamp={main.timestamp}
+                  />
+                  {subAgentsByStep.orphans.map((sub) => (
+                    <div key={sub.session_id} id={`subagent-${sub.session_id}`}>
+                      <SubAgentBlock
+                        trajectory={sub}
+                        allTrajectories={trajectories}
+                      />
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          ) : flowLoading ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center">
+                <Loader2 className="w-8 h-8 text-cyan-500 animate-spin mx-auto mb-2" />
+                <p className="text-sm text-zinc-400">Building flow diagram...</p>
               </div>
-            ) : (
-              <>
-                <StepTimeline
-                  entries={steps
-                    .filter((step) => {
-                      const visible = isVisibleStep(step);
-                      const spawnedSubs = subAgentsByStep.map.get(step.step_id);
-                      return visible || !!spawnedSubs;
-                    })
-                    .map((step) => {
-                      const visible = isVisibleStep(step);
-                      const spawnedSubs = subAgentsByStep.map.get(step.step_id);
-                      return {
-                        step,
-                        content: (
-                          <div id={`step-${step.step_id}`} style={{ scrollMarginTop: "1rem" }}>
-                            {visible && <StepBlock step={step} />}
-                            {spawnedSubs?.map((sub) => (
-                              <div key={sub.session_id} id={`subagent-${sub.session_id}`} className="mt-2">
-                                <SubAgentBlock
-                                  trajectory={sub}
-                                  allTrajectories={trajectories}
-                                />
-                              </div>
-                            ))}
-                          </div>
-                        ),
-                      };
-                    })}
-                  sessionStartMs={
-                    main.timestamp
-                      ? new Date(main.timestamp).getTime()
-                      : null
-                  }
-                  sessionStartTimestamp={main.timestamp}
-                />
-                {subAgentsByStep.orphans.map((sub) => (
-                  <div key={sub.session_id} id={`subagent-${sub.session_id}`}>
-                    <SubAgentBlock
-                      trajectory={sub}
-                      allTrajectories={trajectories}
-                    />
-                  </div>
-                ))}
-              </>
-            )}
-          </div>
+            </div>
+          ) : flowData ? (
+            <div className="max-w-5xl mx-auto px-4 py-6">
+              <FlowDiagram steps={steps} flowData={flowData} />
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-full">
+              <p className="text-sm text-zinc-500">Flow data unavailable</p>
+            </div>
+          )}
         </div>
 
         {/* Prompt Navigation Sidebar */}
@@ -434,6 +589,10 @@ export function SessionView({ sessionId }: SessionViewProps) {
           onNavigate={handlePromptNavigate}
           width={promptNavWidth}
           onResize={handlePromptNavResize}
+          viewMode={viewMode}
+          flowPhases={flowPhases}
+          activePhaseIdx={activePhaseIdx}
+          onPhaseNavigate={handlePhaseNavigate}
         />
       </div>
     </div>
@@ -491,11 +650,31 @@ function TokenStat({
       onMouseEnter={() => setShow(true)}
       onMouseLeave={() => setShow(false)}
     >
-      <p className="text-zinc-500">{label}</p>
+      <p className={METRIC_LABEL}>{label}</p>
       <p className={`${color} font-mono`}>{formatTokens(value)}</p>
       {tooltip && show && (
         <span className="absolute left-1/2 -translate-x-1/2 top-full mt-1 z-[100] px-2.5 py-1.5 rounded-md bg-zinc-950 border border-zinc-700 text-[11px] text-zinc-300 whitespace-nowrap shadow-lg pointer-events-none">
           {tooltip}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function CostStat({ value }: { value: number }) {
+  const [show, setShow] = useState(false);
+
+  return (
+    <div
+      className="relative bg-zinc-800/50 rounded px-2 py-1.5"
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+    >
+      <p className={METRIC_LABEL}>Est. Cost</p>
+      <p className="text-emerald-300 font-mono">{formatCost(value)}</p>
+      {show && (
+        <span className="absolute left-1/2 -translate-x-1/2 top-full mt-1 z-[100] px-2.5 py-1.5 rounded-md bg-zinc-950 border border-zinc-700 text-[11px] text-zinc-300 whitespace-nowrap shadow-lg pointer-events-none">
+          Estimated cost based on API pricing
         </span>
       )}
     </div>

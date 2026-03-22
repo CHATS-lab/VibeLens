@@ -18,7 +18,7 @@ from vibelens.models.enums import (
     SessionPhase,
     StepSource,
 )
-from vibelens.models.requests import (
+from vibelens.models.session_requests import (
     RemoteSessionsQuery,
 )
 from vibelens.models.trajectories import (

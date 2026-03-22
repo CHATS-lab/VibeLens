@@ -9,7 +9,7 @@ from vibelens.ingest.fingerprint import parse_auto
 from vibelens.ingest.parsers.base import MAX_FIRST_MESSAGE_LENGTH, _is_meaningful_prompt
 from vibelens.models.enums import StepSource
 from vibelens.models.trajectories import Trajectory
-from vibelens.stores.disk import DiskStore
+from vibelens.storage.disk import DiskStore
 from vibelens.utils import get_logger
 
 logger = get_logger(__name__)

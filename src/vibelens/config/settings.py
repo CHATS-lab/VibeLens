@@ -53,6 +53,12 @@ class Settings(BaseSettings):
         description="Root directory for Gemini CLI session data.",
     )
 
+    # Shares
+    share_dir: Path = Field(
+        default=Path.home() / ".vibelens" / "shares",
+        description="Directory for shared session snapshots.",
+    )
+
     # Upload
     upload_dir: Path = Field(
         default=Path.home() / ".vibelens" / "uploads",
@@ -106,6 +112,7 @@ class Settings(BaseSettings):
         self.claude_dir = self.claude_dir.expanduser()
         self.codex_dir = self.codex_dir.expanduser()
         self.gemini_dir = self.gemini_dir.expanduser()
+        self.share_dir = self.share_dir.expanduser()
         self.upload_dir = self.upload_dir.expanduser()
         return self
 

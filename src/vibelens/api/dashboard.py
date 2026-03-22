@@ -8,18 +8,17 @@ from fastapi.responses import StreamingResponse
 from vibelens.models.analysis.behavior import ToolUsageStat
 from vibelens.models.analysis.dashboard import DashboardStats, SessionAnalytics
 from vibelens.services.dashboard_service import (
-    export_dashboard_csv,
-    export_dashboard_json,
     get_dashboard_stats,
     get_session_analytics,
     get_tool_usage,
 )
+from vibelens.services.export_service import export_dashboard_csv, export_dashboard_json
 
 router = APIRouter(tags=["analysis"])
 
 
 @router.get("/analysis/dashboard")
-async def dashboard_stats(
+def dashboard_stats(
     project_path: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
@@ -30,7 +29,7 @@ async def dashboard_stats(
 
 
 @router.get("/analysis/tool-usage")
-async def tool_usage(
+def tool_usage(
     project_path: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
@@ -41,7 +40,7 @@ async def tool_usage(
 
 
 @router.get("/analysis/sessions/{session_id}/stats")
-async def session_analytics(
+def session_analytics(
     session_id: str, x_session_token: str | None = Header(None)
 ) -> SessionAnalytics:
     """Compute detailed analytics for a single session."""
@@ -52,7 +51,7 @@ async def session_analytics(
 
 
 @router.get("/analysis/dashboard/export")
-async def export_dashboard(
+def export_dashboard(
     format: str = Query("csv", pattern="^(csv|json)$"),
     project_path: str | None = None,
     date_from: str | None = None,

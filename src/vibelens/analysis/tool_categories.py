@@ -1,4 +1,8 @@
-"""Shared constants for session analytics modules."""
+"""Tool category mapping for session analytics modules.
+
+Keep in sync with frontend/src/components/conversation/flow-layout.ts
+which maintains a parallel TypeScript version of this mapping.
+"""
 
 # Maps tool function names to semantic categories used by phase detection
 # and tool graph construction. Covers all tool names across Claude Code,

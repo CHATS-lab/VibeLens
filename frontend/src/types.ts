@@ -132,6 +132,7 @@ export interface DailyStat {
   total_tokens: number;
   total_duration: number;
   total_duration_hours: number;
+  total_cost_usd: number;
 }
 
 export interface PeriodStats {
@@ -144,6 +145,7 @@ export interface PeriodStats {
   output_tokens: number;
   cache_read_tokens: number;
   cache_creation_tokens: number;
+  cost_usd: number;
 }
 
 export interface DashboardStats {
@@ -165,6 +167,9 @@ export interface DashboardStats {
   avg_tokens_per_session: number;
   avg_tool_calls_per_session: number;
   avg_duration_per_session: number;
+  total_cost_usd: number;
+  cost_by_model: Record<string, number>;
+  avg_cost_per_session: number;
   project_count: number;
   daily_activity: Record<string, number>;
   daily_stats: DailyStat[];
@@ -174,6 +179,34 @@ export interface DashboardStats {
   hourly_distribution: Record<number, number>;
   weekday_hour_heatmap: Record<string, number>;
   timezone: string;
+}
+
+export interface ToolEdge {
+  source_tool_call_id: string;
+  target_tool_call_id: string;
+  relation: string;
+  shared_resource: string;
+}
+
+export interface ToolDependencyGraph {
+  session_id: string;
+  nodes: string[];
+  edges: ToolEdge[];
+  root_nodes: string[];
+}
+
+export interface PhaseSegment {
+  start_index: number;
+  end_index: number;
+  phase: string;
+  dominant_tool_category: string;
+  tool_call_count: number;
+}
+
+export interface FlowData {
+  session_id: string;
+  tool_graph: ToolDependencyGraph;
+  phase_segments: PhaseSegment[];
 }
 
 export type ToolType =

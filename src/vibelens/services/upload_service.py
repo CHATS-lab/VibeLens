@@ -13,9 +13,12 @@ from vibelens.deps import get_settings, get_store
 from vibelens.ingest.discovery import discover_session_files
 from vibelens.ingest.fingerprint import parse_auto
 from vibelens.models.enums import AgentType
-from vibelens.models.requests import UploadResult
+from vibelens.models.upload import UploadResult
+from vibelens.services.dashboard_service import (
+    invalidate_cache as invalidate_dashboard_cache,
+)
 from vibelens.services.search_service import invalidate_search_index
-from vibelens.stores.disk import DiskStore
+from vibelens.storage.disk import DiskStore
 from vibelens.utils import get_logger
 from vibelens.utils.zip import extract_zip, validate_zip
 
@@ -277,6 +280,7 @@ async def process_zip(
         if session_token:
             store.register_upload(session_token, upload_id)
         invalidate_search_index()
+        invalidate_dashboard_cache()
     except Exception as exc:
         logger.warning("Upload processing failed for %s: %s", filename, exc)
         result.errors.append({"filename": filename, "error": str(exc)})
