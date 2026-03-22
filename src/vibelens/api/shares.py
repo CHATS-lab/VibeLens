@@ -12,13 +12,21 @@ from vibelens.services.share_service import ShareMeta
 router = APIRouter(prefix="/shares", tags=["shares"])
 
 
+DEMO_PUBLIC_URL = "https://vibelens.chats-lab.org"
+LOCAL_HOSTS = ("127.0.0.1", "0.0.0.0", "localhost")
+
+
 def _build_share_url(request: Request, token: str) -> str:
     """Build the full shareable URL from the current request context."""
     settings = get_settings()
-    base = str(request.base_url).rstrip("/")
-    # In self-use mode, use the configured host:port for stable URLs
-    if settings.host in ("127.0.0.1", "0.0.0.0", "localhost"):
+    if settings.public_url:
+        base = settings.public_url.rstrip("/")
+    elif settings.app_mode.value == "demo":
+        base = DEMO_PUBLIC_URL
+    elif settings.host in LOCAL_HOSTS:
         base = f"http://localhost:{settings.port}"
+    else:
+        base = str(request.base_url).rstrip("/")
     return f"{base}/?share={token}"
 
 

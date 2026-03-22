@@ -38,6 +38,10 @@ class Settings(BaseSettings):
         default=12001,
         description="TCP port for the HTTP server.",
     )
+    public_url: str = Field(
+        default="",
+        description="Public-facing base URL for shareable links (e.g. https://vibelens.chats-lab.org).",
+    )
 
     # Data sources
     claude_dir: Path = Field(
