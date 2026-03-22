@@ -1,0 +1,30 @@
+{
+  "schema_version": "ATIF-v1.6",
+  "session_id": "97253fa9-55cd-4a38-b241-17369143df91",
+  "timestamp": "2026-03-14T16:40:26.798000Z",
+  "project_path": "/Users/user/Documents/Projects/Agent-Guideline",
+  "first_message": "This is my first use of Codex but I have used other coding agents. What's your advantages compared to others?",
+  "agent": {
+    "name": "gemini",
+    "version": null,
+    "model_name": null,
+    "tool_definitions": null,
+    "extra": null
+  },
+  "notes": null,
+  "final_metrics": {
+    "duration": 451,
+    "total_steps": 7,
+    "tool_call_count": 3,
+    "total_prompt_tokens": 44470,
+    "total_completion_tokens": 533,
+    "total_cache_write": 0,
+    "total_cache_read": 21252,
+    "total_cost_usd": null,
+    "extra": null
+  },
+  "last_trajectory_ref": null,
+  "parent_trajectory_ref": null,
+  "continued_trajectory_ref": null,
+  "extra": null
+}

@@ -1,0 +1,1302 @@
+     1→"""Claude Code JSONL format parser.
+     2→
+     3→Parses ~/.claude/history.jsonl for session indices and individual
+     4→session .jsonl files for full conversation data, including subagent
+     5→conversations stored in {session-id}/subagents/ directories.
+     6→
+     7→Claude Code stores each conversation event as a separate JSONL line with
+     8→a top-level ``type`` field (``"user"`` or ``"assistant"``).  Tool use
+     9→follows the Anthropic Messages API convention: tool invocations appear
+    10→as ``tool_use`` content blocks inside assistant messages, while their
+    11→results come back as ``tool_result`` blocks inside the *next* user
+    12→message, linked by ``tool_use_id``.  This two-message pairing requires
+    13→a pre-scan to build the result map before constructing ToolCall objects.
+    14→"""
+    15→
+    16→import json
+    17→import re
+    18→from collections import Counter
+    19→from datetime import UTC, datetime
+    20→from pathlib import Path
+    21→from typing import Any, NamedTuple
+    22→from uuid import uuid4
+    23→
+    24→from vibelens.ingest.diagnostics import DiagnosticsCollector
+    25→from vibelens.ingest.parsers.base import (
+    26→    BaseParser,
+    27→    _is_meaningful_prompt,
+    28→    mark_error_content,
+    29→)
+    30→from vibelens.models.enums import StepSource
+    31→from vibelens.models.trajectories import (
+    32→    Agent,
+    33→    FinalMetrics,
+    34→    Metrics,
+    35→    Observation,
+    36→    ObservationResult,
+    37→    Step,
+    38→    ToolCall,
+    39→    Trajectory,
+    40→    TrajectoryRef,
+    41→)
+    42→from vibelens.models.trajectories.trajectory import DEFAULT_ATIF_VERSION
+    43→from vibelens.utils import coerce_to_string, get_logger, normalize_timestamp
+    44→
+    45→# Sentinel for sorting steps that lack timestamps — placed before all
+    46→# real timestamps so they don't disrupt chronological ordering.
+    47→_EPOCH_MIN = datetime.min.replace(tzinfo=UTC)
+    48→
+    49→logger = get_logger(__name__)
+    50→
+    51→# Only "user" and "assistant" carry conversation content.
+    52→# Other types (e.g. "result", "progress") are internal bookkeeping.
+    53→RELEVANT_TYPES = {"user", "assistant"}
+    54→
+    55→# ATIF source mapping for Claude Code role names
+    56→_ROLE_TO_SOURCE = {"user": StepSource.USER, "assistant": StepSource.AGENT}
+    57→
+    58→# Number of lines to probe for project path extraction
+    59→PROJECT_PATH_PROBE_LIMIT = 10
+    60→
+    61→# Tool names that spawn sub-agent JSONL files in subagents/ directory.
+    62→# Claude Code renamed "Agent" to "Task" in later versions.
+    63→_SUBAGENT_TOOL_NAMES = {"Agent", "Task"}
+    64→
+    65→# Pattern to extract agentId from Task/Agent tool_result content.
+    66→# Claude Code embeds "agentId: {hex_hash}" in the tool output text.
+    67→_AGENT_ID_PATTERN = re.compile(r"agentId:\s*([a-f0-9]+)")
+    68→
+    69→# XML tags injected by the system into user message content.
+    70→# Their presence means the "user" entry is actually system-generated.
+    71→_SYSTEM_XML_TAGS = frozenset(
+    72→    {
+    73→        "system-reminder",
+    74→        "local-command-caveat",
+    75→        "local-command-stdout",
+    76→        "command-message",
+    77→        "task-notification",
+    78→        "user-prompt-submit-hook",
+    79→        "command-name",
+    80→    }
+    81→)
+    82→
+    83→_SYSTEM_TAG_PATTERN = re.compile(
+    84→    r"^\s*<(" + "|".join(re.escape(t) for t in _SYSTEM_XML_TAGS) + r")[\s>]"
+    85→)
+    86→
+    87→# Plain-text prefixes that indicate system-injected content
+    88→_SYSTEM_PREFIXES = ("[Request interrupted", "This session is being continued")
+    89→
+    90→# Skill output injected after a Skill tool_use
+    91→_SKILL_PREFIX = "Base directory for this skill:"
+    92→
+    93→
+    94→class _SessionMeta(NamedTuple):
+    95→    """Aggregated metadata from a single pass over raw JSONL content."""
+    96→
+    97→    session_id: str | None
+    98→    last_session_id: str | None
+    99→    model_name: str | None
+   100→    version: str | None
+   101→    project_path: str | None
+   102→    git_branches: list[str] | None
+   103→
+   104→
+   105→class ClaudeCodeParser(BaseParser):
+   106→    """Parser for Claude Code's native JSONL format.
+   107→
+   108→    Handles both the history index (history.jsonl) and individual
+   109→    session files, including subagent conversations.
+   110→    """
+   111→
+   112→    AGENT_NAME = "claude-code"
+   113→
+   114→    def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
+   115→        """Parse JSONL session content into Trajectory objects.
+   116→
+   117→        Returns a list containing the main session trajectory and any
+   118→        sub-agent trajectories. Sub-agents are separate Trajectory objects
+   119→        with parent_trajectory_ref pointing back to the main session.
+   120→
+   121→        Args:
+   122→            content: Raw JSONL content string.
+   123→            source_path: Original file path for sub-agent file discovery.
+   124→
+   125→        Returns:
+   126→            List of Trajectory objects (main + sub-agents).
+   127→        """
+   128→        collector = DiagnosticsCollector()
+   129→        meta = _scan_session_metadata(content)
+   130→        project_path = meta.project_path
+   131→        git_branches = meta.git_branches
+   132→        session_id = meta.session_id
+   133→        last_session_id = meta.last_session_id
+   134→        model_name = meta.model_name
+   135→        version = meta.version
+   136→
+   137→        # Use extracted session_id, fallback to filename stem, then UUID
+   138→        if not session_id:
+   139→            session_id = Path(source_path).stem if source_path else str(uuid4())
+   140→
+   141→        steps = self._parse_content(content, diagnostics=collector, session_id=session_id)
+   142→        if not steps:
+   143→            if collector.parsed_lines == 0 and collector.total_lines > 0:
+   144→                source = source_path or "unknown"
+   145→                raise ValueError(
+   146→                    f"No parseable entries in {source}"
+   147→                    f" ({collector.total_lines} lines, {collector.skipped_lines} skipped)"
+   148→                )
+   149→            return []
+   150→
+   151→        agent = self.build_agent(version=version, model=model_name)
+   152→
+   153→        has_diagnostics_issues = (
+   154→            collector.skipped_lines > 0
+   155→            or collector.orphaned_tool_calls > 0
+   156→            or collector.orphaned_tool_results > 0
+   157→        )
+   158→        extra: dict | None = None
+   159→        if has_diagnostics_issues:
+   160→            extra = {"diagnostics": collector.to_diagnostics().model_dump()}
+   161→
+   162→        if git_branches:
+   163→            extra = extra or {}
+   164→            extra["git_branches"] = git_branches
+   165→
+   166→        # Sub-agent trajectories require filesystem access via source_path
+   167→        sub_trajectories: list[Trajectory] = []
+   168→        if source_path:
+   169→            sub_trajectories = self._parse_subagent_trajectories(
+   170→                Path(source_path), content, steps, session_id
+   171→            )
+   172→            if sub_trajectories:
+   173→                extra = extra or {}
+   174→                extra["sub_agent_count"] = len(sub_trajectories)
+   175→
+   176→        last_trajectory_ref = TrajectoryRef(session_id=last_session_id) if last_session_id else None
+   177→        main_trajectory = self.assemble_trajectory(
+   178→            session_id=session_id,
+   179→            agent=agent,
+   180→            steps=steps,
+   181→            project_path=project_path,
+   182→            last_trajectory_ref=last_trajectory_ref,
+   183→            extra=extra,
+   184→        )
+   185→
+   186→        if sub_trajectories:
+   187→            _validate_subagent_linkage(main_trajectory, sub_trajectories)
+   188→
+   189→        return [main_trajectory, *sub_trajectories]
+   190→
+   191→    def parse_history_index(
+   192→        self, claude_dir: Path, since: datetime | None = None, limit: int | None = None
+   193→    ) -> list[Trajectory]:
+   194→        """Parse history.jsonl to build lightweight skeleton Trajectory objects.
+   195→
+   196→        Groups entries by sessionId, extracts project name, first message,
+   197→        timestamp, and step count per session. These are skeleton
+   198→        trajectories for listing — full parse happens on get_session().
+   199→
+   200→        Args:
+   201→            claude_dir: Path to ~/.claude directory.
+   202→            since: Only include sessions with activity at or after this time.
+   203→            limit: Maximum number of sessions to return (after sorting).
+   204→
+   205→        Returns:
+   206→            List of skeleton Trajectory objects sorted by timestamp descending.
+   207→        """
+   208→        history_file = claude_dir / "history.jsonl"
+   209→        if not history_file.exists():
+   210→            logger.warning("history.jsonl not found at %s", history_file)
+   211→            return []
+   212→
+   213→        since_ms = int(since.timestamp() * 1000) if since else 0
+   214→        sessions = _aggregate_history_lines(history_file, since_ms)
+   215→
+   216→        trajectories = []
+   217→        for session_id, data in sessions.items():
+   218→            project_path = data["project_path"] or None
+   219→            first_message = self.truncate_first_message(data["first_message"]) or None
+   220→            timestamp = datetime.fromtimestamp(data["last_timestamp"] / 1000, tz=UTC)
+   221→
+   222→            # Skeleton step so Trajectory validation passes (min_length=1)
+   223→            skeleton_step = Step(
+   224→                step_id="index-0",
+   225→                source=StepSource.USER,
+   226→                message=first_message or "",
+   227→                timestamp=timestamp,
+   228→            )
+   229→
+   230→            # Build trajectory directly — skeleton data should not trigger
+   231→            # derived field computation from assemble_trajectory
+   232→            trajectories.append(
+   233→                Trajectory(
+   234→                    schema_version=DEFAULT_ATIF_VERSION,
+   235→                    session_id=session_id,
+   236→                    project_path=project_path,
+   237→                    first_message=first_message,
+   238→                    agent=Agent(name=self.AGENT_NAME),
+   239→                    steps=[skeleton_step],
+   240→                    final_metrics=FinalMetrics(total_steps=data["message_count"]),
+   241→                    extra={"is_skeleton": True, "total_entries": data["message_count"]},
+   242→                )
+   243→            )
+   244→
+   245→        trajectories.sort(key=lambda t: t.steps[0].timestamp or _EPOCH_MIN, reverse=True)
+   246→        if limit is not None:
+   247→            trajectories = trajectories[:limit]
+   248→        return trajectories
+   249→
+   250→    def parse_session_jsonl(self, file_path: Path) -> list[Step]:
+   251→        """Parse a session .jsonl file into main-session steps only.
+   252→
+   253→        Args:
+   254→            file_path: Path to the session .jsonl file.
+   255→
+   256→        Returns:
+   257→            List of Step objects for the main session (no sub-agents).
+   258→        """
+   259→        try:
+   260→            content = file_path.read_text(encoding="utf-8")
+   261→        except OSError:
+   262→            logger.warning("Cannot read file: %s", file_path)
+   263→            return []
+   264→        return self._parse_content(content)
+   265→
+   266→    def _parse_subagent_trajectories(
+   267→        self, source_path: Path, raw_content: str, parent_steps: list[Step], parent_sid: str
+   268→    ) -> list[Trajectory]:
+   269→        """Parse sub-agent JSONL files into separate Trajectory objects.
+   270→
+   271→        Each sub-agent trajectory has a parent_trajectory_ref pointing back
+   272→        to the parent session, and the parent step's observation is
+   273→        updated with a subagent_trajectory_ref.
+   274→
+   275→        Matching uses agentId extracted from raw Task/Agent tool_result
+   276→        content, not positional ordering, to ensure correctness even
+   277→        when the bounded tool result cache evicts early entries.
+   278→
+   279→        Args:
+   280→            source_path: Path to the main session .jsonl file.
+   281→            raw_content: Raw JSONL content of the main session.
+   282→            parent_steps: Parsed steps from the main session.
+   283→            parent_sid: Session ID of the parent.
+   284→
+   285→        Returns:
+   286→            List of sub-agent Trajectory objects.
+   287→        """
+   288→        subagent_dir = source_path.parent / source_path.stem / "subagents"
+   289→        if not subagent_dir.is_dir():
+   290→            return []
+   291→
+   292→        agent_files = sorted(subagent_dir.glob("agent-*.jsonl"))
+   293→        if not agent_files:
+   294→            return []
+   295→
+   296→        # Build agentId → (step_id, tool_call_id) from raw JSONL
+   297→        spawn_map = _build_agent_spawn_map(raw_content, parent_steps)
+   298→
+   299→        sub_trajectories: list[Trajectory] = []
+   300→        for agent_file in agent_files:
+   301→            agent_id = agent_file.stem.removeprefix("agent-")
+   302→            spawn_info = spawn_map.get(agent_id)
+   303→            spawn_step_id = spawn_info[0] if spawn_info else None
+   304→            spawn_tool_call_id = spawn_info[1] if spawn_info else None
+   305→
+   306→            sub_traj = self._build_subagent_trajectory(
+   307→                agent_file, parent_sid, source_path, spawn_step_id, spawn_tool_call_id
+   308→            )
+   309→            if sub_traj:
+   310→                sub_trajectories.append(sub_traj)
+   311→                if spawn_tool_call_id:
+   312→                    _link_subagent_to_parent(parent_steps, spawn_tool_call_id, agent_file.stem)
+   313→
+   314→        return sub_trajectories
+   315→
+   316→    def _build_subagent_trajectory(
+   317→        self,
+   318→        agent_file: Path,
+   319→        parent_sid: str,
+   320→        source_path: Path,
+   321→        spawn_step_id: str | None,
+   322→        spawn_tool_call_id: str | None,
+   323→    ) -> Trajectory | None:
+   324→        """Parse a single sub-agent file and assemble its Trajectory.
+   325→
+   326→        Args:
+   327→            agent_file: Path to the sub-agent .jsonl file.
+   328→            parent_sid: Session ID of the parent.
+   329→            source_path: Path to the parent session file.
+   330→            spawn_step_id: Step ID in parent that spawned this agent.
+   331→            spawn_tool_call_id: Tool call ID that spawned this agent.
+   332→
+   333→        Returns:
+   334→            Trajectory for the sub-agent, or None if parsing fails.
+   335→        """
+   336→        try:
+   337→            sub_content = agent_file.read_text(encoding="utf-8")
+   338→        except OSError:
+   339→            logger.warning("Cannot read sub-agent file: %s", agent_file)
+   340→            return None
+   341→
+   342→        sub_steps = self._parse_content(sub_content)
+   343→        if not sub_steps:
+   344→            return None
+   345→
+   346→        sub_meta = _scan_session_metadata(sub_content)
+   347→
+   348→        return self.assemble_trajectory(
+   349→            session_id=agent_file.stem,
+   350→            agent=self.build_agent(version=sub_meta.version, model=sub_meta.model_name),
+   351→            steps=sub_steps,
+   352→            project_path=sub_meta.project_path,
+   353→            parent_trajectory_ref=TrajectoryRef(
+   354→                session_id=parent_sid,
+   355→                step_id=spawn_step_id,
+   356→                tool_call_id=spawn_tool_call_id,
+   357→                trajectory_path=str(source_path),
+   358→            ),
+   359→        )
+   360→
+   361→    @staticmethod
+   362→    def discover_subagent_only_sessions(project_dir: Path) -> list[Path]:
+   363→        """Find session dirs that have only subagent files and no root JSONL.
+   364→
+   365→        Args:
+   366→            project_dir: Directory containing session subdirectories.
+   367→
+   368→        Returns:
+   369→            List of subagent directory paths without a root JSONL file.
+   370→        """
+   371→        orphaned = []
+   372→        try:
+   373→            for subagent_dir in project_dir.glob("*/subagents"):
+   374→                if not subagent_dir.is_dir():
+   375→                    continue
+   376→                session_dir = subagent_dir.parent
+   377→                root_jsonl = session_dir.parent / f"{session_dir.name}.jsonl"
+   378→                if not root_jsonl.exists() and list(subagent_dir.glob("agent-*.jsonl")):
+   379→                    orphaned.append(subagent_dir)
+   380→        except OSError:
+   381→            pass
+   382→        return orphaned
+   383→
+   384→    def _parse_content(
+   385→        self,
+   386→        content: str,
+   387→        diagnostics: DiagnosticsCollector | None = None,
+   388→        session_id: str | None = None,
+   389→    ) -> list[Step]:
+   390→        """Parse JSONL content string into Step objects.
+   391→
+   392→        Merges consecutive assistant entries sharing the same message.id
+   393→        into a single step (streaming chunk consolidation), then converts
+   394→        each merged entry into an ATIF Step.
+   395→
+   396→        Args:
+   397→            content: Raw JSONL content string.
+   398→            diagnostics: Optional collector for parse quality metrics.
+   399→            session_id: Main session ID for detecting copied context steps.
+   400→
+   401→        Returns:
+   402→            List of Step objects.
+   403→        """
+   404→        raw_entries = _parse_jsonl_content(content, diagnostics)
+   405→
+   406→        # Two-pass: first scan user messages for tool results,
+   407→        # then construct Steps with results already paired
+   408→        tool_results = _collect_tool_results(raw_entries)
+   409→        tool_use_ids: set[str] = set()
+   410→
+   411→        # Merge assistant entries with the same message.id into single steps
+   412→        step_groups = _group_entries_by_step(raw_entries)
+   413→
+   414→        steps = []
+   415→        for group in step_groups:
+   416→            entry = _merge_entry_group(group)
+   417→            msg = entry.get("message", {})
+   418→            timestamp = normalize_timestamp(entry.get("timestamp"))
+   419→
+   420→            role = msg.get("role", entry.get("type", ""))
+   421→            source = _ROLE_TO_SOURCE.get(role, StepSource.USER)
+   422→            model_name = msg.get("model") or None
+   423→            raw_content = msg.get("content", "")
+   424→
+   425→            # Use message.id as step_id for assistant entries (stable across
+   426→            # streaming chunks); fall back to entry uuid for user entries.
+   427→            # Only assistant entries get message.id — user entries sharing the
+   428→            # same message.id (tool-relay pairs) must use their own uuid to
+   429→            # avoid duplicate step IDs.
+   430→            if source == StepSource.AGENT:
+   431→                step_id = msg.get("id") or entry.get("uuid", str(uuid4()))
+   432→            else:
+   433→                step_id = entry.get("uuid", str(uuid4()))
+   434→
+   435→            metrics = _parse_metrics(msg.get("usage"))
+   436→
+   437→            # Decompose Anthropic Messages API content blocks into
+   438→            # separated ATIF Step fields with pre-scanned tool results
+   439→            message, reasoning_content, tool_calls, observation = _decompose_raw_content(
+   440→                raw_content, tool_results
+   441→            )
+   442→
+   443→            # Skip "tool-relay" user messages — entries containing ONLY
+   444→            # tool_result blocks with no human-authored text. Their content
+   445→            # is already injected into the preceding assistant step via the
+   446→            # pre-scan tool_results map (tool_use_id linkage).
+   447→            if source == StepSource.USER and not message and not tool_calls and observation is None:
+   448→                continue
+   449→
+   450→            for tc in tool_calls:
+   451→                if tc.tool_call_id:
+   452→                    tool_use_ids.add(tc.tool_call_id)
+   453→                    if diagnostics:
+   454→                        diagnostics.record_tool_call()
+   455→
+   456→            # Reclassify user messages that contain system-injected or
+   457→            # skill content so they get the correct source label and metadata.
+   458→            extra_classify: dict[str, Any] | None = None
+   459→            if source == StepSource.USER and message:
+   460→                source, extra_classify = classify_user_message(message, entry)
+   461→
+   462→            # Detect steps copied from a previous session for context
+   463→            entry_session_id = entry.get("sessionId", "")
+   464→            is_copied = (
+   465→                session_id is not None and entry_session_id and entry_session_id != session_id
+   466→            )
+   467→
+   468→            extra = _build_step_extra(entry)
+   469→            if extra_classify:
+   470→                extra = {**(extra or {}), **extra_classify}
+   471→
+   472→            steps.append(
+   473→                Step(
+   474→                    step_id=step_id,
+   475→                    source=source,
+   476→                    message=message,
+   477→                    reasoning_content=reasoning_content,
+   478→                    model_name=model_name,
+   479→                    timestamp=timestamp,
+   480→                    metrics=metrics,
+   481→                    tool_calls=tool_calls,
+   482→                    observation=observation,
+   483→                    is_copied_context=True if is_copied else None,
+   484→                    extra=extra or None,
+   485→                )
+   486→            )
+   487→
+   488→        if diagnostics:
+   489→            _detect_orphans(tool_use_ids, tool_results, diagnostics)
+   490→
+   491→        return steps
+   492→
+   493→
+   494→def classify_user_message(
+   495→    text: str, entry: dict[str, Any]
+   496→) -> tuple[StepSource, dict[str, Any] | None]:
+   497→    """Classify a user-role message as real user, system, or skill content.
+   498→
+   499→    Claude Code injects system content (XML tags, continuation notices) and
+   500→    skill output (after Skill tool_use) into user-type entries. This function
+   501→    detects those patterns and returns the correct source classification.
+   502→
+   503→    Args:
+   504→        text: The text content of a user-type message.
+   505→        entry: Raw JSONL entry dict, used to extract sourceToolUseID for skills.
+   506→
+   507→    Returns:
+   508→        Tuple of (source, extra_metadata). Extra is None for system/plain user,
+   509→        or {"is_skill_output": True, "sourceToolUseID": ...} for skill content.
+   510→    """
+   511→    if not text:
+   512→        return StepSource.USER, None
+   513→
+   514→    stripped = text.lstrip()
+   515→    if stripped.startswith(_SKILL_PREFIX):
+   516→        extra: dict[str, Any] = {"is_skill_output": True}
+   517→        source_tool_id = entry.get("sourceToolUseID")
+   518→        if source_tool_id:
+   519→            extra["sourceToolUseID"] = source_tool_id
+   520→        return StepSource.USER, extra
+   521→
+   522→    if _SYSTEM_TAG_PATTERN.match(stripped):
+   523→        return StepSource.SYSTEM, None
+   524→
+   525→    for prefix in _SYSTEM_PREFIXES:
+   526→        if stripped.startswith(prefix):
+   527→            return StepSource.SYSTEM, None
+   528→    return StepSource.USER, None
+   529→
+   530→
+   531→def _group_entries_by_step(entries: list[dict]) -> list[list[dict]]:
+   532→    """Group entries by logical step using message.id for assistant entries.
+   533→
+   534→    Assistant entries sharing a message.id are collected into a single group
+   535→    even when separated by user tool-relay entries (which become their own
+   536→    singleton groups). Groups are ordered by first appearance.
+   537→
+   538→    Args:
+   539→        entries: Flat list of parsed JSONL entries.
+   540→
+   541→    Returns:
+   542→        List of entry groups; each group becomes one Step.
+   543→    """
+   544→    groups: list[list[dict]] = []
+   545→    msg_id_to_group: dict[str, list[dict]] = {}
+   546→
+   547→    for entry in entries:
+   548→        entry_type = entry.get("type")
+   549→        msg_id = entry.get("message", {}).get("id", "")
+   550→
+   551→        if entry_type == "assistant" and msg_id:
+   552→            if msg_id in msg_id_to_group:
+   553→                msg_id_to_group[msg_id].append(entry)
+   554→            else:
+   555→                group: list[dict] = [entry]
+   556→                groups.append(group)
+   557→                msg_id_to_group[msg_id] = group
+   558→        else:
+   559→            groups.append([entry])
+   560→
+   561→    return groups
+   562→
+   563→
+   564→def _merge_entry_group(group: list[dict]) -> dict:
+   565→    """Merge a group of streaming chunks into a single pseudo-entry.
+   566→
+   567→    Concatenates message.content lists from all entries in the group.
+   568→    Uses the first entry's uuid, timestamp, and metadata as the base.
+   569→
+   570→    Args:
+   571→        group: One or more JSONL entries sharing the same message.id.
+   572→
+   573→    Returns:
+   574→        Single merged entry dict.
+   575→    """
+   576→    if len(group) == 1:
+   577→        return group[0]
+   578→
+   579→    merged = dict(group[0])
+   580→    merged_msg = dict(merged.get("message", {}))
+   581→
+   582→    # Concatenate content lists from all chunks
+   583→    all_content: list = []
+   584→    for entry in group:
+   585→        chunk_content = entry.get("message", {}).get("content", "")
+   586→        if isinstance(chunk_content, list):
+   587→            all_content.extend(chunk_content)
+   588→        elif chunk_content:
+   589→            all_content.append({"type": "text", "text": str(chunk_content)})
+   590→
+   591→    merged_msg["content"] = all_content
+   592→    merged["message"] = merged_msg
+   593→    return merged
+   594→
+   595→
+   596→def _parse_jsonl_content(
+   597→    content: str, diagnostics: DiagnosticsCollector | None = None
+   598→) -> list[dict]:
+   599→    """Parse JSONL content string into relevant entry dicts.
+   600→
+   601→    Filters for RELEVANT_TYPES, handles queue-operation events, and
+   602→    tracks parse quality via diagnostics.
+   603→
+   604→    Queue-operation handling: when a user types while the assistant is
+   605→    still processing, Claude Code queues the message as an ``enqueue``
+   606→    event. If it's later delivered normally, a ``dequeue`` event appears
+   607→    followed by a regular ``type: "user"`` message. If instead it's
+   608→    injected as a system-reminder and removed, only ``enqueue`` +
+   609→    ``remove`` exist — no standalone user message is emitted. We create
+   610→    synthetic user entries for enqueue+remove pairs to preserve that
+   611→    user intent.
+   612→
+   613→    Args:
+   614→        content: Raw JSONL content.
+   615→        diagnostics: Optional collector for tracking skipped lines.
+   616→
+   617→    Returns:
+   618→        List of parsed dicts with relevant types only.
+   619→    """
+   620→    all_parsed: list[dict] = []
+   621→    for line in content.split("\n"):
+   622→        stripped = line.strip()
+   623→        if not stripped:
+   624→            continue
+   625→        if diagnostics:
+   626→            diagnostics.total_lines += 1
+   627→        try:
+   628→            entry = json.loads(stripped)
+   629→            if diagnostics:
+   630→                diagnostics.parsed_lines += 1
+   631→        except json.JSONDecodeError:
+   632→            if diagnostics:
+   633→                diagnostics.record_skip("invalid JSON")
+   634→            continue
+   635→        all_parsed.append(entry)
+   636→
+   637→    # Pre-scan: identify enqueue timestamps that were later dequeued
+   638→    # (delivered as normal user messages). Only enqueue+remove pairs
+   639→    # need synthetic user entries.
+   640→    dequeued_timestamps = _collect_dequeued_timestamps(all_parsed)
+   641→
+   642→    raw_entries: list[dict] = []
+   643→    for entry in all_parsed:
+   644→        entry_type = entry.get("type")
+   645→        if entry_type in RELEVANT_TYPES:
+   646→            raw_entries.append(entry)
+   647→            continue
+   648→        if (
+   649→            entry_type == "queue-operation"
+   650→            and entry.get("operation") == "enqueue"
+   651→            and entry.get("content")
+   652→            and entry.get("timestamp", "") not in dequeued_timestamps
+   653→        ):
+   654→            raw_entries.append(_make_enqueue_user_entry(entry))
+   655→    return raw_entries
+   656→
+   657→
+   658→def _collect_dequeued_timestamps(all_parsed: list[dict]) -> set[str]:
+   659→    """Collect timestamps of enqueue events that were later dequeued.
+   660→
+   661→    Dequeued messages are delivered as normal ``type: "user"`` entries,
+   662→    so creating a synthetic user entry would duplicate them.
+   663→
+   664→    Args:
+   665→        all_parsed: All parsed JSONL entries (unfiltered).
+   666→
+   667→    Returns:
+   668→        Set of timestamp strings for enqueue events followed by dequeue.
+   669→    """
+   670→    dequeued: set[str] = set()
+   671→    for entry in all_parsed:
+   672→        if entry.get("type") == "queue-operation" and entry.get("operation") == "dequeue":
+   673→            ts = entry.get("timestamp", "")
+   674→            if ts:
+   675→                dequeued.add(ts)
+   676→    return dequeued
+   677→
+   678→
+   679→def _make_enqueue_user_entry(entry: dict) -> dict:
+   680→    """Transform a queue-operation enqueue event into a synthetic user entry.
+   681→
+   682→    When a user types a message while the assistant is still processing,
+   683→    Claude Code queues it as an enqueue event. If the message is later
+   684→    removed (not dequeued), no standalone user message exists — the
+   685→    enqueue is the only record of the user's input.
+   686→
+   687→    Args:
+   688→        entry: Raw queue-operation JSONL entry with operation="enqueue".
+   689→
+   690→    Returns:
+   691→        Synthetic user entry compatible with _parse_content() processing.
+   692→    """
+   693→    ts = entry.get("timestamp", "")
+   694→    unique_id = f"enqueue-{ts}-{uuid4().hex[:8]}" if ts else f"enqueue-{uuid4()}"
+   695→    return {
+   696→        "type": "user",
+   697→        "uuid": unique_id,
+   698→        "sessionId": entry.get("sessionId", ""),
+   699→        "timestamp": entry.get("timestamp"),
+   700→        "message": {"role": "user", "content": entry["content"]},
+   701→        "_queue_operation": "enqueue",
+   702→    }
+   703→
+   704→
+   705→def _build_step_extra(entry: dict) -> dict[str, Any] | None:
+   706→    """Build step-level extra dict from Claude Code entry fields.
+   707→
+   708→    Extracts format-specific metadata mirroring Harbor's convention:
+   709→    is_sidechain, stop_reason, stop_sequence, cwd, request_id,
+   710→    service_tier, and user_type.
+   711→
+   712→    Args:
+   713→        entry: Raw JSONL entry dict.
+   714→
+   715→    Returns:
+   716→        Extra dict with format-specific fields, or None if empty.
+   717→    """
+   718→    extra: dict[str, Any] = {}
+   719→    msg = entry.get("message", {})
+   720→    if not isinstance(msg, dict):
+   721→        msg = {}
+   722→
+   723→    if entry.get("_queue_operation"):
+   724→        extra["is_queued_prompt"] = True
+   725→
+   726→    if entry.get("isSidechain", False):
+   727→        extra["is_sidechain"] = True
+   728→
+   729→    if msg.get("stop_reason") is not None:
+   730→        extra["stop_reason"] = msg["stop_reason"]
+   731→
+   732→    if msg.get("stop_sequence") is not None:
+   733→        extra["stop_sequence"] = msg["stop_sequence"]
+   734→
+   735→    if entry.get("cwd"):
+   736→        extra["cwd"] = entry["cwd"]
+   737→
+   738→    if msg.get("requestId"):
+   739→        extra["request_id"] = msg["requestId"]
+   740→
+   741→    if msg.get("service_tier"):
+   742→        extra["service_tier"] = msg["service_tier"]
+   743→
+   744→    if entry.get("userType") and entry["userType"] != "external":
+   745→        extra["user_type"] = entry["userType"]
+   746→
+   747→    return extra or None
+   748→
+   749→
+   750→def _scan_session_metadata(content: str) -> _SessionMeta:
+   751→    """Extract all session-level metadata in a single JSONL pass.
+   752→
+   753→    Collects sessionId, model, version, cwd (project path), and
+   754→    gitBranch from raw JSONL entries. Project path probing respects
+   755→    PROJECT_PATH_PROBE_LIMIT for consistency with the original behavior.
+   756→
+   757→    Args:
+   758→        content: Raw JSONL content string.
+   759→
+   760→    Returns:
+   761→        _SessionMeta with all extracted fields.
+   762→    """
+   763→    session_counter: Counter[str] = Counter()
+   764→    model_counter: Counter[str] = Counter()
+   765→    version: str | None = None
+   766→    cwd_values: list[str] = []
+   767→    branches: set[str] = set()
+   768→
+   769→    for line in content.split("\n"):
+   770→        stripped = line.strip()
+   771→        if not stripped:
+   772→            continue
+   773→        try:
+   774→            entry = json.loads(stripped)
+   775→        except json.JSONDecodeError:
+   776→            continue
+   777→
+   778→        sid = entry.get("sessionId", "")
+   779→        if sid:
+   780→            session_counter[sid] += 1
+   781→
+   782→        if version is None:
+   783→            raw_version = entry.get("version", "")
+   784→            if raw_version:
+   785→                version = str(raw_version)
+   786→
+   787→        # Project path: only probe first N entries that have cwd
+   788→        if len(cwd_values) < PROJECT_PATH_PROBE_LIMIT:
+   789→            cwd = entry.get("cwd", "")
+   790→            if cwd:
+   791→                cwd_values.append(cwd)
+   792→
+   793→        branch = entry.get("gitBranch", "")
+   794→        if branch:
+   795→            branches.add(branch)
+   796→
+   797→        msg = entry.get("message", {})
+   798→        if isinstance(msg, dict):
+   799→            model = msg.get("model", "")
+   800→            if model and not model.startswith("<"):
+   801→                model_counter[model] += 1
+   802→
+   803→    session_id = session_counter.most_common(1)[0][0] if session_counter else None
+   804→    last_session_id = None
+   805→    for sid in session_counter:
+   806→        if sid != session_id:
+   807→            last_session_id = sid
+   808→            break
+   809→
+   810→    model_name = model_counter.most_common(1)[0][0] if model_counter else None
+   811→    project_path = Counter(cwd_values).most_common(1)[0][0] if cwd_values else None
+   812→    git_branches = sorted(branches) if branches else None
+   813→
+   814→    return _SessionMeta(
+   815→        session_id=session_id,
+   816→        last_session_id=last_session_id,
+   817→        model_name=model_name,
+   818→        version=version,
+   819→        project_path=project_path,
+   820→        git_branches=git_branches,
+   821→    )
+   822→
+   823→
+   824→def _extract_git_branches(content: str) -> list[str] | None:
+   825→    """Extract unique git branch names from JSONL entries.
+   826→
+   827→    Thin wrapper around _scan_session_metadata for backward compatibility
+   828→    with tests that import this function directly.
+   829→
+   830→    Args:
+   831→        content: Raw JSONL content string.
+   832→
+   833→    Returns:
+   834→        Sorted list of branch names, or None if none found.
+   835→    """
+   836→    return _scan_session_metadata(content).git_branches
+   837→
+   838→
+   839→def _decompose_raw_content(
+   840→    raw_content: str | list, tool_results: dict[str, dict] | None = None
+   841→) -> tuple[str, str | None, list[ToolCall], Observation | None]:
+   842→    """Decompose Anthropic Messages API content into separated Step fields.
+   843→
+   844→    Converts the polymorphic content block array from Claude Code API
+   845→    responses into separated ATIF Step fields: message (text),
+   846→    reasoning_content (thinking), tool_calls, and observation.
+   847→
+   848→    When tool_results is provided, injects matching tool results from
+   849→    the pre-scan map to produce proper Observation objects.
+   850→
+   851→    Args:
+   852→        raw_content: Raw content from JSONL entry (str or list of dicts).
+   853→        tool_results: Optional pre-scanned tool_use_id -> result mapping.
+   854→
+   855→    Returns:
+   856→        Tuple of (message, reasoning_content, tool_calls, observation).
+   857→    """
+   858→    if isinstance(raw_content, str):
+   859→        stripped = raw_content.strip()
+   860→        return (stripped, None, [], None) if stripped else ("", None, [], None)
+   861→
+   862→    if not isinstance(raw_content, list):
+   863→        return ("", None, [], None)
+   864→
+   865→    text_parts: list[str] = []
+   866→    thinking_parts: list[str] = []
+   867→    tool_calls: list[ToolCall] = []
+   868→    obs_results: list[ObservationResult] = []
+   869→    tool_results = tool_results or {}
+   870→
+   871→    for block in raw_content:
+   872→        if not isinstance(block, dict):
+   873→            continue
+   874→        block_type = block.get("type", "text")
+   875→
+   876→        if block_type == "text":
+   877→            text = block.get("text", "")
+   878→            if text:
+   879→                text_parts.append(text)
+   880→
+   881→        elif block_type == "thinking":
+   882→            thinking = block.get("thinking", "")
+   883→            if thinking:
+   884→                thinking_parts.append(thinking)
+   885→
+   886→        elif block_type == "tool_use":
+   887→            tool_call_id = block.get("id", "")
+   888→            tool_calls.append(
+   889→                ToolCall(
+   890→                    tool_call_id=tool_call_id,
+   891→                    function_name=block.get("name", ""),
+   892→                    arguments=block.get("input"),
+   893→                )
+   894→            )
+   895→            # Inject pre-scanned tool result if available
+   896→            result = tool_results.get(tool_call_id) if tool_call_id else None
+   897→            if result:
+   898→                output = result.get("output")
+   899→                if result.get("is_error", False):
+   900→                    output = mark_error_content(output)
+   901→                obs_results.append(
+   902→                    ObservationResult(
+   903→                        source_call_id=tool_call_id,
+   904→                        content=output,
+   905→                        extra=_extract_tool_result_metadata(result),
+   906→                    )
+   907→                )
+   908→
+   909→        elif block_type == "tool_result":
+   910→            # When pre-scan results are available, tool_result blocks are
+   911→            # already captured via the tool_use branch above. Skip direct
+   912→            # processing to prevent duplicate ObservationResults.
+   913→            if tool_results:
+   914→                continue
+   915→            result_text = _extract_tool_result_content(block.get("content"))
+   916→            if block.get("is_error"):
+   917→                result_text = mark_error_content(result_text)
+   918→            obs_results.append(
+   919→                ObservationResult(source_call_id=block.get("tool_use_id", ""), content=result_text)
+   920→            )
+   921→
+   922→    message = "\n\n".join(text_parts).strip() if text_parts else ""
+   923→    reasoning_content = "\n\n".join(thinking_parts).strip() if thinking_parts else None
+   924→    observation = Observation(results=obs_results) if obs_results else None
+   925→
+   926→    return message, reasoning_content, tool_calls, observation
+   927→
+   928→
+   929→def _extract_tool_result_content(content: str | list | None) -> str | None:
+   930→    """Extract plain text from a tool_result content field.
+   931→
+   932→    Args:
+   933→        content: Raw content from a tool_result block (str, list, or None).
+   934→
+   935→    Returns:
+   936→        Extracted text, or None if empty.
+   937→    """
+   938→    if content is None:
+   939→        return None
+   940→    if isinstance(content, str):
+   941→        return content
+   942→    if isinstance(content, list):
+   943→        parts = []
+   944→        for item in content:
+   945→            if isinstance(item, str):
+   946→                parts.append(item)
+   947→            elif isinstance(item, dict) and "text" in item:
+   948→                parts.append(str(item["text"]))
+   949→        return "\n".join(parts) if parts else None
+   950→    return str(content)
+   951→
+   952→
+   953→def _extract_tool_result_metadata(result: dict) -> dict[str, Any] | None:
+   954→    """Extract structured execution metadata from a cached tool result.
+   955→
+   956→    When the tool result cache contains a ``tool_use_result`` dict (captured
+   957→    from the event-level ``toolUseResult`` field), extracts salient fields:
+   958→    exit_code, stdout, stderr, and interrupted.
+   959→
+   960→    Args:
+   961→        result: A single entry from the tool_results cache dict.
+   962→
+   963→    Returns:
+   964→        Metadata dict, or None if no structured metadata is available.
+   965→    """
+   966→    tur = result.get("tool_use_result")
+   967→    if not isinstance(tur, dict):
+   968→        return None
+   969→
+   970→    meta: dict[str, Any] = {}
+   971→    exit_code = tur.get("exitCode")
+   972→    if exit_code is None:
+   973→        exit_code = tur.get("exit_code")
+   974→    if exit_code is not None:
+   975→        meta["exit_code"] = exit_code
+   976→
+   977→    stdout = tur.get("stdout")
+   978→    if isinstance(stdout, str):
+   979→        meta["stdout"] = stdout
+   980→
+   981→    stderr = tur.get("stderr")
+   982→    if isinstance(stderr, str):
+   983→        meta["stderr"] = stderr
+   984→
+   985→    if tur.get("interrupted"):
+   986→        meta["interrupted"] = True
+   987→
+   988→    return meta or None
+   989→
+   990→
+   991→def count_history_entries(claude_dir: Path) -> int:
+   992→    """Count lines in history.jsonl with O(1) memory via buffered byte reads.
+   993→
+   994→    Args:
+   995→        claude_dir: Path to ~/.claude directory.
+   996→
+   997→    Returns:
+   998→        Number of non-empty lines in history.jsonl, or 0 if missing.
+   999→    """
+  1000→    history_file = claude_dir / "history.jsonl"
+  1001→    if not history_file.exists():
+  1002→        return 0
+  1003→
+  1004→    count = 0
+  1005→    buf_size = 65536
+  1006→    try:
+  1007→        with open(history_file, "rb") as f:
+  1008→            while True:
+  1009→                buf = f.read(buf_size)
+  1010→                if not buf:
+  1011→                    break
+  1012→                count += buf.count(b"\n")
+  1013→    except OSError:
+  1014→        return 0
+  1015→    return count
+  1016→
+  1017→
+  1018→def _aggregate_history_lines(history_file: Path, since_ms: int) -> dict[str, dict]:
+  1019→    """Read history.jsonl and group entries by session.
+  1020→
+  1021→    Skips entries whose timestamp falls before ``since_ms`` for early
+  1022→    filtering when callers only need recent sessions.
+  1023→
+  1024→    Args:
+  1025→        history_file: Path to the history.jsonl file.
+  1026→        since_ms: Minimum timestamp in milliseconds (0 to include all).
+  1027→
+  1028→    Returns:
+  1029→        Dict mapping session_id -> aggregated session data.
+  1030→    """
+  1031→    sessions: dict[str, dict] = {}
+  1032→    with open(history_file, encoding="utf-8") as f:
+  1033→        for line in f:
+  1034→            line = line.strip()
+  1035→            if not line:
+  1036→                continue
+  1037→            try:
+  1038→                entry = json.loads(line)
+  1039→            except json.JSONDecodeError:
+  1040→                continue
+  1041→
+  1042→            session_id = entry.get("sessionId", "")
+  1043→            if not session_id:
+  1044→                continue
+  1045→
+  1046→            timestamp_ms = entry.get("timestamp", 0)
+  1047→            if since_ms and timestamp_ms < since_ms:
+  1048→                continue
+  1049→
+  1050→            display = entry.get("display", "")
+  1051→            project_path = entry.get("project", "")
+  1052→
+  1053→            if session_id not in sessions:
+  1054→                sessions[session_id] = {
+  1055→                    "first_timestamp": timestamp_ms,
+  1056→                    "last_timestamp": timestamp_ms,
+  1057→                    "first_message": display if _is_meaningful_prompt(display) else "",
+  1058→                    "project_path": project_path,
+  1059→                    "message_count": 1,
+  1060→                }
+  1061→            else:
+  1062→                sess = sessions[session_id]
+  1063→                sess["message_count"] += 1
+  1064→                if not sess["first_message"] and _is_meaningful_prompt(display):
+  1065→                    sess["first_message"] = display
+  1066→                if timestamp_ms < sess["first_timestamp"]:
+  1067→                    sess["first_timestamp"] = timestamp_ms
+  1068→                    if _is_meaningful_prompt(display):
+  1069→                        sess["first_message"] = display
+  1070→                if timestamp_ms > sess["last_timestamp"]:
+  1071→                    sess["last_timestamp"] = timestamp_ms
+  1072→    return sessions
+  1073→
+  1074→
+  1075→def _detect_orphans(
+  1076→    tool_use_ids: set[str], tool_results: dict[str, dict], diagnostics: DiagnosticsCollector
+  1077→) -> None:
+  1078→    """Detect orphaned tool calls and results and record in diagnostics.
+  1079→
+  1080→    Args:
+  1081→        tool_use_ids: Set of tool_use IDs found in agent steps.
+  1082→        tool_results: Mapping of tool_use_id -> result from user steps.
+  1083→        diagnostics: Collector to record orphans into.
+  1084→    """
+  1085→    result_ids = set(tool_results.keys())
+  1086→    for tc_id in tool_use_ids:
+  1087→        diagnostics.record_tool_result()
+  1088→        if tc_id not in result_ids:
+  1089→            diagnostics.record_orphaned_call(tc_id)
+  1090→    for result_id in result_ids:
+  1091→        diagnostics.record_tool_result()
+  1092→        if result_id not in tool_use_ids:
+  1093→            diagnostics.record_orphaned_result(result_id)
+  1094→
+  1095→
+  1096→def _build_agent_spawn_map(
+  1097→    raw_content: str, parent_steps: list[Step]
+  1098→) -> dict[str, tuple[str, str]]:
+  1099→    """Build agentId → (step_id, tool_call_id) map from raw JSONL.
+  1100→
+  1101→    Scans raw JSONL directly (not parsed steps) to avoid missing
+  1102→    entries evicted from the bounded tool result cache. For each
+  1103→    Task/Agent tool_use, finds the corresponding tool_result and
+  1104→    extracts the 'agentId: {hash}' embedded in the output text.
+  1105→
+  1106→    Args:
+  1107→        raw_content: Raw JSONL content of the main session.
+  1108→        parent_steps: Parsed steps for resolving tool_call_id → step_id.
+  1109→
+  1110→    Returns:
+  1111→        Dict mapping agentId to (step_id, tool_call_id).
+  1112→    """
+  1113→    # Single pass: collect spawn tool_use_ids from assistant messages
+  1114→    # and tool_result candidates from user messages simultaneously
+  1115→    spawn_tc_ids: set[str] = set()
+  1116→    result_candidates: list[tuple[str, str]] = []  # (tool_use_id, text_content)
+  1117→
+  1118→    for line in raw_content.split("\n"):
+  1119→        stripped = line.strip()
+  1120→        if not stripped:
+  1121→            continue
+  1122→        try:
+  1123→            entry = json.loads(stripped)
+  1124→        except json.JSONDecodeError:
+  1125→            continue
+  1126→
+  1127→        entry_type = entry.get("type")
+  1128→        msg = entry.get("message", {})
+  1129→        if not isinstance(msg, dict):
+  1130→            continue
+  1131→
+  1132→        if entry_type == "assistant":
+  1133→            for block in msg.get("content", []):
+  1134→                if not isinstance(block, dict):
+  1135→                    continue
+  1136→                if block.get("type") == "tool_use" and block.get("name") in _SUBAGENT_TOOL_NAMES:
+  1137→                    tc_id = block.get("id", "")
+  1138→                    if tc_id:
+  1139→                        spawn_tc_ids.add(tc_id)
+  1140→
+  1141→        elif entry_type == "user":
+  1142→            for block in msg.get("content", []):
+  1143→                if not isinstance(block, dict) or block.get("type") != "tool_result":
+  1144→                    continue
+  1145→                tc_id = block.get("tool_use_id", "")
+  1146→                if not tc_id:
+  1147→                    continue
+  1148→                result_content = block.get("content", "")
+  1149→                if isinstance(result_content, list):
+  1150→                    result_content = " ".join(
+  1151→                        b.get("text", "") for b in result_content if isinstance(b, dict)
+  1152→                    )
+  1153→                result_candidates.append((tc_id, str(result_content)))
+  1154→
+  1155→    if not spawn_tc_ids:
+  1156→        return {}
+  1157→
+  1158→    # Filter candidates against spawn_tc_ids and extract agentId
+  1159→    agent_to_tc: dict[str, str] = {}
+  1160→    for tc_id, text in result_candidates:
+  1161→        if tc_id not in spawn_tc_ids:
+  1162→            continue
+  1163→        match = _AGENT_ID_PATTERN.search(text)
+  1164→        if match:
+  1165→            agent_to_tc[match.group(1)] = tc_id
+  1166→
+  1167→    # Resolve tool_call_id → step_id via parsed steps
+  1168→    tc_to_step_id: dict[str, str] = {}
+  1169→    for step in parent_steps:
+  1170→        for tc in step.tool_calls:
+  1171→            if tc.tool_call_id in spawn_tc_ids:
+  1172→                tc_to_step_id[tc.tool_call_id] = step.step_id
+  1173→
+  1174→    return {
+  1175→        agent_id: (tc_to_step_id.get(tc_id, ""), tc_id) for agent_id, tc_id in agent_to_tc.items()
+  1176→    }
+  1177→
+  1178→
+  1179→def _collect_tool_results(raw_entries: list[dict]) -> dict[str, dict]:
+  1180→    """Build a mapping of tool_use_id -> result from user messages.
+  1181→
+  1182→    Uses a plain dict (unbounded) so that long sessions with many tool
+  1183→    calls do not lose early results to eviction. Also captures the
+  1184→    event-level ``toolUseResult`` field (structured metadata like
+  1185→    exit_code, stdout, stderr) for downstream extraction.
+  1186→    """
+  1187→    tool_results: dict[str, dict] = {}
+  1188→    for entry in raw_entries:
+  1189→        if entry.get("type") != "user":
+  1190→            continue
+  1191→        msg = entry.get("message", {})
+  1192→        content = msg.get("content", "")
+  1193→        if not isinstance(content, list):
+  1194→            continue
+  1195→        # Event-level toolUseResult carries structured execution metadata
+  1196→        tool_use_result = entry.get("toolUseResult")
+  1197→        for block in content:
+  1198→            if block.get("type") == "tool_result":
+  1199→                tool_use_id = block.get("tool_use_id", "")
+  1200→                if tool_use_id:
+  1201→                    result_content = block.get("content", "")
+  1202→                    is_error = block.get("is_error", False)
+  1203→                    output = coerce_to_string(result_content)
+  1204→                    result_entry: dict = {"output": output, "is_error": bool(is_error)}
+  1205→                    if tool_use_result and isinstance(tool_use_result, dict):
+  1206→                        result_entry["tool_use_result"] = tool_use_result
+  1207→                    tool_results[tool_use_id] = result_entry
+  1208→    return tool_results
+  1209→
+  1210→
+  1211→def _parse_metrics(usage_data: dict | None) -> Metrics | None:
+  1212→    """Parse Anthropic usage dict into VibeLens Metrics model.
+  1213→
+  1214→    Token field mapping (aligned with Harbor convention):
+  1215→    - ``prompt_tokens`` = total context window
+  1216→      (Anthropic ``input_tokens + cache_read_input_tokens``).
+  1217→    - ``cached_tokens`` = cache-read tokens (Anthropic ``cache_read_input_tokens``).
+  1218→    - ``cache_creation_tokens`` = tokens written to cache
+  1219→      (Anthropic ``cache_creation_input_tokens``).
+  1220→    """
+  1221→    if not usage_data:
+  1222→        return None
+  1223→    return Metrics(
+  1224→        prompt_tokens=(
+  1225→            usage_data.get("input_tokens", 0) + usage_data.get("cache_read_input_tokens", 0)
+  1226→        ),
+  1227→        completion_tokens=usage_data.get("output_tokens", 0),
+  1228→        cache_creation_tokens=usage_data.get("cache_creation_input_tokens", 0),
+  1229→        cached_tokens=usage_data.get("cache_read_input_tokens", 0),
+  1230→    )
+  1231→
+  1232→
+  1233→def _link_subagent_to_parent(
+  1234→    parent_steps: list[Step], spawn_tool_call_id: str, sub_agent_id: str
+  1235→) -> None:
+  1236→    """Add a subagent_trajectory_ref to the parent step's observation.
+  1237→
+  1238→    Args:
+  1239→        parent_steps: Steps from the parent session.
+  1240→        spawn_tool_call_id: Tool call ID that spawned the sub-agent.
+  1241→        sub_agent_id: Session ID of the sub-agent trajectory.
+  1242→    """
+  1243→    for step in parent_steps:
+  1244→        if not step.observation:
+  1245→            continue
+  1246→        for result in step.observation.results:
+  1247→            if result.source_call_id == spawn_tool_call_id:
+  1248→                ref = TrajectoryRef(session_id=sub_agent_id)
+  1249→                if result.subagent_trajectory_ref is None:
+  1250→                    result.subagent_trajectory_ref = [ref]
+  1251→                else:
+  1252→                    result.subagent_trajectory_ref.append(ref)
+  1253→                return
+  1254→
+  1255→
+  1256→def _validate_subagent_linkage(
+  1257→    main_trajectory: Trajectory, sub_trajectories: list[Trajectory]
+  1258→) -> None:
+  1259→    """Warn about broken subagent references between parent and children.
+  1260→
+  1261→    Checks two invariants:
+  1262→    - Every subagent_trajectory_ref.session_id in the parent points to
+  1263→      an existing sub-trajectory.
+  1264→    - Every sub-trajectory is referenced by at least one parent step.
+  1265→
+  1266→    Uses logger.warning (not errors) since subagent files may be missing
+  1267→    or the session may have been interrupted before completion.
+  1268→
+  1269→    Args:
+  1270→        main_trajectory: The parent session trajectory.
+  1271→        sub_trajectories: List of parsed sub-agent trajectories.
+  1272→    """
+  1273→    sub_ids = {t.session_id for t in sub_trajectories}
+  1274→
+  1275→    # Collect all subagent refs from parent observation results
+  1276→    parent_refs: set[str] = set()
+  1277→    for step in main_trajectory.steps:
+  1278→        if not step.observation:
+  1279→            continue
+  1280→        for result in step.observation.results:
+  1281→            if result.subagent_trajectory_ref:
+  1282→                for ref in result.subagent_trajectory_ref:
+  1283→                    parent_refs.add(ref.session_id)
+  1284→
+  1285→    # Parent refs pointing to missing sub-trajectories
+  1286→    dangling_refs = parent_refs - sub_ids
+  1287→    if dangling_refs:
+  1288→        logger.warning(
+  1289→            "Session %s: parent references missing sub-trajectories: %s",
+  1290→            main_trajectory.session_id,
+  1291→            dangling_refs,
+  1292→        )
+  1293→
+  1294→    # Sub-trajectories not referenced by any parent step
+  1295→    unreferenced = sub_ids - parent_refs
+  1296→    if unreferenced:
+  1297→        logger.warning(
+  1298→            "Session %s: sub-trajectories not referenced by parent: %s",
+  1299→            main_trajectory.session_id,
+  1300→            unreferenced,
+  1301→        )
+  1302→

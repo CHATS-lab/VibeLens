@@ -44,6 +44,8 @@ logs/
 htmlcov/
 examples/*
 !examples/claude-codex-example/
+!examples/codex-example/
+!examples/gemini-cli-example/
 
 # Frontend
 frontend/node_modules/

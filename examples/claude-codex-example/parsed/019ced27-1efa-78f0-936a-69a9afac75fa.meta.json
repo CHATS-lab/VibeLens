@@ -1,0 +1,50 @@
+{
+  "schema_version": "ATIF-v1.6",
+  "session_id": "019ced27-1efa-78f0-936a-69a9afac75fa",
+  "timestamp": "2026-03-14T16:24:52.481000Z",
+  "project_path": "/Users/user/Documents/Projects/Agent-Guideline",
+  "first_message": "# AGENTS.md instructions for /Users/user/Documents/Projects/Agent-Guideline\n\n<INSTRUCTIONS>\n## Skills\nA skill is a set of local instructions to follow that is stored in a `SKILL.md` file. Below is the...",
+  "agent": {
+    "name": "codex",
+    "version": "0.114.0",
+    "model_name": "gpt-5.4",
+    "tool_definitions": null,
+    "extra": null
+  },
+  "notes": null,
+  "final_metrics": {
+    "duration": 7360,
+    "total_steps": 15,
+    "tool_call_count": 14,
+    "total_prompt_tokens": 237369,
+    "total_completion_tokens": 3657,
+    "total_cache_write": 0,
+    "total_cache_read": 104448,
+    "total_cost_usd": null,
+    "extra": null
+  },
+  "last_trajectory_ref": null,
+  "parent_trajectory_ref": null,
+  "continued_trajectory_ref": null,
+  "extra": {
+    "total_token_usage": {
+      "input_tokens": 132921,
+      "cached_input_tokens": 104448,
+      "output_tokens": 3657,
+      "reasoning_output_tokens": 917,
+      "total_tokens": 136578
+    },
+    "source": "cli",
+    "originator": "codex_cli_rs",
+    "sandbox_policy": {
+      "type": "workspace-write",
+      "writable_roots": [
+        "/Users/user/.codex/memories"
+      ],
+      "network_access": false,
+      "exclude_tmpdir_env_var": false,
+      "exclude_slash_tmp": false
+    },
+    "approval_policy": "on-request"
+  }
+}
