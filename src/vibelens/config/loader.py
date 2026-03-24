@@ -38,6 +38,13 @@ YAML_FIELD_MAP: dict[str, dict[str, str]] = {
         "mode": "app_mode",
         "visible_agents": "visible_agents",
     },
+    "llm": {
+        "backend": "llm_backend",
+        "api_key": "llm_api_key",
+        "model": "llm_model",
+        "timeout": "llm_timeout",
+        "max_tokens": "llm_max_tokens",
+    },
     "demo": {
         "example_sessions": "demo_example_sessions",
     },

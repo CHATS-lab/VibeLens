@@ -1,0 +1,26 @@
+Analyze {{ session_count }} coding agent session{{ "s" if session_count != 1 else "" }} for friction events.
+
+{{ session_digest }}
+
+## Output Schema
+
+{{ output_schema }}
+
+For every friction event, provide:
+- `event_id`: Sequential identifier (f-001, f-002, ...).
+- `mode`: Descriptive kebab-case label from the taxonomy (e.g., `command-repetition-loop`, `scope-creep`, `incorrect-bug-localization`).
+- `session_id` and `step_ids`: Exact references to where the friction occurs.
+- `tool_call_id`: If the friction involves a specific tool call, reference it. Otherwise null.
+- `severity`: 1-5 using the severity scale from the system prompt.
+- `description`: What happened and why it qualifies as friction.
+- `evidence`: Direct quotes or close paraphrases from the session data.
+- `root_cause`: The underlying cause, not just the symptom.
+- `mitigations`: Actionable fixes, preferring CLAUDE.md rule additions with exact rule text.
+- `estimated_cost`: Count wasted_steps precisely. Estimate wasted_tokens from message volume. Leave wasted_time_seconds as null unless timestamps are visible.
+- `related_event_ids`: Link causally connected events.
+
+After all events, provide:
+- `summary`: A narrative paragraph covering total friction impact, dominant patterns, and which sessions were most affected.
+- `top_mitigation`: The single highest-impact change (preferably a CLAUDE.md rule) that would prevent the most costly friction.
+- `claude_md_suggestions`: Concrete CLAUDE.md rules derived from the observed patterns, each with section, rationale, and source event IDs.
+- `mode_summary`: Aggregated counts per mode with total estimated cost and average severity.

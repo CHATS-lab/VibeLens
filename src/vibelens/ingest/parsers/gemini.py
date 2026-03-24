@@ -26,7 +26,7 @@ from pathlib import Path
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
 from vibelens.ingest.parsers.base import BaseParser, mark_error_content
-from vibelens.models.enums import StepSource
+from vibelens.models.enums import AgentType, StepSource
 from vibelens.models.trajectories import (
     Metrics,
     Observation,
@@ -56,8 +56,12 @@ class GeminiParser(BaseParser):
     embedded tool calls, and structured thinking process.
     """
 
-    AGENT_NAME = "gemini"
+    AGENT_TYPE = AgentType.GEMINI
     LOCAL_DATA_DIR: Path | None = Path.home() / ".gemini"
+
+    def discover_session_files(self, data_dir: Path) -> list[Path]:
+        """Find Gemini session files inside chats/ directories."""
+        return sorted(f for f in data_dir.rglob("session-*.json") if "chats" in f.parts)
 
     def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
         """Parse Gemini CLI session JSON content into a Trajectory.

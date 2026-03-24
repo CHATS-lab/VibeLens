@@ -7,7 +7,7 @@ import zipfile
 from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from vibelens.models.session_requests import DonateRequest, DonateResult, DownloadRequest
+from vibelens.schemas.session import DonateRequest, DonateResult, DownloadRequest
 from vibelens.services.flow_service import get_session_flow
 from vibelens.services.search_service import search_sessions
 from vibelens.services.session_service import (
@@ -23,7 +23,7 @@ router = APIRouter(tags=["sessions"])
 @router.get("/sessions")
 async def list_sessions_endpoint(
     project_name: str | None = None,
-    limit: int = 500,
+    limit: int = 0,
     offset: int = 0,
     x_session_token: str | None = Header(None),
 ) -> list[dict]:

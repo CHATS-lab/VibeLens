@@ -9,6 +9,8 @@ class AgentType(StrEnum):
     CLAUDE_CODE = "claude_code"
     CODEX = "codex"
     GEMINI = "gemini"
+    DATACLAW = "dataclaw"
+    PARSED = "parsed"
 
 
 class StepSource(StrEnum):
@@ -48,6 +50,7 @@ class AppMode(StrEnum):
 
     SELF = "self"
     DEMO = "demo"
+    TEST = "test"
 
 
 class SessionPhase(StrEnum):

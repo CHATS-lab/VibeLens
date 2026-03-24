@@ -19,6 +19,12 @@ sources:
   codex_dir: ~/.codex
   gemini_dir: ~/.gemini
 
+llm:
+  backend: litellm
+  model: anthropic/claude-sonnet-4-5
+  # api_key: set via VIBELENS_LLM_API_KEY env var, or uncomment below:
+  # api_key: sk-ant-...
+
 upload:
   dir: ~/.vibelens/uploads
   max_zip_bytes: 209715200        # 200 MB

@@ -36,7 +36,7 @@ from vibelens.ingest.parsers.base import (
     BaseParser,
     mark_error_content,
 )
-from vibelens.models.enums import StepSource
+from vibelens.models.enums import AgentType, StepSource
 from vibelens.models.trajectories import (
     FinalMetrics,
     Metrics,
@@ -124,8 +124,12 @@ class CodexParser(BaseParser):
     turn_context, and event_msg entries.
     """
 
-    AGENT_NAME = "codex"
+    AGENT_TYPE = AgentType.CODEX
     LOCAL_DATA_DIR: Path | None = Path.home() / ".codex"
+
+    def discover_session_files(self, data_dir: Path) -> list[Path]:
+        """Find Codex rollout session files."""
+        return sorted(f for f in data_dir.rglob("*.jsonl") if f.stem.startswith("rollout-"))
 
     def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
         """Parse Codex rollout JSONL content into a Trajectory.

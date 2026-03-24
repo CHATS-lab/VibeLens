@@ -1,5 +1,60 @@
 # Changelog
 
+## [0.9.0] - 2026-03-24
+
+### Added
+
+**Friction Analysis** *(Roadmap §6)*
+- **LLM-powered friction detection**: Multi-session analysis identifies wasted effort, wrong approaches, excessive retries, and other friction patterns. Produces severity-rated events with root causes, evidence, and actionable mitigations.
+- **CLAUDE.md suggestions**: LLM generates concrete CLAUDE.md rules derived from observed friction, with section placement and rationale linking back to source events.
+- **StepRef model**: Reusable locator for step or step range within a session, supporting point refs, range refs, and tool call pinning. Shared across friction and skill analysis.
+- **Friction analysis UI**: Full-page panel with severity-colored event cards, mode summary stats, CLAUDE.md suggestion cards, and LLM config section. History sidebar lists past analyses with load/delete.
+- **Friction persistence**: JSON-based store (`~/.vibelens/friction/`) with full result + lightweight metadata files for fast listing.
+
+**Skill Management** *(Roadmap §9)*
+- **Skill storage abstraction**: `SkillStore` ABC in `storage/skill/` with `SkillInfo` model using `AgentType` enum. `ClaudeCodeSkillStore` reads `~/.claude/skills/`, parses YAML frontmatter, detects subdirectories (scripts, references, agents, assets).
+- **Skill CRUD API**: `GET /api/skills/local`, `GET /api/skills/local/{name}`, `POST /api/skills/install`, `PUT /api/skills/local/{name}`, `DELETE /api/skills/local/{name}`, `GET /api/skills/search?q=...`.
+- **Skills UI**: New "Skills" tab with search bar, expandable skill cards showing allowed tools/subdirectories/path, create/edit dialog with SKILL.md editor, and delete confirmation.
+- **Skill personalization spec**: Comprehensive design document (`docs/spec-skill-personalization.md`) for LLM-powered skill retrieval, creation, and evolution from trajectory analysis.
+
+**LLM Inference Backend**
+- **Pluggable inference**: `InferenceBackend` ABC with `LiteLLMBackend` (supports 100+ models via litellm) and subprocess backends (claude-cli, codex-cli).
+- **Runtime hot-swap**: `POST /api/llm/configure` to change API key and model without restart. `GET /api/llm/status` reports backend availability.
+- **Jinja2 prompt templates**: System and user prompts for friction analysis rendered from `.j2` templates with `AnalysisPrompt` model.
+- **Step signals**: `StepSignal` model packages trajectory steps with session context for LLM digest, with configurable truncation limits.
+
+**Ingest Improvements**
+- **Index builder**: `index_builder.py` constructs skeleton trajectories from parser indexes for fast session listing without full file I/O.
+- **Parsed trajectory parser**: `ParsedTrajectoryParser` reads pre-parsed ATIF JSON files, enabling round-trip save/load.
+- **Parser discovery methods**: Each parser now implements `discover_session_files()` for agent-specific file filtering, replacing centralized discovery functions.
+- **Auto-prompt detection**: Claude Code parser classifies plan mode and automated workflow prompts (`is_auto_prompt` extra field).
+
+### Changed
+
+**Architecture**
+- **TrajectoryStore ABC refactor**: Unified index pattern with `_index` and `_metadata_cache`. Concrete methods (list_metadata, load, exists, session_count, get_metadata) operate on shared structures. Subclasses only implement `initialize()`, `save()`, and `_build_index()`.
+- **LocalStore simplification**: Uses `LOCAL_PARSER_CLASSES` list and delegates to parser `discover_session_files()`. Removed manual per-agent discovery logic.
+- **DiskStore simplification**: Streamlined save with incremental index updates. Uses rglob for subdirectory session discovery.
+- **Parser `AGENT_NAME` → `AGENT_TYPE`**: All parsers now use `AgentType` enum instead of string identifiers.
+- **Schema layer**: Extracted API boundary models into `schemas/` package (session, share, upload, friction, llm). Deleted standalone model files (`session_requests.py`, `share.py`, `upload.py`).
+- **Dependency injection**: Added `get_friction_store()`, `get_skill_store()`, `get_inference_backend()`, `set_inference_backend()`, `is_test_mode()` singletons.
+- **Settings expansion**: Added `skills_dir`, `friction_dir`, and LLM config fields (`llm_backend`, `llm_api_key`, `llm_model`, `llm_timeout`, `llm_max_tokens`).
+- **AppMode.TEST**: New test mode for isolated testing with mock backends.
+
+**Frontend**
+- **Four-tab navigation**: Added "Friction" (amber) and "Skills" (violet) tabs alongside Conversation and Dashboard.
+- **Session deep linking**: URL params `?session=...&step=...` for direct navigation to specific sessions and steps.
+- **Flow diagram improvements**: Reworked phase grouping, layout engine, and tool chip rendering.
+- **Session list**: Client-side pagination, improved search with debouncing, sticky project headers.
+
+**Dependencies**
+- Added `litellm>=1.40.0` and `jinja2>=3.1.0` to core dependencies.
+
+### Removed
+- **Fingerprint module**: Deleted `ingest/fingerprint.py` (format auto-detection via confidence scoring). Replaced by direct parser dispatch.
+- **Legacy model files**: Removed `models/session_requests.py`, `models/share.py`, `models/upload.py` (migrated to `schemas/`).
+- **Old frontend assets**: Cleaned up stale bundled JS/CSS from previous builds.
+
 ## [0.8.1] - 2026-03-22
 
 ### Added

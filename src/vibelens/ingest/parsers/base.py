@@ -12,7 +12,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from vibelens.models.enums import StepSource
+from vibelens.models.enums import AgentType, StepSource
 from vibelens.models.trajectories import (
     Agent,
     FinalMetrics,
@@ -120,22 +120,46 @@ class BaseParser(ABC):
     ``assemble_trajectory`` auto-computes derived fields
     (first_message, final_metrics) from steps.
 
-    Subclasses must set ``AGENT_NAME`` to their agent identifier
-    (e.g. ``"claude-code"``, ``"codex"``).
+    Subclasses must set ``AGENT_TYPE`` to their ``AgentType`` enum value
+    (e.g. ``AgentType.CLAUDE_CODE``, ``AgentType.CODEX``).
 
     Parsers that read from a local data directory set ``LOCAL_DATA_DIR``
-    to the default path (e.g. ``Path.home() / ".claude"``). Parsers for
-    imported formats (dataclaw) leave it as ``None`` to opt out of local
-    discovery.
+    to the default path (e.g. ``Path.home() / ".claude"``).
+    Parsers for imported formats leave it as ``None`` to opt out of
+    local discovery.
     """
 
-    AGENT_NAME: str
+    AGENT_TYPE: AgentType
     LOCAL_DATA_DIR: Path | None = None
 
-    @classmethod
-    def local_parsers(cls) -> list[type["BaseParser"]]:
-        """Return all parser subclasses that support local data directories."""
-        return [sub for sub in cls.__subclasses__() if sub.LOCAL_DATA_DIR is not None]
+    def parse_session_index(self, data_dir: Path) -> list[Trajectory] | None:
+        """Build skeleton trajectories from a fast index if available.
+
+        Parsers with an external index (history.jsonl, SQLite DB) override
+        this to avoid full-file parsing during listing. Returns None to
+        signal no fast index is available, triggering file-parse fallback.
+
+        Args:
+            data_dir: Agent's data directory.
+
+        Returns:
+            Skeleton trajectories, or None if no fast index exists.
+        """
+        return None
+
+    def discover_session_files(self, data_dir: Path) -> list[Path]:
+        """Discover session files in the given directory.
+
+        Override in subclasses to apply agent-specific filename filters.
+        Default returns an empty list.
+
+        Args:
+            data_dir: Directory to scan for session files.
+
+        Returns:
+            List of discovered session file paths.
+        """
+        return []
 
     @abstractmethod
     def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
@@ -206,7 +230,8 @@ class BaseParser(ABC):
                 continue
             if not isinstance(step.message, str):
                 continue
-            if step.extra and step.extra.get("is_skill_output"):
+            extra = step.extra or {}
+            if extra.get("is_skill_output") or extra.get("is_auto_prompt"):
                 continue
             if _is_meaningful_prompt(step.message):
                 return self.truncate_first_message(step.message)
@@ -232,7 +257,7 @@ class BaseParser(ABC):
         return {"diagnostics": collector.to_diagnostics().model_dump()}
 
     def build_agent(self, version: str | None = None, model: str | None = None) -> Agent:
-        """Create an ATIF Agent model using this parser's AGENT_NAME.
+        """Create an ATIF Agent model using this parser's AGENT_TYPE.
 
         Args:
             version: Agent system version.
@@ -241,7 +266,7 @@ class BaseParser(ABC):
         Returns:
             Agent instance.
         """
-        return Agent(name=self.AGENT_NAME, version=version, model_name=model)
+        return Agent(name=self.AGENT_TYPE.value, version=version, model_name=model)
 
     def assemble_trajectory(
         self,
@@ -319,21 +344,6 @@ class BaseParser(ABC):
                         continue
         except OSError:
             logger.warning("Cannot read file: %s", file_path)
-
-
-def _import_all_parsers() -> None:
-    """Import all parser modules so ``__subclasses__()`` discovers them.
-
-    Python only tracks subclasses that have been imported. This function
-    ensures every concrete parser module is loaded before calling
-    ``BaseParser.local_parsers()``.
-    """
-    from vibelens.ingest.parsers import (  # noqa: F401
-        claude_code,
-        codex,
-        dataclaw,
-        gemini,
-    )
 
 
 def _compute_final_metrics(steps: list[Step]) -> FinalMetrics:

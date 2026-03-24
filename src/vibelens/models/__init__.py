@@ -18,9 +18,7 @@ from vibelens.models.enums import (
     SessionPhase,
     StepSource,
 )
-from vibelens.models.session_requests import (
-    RemoteSessionsQuery,
-)
+from vibelens.models.skill import SkillInfo
 from vibelens.models.trajectories import (
     Agent,
     Base64Source,
@@ -34,6 +32,9 @@ from vibelens.models.trajectories import (
     ToolCall,
     Trajectory,
     TrajectoryRef,
+)
+from vibelens.schemas import (
+    RemoteSessionsQuery,
 )
 
 __all__ = [
@@ -56,6 +57,7 @@ __all__ = [
     "RemoteSessionsQuery",
     "SessionAnalytics",
     "SessionPhase",
+    "SkillInfo",
     "Step",
     "StepSource",
     "TimePattern",

@@ -76,6 +76,7 @@ export interface Trajectory {
   agent: Agent;
   final_metrics?: FinalMetrics | null;
   last_trajectory_ref?: TrajectoryRef | null;
+  continued_trajectory_ref?: TrajectoryRef | null;
   parent_trajectory_ref?: TrajectoryRef | null;
   extra?: Record<string, unknown> | null;
   steps?: Step[];
@@ -215,6 +216,90 @@ export interface FlowData {
   session_id: string;
   tool_graph: ToolDependencyGraph;
   phase_segments: PhaseSegment[];
+}
+
+export interface FrictionCost {
+  wasted_steps: number;
+  wasted_time_seconds: number | null;
+  wasted_tokens: number | null;
+}
+
+export interface StepRef {
+  session_id: string;
+  start_step_id: string;
+  end_step_id: string | null;
+  tool_call_id: string | null;
+}
+
+export interface FrictionEvent {
+  event_id: string;
+  mode: string;
+  ref: StepRef;
+  step_ids: string[];
+  severity: number;
+  description: string;
+  evidence: string;
+  root_cause: string;
+  mitigations: string[];
+  estimated_cost: FrictionCost;
+  related_event_ids: string[];
+}
+
+export interface ClaudeMdSuggestion {
+  rule: string;
+  section: string;
+  rationale: string;
+  source_event_ids: string[];
+}
+
+export interface ModeSummary {
+  mode: string;
+  count: number;
+  affected_sessions: number;
+  total_estimated_cost: FrictionCost;
+  avg_severity: number;
+}
+
+export interface FrictionAnalysisResult {
+  analysis_id: string | null;
+  events: FrictionEvent[];
+  summary: string;
+  top_mitigation: string;
+  claude_md_suggestions: ClaudeMdSuggestion[];
+  mode_summary: ModeSummary[];
+  session_ids: string[];
+  sessions_skipped: string[];
+  backend_id: string;
+  model: string;
+  cost_usd: number | null;
+  computed_at: string;
+}
+
+export interface FrictionMeta {
+  analysis_id: string;
+  session_ids: string[];
+  event_count: number;
+  summary_preview: string;
+  computed_at: string;
+  model: string;
+  cost_usd: number | null;
+}
+
+export interface LLMStatus {
+  available: boolean;
+  backend_id: string;
+  model: string | null;
+}
+
+export interface SkillInfo {
+  name: string;
+  description: string;
+  agent_type: AgentType;
+  path: string;
+  allowed_tools: string[];
+  subdirs: string[];
+  metadata: Record<string, unknown>;
+  line_count: number;
 }
 
 export type ToolType =

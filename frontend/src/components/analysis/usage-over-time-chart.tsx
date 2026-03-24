@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback, useRef } from "react";
 import type { DailyStat } from "../../types";
 import { formatTokens, formatCost } from "../../utils";
-import { TOGGLE_ACTIVE, TOGGLE_INACTIVE } from "../../styles";
+import { TOGGLE_ACTIVE, TOGGLE_INACTIVE, CHART } from "../../styles";
 import type { ChartMetric, TimeGroup } from "./chart-utils";
 import { fillDateGaps, groupDailyStats } from "./chart-utils";
 
@@ -12,12 +12,12 @@ interface UsageOverTimeChartProps {
   onLeave: () => void;
 }
 
-const W = 800;
-const H = 200;
-const ML = 55;
-const MR = 15;
-const MT = 12;
-const MB = 28;
+const W = CHART.WIDTH;
+const H = CHART.HEIGHT;
+const ML = CHART.MARGIN_LEFT;
+const MR = CHART.MARGIN_RIGHT;
+const MT = CHART.MARGIN_TOP;
+const MB = CHART.MARGIN_BOTTOM;
 const PW = W - ML - MR;
 const PH = H - MT - MB;
 

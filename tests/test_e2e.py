@@ -8,6 +8,7 @@ import pytest
 
 from vibelens.app import create_app
 from vibelens.config import Settings
+from vibelens.models.trajectories import Trajectory
 from vibelens.storage.local import LocalStore as LocalSource
 
 
@@ -673,6 +674,306 @@ class TestEdgeCases:
             assert isinstance(group, list)
             assert len(group) >= 1
             assert len(group[0]["steps"]) == 1
+
+
+class TestLocalStoreABC:
+    """Test new ABC methods on LocalStore."""
+
+    def test_exists_known_session(self, test_settings, sample_history, sample_sessions):
+        """exists() returns True for known sessions, False for unknown."""
+        settings, _, _ = test_settings
+        source = LocalSource(settings=settings)
+
+        assert source.exists("session-001") is True
+        assert source.exists("session-002") is True
+        assert source.exists("nonexistent") is False
+        print("exists() correctly identifies known/unknown sessions")
+
+    def test_session_count(self, test_settings, sample_history, sample_sessions):
+        """session_count() matches len(list_metadata())."""
+        settings, _, _ = test_settings
+        source = LocalSource(settings=settings)
+
+        count = source.session_count()
+        metadata_count = len(source.list_metadata())
+        assert count == metadata_count == 2
+        print(f"session_count() = {count}, matches list_metadata() length")
+
+    def test_save_raises(self, test_settings):
+        """save() raises NotImplementedError."""
+        settings, _, _ = test_settings
+        source = LocalSource(settings=settings)
+
+        with pytest.raises(NotImplementedError, match="read-only"):
+            source.save([])
+        print("save() correctly raises NotImplementedError")
+
+    def test_get_metadata(self, test_settings, sample_history, sample_sessions):
+        """get_metadata() returns summary dict for known session, None for unknown."""
+        settings, _, _ = test_settings
+        source = LocalSource(settings=settings)
+
+        meta = source.get_metadata("session-001")
+        assert meta is not None
+        assert meta["session_id"] == "session-001"
+
+        assert source.get_metadata("nonexistent") is None
+        print("get_metadata() correctly returns metadata or None")
+
+
+class TestDiskStore:
+    """Test DiskStore with unified index."""
+
+    def test_save_and_load_roundtrip(self, tmp_path):
+        """DiskStore save -> exists -> load round-trip."""
+        from vibelens.storage.disk import DiskStore
+
+        store = DiskStore(root=tmp_path)
+        store.initialize()
+
+        traj = _make_test_trajectory("roundtrip-001", "Test roundtrip session")
+        store.save([traj])
+
+        assert store.exists("roundtrip-001") is True
+        loaded = store.load("roundtrip-001")
+        assert loaded is not None
+        assert len(loaded) == 1
+        assert loaded[0].session_id == "roundtrip-001"
+        print(f"Round-trip: saved and loaded session {loaded[0].session_id}")
+
+    def test_session_count(self, tmp_path):
+        """session_count() tracks saves correctly."""
+        from vibelens.storage.disk import DiskStore
+
+        store = DiskStore(root=tmp_path)
+        store.initialize()
+
+        assert store.session_count() == 0
+
+        store.save([_make_test_trajectory("count-001", "First")])
+        assert store.session_count() == 1
+
+        store.save([_make_test_trajectory("count-002", "Second")])
+        assert store.session_count() == 2
+        print(f"session_count() correctly tracks {store.session_count()} sessions")
+
+    def test_exists_unknown_session(self, tmp_path):
+        """exists() returns False for non-existent session."""
+        from vibelens.storage.disk import DiskStore
+
+        store = DiskStore(root=tmp_path)
+        store.initialize()
+
+        assert store.exists("no-such-session") is False
+        print("exists() correctly returns False for unknown session")
+
+    def test_save_updates_index_incrementally(self, tmp_path):
+        """save() updates _metadata_cache and _index without full rebuild."""
+        from vibelens.storage.disk import DiskStore
+
+        store = DiskStore(root=tmp_path)
+        store.initialize()
+
+        # Trigger initial index build
+        assert store.session_count() == 0
+
+        # Save should update cache incrementally (no rebuild needed)
+        traj = _make_test_trajectory("incr-001", "Incremental save")
+        store.save([traj])
+
+        # Verify both _metadata_cache and _index were updated
+        assert store._metadata_cache is not None
+        assert "incr-001" in store._metadata_cache
+        assert "incr-001" in store._index
+        assert store.exists("incr-001") is True
+        assert store.session_count() == 1
+        print("save() correctly updates _metadata_cache and _index incrementally")
+
+    def test_invalidate_index_triggers_rebuild(self, tmp_path):
+        """invalidate_index() clears cache; next access rebuilds from disk."""
+        from vibelens.storage.disk import DiskStore
+
+        store = DiskStore(root=tmp_path)
+        store.initialize()
+
+        # Save a session to build initial index
+        traj = _make_test_trajectory("rebuild-001", "Rebuild test")
+        store.save([traj])
+        assert store.exists("rebuild-001") is True
+
+        # Invalidate clears both caches
+        store.invalidate_index()
+        assert store._metadata_cache is None
+        assert store._index == {}
+
+        # Next access triggers rebuild from disk
+        summaries = store.list_metadata()
+        assert len(summaries) == 1
+        assert summaries[0]["session_id"] == "rebuild-001"
+        assert store._metadata_cache is not None
+        assert "rebuild-001" in store._index
+        print("invalidate_index() + list_metadata() correctly rebuilds from disk")
+
+    def test_rglob_finds_subdirectory_sessions(self, tmp_path):
+        """_build_index discovers sessions in subdirectories via rglob."""
+        from vibelens.storage.disk import DiskStore
+
+        store = DiskStore(root=tmp_path)
+        store.initialize()
+
+        # Save a root-level session
+        store.save([_make_test_trajectory("root-001", "Root session")])
+
+        # Save a session in a subdirectory (simulating upload)
+        subdir = tmp_path / "upload_abc"
+        sub_store = DiskStore(root=subdir)
+        sub_store.initialize()
+        sub_store.save([_make_test_trajectory("sub-001", "Sub session")])
+
+        # Force rebuild so main store picks up subdirectory files
+        store.invalidate_index()
+        summaries = store.list_metadata()
+        session_ids = {s["session_id"] for s in summaries}
+        assert "root-001" in session_ids
+        assert "sub-001" in session_ids
+        assert len(summaries) == 2
+        print("rglob correctly discovers sessions in subdirectories")
+
+    def test_rglob_reads_upload_id_from_index(self, tmp_path):
+        """_build_index reads _upload_id from JSONL index written with default_tags."""
+        from vibelens.storage.disk import DiskStore
+
+        store = DiskStore(root=tmp_path)
+        store.initialize()
+
+        # Simulate what upload_service does: save via sub-store with default_tags
+        subdir = tmp_path / "upload_xyz"
+        sub_store = DiskStore(root=subdir, default_tags={"_upload_id": "upload_xyz"})
+        sub_store.initialize()
+        sub_store.save([_make_test_trajectory("tagged-001", "Tagged session")])
+
+        # Main store picks up the tag via rglob on _index.jsonl
+        summaries = store.list_metadata()
+        tagged = [s for s in summaries if s.get("_upload_id") == "upload_xyz"]
+        assert len(tagged) == 1
+        assert tagged[0]["session_id"] == "tagged-001"
+        print("rglob correctly reads _upload_id from JSONL index with default_tags")
+
+    def test_get_metadata(self, tmp_path):
+        """get_metadata() returns summary dict for known session, None for unknown."""
+        from vibelens.storage.disk import DiskStore
+
+        store = DiskStore(root=tmp_path)
+        store.initialize()
+
+        traj = _make_test_trajectory("meta-001", "Metadata test")
+        store.save([traj])
+
+        meta = store.get_metadata("meta-001")
+        assert meta is not None
+        assert meta["session_id"] == "meta-001"
+
+        assert store.get_metadata("nonexistent") is None
+        print("get_metadata() correctly returns metadata or None")
+
+
+class TestFilterVisible:
+    """Test upload visibility filtering from upload_visibility."""
+
+    def test_root_sessions_always_visible(self):
+        """Root-level sessions (no _upload_id) are always visible."""
+        from vibelens.services.upload_visibility import filter_visible
+
+        summaries = [
+            {"session_id": "root-001"},
+            {"session_id": "root-002"},
+        ]
+        result = filter_visible(summaries, session_token=None)
+        assert len(result) == 2
+        print("Root sessions visible without token")
+
+    def test_upload_sessions_hidden_without_token(self):
+        """Upload-scoped sessions are hidden when no token is provided."""
+        from vibelens.services.upload_visibility import filter_visible
+
+        summaries = [
+            {"session_id": "root-001"},
+            {"session_id": "upload-001", "_upload_id": "upload_abc"},
+        ]
+        result = filter_visible(summaries, session_token=None)
+        assert len(result) == 1
+        assert result[0]["session_id"] == "root-001"
+        print("Upload sessions hidden without token")
+
+    def test_upload_sessions_visible_with_owning_token(self):
+        """Upload sessions are visible when the token owns the upload."""
+        from vibelens.services.upload_visibility import filter_visible, register_upload
+
+        register_upload("token-abc", "upload_abc")
+
+        summaries = [
+            {"session_id": "root-001"},
+            {"session_id": "upload-001", "_upload_id": "upload_abc"},
+        ]
+        result = filter_visible(summaries, session_token="token-abc")
+        assert len(result) == 2
+        print("Upload sessions visible with owning token")
+
+    def test_upload_sessions_hidden_with_wrong_token(self):
+        """Upload sessions are hidden when the token doesn't own the upload."""
+        from vibelens.services.upload_visibility import filter_visible
+
+        summaries = [
+            {"session_id": "root-001"},
+            {"session_id": "upload-001", "_upload_id": "upload_xyz"},
+        ]
+        result = filter_visible(summaries, session_token="token-wrong")
+        assert len(result) == 1
+        assert result[0]["session_id"] == "root-001"
+        print("Upload sessions hidden with wrong token")
+
+    def test_is_session_visible(self):
+        """is_session_visible() checks single session visibility."""
+        from vibelens.services.upload_visibility import is_session_visible, register_upload
+
+        # No metadata -> not visible
+        assert is_session_visible(None, "token") is False
+
+        # Root session -> always visible
+        assert is_session_visible({"session_id": "root"}, None) is True
+
+        # Upload session without token -> not visible
+        assert is_session_visible({"session_id": "up", "_upload_id": "u1"}, None) is False
+
+        # Upload session with owning token -> visible
+        register_upload("my-token", "u1")
+        assert is_session_visible({"session_id": "up", "_upload_id": "u1"}, "my-token") is True
+        print("is_session_visible() correctly checks visibility")
+
+
+def _make_test_trajectory(session_id: str, first_message: str) -> Trajectory:
+    """Create a minimal Trajectory for testing.
+
+    Args:
+        session_id: Session identifier.
+        first_message: First user message text.
+
+    Returns:
+        A Trajectory with one user step.
+    """
+    return Trajectory(
+        session_id=session_id,
+        first_message=first_message,
+        agent={"name": "test", "model_name": "test-model"},
+        steps=[
+            {
+                "step_id": "step-1",
+                "source": "user",
+                "message": first_message,
+                "timestamp": "2025-01-01T00:00:00Z",
+            }
+        ],
+    )
 
 
 if __name__ == "__main__":

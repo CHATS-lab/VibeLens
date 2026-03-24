@@ -1,13 +1,15 @@
 /**
  * Flow layout engine — converts Steps + FlowData into structured card data.
  *
- * Produces phase-grouped cards (user prompts + agent responses with embedded
- * tool chips) and a dependency map for hover highlighting. No x/y positioning
- * needed — the FlowDiagram component uses DOM/CSS layout.
+ * User prompts are treated as **anchors** — standalone dividers between
+ * phases.  Only agent steps (with tool calls or text) participate in
+ * phase grouping.  The output `sections` array interleaves user anchors
+ * and phase groups in chronological order for the diagram to render.
  */
 
 import type { Step, ToolDependencyGraph, PhaseSegment } from "../../types";
 import { extractMessageText } from "../../utils";
+import { LABEL_MAX_LENGTH } from "../../styles";
 
 export interface FlowToolChip {
   id: string;
@@ -43,6 +45,11 @@ export interface FlowPhaseGroup {
   dominantCategory: string;
 }
 
+/** A section in the flow diagram — either a user anchor or a phase group. */
+export type FlowSection =
+  | { type: "anchor"; data: FlowUserCardData }
+  | { type: "phase"; data: FlowPhaseGroup };
+
 export interface ToolRelation {
   targetToolCallId: string;
   relation: string;
@@ -50,11 +57,12 @@ export interface ToolRelation {
 }
 
 export interface FlowResult {
+  /** Phase groups (agent-only) for the nav panel. */
   phases: FlowPhaseGroup[];
+  /** Interleaved anchors + phases for the diagram. */
+  sections: FlowSection[];
   dependencies: Map<string, ToolRelation[]>;
 }
-
-const LABEL_MAX_LENGTH = 120;
 
 const TOOL_CATEGORY_MAP: Record<string, string> = {
   Read: "file_read",
@@ -109,14 +117,21 @@ export function computeFlow(
   toolGraph: ToolDependencyGraph | null,
   phases: PhaseSegment[]
 ): FlowResult {
-  const cards = buildCards(steps);
-  const phaseGroups = assignCardsToPhases(cards, phases);
+  const { userCards, agentCards } = buildCards(steps);
+  const phaseGroups = assignAgentCardsToPhases(agentCards, phases);
+  const sections = interleaveSections(userCards, phaseGroups);
   const dependencies = buildDependencyMap(toolGraph);
-  return { phases: phaseGroups, dependencies };
+  return { phases: phaseGroups, sections, dependencies };
 }
 
-function buildCards(steps: Step[]): FlowCard[] {
-  const cards: FlowCard[] = [];
+interface CardSplit {
+  userCards: FlowUserCardData[];
+  agentCards: FlowCard[];
+}
+
+function buildCards(steps: Step[]): CardSplit {
+  const userCards: FlowUserCardData[] = [];
+  const agentCards: FlowCard[] = [];
   let globalStepIdx = 0;
 
   for (const step of steps) {
@@ -125,14 +140,13 @@ function buildCards(steps: Step[]): FlowCard[] {
     if (step.source === "user") {
       const text = extractMessageText(step.message);
       if (!text) continue;
-      cards.push({
-        type: "user",
-        data: {
-          id: `user-${step.step_id}`,
-          label: truncateLabel(text, LABEL_MAX_LENGTH),
-          detail: text,
-          stepIndex: stepIdx,
-        },
+      // Skip skill outputs and auto-generated prompts
+      if (step.extra?.is_skill_output || step.extra?.is_auto_prompt) continue;
+      userCards.push({
+        id: `user-${step.step_id}`,
+        label: truncateLabel(text, LABEL_MAX_LENGTH),
+        detail: text,
+        stepIndex: stepIdx,
       });
     }
 
@@ -149,7 +163,7 @@ function buildCards(steps: Step[]): FlowCard[] {
         toolCallId: tc.tool_call_id,
       }));
 
-      cards.push({
+      agentCards.push({
         type: "agent",
         data: {
           id: `agent-${step.step_id}`,
@@ -162,7 +176,7 @@ function buildCards(steps: Step[]): FlowCard[] {
     }
   }
 
-  return cards;
+  return { userCards, agentCards };
 }
 
 function computePhaseSummary(cards: FlowCard[]): { toolCount: number; dominantCategory: string } {
@@ -187,21 +201,22 @@ function computePhaseSummary(cards: FlowCard[]): { toolCount: number; dominantCa
   return { toolCount, dominantCategory };
 }
 
-function assignCardsToPhases(
-  cards: FlowCard[],
+/** Assign only agent cards to phase groups. User cards are excluded. */
+function assignAgentCardsToPhases(
+  agentCards: FlowCard[],
   phases: PhaseSegment[]
 ): FlowPhaseGroup[] {
   if (phases.length === 0) {
-    if (cards.length === 0) return [];
-    const { toolCount, dominantCategory } = computePhaseSummary(cards);
-    return [{ phase: "mixed", cards, toolCount, dominantCategory }];
+    if (agentCards.length === 0) return [];
+    const { toolCount, dominantCategory } = computePhaseSummary(agentCards);
+    return [{ phase: "mixed", cards: agentCards, toolCount, dominantCategory }];
   }
 
   const groups: FlowPhaseGroup[] = [];
   const assignedIndices = new Set<number>();
 
   for (const seg of phases) {
-    const segCards = cards.filter((c) => {
+    const segCards = agentCards.filter((c) => {
       const idx = c.data.stepIndex;
       return idx >= seg.start_index && idx <= seg.end_index;
     });
@@ -212,14 +227,61 @@ function assignCardsToPhases(
     }
   }
 
-  // Unassigned cards go into "mixed"
-  const uncovered = cards.filter((c) => !assignedIndices.has(c.data.stepIndex));
+  // Unassigned agent cards go into "mixed"
+  const uncovered = agentCards.filter((c) => !assignedIndices.has(c.data.stepIndex));
   if (uncovered.length > 0) {
     const { toolCount, dominantCategory } = computePhaseSummary(uncovered);
     groups.push({ phase: "mixed", cards: uncovered, toolCount, dominantCategory });
   }
 
   return groups;
+}
+
+/**
+ * Interleave user anchors and phase groups in chronological order.
+ *
+ * A user anchor appears before the phase group whose first card has a
+ * stepIndex greater than the anchor's stepIndex.  This makes user
+ * prompts natural dividers between phases.
+ */
+function interleaveSections(
+  userCards: FlowUserCardData[],
+  phaseGroups: FlowPhaseGroup[]
+): FlowSection[] {
+  const sections: FlowSection[] = [];
+
+  // Build a sorted list of (stepIndex, section) for interleaving
+  type Entry = { stepIndex: number; section: FlowSection };
+  const entries: Entry[] = [];
+
+  for (const user of userCards) {
+    entries.push({
+      stepIndex: user.stepIndex,
+      section: { type: "anchor", data: user },
+    });
+  }
+
+  for (const group of phaseGroups) {
+    // Use the first card's stepIndex as the group's position
+    const firstIdx = group.cards.length > 0 ? group.cards[0].data.stepIndex : 0;
+    entries.push({
+      stepIndex: firstIdx,
+      section: { type: "phase", data: group },
+    });
+  }
+
+  // Sort by stepIndex; anchors before phases at the same index
+  entries.sort((a, b) => {
+    if (a.stepIndex !== b.stepIndex) return a.stepIndex - b.stepIndex;
+    // User anchors come before phases at the same position
+    return a.section.type === "anchor" ? -1 : 1;
+  });
+
+  for (const entry of entries) {
+    sections.push(entry.section);
+  }
+
+  return sections;
 }
 
 function buildDependencyMap(

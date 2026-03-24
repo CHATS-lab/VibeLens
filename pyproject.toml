@@ -1,6 +1,6 @@
 [project]
 name = "vibelens"
-version = "0.8.1"
+version = "0.9.0"
 description = "Agent Trajectory visualization and analysis platform"
 readme = "README.md"
 license = "MIT"
@@ -25,6 +25,8 @@ dependencies = [
     "pydantic-settings>=2.7.0",
     "pyyaml>=6.0",
     "python-multipart>=0.0.22",
+    "litellm>=1.40.0",
+    "jinja2>=3.1.0",
 ]
 
 [project.optional-dependencies]

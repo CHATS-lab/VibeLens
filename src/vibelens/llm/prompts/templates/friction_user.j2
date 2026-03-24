@@ -1,0 +1,18 @@
+Analyze this coding agent session for friction and inefficiency.
+
+For each friction point, identify:
+- Which category it belongs to (error_loop, wasted_effort, misunderstanding, or tool_misuse).
+- A short, specific title describing the friction (e.g., "Edit retry loop on config.py", "Unrequested CSS refactor").
+- The step range where it occurs (start and end step indices, inclusive).
+- Severity (1-5) using the scale from the system prompt.
+- Evidence: direct quotes or close paraphrases from the session data.
+
+Also provide:
+- Total estimated wasted steps across all friction points.
+- Actionable recommendations to prevent each friction type, preferring CLAUDE.md rule additions with exact rule text.
+
+Output JSON schema:
+{{ output_schema }}
+
+SESSION DATA:
+{{ trajectory_digest }}

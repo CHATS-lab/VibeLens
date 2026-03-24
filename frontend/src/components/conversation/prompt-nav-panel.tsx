@@ -4,9 +4,11 @@ import { extractUserText, truncate } from "../../utils";
 import { ResizeHandle } from "../resize-handle";
 import type { Step, Trajectory } from "../../types";
 import type { FlowPhaseGroup } from "./flow-layout";
-import { TOGGLE_CONTAINER, TOGGLE_BUTTON_BASE, TOGGLE_ACTIVE, TOGGLE_INACTIVE } from "../../styles";
+import {
+  TOGGLE_CONTAINER, TOGGLE_BUTTON_BASE, TOGGLE_ACTIVE, TOGGLE_INACTIVE,
+  PHASE_STYLE, CATEGORY_LABELS, SESSION_ID_MEDIUM, PREVIEW_MEDIUM, PREVIEW_LONG,
+} from "../../styles";
 
-const PREVIEW_MAX_CHARS = 80;
 const MIN_PROMPTS_FOR_NAV = 1;
 
 type NavMode = "prompts" | "sub-agents";
@@ -16,26 +18,6 @@ interface PromptEntry {
   stepId: string;
   preview: string;
 }
-
-const PHASE_NAV_STYLE: Record<string, { dot: string; text: string }> = {
-  exploration: { dot: "bg-blue-400", text: "text-blue-400" },
-  implementation: { dot: "bg-emerald-400", text: "text-emerald-400" },
-  debugging: { dot: "bg-red-400", text: "text-red-400" },
-  verification: { dot: "bg-amber-400", text: "text-amber-400" },
-  planning: { dot: "bg-violet-400", text: "text-violet-400" },
-  mixed: { dot: "bg-zinc-500", text: "text-zinc-400" },
-};
-
-const CATEGORY_LABELS: Record<string, string> = {
-  file_read: "read",
-  file_write: "write",
-  shell: "shell",
-  search: "search",
-  web: "web",
-  agent: "agent",
-  task: "task",
-  other: "other",
-};
 
 interface PromptNavPanelProps {
   steps: Step[];
@@ -57,7 +39,7 @@ function buildPromptEntries(steps: Step[]): PromptEntry[] {
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
     if (step.source !== "user") continue;
-    if (step.extra?.is_skill_output) continue;
+    if (step.extra?.is_skill_output || step.extra?.is_auto_prompt) continue;
 
     const text = extractUserText(step);
     if (!text) continue;
@@ -67,7 +49,7 @@ function buildPromptEntries(steps: Step[]): PromptEntry[] {
     entries.push({
       turnNumber,
       stepId: step.step_id,
-      preview: truncate(text.replace(/\n/g, " "), PREVIEW_MAX_CHARS),
+      preview: truncate(text.replace(/\n/g, " "), PREVIEW_LONG),
     });
   }
 
@@ -120,7 +102,7 @@ export function PromptNavPanel({
           <div className="space-y-1">
             {flowPhases!.map((phase, idx) => {
               const isActive = activePhaseIdx === idx;
-              const style = PHASE_NAV_STYLE[phase.phase] || PHASE_NAV_STYLE.mixed;
+              const style = PHASE_STYLE[phase.phase] || PHASE_STYLE.mixed;
               const catLabel = CATEGORY_LABELS[phase.dominantCategory] || phase.dominantCategory;
               return (
                 <button
@@ -136,7 +118,7 @@ export function PromptNavPanel({
                     <span className={`w-2 h-2 rounded-full ${style.dot}`} />
                     <span
                       className={`text-[11px] font-bold uppercase tracking-wider ${
-                        isActive ? "text-cyan-300" : style.text
+                        isActive ? "text-cyan-300" : style.label
                       }`}
                     >
                       {phase.phase}
@@ -261,7 +243,7 @@ export function PromptNavPanel({
                         #{idx + 1}
                       </span>
                       <span className="text-zinc-400 truncate">
-                        {sub.session_id.slice(0, 12)}
+                        {sub.session_id.slice(0, SESSION_ID_MEDIUM)}
                       </span>
                     </div>
                     <p className="text-zinc-400 group-hover:text-zinc-300 leading-snug">
@@ -269,7 +251,7 @@ export function PromptNavPanel({
                     </p>
                     {sub.first_message && (
                       <p className="text-zinc-500 group-hover:text-zinc-400 line-clamp-1 leading-snug mt-0.5">
-                        {truncate(sub.first_message, 60)}
+                        {truncate(sub.first_message, PREVIEW_MEDIUM)}
                       </p>
                     )}
                   </button>
@@ -302,7 +284,7 @@ export function PromptNavPanel({
                         #{idx + 1}
                       </span>
                       <span className="text-zinc-400 truncate">
-                        {sub.session_id.slice(0, 12)}
+                        {sub.session_id.slice(0, SESSION_ID_MEDIUM)}
                       </span>
                     </div>
                     <p className="text-zinc-400 group-hover:text-zinc-300 leading-snug">
@@ -310,7 +292,7 @@ export function PromptNavPanel({
                     </p>
                     {sub.first_message && (
                       <p className="text-zinc-500 group-hover:text-zinc-400 line-clamp-1 leading-snug mt-0.5">
-                        {truncate(sub.first_message, 60)}
+                        {truncate(sub.first_message, PREVIEW_MEDIUM)}
                       </p>
                     )}
                   </button>

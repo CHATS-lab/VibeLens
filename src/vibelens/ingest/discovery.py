@@ -6,6 +6,10 @@ filtering by agent-specific naming conventions.
 
 from pathlib import Path
 
+from vibelens.ingest.parsers.base import BaseParser
+from vibelens.ingest.parsers.claude_code import ClaudeCodeParser
+from vibelens.ingest.parsers.codex import CodexParser
+from vibelens.ingest.parsers.gemini import GeminiParser
 from vibelens.models.enums import AgentType
 
 # Claude Code session discovery constants
@@ -17,13 +21,37 @@ _SKIP_DIR_NAMES = {SUBAGENTS_DIR_NAME, "parsed"}
 
 PARSEABLE_EXTENSIONS = {".json", ".jsonl"}
 
+_PARSERS_BY_TYPE: dict[AgentType, type[BaseParser]] = {
+    AgentType.CLAUDE_CODE: ClaudeCodeParser,
+    AgentType.CODEX: CodexParser,
+    AgentType.GEMINI: GeminiParser,
+}
+
+
+def get_parser(agent_type: str) -> BaseParser:
+    """Instantiate a parser for the given agent type.
+
+    Args:
+        agent_type: One of AgentType values.
+
+    Returns:
+        Parser instance.
+
+    Raises:
+        ValueError: If agent_type is unsupported.
+    """
+    agent = AgentType(agent_type)
+    parser_cls = _PARSERS_BY_TYPE.get(agent)
+    if not parser_cls:
+        raise ValueError(f"Unsupported agent_type: {agent_type}")
+    return parser_cls()
+
 
 def discover_session_files(extracted_dir: Path, agent_type: str) -> list[Path]:
     """Walk directory and return parseable session file paths for a given agent.
 
-    Filters files based on agent-specific naming conventions.
-    Sub-agent files are excluded since parsers discover them
-    from the directory layout.
+    Delegates to the parser's ``discover_session_files`` method for
+    agent-specific filename filtering.
 
     Args:
         extracted_dir: Root of the extracted zip contents.
@@ -36,15 +64,10 @@ def discover_session_files(extracted_dir: Path, agent_type: str) -> list[Path]:
         ValueError: If agent_type is unsupported.
     """
     agent = AgentType(agent_type)
-
-    if agent == AgentType.CLAUDE_CODE:
-        return _discover_claude_code(extracted_dir)
-    if agent == AgentType.CODEX:
-        return _discover_codex(extracted_dir)
-    if agent == AgentType.GEMINI:
-        return _discover_gemini(extracted_dir)
-
-    raise ValueError(f"Unsupported agent_type: {agent_type}")
+    parser_cls = _PARSERS_BY_TYPE.get(agent)
+    if not parser_cls:
+        raise ValueError(f"Unsupported agent_type: {agent_type}")
+    return parser_cls().discover_session_files(extracted_dir)
 
 
 def discover_all_session_files(directory: Path) -> list[Path]:
@@ -68,23 +91,3 @@ def discover_all_session_files(directory: Path) -> list[Path]:
                 continue
             files.append(filepath)
     return sorted(files)
-
-
-def _discover_claude_code(extracted_dir: Path) -> list[Path]:
-    """Find Claude Code session files, excluding sub-agents and history index."""
-    files = sorted(extracted_dir.rglob("*.jsonl"))
-    return [
-        f
-        for f in files
-        if not _SKIP_DIR_NAMES.intersection(f.parts) and f.name != HISTORY_INDEX_FILENAME
-    ]
-
-
-def _discover_codex(extracted_dir: Path) -> list[Path]:
-    """Find Codex rollout session files."""
-    return sorted(f for f in extracted_dir.rglob("*.jsonl") if f.stem.startswith("rollout-"))
-
-
-def _discover_gemini(extracted_dir: Path) -> list[Path]:
-    """Find Gemini session files inside chats/ directories."""
-    return sorted(f for f in extracted_dir.rglob("session-*.json") if "chats" in f.parts)

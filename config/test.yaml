@@ -1,0 +1,30 @@
+# VibeLens — Test Configuration
+# Test mode: local sessions from ~/.claude/ + mock LLM responses.
+# Friction analysis returns realistic mock data without calling a real LLM.
+#
+# Usage:
+#   vibelens serve --config config/test.yaml
+#   VIBELENS_CONFIG=config/test.yaml vibelens serve
+
+app:
+  mode: test
+  visible_agents:
+    - all
+
+server:
+  host: 127.0.0.1
+  port: 12001
+
+sources:
+  claude_dir: ~/.claude
+  codex_dir: ~/.codex
+  gemini_dir: ~/.gemini
+
+llm:
+  backend: disabled
+
+upload:
+  dir: ~/.vibelens/uploads
+  max_zip_bytes: 209715200        # 200 MB
+  max_extracted_bytes: 524288000  # 500 MB
+  max_file_count: 10000

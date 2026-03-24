@@ -448,16 +448,21 @@ export function DashboardView({ cache }: DashboardViewProps) {
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <FolderOpen className="w-4 h-4 text-cyan-400" />
-                  <h3
-                    className="text-base font-medium text-zinc-200 cursor-default"
-                    onMouseEnter={(e) =>
-                      show(e, `Per-project breakdown (${allProjectEntries.length} total). Click to filter.`)
-                    }
-                    onMouseMove={move}
-                    onMouseLeave={hide}
-                  >
-                    Project Activity
-                  </h3>
+                  <div>
+                    <h3
+                      className="text-base font-medium text-zinc-200 cursor-default"
+                      onMouseEnter={(e) =>
+                        show(e, `Per-project breakdown (${allProjectEntries.length} total). Click to filter.`)
+                      }
+                      onMouseMove={move}
+                      onMouseLeave={hide}
+                    >
+                      Project Activity
+                    </h3>
+                    <p className="text-[11px] text-zinc-500 mt-0.5">
+                      Click a project to view its dedicated dashboard analysis
+                    </p>
+                  </div>
                 </div>
                 {hasMoreProjects && (
                   <button

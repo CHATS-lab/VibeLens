@@ -1,4 +1,4 @@
-"""Share request and response models."""
+"""Share request, response, and metadata models."""
 
 from datetime import datetime
 
@@ -17,4 +17,13 @@ class ShareResponse(BaseModel):
     token: str = Field(description="URL-safe share token.")
     url: str = Field(description="Full shareable URL.")
     title: str = Field(description="Session title extracted from first message.")
+    created_at: datetime = Field(description="When the share was created.")
+
+
+class ShareMeta(BaseModel):
+    """Metadata for a shared session snapshot."""
+
+    token: str = Field(description="URL-safe share token.")
+    session_id: str = Field(description="Original session ID.")
+    title: str = Field(description="Session title from first message.")
     created_at: datetime = Field(description="When the share was created.")

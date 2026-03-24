@@ -15,11 +15,13 @@ import {
   Layers,
   Monitor,
   Zap,
+  ScrollText,
 } from "lucide-react";
 import { useState } from "react";
 import { createTwoFilesPatch } from "diff";
 import type { Step, ToolCall, ObservationResult, ContentPart } from "../../types";
 import { sanitizeText, extractMessageText } from "../../utils";
+import { PREVIEW_LONG } from "../../styles";
 import { MarkdownRenderer } from "../markdown-renderer";
 import { ContentRenderer } from "./content-renderer";
 import { CopyButton } from "../copy-button";
@@ -39,6 +41,9 @@ export function StepBlock({ step }: StepBlockProps) {
   if (step.source === "user") {
     if (step.extra?.is_skill_output) {
       return <SkillStep step={step} />;
+    }
+    if (step.extra?.is_auto_prompt) {
+      return <AutoPromptStep step={step} />;
     }
     return <UserStep step={step} />;
   }
@@ -68,7 +73,7 @@ function SystemStep({ step }: { step: Step }) {
   const [open, setOpen] = useState(false);
   const text = extractMessageText(step.message);
   if (!text) return null;
-  const previewSnippet = text.split("\n")[0].slice(0, 80);
+  const previewSnippet = text.split("\n")[0].slice(0, PREVIEW_LONG);
 
   return (
     <div className="max-w-[85%]">
@@ -119,6 +124,36 @@ function SkillStep({ step }: { step: Step }) {
       {open && (
         <div className="mt-1 bg-amber-500/5 border border-amber-500/20 rounded-lg p-3">
           <pre className="text-xs text-amber-200/70 whitespace-pre-wrap overflow-x-auto max-h-96 overflow-y-auto">
+            {text}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AutoPromptStep({ step }: { step: Step }) {
+  const [open, setOpen] = useState(false);
+  const text = extractMessageText(step.message);
+  if (!text) return null;
+  const firstLine = text.split("\n")[0].slice(0, PREVIEW_LONG);
+
+  return (
+    <div className="max-w-[85%]">
+      <button
+        onClick={() => setOpen(!open)}
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] border transition-colors bg-violet-500/10 hover:bg-violet-500/15 text-violet-300 border-violet-500/20"
+      >
+        {open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        <ScrollText className="w-3.5 h-3.5" />
+        <span className="font-medium">Auto</span>
+        {!open && (
+          <span className="text-violet-400/60 truncate max-w-[250px] ml-0.5">{firstLine}</span>
+        )}
+      </button>
+      {open && (
+        <div className="mt-1 bg-violet-500/5 border border-violet-500/20 rounded-lg p-3">
+          <pre className="text-xs text-violet-200/70 whitespace-pre-wrap overflow-x-auto max-h-96 overflow-y-auto">
             {text}
           </pre>
         </div>
@@ -320,7 +355,7 @@ function ToolResultBlock({ result }: { result: ObservationResult }) {
     );
   }
 
-  const previewSnippet = content.split("\n")[0].slice(0, 80);
+  const previewSnippet = content.split("\n")[0].slice(0, PREVIEW_LONG);
 
   return (
     <div className="max-w-[85%]">

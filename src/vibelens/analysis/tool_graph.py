@@ -113,7 +113,6 @@ def _flatten_tool_calls(steps: list[Step]) -> list[_FlatCall]:
                 )
             )
             index += 1
-
     return result
 
 
@@ -156,7 +155,6 @@ def _find_read_before_write(calls: list[_FlatCall], has_predecessor: set[str]) -
                     )
                 )
                 has_predecessor.add(call.tc_id)
-
     return edges
 
 
@@ -192,7 +190,6 @@ def _find_search_then_read(calls: list[_FlatCall], has_predecessor: set[str]) ->
             # Agent moved on to writing/shell/web — reset the search context
             last_search_id = ""
             last_search_idx = -1
-
     return edges
 
 
@@ -232,7 +229,6 @@ def _find_write_then_test(calls: list[_FlatCall], has_predecessor: set[str]) -> 
             # Agent moved on to a different activity — reset
             last_write_id = ""
             last_write_idx = -1
-
     return edges
 
 
@@ -264,7 +260,6 @@ def _find_multi_edit(calls: list[_FlatCall], has_predecessor: set[str]) -> list[
             )
             has_predecessor.add(call.tc_id)
         last_write_by_path[path] = call.tc_id
-
     return edges
 
 
@@ -296,7 +291,6 @@ def _find_error_retry(calls: list[_FlatCall], has_predecessor: set[str]) -> list
                 has_predecessor.add(candidate.tc_id)
                 consumed.add(candidate.tc_id)
                 break
-
     return edges
 
 
@@ -320,5 +314,4 @@ def _find_sequential(calls: list[_FlatCall], has_predecessor: set[str]) -> list[
             )
         )
         has_predecessor.add(calls[i].tc_id)
-
     return edges

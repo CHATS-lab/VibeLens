@@ -31,7 +31,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     store = get_store()
     store.initialize()
 
-    if settings.app_mode == AppMode.DEMO and isinstance(store, DiskStore):
+    if settings.app_mode == AppMode.DEMO:
+        assert isinstance(store, DiskStore), "Demo mode requires DiskStore"
         loaded = load_demo_examples(settings, store)
         if loaded:
             logger.info("Loaded %d trajectory groups for demo mode", loaded)

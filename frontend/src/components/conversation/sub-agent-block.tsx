@@ -1,6 +1,7 @@
 import { Bot, MessageSquare, Wrench } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { Trajectory } from "../../types";
+import { SESSION_ID_MEDIUM } from "../../styles";
 import { CollapsiblePill } from "../collapsible-pill";
 import { StepBlock } from "./message-block";
 
@@ -28,7 +29,7 @@ export function SubAgentBlock({ trajectory, allTrajectories }: SubAgentBlockProp
     [allTrajectories, trajectory.session_id]
   );
 
-  const label = trajectory.session_id.slice(0, 12);
+  const label = trajectory.session_id.slice(0, SESSION_ID_MEDIUM);
   const preview = `${stepCount} steps • ${toolCallCount} tools`;
 
   return (

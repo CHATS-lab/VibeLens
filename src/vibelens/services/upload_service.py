@@ -9,15 +9,16 @@ from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile
 
-from vibelens.deps import get_settings, get_store
-from vibelens.ingest.discovery import discover_session_files
-from vibelens.ingest.fingerprint import parse_auto
+from vibelens.deps import DATASETS_ROOT, get_settings, get_store
+from vibelens.ingest.discovery import discover_session_files, get_parser
+from vibelens.ingest.parsers.base import BaseParser
 from vibelens.models.enums import AgentType
-from vibelens.models.upload import UploadResult
+from vibelens.schemas.upload import UploadResult
 from vibelens.services.dashboard_service import (
     invalidate_cache as invalidate_dashboard_cache,
 )
 from vibelens.services.search_service import invalidate_search_index
+from vibelens.services.upload_visibility import register_upload
 from vibelens.storage.disk import DiskStore
 from vibelens.utils import get_logger
 from vibelens.utils.zip import extract_zip, validate_zip
@@ -241,6 +242,10 @@ async def process_zip(
 ) -> UploadResult:
     """Full upload orchestration: stream -> validate -> extract -> parse -> store.
 
+    Creates a separate DiskStore for the upload subdirectory with
+    default_tags embedding _upload_id so the main store can enforce
+    visibility filtering.
+
     Args:
         file: Uploaded zip file.
         agent_type: Agent CLI identifier.
@@ -250,8 +255,7 @@ async def process_zip(
         UploadResult with counts and any errors.
     """
     settings = get_settings()
-    store = _require_disk_store()
-    upload_root = store.upload_root
+    main_store = _require_disk_store()
 
     filename = file.filename or "upload.zip"
     result = UploadResult(files_received=1)
@@ -259,7 +263,7 @@ async def process_zip(
 
     try:
         zip_path = await receive_zip(
-            file, upload_root, upload_id, settings.max_zip_bytes, settings.stream_chunk_size
+            file, DATASETS_ROOT, upload_id, settings.max_zip_bytes, settings.stream_chunk_size
         )
         session_files = await asyncio.to_thread(
             extract_and_discover,
@@ -271,34 +275,48 @@ async def process_zip(
         )
         logger.info("Discovered %d session files in %s", len(session_files), filename)
 
-        session_details = await asyncio.to_thread(
-            _parse_and_store_files, session_files, store, upload_id, result
+        # Create a separate DiskStore with _upload_id tag for visibility filtering
+        upload_store = DiskStore(
+            root=DATASETS_ROOT / upload_id, default_tags={"_upload_id": upload_id}
         )
+        upload_store.initialize()
+
+        parser = get_parser(agent_type)
+        session_details = await asyncio.to_thread(
+            _parse_and_store_files, session_files, parser, upload_store, result
+        )
+
         metadata = _build_upload_metadata(upload_id, agent_type, filename, session_details, result)
-        write_upload_metadata(upload_root, upload_id, metadata)
+        write_upload_metadata(DATASETS_ROOT, upload_id, metadata)
 
         if session_token:
-            store.register_upload(session_token, upload_id)
+            register_upload(session_token, upload_id)
+
+        # Invalidate main store so rglob picks up new sessions
+        main_store.invalidate_index()
         invalidate_search_index()
         invalidate_dashboard_cache()
     except Exception as exc:
         logger.warning("Upload processing failed for %s: %s", filename, exc)
         result.errors.append({"filename": filename, "error": str(exc)})
     finally:
-        cleanup_extraction(upload_root, upload_id)
+        cleanup_extraction(DATASETS_ROOT, upload_id)
 
     return result
 
 
 def _parse_and_store_files(
-    session_files: list[Path], store: DiskStore, upload_id: str, result: UploadResult
+    session_files: list[Path],
+    parser: BaseParser,
+    store: DiskStore,
+    result: UploadResult,
 ) -> list[dict]:
     """Parse discovered session files and persist via the disk store.
 
     Args:
         session_files: List of session file paths.
+        parser: Parser instance for the agent type.
         store: DiskStore for persistence.
-        upload_id: Upload identifier for storage subdirectory.
         result: UploadResult to update with counts.
 
     Returns:
@@ -308,13 +326,7 @@ def _parse_and_store_files(
 
     for file_path in session_files:
         try:
-            trajectories = parse_auto(file_path)
-        except ValueError:
-            # Low-confidence or unrecognizable files are empty/metadata-only
-            # sessions (e.g. only "progress" or "file-history-snapshot" entries).
-            # Count as skipped rather than surfacing as errors.
-            result.skipped += 1
-            continue
+            trajectories = parser.parse_file(file_path)
         except Exception as exc:
             logger.warning("Failed to parse %s: %s", file_path.name, exc)
             result.errors.append({"filename": file_path.name, "error": str(exc)})
@@ -326,8 +338,7 @@ def _parse_and_store_files(
 
         session_id = trajectories[0].session_id
         try:
-            summary = trajectories[0].to_summary()
-            store.save(session_id, trajectories, summary, subdir=upload_id)
+            store.save(trajectories)
         except Exception as exc:
             logger.warning("Failed to store %s: %s", file_path.name, exc)
             result.errors.append({"filename": file_path.name, "error": str(exc)})
@@ -349,7 +360,7 @@ def _parse_and_store_files(
             "Stored %d trajectories from %s (upload %s)",
             len(trajectories),
             file_path.name,
-            upload_id,
+            store.root.name,
         )
 
     return session_details

@@ -7,16 +7,21 @@ import {
   FolderOpen,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   Bot,
   SlidersHorizontal,
   Loader2,
+  Link2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppContext } from "../app";
 import type { Trajectory } from "../types";
 import { formatTime, truncate, baseProjectName } from "../utils";
 import { SearchOptionsDialog } from "./search-options-dialog";
-import { TOGGLE_CONTAINER, TOGGLE_BUTTON_BASE, TOGGLE_ACTIVE, TOGGLE_INACTIVE } from "../styles";
+import {
+  TOGGLE_CONTAINER, TOGGLE_BUTTON_BASE, TOGGLE_ACTIVE, TOGGLE_INACTIVE,
+  SESSIONS_PER_PAGE, SEARCH_DEBOUNCE_MS,
+} from "../styles";
 
 export type ViewMode = "time" | "project";
 
@@ -47,6 +52,7 @@ export function SessionList({
 }: SessionListProps) {
   const { fetchWithToken } = useAppContext();
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(0);
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(
     new Set()
   );
@@ -58,7 +64,6 @@ export function SessionList({
   );
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const SEARCH_DEBOUNCE_MS = 300;
   const DEFAULT_SOURCES = new Set(["user_prompts"]);
   const hasNonDefaultSources =
     searchSources.size !== DEFAULT_SOURCES.size ||
@@ -101,6 +106,11 @@ export function SessionList({
     };
   }, [search, searchSources, runSearch]);
 
+  // Reset pagination when filters or view mode change
+  useEffect(() => {
+    setPage(0);
+  }, [agentFilter, viewMode, searchResults]);
+
   const filtered = sessions.filter((s) => {
     if (agentFilter !== "all" && s.agent?.name !== agentFilter) return false;
     if (!search) return true;
@@ -125,6 +135,13 @@ export function SessionList({
     }
     return groups;
   }, [filtered]);
+
+  // Client-side pagination for "time" view
+  const paginatedFiltered = useMemo(() => {
+    if (viewMode !== "time") return filtered;
+    const start = page * SESSIONS_PER_PAGE;
+    return filtered.slice(start, start + SESSIONS_PER_PAGE);
+  }, [filtered, viewMode, page]);
 
   const handleSetViewMode = (mode: ViewMode) => {
     if (mode === "project" && viewMode !== "project") {
@@ -262,7 +279,7 @@ export function SessionList({
 
       <div className="flex-1 overflow-y-auto">
         {viewMode === "time" ? (
-          filtered.map((session) => (
+          paginatedFiltered.map((session) => (
             <SessionRow
               key={session.session_id}
               session={session}
@@ -344,6 +361,32 @@ export function SessionList({
             })
         )}
       </div>
+
+      {/* Footer: filtered count + pagination */}
+      <div className="shrink-0 border-t border-zinc-800 px-3 py-2 flex items-center justify-between text-xs text-zinc-400">
+        <span>{filtered.length} sessions</span>
+        {viewMode === "time" && filtered.length > SESSIONS_PER_PAGE && (
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setPage(Math.max(0, page - 1))}
+              disabled={page === 0}
+              className="p-1 hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed rounded transition"
+              title="Previous page"
+            >
+              <ChevronUp className="w-4 h-4" />
+            </button>
+            <span className="px-1 text-xs">{page + 1}</span>
+            <button
+              onClick={() => setPage(page + 1)}
+              disabled={(page + 1) * SESSIONS_PER_PAGE >= filtered.length}
+              className="p-1 hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed rounded transition"
+              title="Next page"
+            >
+              <ChevronDown className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -398,20 +441,30 @@ function SessionRow({
             <span className="text-xs text-zinc-400 uppercase tracking-wide" title={session.project_path || ""}>
               {baseProjectName(session.project_path || "")}
             </span>
-            <span className="text-xs text-zinc-400">
-              {formatTime(session.timestamp ?? null)}
-            </span>
+            <div className="flex items-center gap-1">
+              {(session.last_trajectory_ref || session.continued_trajectory_ref) && (
+                <span title="Part of continuation chain"><Link2 className="w-3 h-3 text-violet-400" /></span>
+              )}
+              <span className="text-xs text-zinc-400">
+                {formatTime(session.timestamp ?? null)}
+              </span>
+            </div>
           </div>
         )}
         <div className="flex items-center gap-2">
           <p className="text-sm text-zinc-200 line-clamp-2 leading-relaxed flex-1 min-w-0">
             {truncate(session.first_message || "", 120) || "Empty session"}
           </p>
-          {!showProject && (
-            <span className="text-xs text-zinc-400 shrink-0">
-              {formatTime(session.timestamp ?? null)}
-            </span>
-          )}
+          <div className="flex items-center gap-1 shrink-0">
+            {!showProject && (session.last_trajectory_ref || session.continued_trajectory_ref) && (
+              <span title="Part of continuation chain"><Link2 className="w-3 h-3 text-violet-400" /></span>
+            )}
+            {!showProject && (
+              <span className="text-xs text-zinc-400">
+                {formatTime(session.timestamp ?? null)}
+              </span>
+            )}
+          </div>
         </div>
       </button>
     </div>

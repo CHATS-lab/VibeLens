@@ -63,6 +63,18 @@ class Settings(BaseSettings):
         description="Directory for shared session snapshots.",
     )
 
+    # Skills
+    skills_dir: Path = Field(
+        default=Path.home() / ".claude" / "skills",
+        description="Root directory containing installed Claude Code skills.",
+    )
+
+    # Friction persistence
+    friction_dir: Path = Field(
+        default=Path.home() / ".vibelens" / "friction",
+        description="Directory for persisted friction analysis results.",
+    )
+
     # Upload
     upload_dir: Path = Field(
         default=Path.home() / ".vibelens" / "uploads",
@@ -95,6 +107,35 @@ class Settings(BaseSettings):
         ),
     )
 
+    # LLM inference
+    llm_backend: str = Field(
+        default="disabled",
+        description=(
+            "Inference backend: 'litellm' (recommended), 'claude-cli', 'codex-cli', "
+            "or 'disabled'. Legacy aliases 'anthropic-api' and 'openai-api' are "
+            "supported and route to litellm with provider prefix."
+        ),
+    )
+    llm_api_key: str = Field(
+        default="",
+        description="API key for the LLM provider (required for litellm backend).",
+    )
+    llm_model: str = Field(
+        default="anthropic/claude-sonnet-4-5",
+        description=(
+            "Model name in litellm format with provider prefix "
+            "(e.g. 'anthropic/claude-sonnet-4-5', 'openai/gpt-4.1')."
+        ),
+    )
+    llm_timeout: int = Field(
+        default=120,
+        description="Inference request timeout in seconds.",
+    )
+    llm_max_tokens: int = Field(
+        default=4096,
+        description="Maximum output tokens for inference requests.",
+    )
+
     # Demo mode
     demo_example_sessions: str = Field(
         default="",
@@ -116,7 +157,9 @@ class Settings(BaseSettings):
         self.claude_dir = self.claude_dir.expanduser()
         self.codex_dir = self.codex_dir.expanduser()
         self.gemini_dir = self.gemini_dir.expanduser()
+        self.skills_dir = self.skills_dir.expanduser()
         self.share_dir = self.share_dir.expanduser()
+        self.friction_dir = self.friction_dir.expanduser()
         self.upload_dir = self.upload_dir.expanduser()
         return self
 

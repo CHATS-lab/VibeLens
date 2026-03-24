@@ -12,6 +12,7 @@ from vibelens.deps import get_store
 from vibelens.models.enums import StepSource
 from vibelens.models.trajectories import Trajectory
 from vibelens.models.trajectories.content import ContentPart
+from vibelens.services.upload_visibility import filter_visible
 from vibelens.utils import get_logger
 
 logger = get_logger(__name__)
@@ -98,7 +99,8 @@ def _build_index(session_token: str | None) -> None:
     store = get_store()
     _search_index.clear()
 
-    summaries = store.list_metadata(session_token=session_token)
+    summaries = store.list_metadata()
+    summaries = filter_visible(summaries, session_token)
     logger.info("Building search index for %d sessions", len(summaries))
 
     for summary in summaries:
@@ -106,7 +108,7 @@ def _build_index(session_token: str | None) -> None:
         if not session_id:
             continue
 
-        trajectories = store.load(session_id, session_token=session_token)
+        trajectories = store.load(session_id)
         if not trajectories:
             continue
 

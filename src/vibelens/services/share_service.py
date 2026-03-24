@@ -5,9 +5,8 @@ import secrets
 from datetime import UTC, datetime
 from pathlib import Path
 
-from pydantic import BaseModel, Field
-
 from vibelens.models.trajectories import Trajectory
+from vibelens.schemas.share import ShareMeta
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -15,15 +14,6 @@ logger = get_logger(__name__)
 SHARE_TOKEN_BYTES = 12
 FIRST_MESSAGE_MAX_LENGTH = 120
 DEFAULT_SHARE_TITLE = "Shared session"
-
-
-class ShareMeta(BaseModel):
-    """Metadata for a shared session snapshot."""
-
-    token: str = Field(description="URL-safe share token.")
-    session_id: str = Field(description="Original session ID.")
-    title: str = Field(description="Session title from first message.")
-    created_at: datetime = Field(description="When the share was created.")
 
 
 class ShareService:

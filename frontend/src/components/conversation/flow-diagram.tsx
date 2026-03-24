@@ -1,10 +1,10 @@
 /**
  * FlowDiagram — DOM/CSS conversation flow visualization.
  *
- * Renders a vertical flow of user→agent→tool cards grouped by phase.
- * Tool calls are shown as compact colored chips inside agent cards,
- * eliminating messy fan-out arrows. Dependencies are revealed on hover
- * via highlight rings on related tools.
+ * Renders a vertical flow with user prompt **anchors** separating
+ * phase-grouped agent cards.  Tool calls are shown as compact colored
+ * chips inside agent cards.  Dependencies are revealed on hover via
+ * highlight rings on related tools.
  */
 
 import { useState, useMemo, useCallback } from "react";
@@ -14,32 +14,14 @@ import {
   computeFlow,
   type FlowPhaseGroup,
   type FlowToolChip,
+  type FlowUserCardData,
 } from "./flow-layout";
+import { CATEGORY_STYLE, PHASE_STYLE } from "../../styles";
 
 interface FlowDiagramProps {
   steps: Step[];
   flowData: FlowData;
 }
-
-const CATEGORY_STYLE: Record<string, { bg: string; ring: string; text: string; label: string }> = {
-  file_read: { bg: "bg-blue-500/20", ring: "ring-blue-400/60", text: "text-blue-300", label: "read" },
-  file_write: { bg: "bg-emerald-500/20", ring: "ring-emerald-400/60", text: "text-emerald-300", label: "write" },
-  shell: { bg: "bg-amber-500/20", ring: "ring-amber-400/60", text: "text-amber-300", label: "shell" },
-  search: { bg: "bg-sky-500/20", ring: "ring-sky-400/60", text: "text-sky-300", label: "search" },
-  web: { bg: "bg-orange-500/20", ring: "ring-orange-400/60", text: "text-orange-300", label: "web" },
-  agent: { bg: "bg-violet-500/20", ring: "ring-violet-400/60", text: "text-violet-300", label: "agent" },
-  task: { bg: "bg-rose-500/20", ring: "ring-rose-400/60", text: "text-rose-300", label: "task" },
-  other: { bg: "bg-zinc-500/20", ring: "ring-zinc-400/60", text: "text-zinc-400", label: "other" },
-};
-
-const PHASE_STYLE: Record<string, { border: string; label: string; dot: string; bg: string }> = {
-  exploration: { border: "border-l-blue-400", label: "text-blue-400", dot: "bg-blue-400", bg: "bg-blue-500/[0.03]" },
-  implementation: { border: "border-l-emerald-400", label: "text-emerald-400", dot: "bg-emerald-400", bg: "bg-emerald-500/[0.03]" },
-  debugging: { border: "border-l-red-400", label: "text-red-400", dot: "bg-red-400", bg: "bg-red-500/[0.03]" },
-  verification: { border: "border-l-amber-400", label: "text-amber-400", dot: "bg-amber-400", bg: "bg-amber-500/[0.03]" },
-  planning: { border: "border-l-violet-400", label: "text-violet-400", dot: "bg-violet-400", bg: "bg-violet-500/[0.03]" },
-  mixed: { border: "border-l-zinc-500", label: "text-zinc-400", dot: "bg-zinc-500", bg: "bg-zinc-500/[0.02]" },
-};
 
 const RELATION_LABELS: Record<string, string> = {
   read_before_write: "read \u2192 write",
@@ -102,27 +84,38 @@ export function FlowDiagram({ steps, flowData }: FlowDiagramProps) {
     [hoveredToolId, depLabels]
   );
 
+  // Track phase index for id attributes (nav panel targeting)
+  let phaseCounter = 0;
+
   return (
     <div className="max-w-3xl mx-auto pb-8">
-      {result.phases.map((phase, phaseIdx) => (
-        <div key={phaseIdx} id={`flow-phase-${phaseIdx}`}>
-          <PhaseSection phase={phase}>
-            {phase.cards.map((card, cardIdx) => (
-              <div key={card.data.id}>
-                {cardIdx > 0 && <Connector />}
-                {card.type === "user" ? (
-                  <UserCard
-                    label={card.data.label}
-                    detail={card.data.detail}
-                    onHover={show}
-                    onMove={move}
-                    onLeave={hide}
-                  />
-                ) : (
+      {result.sections.map((section, sectionIdx) => {
+        if (section.type === "anchor") {
+          return (
+            <div key={`anchor-${section.data.id}`}>
+              {sectionIdx > 0 && <SectionDivider />}
+              <UserAnchor
+                data={section.data}
+                onHover={show}
+                onMove={move}
+                onLeave={hide}
+              />
+            </div>
+          );
+        }
+
+        const currentPhaseIdx = phaseCounter++;
+        return (
+          <div key={`phase-${currentPhaseIdx}`} id={`flow-phase-${currentPhaseIdx}`}>
+            {sectionIdx > 0 && <SectionDivider />}
+            <PhaseSection phase={section.data}>
+              {section.data.cards.map((card, cardIdx) => (
+                <div key={card.data.id}>
+                  {cardIdx > 0 && <Connector />}
                   <AgentCard
                     label={card.data.label}
                     detail={card.data.detail}
-                    tools={card.data.tools}
+                    tools={(card.data as { tools?: FlowToolChip[] }).tools || []}
                     hoveredToolId={hoveredToolId}
                     onToolEnter={setHoveredToolId}
                     onToolLeave={() => setHoveredToolId(null)}
@@ -132,23 +125,59 @@ export function FlowDiagram({ steps, flowData }: FlowDiagramProps) {
                     onMove={move}
                     onLeave={hide}
                   />
-                )}
-              </div>
-            ))}
-          </PhaseSection>
-          {/* Connector between phase sections */}
-          {phaseIdx < result.phases.length - 1 && (
-            <div className="flex items-center pl-6 py-1">
-              <div className="flex flex-col items-center">
-                <div className="w-px h-2 bg-zinc-700/30" />
-                <div className="w-1 h-1 rounded-full bg-zinc-600/40" />
-                <div className="w-px h-2 bg-zinc-700/30" />
-              </div>
-            </div>
-          )}
-        </div>
-      ))}
+                </div>
+              ))}
+            </PhaseSection>
+          </div>
+        );
+      })}
       <Tooltip state={tip} />
+    </div>
+  );
+}
+
+/** Divider between sections (anchors and phases). */
+function SectionDivider() {
+  return (
+    <div className="flex items-center pl-6 py-1">
+      <div className="flex flex-col items-center">
+        <div className="w-px h-2 bg-zinc-700/30" />
+        <div className="w-1 h-1 rounded-full bg-zinc-600/40" />
+        <div className="w-px h-2 bg-zinc-700/30" />
+      </div>
+    </div>
+  );
+}
+
+/** User prompt rendered as a standalone anchor between phases. */
+function UserAnchor({
+  data,
+  onHover,
+  onMove,
+  onLeave,
+}: {
+  data: FlowUserCardData;
+  onHover: (e: React.MouseEvent, content: TooltipContent) => void;
+  onMove: (e: React.MouseEvent) => void;
+  onLeave: () => void;
+}) {
+  return (
+    <div
+      className="group relative rounded-lg border border-indigo-500/30 bg-indigo-950/30 hover:border-indigo-400/50 hover:bg-indigo-950/40 transition-all"
+      onMouseEnter={(e) => onHover(e, data.detail)}
+      onMouseMove={onMove}
+      onMouseLeave={onLeave}
+    >
+      <div className="px-4 py-3 flex items-start gap-3">
+        <span className="shrink-0 mt-0.5 w-6 h-6 rounded-md bg-indigo-500/25 border border-indigo-400/20 flex items-center justify-center">
+          <svg className="w-3 h-3 text-indigo-300" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm2-3a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm4 8c0 1-1 1-1 1H3s-1 0-1-1 1-4 6-4 6 3 6 4zm-1-.004c-.001-.246-.154-.986-.832-1.664C11.516 10.68 10.289 10 8 10c-2.29 0-3.516.68-4.168 1.332-.678.678-.83 1.418-.832 1.664h10z"/>
+          </svg>
+        </span>
+        <p className="text-[13px] leading-relaxed text-indigo-100 min-w-0 break-words">
+          {data.label}
+        </p>
+      </div>
     </div>
   );
 }
@@ -188,40 +217,6 @@ function Connector() {
         <div className="w-px h-2.5 bg-zinc-700/40" />
         <div className="w-[5px] h-[5px] rounded-full border border-zinc-600/60 bg-zinc-800" />
         <div className="w-px h-2.5 bg-zinc-700/40" />
-      </div>
-    </div>
-  );
-}
-
-function UserCard({
-  label,
-  detail,
-  onHover,
-  onMove,
-  onLeave,
-}: {
-  label: string;
-  detail: string;
-  onHover: (e: React.MouseEvent, content: TooltipContent) => void;
-  onMove: (e: React.MouseEvent) => void;
-  onLeave: () => void;
-}) {
-  return (
-    <div
-      className="group relative rounded-lg border border-indigo-500/30 bg-indigo-950/30 hover:border-indigo-400/50 hover:bg-indigo-950/40 transition-all"
-      onMouseEnter={(e) => onHover(e, detail)}
-      onMouseMove={onMove}
-      onMouseLeave={onLeave}
-    >
-      <div className="px-4 py-3 flex items-start gap-3">
-        <span className="shrink-0 mt-0.5 w-6 h-6 rounded-md bg-indigo-500/25 border border-indigo-400/20 flex items-center justify-center">
-          <svg className="w-3 h-3 text-indigo-300" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm2-3a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm4 8c0 1-1 1-1 1H3s-1 0-1-1 1-4 6-4 6 3 6 4zm-1-.004c-.001-.246-.154-.986-.832-1.664C11.516 10.68 10.289 10 8 10c-2.29 0-3.516.68-4.168 1.332-.678.678-.83 1.418-.832 1.664h10z"/>
-          </svg>
-        </span>
-        <p className="text-[13px] leading-relaxed text-indigo-100 min-w-0 break-words">
-          {label}
-        </p>
       </div>
     </div>
   );

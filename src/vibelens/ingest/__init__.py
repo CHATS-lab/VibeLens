@@ -15,7 +15,6 @@ vibelens.analysis — import from there directly to avoid circular imports.
 """
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
-from vibelens.ingest.fingerprint import FormatMatch, fingerprint_file, parse_auto
 from vibelens.ingest.parsers import (
     BaseParser,
     ClaudeCodeParser,
@@ -31,9 +30,6 @@ __all__ = [
     "CodexParser",
     "DataclawParser",
     "DiagnosticsCollector",
-    "FormatMatch",
     "GeminiParser",
     "count_history_entries",
-    "fingerprint_file",
-    "parse_auto",
 ]

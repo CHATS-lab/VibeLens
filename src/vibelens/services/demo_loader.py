@@ -5,11 +5,12 @@ from pathlib import Path
 
 from vibelens.config.settings import Settings
 from vibelens.ingest.discovery import discover_all_session_files
-from vibelens.ingest.fingerprint import parse_auto
-from vibelens.ingest.parsers.base import MAX_FIRST_MESSAGE_LENGTH, _is_meaningful_prompt
+from vibelens.ingest.parsers import LOCAL_PARSER_CLASSES
+from vibelens.ingest.parsers.base import MAX_FIRST_MESSAGE_LENGTH, BaseParser, _is_meaningful_prompt
+from vibelens.ingest.parsers.dataclaw import DataclawParser
 from vibelens.models.enums import StepSource
 from vibelens.models.trajectories import Trajectory
-from vibelens.storage.disk import DiskStore
+from vibelens.storage.disk import INDEX_FILENAME, DiskStore
 from vibelens.utils import get_logger
 
 logger = get_logger(__name__)
@@ -22,18 +23,16 @@ def _has_cached_examples(root: Path) -> bool:
         root: DiskStore root directory.
 
     Returns:
-        True if at least one .meta.json sidecar file is present.
+        True if the JSONL index file exists.
     """
-    if not root.exists():
-        return False
-    return any(root.glob("*.meta.json"))
+    return (root / INDEX_FILENAME).exists()
 
 
 def load_demo_examples(settings: Settings, store: DiskStore) -> int:
     """Parse configured example paths and save via the disk store.
 
-    On subsequent startups, skips parsing entirely when cached .meta.json
-    files are found in the store root directory.
+    On subsequent startups, skips parsing entirely when a cached
+    _index.jsonl is found in the store root directory.
 
     Each path can be either a JSON file (array of Trajectory dicts) or
     a directory containing raw session files to auto-detect and parse.
@@ -46,9 +45,11 @@ def load_demo_examples(settings: Settings, store: DiskStore) -> int:
         Number of sessions loaded.
     """
     if _has_cached_examples(store.root):
-        cached = list(store.root.glob("*.meta.json"))
-        logger.info("Skipping parse — %d cached examples found", len(cached))
-        return len(cached)
+        # Trigger index rebuild to count cached sessions
+        store.invalidate_index()
+        count = store.session_count()
+        logger.info("Skipping parse — %d cached examples found", count)
+        return count
 
     loaded = 0
     for example_path in settings.example_session_paths:
@@ -83,10 +84,13 @@ def _load_json_file(file_path: Path, store: DiskStore) -> int:
     return _save_trajectories(trajectories, store)
 
 
+_ALL_PARSERS: list[type[BaseParser]] = [*LOCAL_PARSER_CLASSES, DataclawParser]
+
+
 def _load_directory(dir_path: Path, store: DiskStore) -> int:
     """Discover and parse raw session files from a directory.
 
-    Tries auto-detection first; falls back to loading pre-parsed
+    Tries each known parser; falls back to loading pre-parsed
     ATIF trajectory JSON for files that don't match any raw format.
 
     Args:
@@ -103,13 +107,29 @@ def _load_directory(dir_path: Path, store: DiskStore) -> int:
 
     loaded = 0
     for file_path in session_files:
-        try:
-            trajectories = parse_auto(file_path)
-        except ValueError:
-            trajectories = _try_load_atif_json(file_path)
+        trajectories = _try_parse_with_all(file_path) or _try_load_atif_json(file_path)
         if trajectories:
             loaded += _save_trajectories(trajectories, store)
     return loaded
+
+
+def _try_parse_with_all(file_path: Path) -> list[Trajectory]:
+    """Try parsing a file with each known parser, returning the first success.
+
+    Args:
+        file_path: Path to a session file.
+
+    Returns:
+        Parsed trajectories, or empty list if no parser succeeds.
+    """
+    for parser_cls in _ALL_PARSERS:
+        try:
+            result = parser_cls().parse_file(file_path)
+            if result:
+                return result
+        except Exception:
+            continue
+    return []
 
 
 def _try_load_atif_json(file_path: Path) -> list[Trajectory]:
@@ -157,7 +177,7 @@ def _fix_first_message(traj: Trajectory) -> None:
     for step in traj.steps:
         if step.source != StepSource.USER:
             continue
-        if step.extra and step.extra.get("is_skill_output"):
+        if step.extra and (step.extra.get("is_skill_output") or step.extra.get("is_auto_prompt")):
             continue
         if isinstance(step.message, str) and _is_meaningful_prompt(step.message):
             text = step.message
@@ -184,5 +204,5 @@ def _save_trajectories(trajectories: list[Trajectory], store: DiskStore) -> int:
         return 0
     main = next((t for t in trajectories if not t.parent_trajectory_ref), trajectories[0])
     _fix_first_message(main)
-    store.save(main.session_id, trajectories, main.to_summary())
+    store.save(trajectories)
     return 1

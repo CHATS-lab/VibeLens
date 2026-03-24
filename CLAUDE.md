@@ -17,6 +17,7 @@ src/vibelens/
 ├── models/            # Pydantic domain models (no business logic, no I/O).
 │   ├── analysis/      # Output models for analytics (dashboard stats, phases, tool graphs, correlator, pricing).
 │   └── trajectories/  # ATIF v1.6 trajectory model (Step, ToolCall, Observation, Metrics, etc.).
+├── schemas/           # API request/response schemas (HTTP boundary models).
 ├── services/          # Orchestration layer: caching, I/O, store integration, export.
 ├── storage/           # Trajectory storage backends (read-only TrajectoryStore ABC + DiskStore, LocalStore).
 ├── utils/             # Shared utilities (logging, timestamps, paths, JSON helpers, zip).
@@ -67,7 +68,7 @@ tests/                 # Unit and integration tests mirroring src/ structure.
 
 - **Linter:** Ruff. All code must pass before commit.
 - **Imports:** Grouped (stdlib, third-party, local). No wildcards. No in-function imports.
-- **Types:** Annotate all function signatures. Use `Optional[X]`.
+- **Types:** Annotate all function signatures.
 - **Docstrings:** Google style on all public functions/classes/modules.
 - **Errors:** Catch specific exceptions. Never bare `except:`.
 - **Strings:** f-strings in code, lazy `%s` in logger calls.

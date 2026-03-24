@@ -48,16 +48,13 @@ class Step(BaseModel):
         default=None, description="Agent's explicit internal reasoning text."
     )
     tool_calls: list[ToolCall] = Field(
-        default_factory=list,
-        description="Tool invocations extracted from this step.",
+        default_factory=list, description="Tool invocations extracted from this step."
     )
     observation: Observation | None = Field(
-        default=None,
-        description="Tool execution results observed after this step.",
+        default=None, description="Tool execution results observed after this step."
     )
     metrics: Metrics | None = Field(
-        default=None,
-        description="Token usage and cost statistics for this step.",
+        default=None, description="Token usage and cost statistics for this step."
     )
     is_copied_context: bool | None = Field(
         default=None,
@@ -93,8 +90,6 @@ class Step(BaseModel):
         orphaned_tc = tc_ids - obs_ids
         if orphaned_tc:
             logger.warning(
-                "Step %s: tool_call(s) without matching observation: %s",
-                self.step_id,
-                orphaned_tc,
+                "Step %s: tool_call(s) without matching observation: %s", self.step_id, orphaned_tc
             )
         return self

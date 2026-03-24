@@ -10,6 +10,7 @@ from vibelens.deps import get_store
 from vibelens.models.analysis.behavior import ToolUsageStat
 from vibelens.models.analysis.dashboard import DashboardStats, SessionAnalytics
 from vibelens.models.trajectories import Trajectory
+from vibelens.services.upload_visibility import filter_visible, is_session_visible
 from vibelens.utils import get_logger
 from vibelens.utils.timestamps import parse_metadata_timestamp
 
@@ -43,7 +44,8 @@ def load_filtered_trajectories(
         Tuple of (loaded trajectories, filtered metadata list).
     """
     store = get_store()
-    metadata = store.list_metadata(session_token=session_token)
+    metadata = store.list_metadata()
+    metadata = filter_visible(metadata, session_token)
     filtered = filter_metadata(metadata, project_path, date_from, date_to)
 
     trajectories = []
@@ -52,7 +54,7 @@ def load_filtered_trajectories(
         if not session_id:
             continue
         try:
-            group = store.load(session_id, session_token=session_token)
+            group = store.load(session_id)
             if group:
                 traj = group[0]
                 # Enrich project_path from skeleton metadata when full
@@ -135,7 +137,10 @@ def get_session_analytics(session_id: str, session_token: str | None) -> Session
     Returns:
         SessionAnalytics, or None if session not found.
     """
-    group = get_store().load(session_id, session_token=session_token)
+    store = get_store()
+    if not is_session_visible(store.get_metadata(session_id), session_token):
+        return None
+    group = store.load(session_id)
     if not group:
         return None
     return compute_session_analytics(group)

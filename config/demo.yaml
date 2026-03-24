@@ -10,7 +10,7 @@ app:
   mode: demo
 
 demo:
-  example_sessions: "examples/claude-codex-example, examples/codex-example, examples/gemini-cli-example"
+  example_sessions: "examples/claude-codex-example, examples/codex-example"
 
 server:
   host: 0.0.0.0                      # Bind to all interfaces for public access

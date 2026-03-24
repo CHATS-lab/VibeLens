@@ -4,6 +4,7 @@ from vibelens.analysis.phase_detector import detect_phases
 from vibelens.analysis.tool_graph import build_tool_graph
 from vibelens.deps import get_store
 from vibelens.models.trajectories import Trajectory
+from vibelens.services.upload_visibility import is_session_visible
 
 
 def compute_flow_from_trajectories(
@@ -46,7 +47,10 @@ def get_session_flow(
     Returns:
         Dict with session_id, tool_graph, and phase_segments, or None if not found.
     """
-    group = get_store().load(session_id, session_token=session_token)
+    store = get_store()
+    if not is_session_visible(store.get_metadata(session_id), session_token):
+        return None
+    group = store.load(session_id)
     if not group:
         return None
     return compute_flow_from_trajectories(group, session_id)

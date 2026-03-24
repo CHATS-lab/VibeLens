@@ -102,6 +102,7 @@ class TestGetSessionFlow:
     def test_returns_none_for_missing_session(self):
         """Non-existent session returns None."""
         with patch("vibelens.services.flow_service.get_store") as mock_store:
+            mock_store.return_value.get_metadata.return_value = None
             mock_store.return_value.load.return_value = None
             result = get_session_flow("nonexistent", None)
             assert result is None
@@ -110,6 +111,7 @@ class TestGetSessionFlow:
         """Valid session returns dict with expected keys."""
         traj = _make_flow_trajectory()
         with patch("vibelens.services.flow_service.get_store") as mock_store:
+            mock_store.return_value.get_metadata.return_value = {"session_id": "flow-test-session"}
             mock_store.return_value.load.return_value = [traj]
             result = get_session_flow("flow-test-session", None)
 
@@ -122,6 +124,7 @@ class TestGetSessionFlow:
         """Tool graph contains nodes for each tool call and inferred edges."""
         traj = _make_flow_trajectory()
         with patch("vibelens.services.flow_service.get_store") as mock_store:
+            mock_store.return_value.get_metadata.return_value = {"session_id": "flow-test-session"}
             mock_store.return_value.load.return_value = [traj]
             result = get_session_flow("flow-test-session", None)
 
@@ -136,6 +139,7 @@ class TestGetSessionFlow:
         """Read(auth.py) followed by Edit(auth.py) produces read_before_write edge."""
         traj = _make_flow_trajectory()
         with patch("vibelens.services.flow_service.get_store") as mock_store:
+            mock_store.return_value.get_metadata.return_value = {"session_id": "flow-test-session"}
             mock_store.return_value.load.return_value = [traj]
             result = get_session_flow("flow-test-session", None)
 
@@ -151,6 +155,7 @@ class TestGetSessionFlow:
         """Grep followed by Read produces search_then_read edge."""
         traj = _make_flow_trajectory()
         with patch("vibelens.services.flow_service.get_store") as mock_store:
+            mock_store.return_value.get_metadata.return_value = {"session_id": "flow-test-session"}
             mock_store.return_value.load.return_value = [traj]
             result = get_session_flow("flow-test-session", None)
 
@@ -164,6 +169,7 @@ class TestGetSessionFlow:
         """Phase segments list is non-empty and has expected structure."""
         traj = _make_flow_trajectory()
         with patch("vibelens.services.flow_service.get_store") as mock_store:
+            mock_store.return_value.get_metadata.return_value = {"session_id": "flow-test-session"}
             mock_store.return_value.load.return_value = [traj]
             result = get_session_flow("flow-test-session", None)
 
@@ -192,6 +198,7 @@ class TestGetSessionFlow:
             final_metrics=FinalMetrics(duration=5, total_steps=1, tool_call_count=0),
         )
         with patch("vibelens.services.flow_service.get_store") as mock_store:
+            mock_store.return_value.get_metadata.return_value = {"session_id": "empty-session"}
             mock_store.return_value.load.return_value = [traj]
             result = get_session_flow("empty-session", None)
 

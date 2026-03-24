@@ -69,3 +69,15 @@
 .tool-output-json > div > div:first-child {
   display: none;
 }
+
+/* Flash highlight for friction panel → step navigation */
+@keyframes friction-flash {
+  0%   { background-color: rgba(251, 191, 36, 0.25); box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.3); }
+  70%  { background-color: rgba(251, 191, 36, 0.10); box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.1); }
+  100% { background-color: transparent; box-shadow: none; }
+}
+
+.friction-highlight {
+  animation: friction-flash 2s ease-out;
+  border-radius: 0.5rem;
+}

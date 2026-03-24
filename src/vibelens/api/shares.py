@@ -3,11 +3,10 @@
 from fastapi import APIRouter, Header, HTTPException, Request
 
 from vibelens.deps import get_settings, get_share_service
-from vibelens.models.share import ShareRequest, ShareResponse
 from vibelens.models.trajectories import Trajectory
+from vibelens.schemas.share import ShareMeta, ShareRequest, ShareResponse
 from vibelens.services.flow_service import compute_flow_from_trajectories
 from vibelens.services.session_service import get_session
-from vibelens.services.share_service import ShareMeta
 
 router = APIRouter(prefix="/shares", tags=["shares"])
 

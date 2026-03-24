@@ -35,15 +35,22 @@ import { FlowDiagram } from "./flow-diagram";
 import { computeFlow, type FlowPhaseGroup } from "./flow-layout";
 import { formatTokens, formatDuration, formatCost, extractUserText, baseProjectName } from "../../utils";
 import { LoadingSpinner } from "../loading-spinner";
-import { TOGGLE_ACTIVE, TOGGLE_INACTIVE, METRIC_LABEL } from "../../styles";
+import {
+  TOGGLE_ACTIVE, TOGGLE_INACTIVE, METRIC_LABEL,
+  SESSION_ID_SHORT, PREVIEW_SHORT, SHARE_STATUS_RESET_MS, SCROLL_SUPPRESS_MS,
+} from "../../styles";
 
 interface SessionViewProps {
   sessionId: string;
   sharedTrajectories?: Trajectory[];
   shareToken?: string;
+  onNavigateSession?: (sessionId: string) => void;
+  allSessions?: Trajectory[];
+  pendingScrollStepId?: string | null;
+  onScrollComplete?: () => void;
 }
 
-export function SessionView({ sessionId, sharedTrajectories, shareToken }: SessionViewProps) {
+export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavigateSession, allSessions, pendingScrollStepId, onScrollComplete }: SessionViewProps) {
   const { fetchWithToken } = useAppContext();
   const [trajectories, setTrajectories] = useState<Trajectory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -106,7 +113,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken }: Sessi
       .then((data) => {
         if (data?.cost_usd != null) setSessionCost(data.cost_usd);
       })
-      .catch(() => {});
+      .catch((err) => console.error("Failed to load session stats:", err));
   }, [sessionId, loading, fetchWithToken]);
 
   // Fetch flow data lazily when user toggles to flow view
@@ -121,7 +128,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken }: Sessi
       .then((data: FlowData | null) => {
         if (data) setFlowData(data);
       })
-      .catch(() => {})
+      .catch((err) => console.error("Failed to load flow data:", err))
       .finally(() => setFlowLoading(false));
   }, [viewMode, flowData, flowLoading, sessionId, fetchWithToken, isSharedView, shareToken]);
 
@@ -218,8 +225,6 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken }: Sessi
 
   const [activePhaseIdx, setActivePhaseIdx] = useState<number | null>(null);
 
-  const SCROLL_SUPPRESS_MS = 800;
-
   const handlePhaseNavigate = useCallback((phaseIdx: number) => {
     const el = document.getElementById(`flow-phase-${phaseIdx}`);
     if (!el) return;
@@ -271,6 +276,40 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken }: Sessi
     }, SCROLL_SUPPRESS_MS);
   }, []);
 
+  // Handle external navigation request (e.g. friction panel deep link → step)
+  useEffect(() => {
+    if (!pendingScrollStepId || loading) return;
+    let cancelled = false;
+    let attempt = 0;
+
+    // Retry with backoff since DOM may not be ready immediately
+    const tryScroll = () => {
+      if (cancelled) return;
+      const el = document.getElementById(`step-${pendingScrollStepId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+        setActiveStepId(pendingScrollStepId);
+        el.classList.add("friction-highlight");
+        setTimeout(() => el.classList.remove("friction-highlight"), 2000);
+        onScrollComplete?.();
+        return;
+      }
+      attempt++;
+      if (attempt < 8) {
+        setTimeout(tryScroll, 200 * attempt);
+      } else {
+        onScrollComplete?.();
+      }
+    };
+
+    // Initial delay for DOM render
+    const timer = setTimeout(tryScroll, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [pendingScrollStepId, loading, onScrollComplete]);
+
   if (loading) {
     return <LoadingSpinner label="Loading session" sublabel="Parsing trajectory data…" />;
   }
@@ -304,7 +343,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken }: Sessi
       const data = await res.json();
       await navigator.clipboard.writeText(data.url);
       setShareStatus("copied");
-      setTimeout(() => setShareStatus("idle"), 2000);
+      setTimeout(() => setShareStatus("idle"), SHARE_STATUS_RESET_MS);
     } catch (err) {
       console.error("Share failed:", err);
       setShareStatus("idle");
@@ -315,7 +354,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken }: Sessi
 
   const metrics = main.final_metrics;
   const promptCount = steps.filter(
-    (s) => s.source === "user" && !s.extra?.is_skill_output && extractUserText(s)
+    (s) => s.source === "user" && !s.extra?.is_skill_output && !s.extra?.is_auto_prompt && extractUserText(s)
   ).length;
   const skillCount = steps.filter(
     (s) => s.source === "user" && s.extra?.is_skill_output
@@ -342,7 +381,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken }: Sessi
             <div className="flex items-center gap-2.5 min-w-0 flex-1">
               <MetaPill
                 icon={<Hash className="w-3 h-3" />}
-                label={main.session_id.slice(0, 8)}
+                label={main.session_id.slice(0, SESSION_ID_SHORT)}
                 color="text-zinc-300"
                 tooltip={`Session ID: ${main.session_id}`}
               />
@@ -376,26 +415,33 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken }: Sessi
                 </button>
               </div>
               {!isSharedView && (
-                <button
-                  onClick={handleShare}
-                  disabled={shareStatus === "sharing"}
-                  className="p-2 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded transition text-xs disabled:opacity-50"
-                  title={shareStatus === "copied" ? "Link copied!" : "Share session"}
-                >
-                  {shareStatus === "copied" ? (
-                    <Check className="w-4 h-4 text-emerald-400" />
-                  ) : shareStatus === "sharing" ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Share2 className="w-4 h-4" />
+                <div className="relative flex items-center">
+                  <button
+                    onClick={handleShare}
+                    disabled={shareStatus === "sharing"}
+                    className="p-2 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded transition text-xs disabled:opacity-50"
+                    title={shareStatus === "copied" ? "Link copied!" : "Share session"}
+                  >
+                    {shareStatus === "copied" ? (
+                      <Check className="w-4 h-4 text-emerald-400" />
+                    ) : shareStatus === "sharing" ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Share2 className="w-4 h-4" />
+                    )}
+                  </button>
+                  {shareStatus === "copied" && (
+                    <span className="absolute right-full mr-1.5 whitespace-nowrap text-[11px] text-emerald-400 font-medium animate-fade-in">
+                      Link copied!
+                    </span>
                   )}
-                </button>
+                </div>
               )}
               <button
                 onClick={() => {
                   const link = document.createElement("a");
                   link.href = `/api/sessions/${sessionId}/export`;
-                  link.download = `vibelens-${sessionId.slice(0, 8)}.json`;
+                  link.download = `vibelens-${sessionId.slice(0, SESSION_ID_SHORT)}.json`;
                   document.body.appendChild(link);
                   link.click();
                   document.body.removeChild(link);
@@ -491,6 +537,38 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken }: Sessi
               />
             )}
           </div>
+
+          {/* Row 2.5: Continuation Chain Nav */}
+          {(main.last_trajectory_ref || main.continued_trajectory_ref) && (
+            <div className="flex flex-wrap items-center gap-1.5 mb-3">
+              {main.last_trajectory_ref && onNavigateSession && (
+                <button
+                  onClick={() => onNavigateSession(main.last_trajectory_ref!.session_id)}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-violet-900/30 border border-violet-700/40 text-xs text-violet-300 hover:bg-violet-800/40 hover:border-violet-600/50 transition-colors"
+                  title={`Navigate to previous session: ${main.last_trajectory_ref.session_id}`}
+                >
+                  <ArrowUpRight className="w-3 h-3" />
+                  <span>Continued from</span>
+                  <span className="text-violet-400 font-medium truncate max-w-[200px]">
+                    {_lookupFirstMessage(main.last_trajectory_ref.session_id, allSessions)}
+                  </span>
+                </button>
+              )}
+              {main.continued_trajectory_ref && onNavigateSession && (
+                <button
+                  onClick={() => onNavigateSession(main.continued_trajectory_ref!.session_id)}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-violet-900/30 border border-violet-700/40 text-xs text-violet-300 hover:bg-violet-800/40 hover:border-violet-600/50 transition-colors"
+                  title={`Navigate to next session: ${main.continued_trajectory_ref.session_id}`}
+                >
+                  <ArrowDownRight className="w-3 h-3" />
+                  <span>Continues in</span>
+                  <span className="text-violet-400 font-medium truncate max-w-[200px]">
+                    {_lookupFirstMessage(main.continued_trajectory_ref.session_id, allSessions)}
+                  </span>
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Row 3: Token Stats */}
           {metrics && (metrics.total_prompt_tokens != null || metrics.total_completion_tokens != null) && (
@@ -691,4 +769,13 @@ function formatCreatedTime(timestamp: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function _lookupFirstMessage(sessionId: string, sessions?: Trajectory[]): string {
+  if (!sessions) return sessionId.slice(0, SESSION_ID_SHORT);
+  const match = sessions.find((s) => s.session_id === sessionId);
+  if (!match?.first_message) return sessionId.slice(0, SESSION_ID_SHORT);
+  const msg = match.first_message;
+  if (msg.length <= PREVIEW_SHORT) return msg;
+  return msg.slice(0, PREVIEW_SHORT) + "…";
 }

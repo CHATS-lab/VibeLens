@@ -206,7 +206,7 @@ class TestParseHistoryIndex:
             ],
         )
         # All sessions returned, sorted newest-first
-        result = _parser.parse_history_index(claude_dir)
+        result = _parser.parse_session_index(claude_dir)
         assert len(result) == 4
         assert result[0].session_id == "new2"
         assert result[-1].session_id == "old"
@@ -220,25 +220,25 @@ class TestParseHistoryIndex:
 
         # since filter
         since = datetime(2024, 3, 1, tzinfo=UTC)
-        filtered = _parser.parse_history_index(claude_dir, since=since)
+        filtered = _parser.parse_session_index(claude_dir, since=since)
         filtered_ids = {t.session_id for t in filtered}
         assert "old" not in filtered_ids
         assert "new1" in filtered_ids
         print(f"  since filter kept {len(filtered)} of 4 sessions")
 
         # limit
-        limited = _parser.parse_history_index(claude_dir, limit=2)
+        limited = _parser.parse_session_index(claude_dir, limit=2)
         assert len(limited) == 2
         print(f"  limit=2 returned {len(limited)} sessions")
 
     def test_edge_cases(self, claude_dir: Path):
         """Missing file, empty file, malformed JSON, missing sessionId, and blank lines."""
         # Missing history file
-        assert _parser.parse_history_index(claude_dir) == []
+        assert _parser.parse_session_index(claude_dir) == []
 
         # Empty history file
         (claude_dir / "history.jsonl").write_text("")
-        assert _parser.parse_history_index(claude_dir) == []
+        assert _parser.parse_session_index(claude_dir) == []
 
         # Malformed JSON + missing sessionId + blank lines mixed with valid entry
         with open(claude_dir / "history.jsonl", "w") as f:
@@ -249,7 +249,7 @@ class TestParseHistoryIndex:
             valid = {"sessionId": "s1", "display": "Valid", "timestamp": 1000000, "project": "/p"}
             f.write(json.dumps(valid) + "\n")
             f.write("\n")
-        result = _parser.parse_history_index(claude_dir)
+        result = _parser.parse_session_index(claude_dir)
         assert len(result) == 1
         assert result[0].session_id == "s1"
         print("  edge cases: missing/empty/malformed/blank all handled")
@@ -261,7 +261,7 @@ class TestParseHistoryIndex:
             claude_dir,
             [{"sessionId": "s1", "display": long_message, "timestamp": 1000000, "project": "/p"}],
         )
-        result = _parser.parse_history_index(claude_dir)
+        result = _parser.parse_session_index(claude_dir)
         # Truncation adds "..." suffix beyond the max length
         assert len(result[0].first_message) == MAX_FIRST_MESSAGE_LENGTH + 3
         assert result[0].first_message.endswith("...")

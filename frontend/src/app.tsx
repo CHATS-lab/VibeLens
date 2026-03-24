@@ -1,8 +1,6 @@
 import {
   Menu,
   PanelLeftClose,
-  ChevronUp,
-  ChevronDown,
   Download,
   FileUp,
   Heart,
@@ -18,10 +16,12 @@ import { SessionView } from "./components/conversation/session-view";
 import { SharedSessionView } from "./components/conversation/shared-session-view";
 import { UploadDialog } from "./components/upload-dialog";
 import { DashboardView } from "./components/analysis/dashboard-view";
+import { FrictionPanel } from "./components/analysis/friction-panel";
+import { SkillsPanel } from "./components/skills/skills-panel";
 import { SettingsDialog } from "./components/settings-dialog";
 import type { DashboardStats, DonateResult, ToolUsageStat, Trajectory } from "./types";
 
-type MainView = "browse" | "analyze";
+type MainView = "browse" | "analyze" | "friction" | "skills";
 
 type AppMode = "self" | "demo";
 
@@ -55,11 +55,10 @@ export function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sessions, setSessions] = useState<Trajectory[]>([]);
   const [projects, setProjects] = useState<string[]>([]);
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
-    null
-  );
-  const [page, setPage] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("session") || null;
+  });
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [dialog, setDialog] = useState<DialogState>({ kind: "hidden" });
   const [showUploadDialog, setShowUploadDialog] = useState(false);
@@ -72,12 +71,17 @@ export function App() {
   const [visibleAgents, setVisibleAgents] = useState<string[]>(["all"]);
   const [mainView, setMainView] = useState<MainView>("browse");
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
+  const [pendingScrollStepId, setPendingScrollStepId] = useState<string | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("step") || null;
+  });
 
   // Detect ?share={token} in URL for shared session viewing
   const [shareToken] = useState<string | null>(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get("share");
   });
+
 
   // Ephemeral token: new on every page load, never persisted
   const [sessionToken] = useState(() =>
@@ -87,7 +91,6 @@ export function App() {
 
   const MIN_SIDEBAR_WIDTH = 240;
   const MAX_SIDEBAR_WIDTH = 600;
-  const SESSIONS_PER_PAGE = 100;
 
   const fetchWithToken = useCallback(
     (url: string, init?: RequestInit): Promise<Response> => {
@@ -131,29 +134,16 @@ export function App() {
   }, [fetchWithToken, refreshKey]);
 
   useEffect(() => {
-    setLoading(true);
-    const params = new URLSearchParams();
-    if (viewMode === "project") {
-      // Load all sessions for complete project grouping
-      params.set("limit", "9999");
-      params.set("offset", "0");
-    } else {
-      params.set("limit", String(SESSIONS_PER_PAGE));
-      params.set("offset", String(page * SESSIONS_PER_PAGE));
-    }
-
-    fetchWithToken(`/api/sessions?${params}`)
+    fetchWithToken("/api/sessions")
       .then((r) => r.json())
       .then((data: Trajectory[]) => {
         setSessions(data);
-        // Auto-select the latest session on first load
         if (!selectedSessionId && data.length > 0) {
           setSelectedSessionId(data[0].session_id);
         }
       })
-      .catch((err) => console.error("Failed to load sessions:", err))
-      .finally(() => setLoading(false));
-  }, [page, refreshKey, fetchWithToken, viewMode]);
+      .catch((err) => console.error("Failed to load sessions:", err));
+  }, [refreshKey, fetchWithToken]);
 
   // Derive unique agent names from loaded sessions, filtered by config
   const availableAgents = useMemo(() => {
@@ -189,13 +179,14 @@ export function App() {
       .then(([stats, toolUsage]: [DashboardStats | null, ToolUsageStat[]]) => {
         if (stats) setDashboardCache({ stats, toolUsage });
       })
-      .catch(() => {});
+      .catch((err) => console.error("Failed to preload dashboard:", err));
   }, [fetchWithToken, sessions]);
 
   const handleSelectSession = useCallback((id: string | null) => {
     setSelectedSessionId(id);
     if (id) setMainView("browse");
   }, []);
+
 
   const handleDownloadClick = async () => {
     if (checkedIds.size === 0) return;
@@ -410,31 +401,6 @@ export function App() {
               availableAgents={availableAgents}
             />
 
-            {/* Footer: Session count + Pagination */}
-            <div className="shrink-0 border-t border-zinc-800 px-3 py-2 flex items-center justify-between text-xs text-zinc-400">
-              <span>{sessions.length} sessions</span>
-              {viewMode === "time" && (
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => setPage(Math.max(0, page - 1))}
-                    disabled={page === 0 || loading}
-                    className="p-1 hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed rounded transition"
-                    title="Previous page"
-                  >
-                    <ChevronUp className="w-4 h-4" />
-                  </button>
-                  <span className="px-1 text-xs">{page + 1}</span>
-                  <button
-                    onClick={() => setPage(page + 1)}
-                    disabled={sessions.length < SESSIONS_PER_PAGE || loading}
-                    className="p-1 hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed rounded transition"
-                    title="Next page"
-                  >
-                    <ChevronDown className="w-4 h-4" />
-                  </button>
-                </div>
-              )}
-            </div>
           </aside>
         )}
 
@@ -454,6 +420,7 @@ export function App() {
               )}
               <button
                 onClick={() => setMainView("browse")}
+                title="Browse individual agent sessions — view step-by-step conversation flow, tool calls, and observations"
                 className={`px-4 py-1.5 text-sm font-semibold rounded-md transition ${
                   mainView === "browse"
                     ? "bg-cyan-600/20 text-cyan-300 border border-cyan-500/30"
@@ -464,6 +431,7 @@ export function App() {
               </button>
               <button
                 onClick={() => setMainView("analyze")}
+                title="Aggregate analytics dashboard — session stats, tool usage patterns, cost breakdown, and timeline charts"
                 className={`px-4 py-1.5 text-sm font-semibold rounded-md transition ${
                   mainView === "analyze"
                     ? "bg-cyan-600/20 text-cyan-300 border border-cyan-500/30"
@@ -471,6 +439,28 @@ export function App() {
                 }`}
               >
                 Dashboard
+              </button>
+              <button
+                onClick={() => setMainView("friction")}
+                title="LLM-powered friction analysis — identify wasted effort, root causes, and CLAUDE.md suggestions across sessions"
+                className={`px-4 py-1.5 text-sm font-semibold rounded-md transition ${
+                  mainView === "friction"
+                    ? "bg-amber-600/20 text-amber-300 border border-amber-500/30"
+                    : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+                }`}
+              >
+                Friction
+              </button>
+              <button
+                onClick={() => setMainView("skills")}
+                title="View and manage installed Claude Code skills"
+                className={`px-4 py-1.5 text-sm font-semibold rounded-md transition ${
+                  mainView === "skills"
+                    ? "bg-violet-600/20 text-violet-300 border border-violet-500/30"
+                    : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+                }`}
+              >
+                Skills
               </button>
             </div>
             <button
@@ -484,10 +474,20 @@ export function App() {
 
           {/* Content Area */}
           <div className="flex-1 min-h-0 relative">
-            {mainView === "analyze" ? (
+            {mainView === "skills" ? (
+              <SkillsPanel />
+            ) : mainView === "friction" ? (
+              <FrictionPanel checkedIds={checkedIds} />
+            ) : mainView === "analyze" ? (
               <DashboardView cache={dashboardCache} />
             ) : selectedSessionId ? (
-              <SessionView sessionId={selectedSessionId} />
+              <SessionView
+                sessionId={selectedSessionId}
+                onNavigateSession={handleSelectSession}
+                allSessions={sessions}
+                pendingScrollStepId={pendingScrollStepId}
+                onScrollComplete={() => setPendingScrollStepId(null)}
+              />
             ) : (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center">
