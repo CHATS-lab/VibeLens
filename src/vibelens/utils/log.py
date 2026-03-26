@@ -124,5 +124,4 @@ def get_logger(
         file_handler.setLevel(_get_log_level())
         file_handler.setFormatter(_build_formatter())
         logger.addHandler(file_handler)
-
     return logger

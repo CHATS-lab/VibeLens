@@ -48,7 +48,7 @@ export function SkillsPanel({ checkedIds }: SkillsPanelProps) {
       setAnalysisLoading(true);
       setAnalysisError(null);
       try {
-        const res = await fetchWithToken("/api/analysis/skills", {
+        const res = await fetchWithToken("/api/skills/analysis", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ session_ids: [...checkedIds], mode }),

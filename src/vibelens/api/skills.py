@@ -18,6 +18,7 @@ from vibelens.schemas.skills import (
     SkillSyncRequest,
     SkillWriteRequest,
 )
+from vibelens.utils.github import download_skill_from_github
 
 logger = logging.getLogger(__name__)
 
@@ -36,9 +37,15 @@ def _resolve_source_store(source: str):
 
 
 @router.get("/local")
-def list_local_skills() -> list[dict]:
-    """List all locally installed skills with metadata."""
+def list_local_skills(refresh: bool = False) -> list[dict]:
+    """List all locally installed skills with metadata.
+
+    Args:
+        refresh: If True, invalidate cache and rescan disk before returning.
+    """
     store = get_central_skill_store()
+    if refresh:
+        store.invalidate_cache()
     skills = store.get_cached()
     return [s.model_dump(mode="json") for s in skills]
 
@@ -103,9 +110,16 @@ def install_featured_skill(req: FeaturedSkillInstallRequest) -> dict:
     if central.get_skill(req.slug):
         raise HTTPException(status_code=409, detail=f"Skill {req.slug!r} already installed")
 
-    # Build a minimal SKILL.md from catalog metadata
-    skill_content = _build_skill_md_from_catalog(matched)
-    central.write_skill(req.slug, skill_content)
+    # Download complete skill directory from GitHub (SKILL.md + auxiliary files)
+    source_url = matched.get("source_url", "")
+    skill_dir = central.skill_path(req.slug)
+    downloaded = download_skill_from_github(source_url, skill_dir) if source_url else False
+
+    if not downloaded:
+        # Fallback: build a minimal SKILL.md from catalog metadata
+        logger.warning("GitHub download failed for %s, using catalog stub", req.slug)
+        skill_content = _build_skill_md_from_catalog(matched)
+        central.write_skill(req.slug, skill_content)
 
     # Sync to requested agent interfaces
     sync_results = {}

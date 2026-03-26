@@ -421,7 +421,7 @@ export function App() {
               <button
                 onClick={() => setMainView("browse")}
                 title="Browse individual agent sessions — view step-by-step conversation flow, tool calls, and observations"
-                className={`px-4 py-1.5 text-sm font-semibold rounded-md transition ${
+                className={`min-w-[100px] text-center px-4 py-1.5 text-sm font-semibold rounded-md transition ${
                   mainView === "browse"
                     ? "bg-cyan-600/20 text-cyan-300 border border-cyan-500/30"
                     : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
@@ -432,7 +432,7 @@ export function App() {
               <button
                 onClick={() => setMainView("analyze")}
                 title="Aggregate analytics dashboard — session stats, tool usage patterns, cost breakdown, and timeline charts"
-                className={`px-4 py-1.5 text-sm font-semibold rounded-md transition ${
+                className={`min-w-[100px] text-center px-4 py-1.5 text-sm font-semibold rounded-md transition ${
                   mainView === "analyze"
                     ? "bg-cyan-600/20 text-cyan-300 border border-cyan-500/30"
                     : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
@@ -443,7 +443,7 @@ export function App() {
               <button
                 onClick={() => setMainView("friction")}
                 title="LLM-powered friction analysis — identify wasted effort, root causes, and CLAUDE.md suggestions across sessions"
-                className={`px-4 py-1.5 text-sm font-semibold rounded-md transition ${
+                className={`min-w-[100px] text-center px-4 py-1.5 text-sm font-semibold rounded-md transition ${
                   mainView === "friction"
                     ? "bg-amber-600/20 text-amber-300 border border-amber-500/30"
                     : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
@@ -454,7 +454,7 @@ export function App() {
               <button
                 onClick={() => setMainView("skills")}
                 title="View and manage installed Claude Code skills"
-                className={`px-4 py-1.5 text-sm font-semibold rounded-md transition ${
+                className={`min-w-[100px] text-center px-4 py-1.5 text-sm font-semibold rounded-md transition ${
                   mainView === "skills"
                     ? "bg-violet-600/20 text-violet-300 border border-violet-500/30"
                     : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"

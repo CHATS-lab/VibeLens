@@ -14,6 +14,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Tooltip } from "../tooltip";
 import { Modal, ModalHeader, ModalBody } from "../modal";
+import { MarkdownRenderer } from "../markdown-renderer";
 import { SourceBadge, SubdirList, TagList, TagPill, ToolBadge, ToolList } from "./skill-badges";
 import { SOURCE_LABELS } from "./skill-constants";
 import type { SkillInfo, SkillSourceInfo } from "../../types";
@@ -163,7 +164,7 @@ export function SkillDetailPopup({
             <Package className="w-4 h-4 text-violet-400" />
           </div>
           <div>
-            <h2 className="text-sm font-semibold font-mono text-zinc-100">{skill.name}</h2>
+            <h2 className="text-base font-bold font-mono text-white">{skill.name}</h2>
             <div className="flex items-center gap-2 mt-0.5">
               {skill.sources
                 .filter((s) => s.source_type !== "central")
@@ -262,7 +263,7 @@ export function SkillDetailPopup({
           </div>
         )}
 
-        {/* Content preview */}
+        {/* Content preview — rendered as markdown */}
         <div>
           <SectionLabel icon={<Code2 className="w-3 h-3" />} label="SKILL.md Content" />
           {loadingContent ? (
@@ -270,10 +271,12 @@ export function SkillDetailPopup({
               <Loader2 className="w-4 h-4 text-zinc-500 animate-spin" />
               <span className="text-xs text-zinc-500">Loading...</span>
             </div>
+          ) : content ? (
+            <div className="bg-zinc-800/80 rounded-lg p-4 max-h-80 overflow-y-auto border border-zinc-700/30">
+              <MarkdownRenderer content={_stripFrontmatter(content)} />
+            </div>
           ) : (
-            <pre className="text-[11px] text-zinc-300 font-mono bg-zinc-800/80 rounded-lg p-4 overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap border border-zinc-700/30">
-              {content || "No content"}
-            </pre>
+            <p className="text-xs text-zinc-500 italic">No content</p>
           )}
         </div>
       </ModalBody>
@@ -289,4 +292,10 @@ function SectionLabel({ icon, label }: { icon?: React.ReactNode; label: string }
       <span>{label}</span>
     </div>
   );
+}
+
+/** Strip YAML frontmatter (--- ... ---) from SKILL.md content for rendering. */
+function _stripFrontmatter(text: string): string {
+  const match = text.match(/^---\n[\s\S]*?\n---\n?/);
+  return match ? text.slice(match[0].length).trimStart() : text;
 }

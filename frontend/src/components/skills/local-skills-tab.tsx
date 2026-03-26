@@ -40,11 +40,12 @@ export function LocalSkillsTab() {
   const [sourceFilter, setSourceFilter] = useState<string | null>(null);
   const [agentSources, setAgentSources] = useState<SkillSourceInfo[]>([]);
 
-  const fetchSkills = useCallback(async () => {
+  const fetchSkills = useCallback(async (forceRefresh = false) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetchWithToken("/api/skills/local");
+      const url = forceRefresh ? "/api/skills/local?refresh=true" : "/api/skills/local";
+      const res = await fetchWithToken(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
       const data: SkillInfo[] = await res.json();
       setSkills(data);
@@ -200,7 +201,7 @@ export function LocalSkillsTab() {
             New Skill
           </button>
           <button
-            onClick={() => { fetchSkills(); fetchSources(); }}
+            onClick={() => { fetchSkills(true); fetchSources(); }}
             disabled={loading}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-zinc-200 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700/50 rounded-md transition disabled:opacity-50"
           >

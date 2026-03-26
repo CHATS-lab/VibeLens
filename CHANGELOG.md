@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.9.2] - 2026-03-25
+
+### Fixed
+- **Featured skill install**: Download complete skill directories from GitHub (SKILL.md + templates, scripts, etc.) instead of generating a stub.
+- **Skill sync error**: Handle symlinked skill directories (e.g. from skillshub) when syncing to agent interfaces.
+- **Skill history not loading**: Fix API route mismatch — frontend now calls correct `/api/skills/analysis/` endpoints.
+- **Refresh button**: Force backend cache invalidation on manual refresh so deleted/added skills are reflected immediately.
+- **CI**: Skip live LLM tests when `ANTHROPIC_API_KEY` is not set.
+
+### Changed
+- **Skill detail popup**: Render SKILL.md content as markdown instead of raw text. Enlarged title and tags for readability.
+- **Main tab buttons**: Equal minimum width (`min-w-[100px]`) for consistent layout.
+
+### Added
+- **GitHub skill downloader**: `utils/github.py` — recursively downloads skill directories from GitHub via the Contents API with raw file fallback.
+
 ## [0.9.1] - 2026-03-25
 
 ### Added

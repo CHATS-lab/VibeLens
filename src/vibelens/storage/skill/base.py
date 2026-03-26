@@ -79,7 +79,12 @@ class SkillStore(ABC):
             return None
 
         target_dir = self.skill_path(name)
-        if target_dir.exists():
+        # Symlinks (e.g. from skillshub) must be unlinked before copytree
+        if target_dir.is_symlink():
+            if not overwrite:
+                return self.get_skill(name)
+            target_dir.unlink()
+        elif target_dir.exists():
             if not overwrite:
                 return self.get_skill(name)
             shutil.rmtree(target_dir)

@@ -98,7 +98,7 @@ export function SkillsHistory({
   const fetchHistory = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetchWithToken("/api/analysis/skills/history");
+      const res = await fetchWithToken("/api/skills/analysis/history");
       if (res.ok) {
         const data: SkillAnalysisMeta[] = await res.json();
         setAnalyses(data);
@@ -117,7 +117,7 @@ export function SkillsHistory({
   const handleSelect = useCallback(
     async (meta: SkillAnalysisMeta) => {
       try {
-        const res = await fetchWithToken(`/api/analysis/skills/${meta.analysis_id}`);
+        const res = await fetchWithToken(`/api/skills/analysis/${meta.analysis_id}`);
         if (res.ok) {
           const result: SkillAnalysisResult = await res.json();
           onSelect(result);
@@ -132,7 +132,7 @@ export function SkillsHistory({
   const handleDelete = useCallback(
     async (analysisId: string) => {
       try {
-        await fetchWithToken(`/api/analysis/skills/${analysisId}`, {
+        await fetchWithToken(`/api/skills/analysis/${analysisId}`, {
           method: "DELETE",
         });
         setAnalyses((prev) => prev.filter((a) => a.analysis_id !== analysisId));
