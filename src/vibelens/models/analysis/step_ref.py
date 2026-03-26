@@ -8,16 +8,12 @@ class StepRef(BaseModel):
 
     Point ref: only start_step_id is set.
     Range ref: both start_step_id and end_step_id are set (and differ).
-    Optionally pins a specific tool call within the range.
     """
 
     session_id: str = Field(description="Session containing the referenced step(s).")
     start_step_id: str = Field(description="Step ID of the first (or only) step.")
     end_step_id: str | None = Field(
         default=None, description="Last step for range refs. None for point refs."
-    )
-    tool_call_id: str | None = Field(
-        default=None, description="Specific tool call within the step range."
     )
 
     @model_validator(mode="after")

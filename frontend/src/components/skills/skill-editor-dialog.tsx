@@ -55,7 +55,7 @@ export function SkillEditorDialog({
               className={`w-full px-3 py-1.5 text-sm font-mono rounded bg-zinc-800 border text-zinc-100 outline-none focus:ring-1 transition ${
                 name && !nameValid
                   ? "border-red-500/50 focus:ring-red-500/30"
-                  : "border-zinc-700 focus:ring-violet-500/30 focus:border-violet-600"
+                  : "border-zinc-700 focus:ring-teal-500/30 focus:border-teal-600"
               }`}
             />
             {name && !nameValid && (
@@ -72,7 +72,7 @@ export function SkillEditorDialog({
             value={content}
             onChange={(e) => setContent(e.target.value)}
             placeholder={`---\ndescription: What this skill does\nallowed-tools: Read, Edit, Bash\ntags: [development, automation]\n---\n\n# Instructions\n\n...`}
-            className="flex-1 min-h-[300px] w-full px-3 py-2 text-sm font-mono rounded bg-zinc-800 border border-zinc-700 text-zinc-100 outline-none focus:ring-1 focus:ring-violet-500/30 focus:border-violet-600 resize-none transition"
+            className="flex-1 min-h-[300px] w-full px-3 py-2 text-sm font-mono rounded bg-zinc-800 border border-zinc-700 text-zinc-100 outline-none focus:ring-1 focus:ring-teal-500/30 focus:border-teal-600 resize-none transition"
             spellCheck={false}
           />
         </div>
@@ -88,7 +88,7 @@ export function SkillEditorDialog({
         <button
           onClick={() => canSave && onSave(name, content)}
           disabled={!canSave}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white bg-violet-600 hover:bg-violet-500 rounded transition disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white bg-teal-600 hover:bg-teal-500 rounded transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
           {isCreate ? "Create" : "Save"}

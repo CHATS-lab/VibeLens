@@ -8,7 +8,7 @@ Callers handle prompt construction and response parsing.
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 
-from vibelens.models.inference import InferenceRequest, InferenceResult
+from vibelens.models.inference import BackendType, InferenceRequest, InferenceResult
 
 
 class InferenceError(Exception):
@@ -76,5 +76,5 @@ class InferenceBackend(ABC):
 
     @property
     @abstractmethod
-    def backend_id(self) -> str:
-        """Unique identifier for this backend type (e.g. 'claude-cli', 'anthropic-api')."""
+    def backend_id(self) -> BackendType:
+        """Unique identifier for this backend type."""

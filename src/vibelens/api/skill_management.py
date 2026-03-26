@@ -26,6 +26,13 @@ router = APIRouter(prefix="/skills", tags=["skills"])
 
 FEATURED_SKILLS_PATH = Path(__file__).resolve().parents[3] / "featured-skills.json"
 
+DEFAULT_PAGE_SIZE = 50
+
+AGENT_STORE_REGISTRY: dict[str, callable] = {
+    "claude_code": get_skill_store,
+    "codex": get_codex_skill_store,
+}
+
 
 def _resolve_source_store(source: str):
     """Resolve supported source store ids."""
@@ -37,17 +44,33 @@ def _resolve_source_store(source: str):
 
 
 @router.get("/local")
-def list_local_skills(refresh: bool = False) -> list[dict]:
-    """List all locally installed skills with metadata.
+def list_local_skills(
+    refresh: bool = False, page: int = 1, page_size: int = DEFAULT_PAGE_SIZE
+) -> dict:
+    """List locally installed skills with pagination.
 
     Args:
         refresh: If True, invalidate cache and rescan disk before returning.
+        page: 1-based page number.
+        page_size: Number of skills per page (default 50).
+
+    Returns:
+        Dict with items, total count, page, and page_size.
     """
     store = get_central_skill_store()
     if refresh:
         store.invalidate_cache()
-    skills = store.get_cached()
-    return [s.model_dump(mode="json") for s in skills]
+    all_skills = store.get_cached()
+    total = len(all_skills)
+    start = (max(page, 1) - 1) * page_size
+    end = start + page_size
+    page_items = all_skills[start:end]
+    return {
+        "items": [s.model_dump(mode="json") for s in page_items],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
 
 
 @router.post("/load/{source}")
@@ -240,12 +263,6 @@ def delete_skill(name: str) -> dict:
     return {"deleted": name}
 
 
-AGENT_STORE_REGISTRY: dict[str, callable] = {
-    "claude_code": get_skill_store,
-    "codex": get_codex_skill_store,
-}
-
-
 @router.get("/sources")
 def list_skill_sources() -> list[dict]:
     """List available agent interfaces and their skill counts."""
@@ -254,12 +271,14 @@ def list_skill_sources() -> list[dict]:
         try:
             store = getter()
             skills = store.get_cached()
-            sources.append({
-                "key": key,
-                "label": key.replace("_", " ").title(),
-                "skill_count": len(skills),
-                "skills_dir": str(store.skills_dir),
-            })
+            sources.append(
+                {
+                    "key": key,
+                    "label": key.replace("_", " ").title(),
+                    "skill_count": len(skills),
+                    "skills_dir": str(store.skills_dir),
+                }
+            )
         except Exception:
             label = key.replace("_", " ").title()
             sources.append({"key": key, "label": label, "skill_count": 0, "skills_dir": ""})

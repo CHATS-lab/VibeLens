@@ -2,7 +2,7 @@
 export const SOURCE_COLORS: Record<string, string> = {
   claude_code: "bg-sky-900/30 text-sky-400 border-sky-700/30",
   codex: "bg-emerald-900/30 text-emerald-400 border-emerald-700/30",
-  central: "bg-violet-900/30 text-violet-400 border-violet-700/30",
+  central: "bg-teal-900/30 text-teal-400 border-teal-700/30",
   gemini: "bg-amber-900/30 text-amber-400 border-amber-700/30",
 };
 

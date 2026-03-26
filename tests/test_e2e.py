@@ -884,10 +884,7 @@ class TestFilterVisible:
         """Root-level sessions (no _upload_id) are always visible."""
         from vibelens.services.upload_visibility import filter_visible
 
-        summaries = [
-            {"session_id": "root-001"},
-            {"session_id": "root-002"},
-        ]
+        summaries = [{"session_id": "root-001"}, {"session_id": "root-002"}]
         result = filter_visible(summaries, session_token=None)
         assert len(result) == 2
         print("Root sessions visible without token")
@@ -934,7 +931,10 @@ class TestFilterVisible:
 
     def test_is_session_visible(self):
         """is_session_visible() checks single session visibility."""
-        from vibelens.services.upload_visibility import is_session_visible, register_upload
+        from vibelens.services.upload_visibility import (
+            is_session_visible,
+            register_upload,
+        )
 
         # No metadata -> not visible
         assert is_session_visible(None, "token") is False

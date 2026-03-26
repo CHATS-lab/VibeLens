@@ -1,0 +1,34 @@
+Analyze {{ session_count }} coding agent session{{ "s" if session_count != 1 else "" }} to suggest improvements to existing skills.
+
+{{ session_digest }}
+
+## Installed Skills
+
+These are the user's installed skills. Suggest edits only for skills in this list:
+{% for skill in installed_skills %}
+### {{ skill.name }}
+- **Description**: {{ skill.description }}
+{% if skill.content %}
+```markdown
+{{ skill.content }}
+```
+{% endif %}
+{% endfor %}
+
+## Output Schema
+
+{{ output_schema }}
+
+For every workflow pattern, provide:
+- `description`: What the pattern does and when it occurs.
+- `pain_point`: Why the current skill coverage is insufficient.
+- `example_refs`: StepRef objects with `session_id` and `start_step_id` pointing to real occurrences. Optionally include `end_step_id` for multi-step ranges.
+
+For every evolution suggestion, provide:
+- `skill_name`: Name of the existing skill to improve.
+- `edits`: Ordered list of granular edits, each with `kind`, `target`, `replacement` (null for removals), and `rationale`.
+- `rationale`: Overall rationale for evolving this skill.
+
+After patterns and suggestions, provide:
+- `summary`: Narrative overview of skill gaps and improvement opportunities.
+- `user_profile`: Brief description of the user's working style and preferences.

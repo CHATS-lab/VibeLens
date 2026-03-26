@@ -7,7 +7,7 @@ export function SkillSearchBar({
   value,
   onChange,
   placeholder = "Search skills...",
-  focusRingColor = "focus:ring-violet-500/30 focus:border-violet-600",
+  focusRingColor = "focus:ring-teal-500/30 focus:border-teal-600",
 }: {
   value: string;
   onChange: (query: string) => void;

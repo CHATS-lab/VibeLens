@@ -134,7 +134,7 @@ export function App() {
   }, [fetchWithToken, refreshKey]);
 
   useEffect(() => {
-    fetchWithToken("/api/sessions")
+    fetchWithToken(`/api/sessions?refresh=true`)
       .then((r) => r.json())
       .then((data: Trajectory[]) => {
         setSessions(data);
@@ -456,7 +456,7 @@ export function App() {
                 title="View and manage installed Claude Code skills"
                 className={`min-w-[100px] text-center px-4 py-1.5 text-sm font-semibold rounded-md transition ${
                   mainView === "skills"
-                    ? "bg-violet-600/20 text-violet-300 border border-violet-500/30"
+                    ? "bg-teal-600/20 text-teal-300 border border-teal-500/30"
                     : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
                 }`}
               >

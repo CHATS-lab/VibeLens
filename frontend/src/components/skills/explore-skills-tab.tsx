@@ -62,7 +62,8 @@ export function ExploreSkillsTab() {
       setUpdatedAt(data.updated_at);
 
       if (localRes.ok) {
-        const local: SkillInfo[] = await localRes.json();
+        const localData = await localRes.json();
+        const local: SkillInfo[] = localData.items ?? localData;
         setInstalledSlugs(new Set(local.map((s) => s.name)));
       }
       if (sourcesRes.ok) {
@@ -105,8 +106,8 @@ export function ExploreSkillsTab() {
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-violet-600/20">
-            <Compass className="w-5 h-5 text-violet-400" />
+          <div className="p-2 rounded-lg bg-teal-600/20">
+            <Compass className="w-5 h-5 text-teal-400" />
           </div>
           <div>
             <h2 className="text-lg font-bold text-zinc-100">Explore Skills</h2>
@@ -130,19 +131,19 @@ export function ExploreSkillsTab() {
       </div>
 
       {/* Personalization CTA banner */}
-      <div className="relative mb-5 px-4 py-3.5 rounded-lg border border-violet-800/40 bg-gradient-to-r from-violet-950/40 via-violet-900/20 to-indigo-950/40 overflow-hidden">
+      <div className="relative mb-5 px-4 py-3.5 rounded-lg border border-teal-800/40 bg-gradient-to-r from-teal-950/40 via-teal-900/20 to-indigo-950/40 overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(139,92,246,0.08),transparent_60%)]" />
         <div className="relative flex items-center gap-3">
-          <div className="shrink-0 p-2 rounded-lg bg-violet-500/15 border border-violet-500/20">
-            <Zap className="w-4 h-4 text-violet-400" />
+          <div className="shrink-0 p-2 rounded-lg bg-teal-500/15 border border-teal-500/20">
+            <Zap className="w-4 h-4 text-teal-400" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-violet-300">Not sure which skills to add?</p>
-            <p className="text-xs text-violet-400/70 mt-0.5">
-              Switch to the <span className="font-semibold text-violet-300">Retrieve</span> tab — it analyzes your coding sessions and recommends skills tailored to your workflow.
+            <p className="text-sm font-semibold text-teal-300">Not sure which skills to add?</p>
+            <p className="text-xs text-teal-400/70 mt-0.5">
+              Switch to the <span className="font-semibold text-teal-300">Retrieve</span> tab — it analyzes your coding sessions and recommends skills tailored to your workflow.
             </p>
           </div>
-          <Sparkles className="w-5 h-5 text-violet-500/40 shrink-0" />
+          <Sparkles className="w-5 h-5 text-teal-500/40 shrink-0" />
         </div>
       </div>
 
@@ -161,7 +162,7 @@ export function ExploreSkillsTab() {
         value={searchQuery}
         onChange={setSearchQuery}
         placeholder="Search community skills..."
-        focusRingColor="focus:ring-violet-500/30 focus:border-violet-600"
+        focusRingColor="focus:ring-teal-500/30 focus:border-teal-600"
       />
 
       {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
@@ -218,8 +219,8 @@ function FeaturedSkillCard({
         onClick={() => onViewDetail(skill)}
         className="w-full text-left px-4 py-3 flex items-start gap-3 min-w-0"
       >
-        <div className={`shrink-0 mt-0.5 p-1.5 rounded-md ${isInstalled ? "bg-emerald-600/20" : "bg-violet-600/20"}`}>
-          {isInstalled ? <Check className="w-4 h-4 text-emerald-400" /> : <Globe className="w-4 h-4 text-violet-400" />}
+        <div className={`shrink-0 mt-0.5 p-1.5 rounded-md ${isInstalled ? "bg-emerald-600/20" : "bg-teal-600/20"}`}>
+          {isInstalled ? <Check className="w-4 h-4 text-emerald-400" /> : <Globe className="w-4 h-4 text-teal-400" />}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
@@ -305,8 +306,8 @@ function FeaturedSkillDetailPopup({
     <Modal onClose={onClose}>
       <ModalHeader onClose={onClose}>
         <div className="flex items-center gap-3">
-          <div className={`p-1.5 rounded-md ${installed ? "bg-emerald-600/20" : "bg-violet-600/20"}`}>
-            {installed ? <Check className="w-4 h-4 text-emerald-400" /> : <Globe className="w-4 h-4 text-violet-400" />}
+          <div className={`p-1.5 rounded-md ${installed ? "bg-emerald-600/20" : "bg-teal-600/20"}`}>
+            {installed ? <Check className="w-4 h-4 text-emerald-400" /> : <Globe className="w-4 h-4 text-teal-400" />}
           </div>
           <div>
             <h2 className="text-sm font-semibold font-mono text-zinc-100">{skill.name}</h2>
@@ -400,7 +401,7 @@ function FeaturedSkillDetailPopup({
               href={skill.source_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs text-violet-400 hover:text-violet-300 underline underline-offset-2 transition"
+              className="inline-flex items-center gap-1.5 text-xs text-teal-400 hover:text-teal-300 underline underline-offset-2 transition"
             >
               {skill.source_url} <ExternalLink className="w-3 h-3" />
             </a>
@@ -429,7 +430,7 @@ function FeaturedSkillDetailPopup({
           <button
             onClick={handleInstall}
             disabled={installing}
-            className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium text-white bg-violet-600 hover:bg-violet-500 rounded transition disabled:opacity-50"
+            className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium text-white bg-teal-600 hover:bg-teal-500 rounded transition disabled:opacity-50"
           >
             {installing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
             {installing ? "Installing..." : "Install Skill"}

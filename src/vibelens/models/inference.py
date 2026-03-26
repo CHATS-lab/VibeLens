@@ -1,6 +1,18 @@
 """Inference request and result models for LLM backends."""
 
+from enum import StrEnum
+
 from pydantic import BaseModel, Field
+
+
+class BackendType(StrEnum):
+    """Inference backend type identifier."""
+
+    LITELLM = "litellm"
+    CLAUDE_CLI = "claude-cli"
+    CODEX_CLI = "codex-cli"
+    MOCK = "mock"
+    DISABLED = "disabled"
 
 
 class TokenUsage(BaseModel):

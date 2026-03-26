@@ -1039,9 +1039,9 @@ class TestStepValidatorHardening:
                 ),
             )
 
-    def test_orphaned_tool_call_warns(self, caplog: pytest.LogCaptureFixture):
-        """Step with tool_call but no matching observation succeeds with warning."""
-        with caplog.at_level(logging.WARNING):
+    def test_orphaned_tool_call_logs_debug(self, caplog: pytest.LogCaptureFixture):
+        """Step with tool_call but no matching observation succeeds with debug log."""
+        with caplog.at_level(logging.DEBUG, logger="vibelens.models.trajectories.step"):
             step = Step(
                 step_id="s1",
                 source=StepSource.AGENT,

@@ -117,9 +117,7 @@ def _find_compaction_agents(trajectory_group: list[Trajectory]) -> list[Trajecto
     ``extra={"is_compaction_agent": True}`` on the Trajectory. Currently only
     the Claude Code parser produces compaction agents (``acompact-*`` files).
     """
-    compaction = [
-        t for t in trajectory_group if (t.extra or {}).get("is_compaction_agent")
-    ]
+    compaction = [t for t in trajectory_group if (t.extra or {}).get("is_compaction_agent")]
     compaction.sort(key=lambda t: t.timestamp or datetime.min)
     return compaction
 
@@ -212,6 +210,7 @@ def _format_step_full(step: Step) -> str:
         message = extract_text(step.message)
         if message.strip():
             lines.append(f"[step_id={step.step_id}] USER: {message.strip()}")
+
     elif step.source == StepSource.AGENT:
         agent_lines = [f"[step_id={step.step_id}] AGENT:"]
         for tc in step.tool_calls:

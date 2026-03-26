@@ -7,6 +7,7 @@ import zipfile
 from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from vibelens.deps import get_store
 from vibelens.schemas.session import DonateRequest, DonateResult, DownloadRequest
 from vibelens.services.flow_service import get_session_flow
 from vibelens.services.search_service import search_sessions
@@ -25,6 +26,7 @@ async def list_sessions_endpoint(
     project_name: str | None = None,
     limit: int = 0,
     offset: int = 0,
+    refresh: bool = False,
     x_session_token: str | None = Header(None),
 ) -> list[dict]:
     """List trajectory summaries (without steps).
@@ -33,11 +35,14 @@ async def list_sessions_endpoint(
         project_name: Optional project path filter.
         limit: Max results.
         offset: Results to skip.
+        refresh: If True, invalidate cached index to discover new sessions.
         x_session_token: Browser tab token for upload scoping.
 
     Returns:
         List of trajectory summary dicts.
     """
+    if refresh:
+        get_store().invalidate_index()
     return list_sessions(project_name, limit, offset, session_token=x_session_token)
 
 

@@ -100,9 +100,9 @@ function HistoryCard({
   onSelect: () => void;
   onDelete: () => void;
 }) {
-  const date = new Date(item.computed_at);
+  const date = new Date(item.created_at);
   const dateStr = isNaN(date.getTime())
-    ? item.computed_at
+    ? item.created_at
     : date.toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 
   return (

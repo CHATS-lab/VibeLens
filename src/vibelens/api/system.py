@@ -12,6 +12,7 @@ from vibelens.deps import (
     is_test_mode,
     set_llm_config,
 )
+from vibelens.models.inference import BackendType
 from vibelens.schemas.llm import LLMConfigureRequest
 from vibelens.utils.log import get_logger
 
@@ -56,7 +57,7 @@ async def llm_status() -> dict:
         Dict with available, backend_id, model, and config fields.
     """
     if is_test_mode():
-        return {"available": True, "backend_id": "mock", "model": "mock/test-model"}
+        return {"available": True, "backend_id": BackendType.MOCK, "model": "mock/test-model"}
 
     config = get_llm_config()
     backend = get_inference_backend()
@@ -64,7 +65,7 @@ async def llm_status() -> dict:
     if not backend:
         return {
             "available": False,
-            "backend_id": "disabled",
+            "backend_id": BackendType.DISABLED,
             "model": None,
             "api_key_masked": masked_key,
             "base_url": config.base_url,

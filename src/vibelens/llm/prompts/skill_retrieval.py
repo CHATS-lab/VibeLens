@@ -1,7 +1,8 @@
 """Prompt for skill retrieval analysis.
 
 Detects workflow patterns from session transcripts and recommends
-existing skills from catalogs. Uses SkillLLMOutput as the output model.
+existing skills from a pre-built candidate list. Uses SkillLLMOutput
+as the output model.
 """
 
 from vibelens.models.analysis.prompts import AnalysisPrompt, load_template

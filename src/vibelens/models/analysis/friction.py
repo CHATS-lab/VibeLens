@@ -13,6 +13,7 @@ Model hierarchy:
 from pydantic import BaseModel, Field
 
 from vibelens.models.analysis.step_ref import StepRef
+from vibelens.models.inference import BackendType
 from vibelens.models.trajectories.step import Step
 
 
@@ -186,13 +187,13 @@ class FrictionAnalysisResult(BaseModel):
         default=1,
         description="Number of LLM batches used for this analysis.",
     )
-    backend_id: str = Field(description="Inference backend used.")
+    backend_id: BackendType = Field(description="Inference backend used.")
     model: str = Field(description="Model identifier.")
     cost_usd: float | None = Field(
         default=None,
         description="Total inference cost in USD across all batches.",
     )
-    computed_at: str = Field(description="ISO timestamp of analysis completion.")
+    created_at: str = Field(description="ISO timestamp of analysis completion.")
 
 
 class FrictionAnalysisRequest(BaseModel):

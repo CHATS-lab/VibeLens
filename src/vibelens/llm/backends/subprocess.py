@@ -10,7 +10,7 @@ import shutil
 import time
 
 from vibelens.llm.backend import InferenceBackend, InferenceError, InferenceTimeoutError
-from vibelens.models.inference import InferenceRequest, InferenceResult, TokenUsage
+from vibelens.models.inference import BackendType, InferenceRequest, InferenceResult, TokenUsage
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -26,13 +26,13 @@ class SubprocessBackend(InferenceBackend):
     """
 
     def __init__(
-        self, cli_name: str, backend_type: str, model: str | None = None, timeout: int = 120
+        self, cli_name: str, backend_type: BackendType, model: str | None = None, timeout: int = 120
     ):
         """Initialize subprocess backend.
 
         Args:
             cli_name: CLI executable name (e.g. 'claude', 'codex').
-            backend_type: Backend identifier string.
+            backend_type: Backend type enum value.
             model: Optional model override.
             timeout: Request timeout in seconds.
         """
@@ -97,7 +97,7 @@ class SubprocessBackend(InferenceBackend):
         return shutil.which(self._cli_name) is not None
 
     @property
-    def backend_id(self) -> str:
+    def backend_id(self) -> BackendType:
         """Return the backend type identifier."""
         return self._backend_type
 

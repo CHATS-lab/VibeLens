@@ -50,9 +50,7 @@ def select_limits(step_count: int) -> DigestLimits:
     )
 
 
-def _group_by_session(
-    signals: list[StepSignal],
-) -> dict[str, list[StepSignal]]:
+def _group_by_session(signals: list[StepSignal]) -> dict[str, list[StepSignal]]:
     """Group signals by session_id preserving order.
 
     Args:
@@ -83,21 +81,15 @@ def _format_step(signal: StepSignal, limits: DigestLimits) -> str:
     lines = [f"[{signal.step_index}] {source}: {msg}"]
 
     for tc in step.tool_calls:
-        args_str = summarize_args(
-            tc.arguments, max_total_chars=limits.max_arg_chars
-        )
+        args_str = summarize_args(tc.arguments, max_total_chars=limits.max_arg_chars)
         lines.append(f"  TOOL: fn={tc.function_name} {args_str}")
 
         if tc.observation and tc.observation.result:
             obs_text = extract_text(tc.observation.result)
             if is_error_content(obs_text):
-                lines.append(
-                    f"  ERROR: {truncate(obs_text, limits.max_observation_chars)}"
-                )
+                lines.append(f"  ERROR: {truncate(obs_text, limits.max_observation_chars)}")
             elif limits.max_observation_chars > 0:
-                lines.append(
-                    f"  OUT: {truncate(obs_text, limits.max_observation_chars)}"
-                )
+                lines.append(f"  OUT: {truncate(obs_text, limits.max_observation_chars)}")
 
     return "\n".join(lines)
 

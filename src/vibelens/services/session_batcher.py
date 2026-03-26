@@ -3,6 +3,9 @@
 Groups extracted session contexts into batches for concurrent LLM calls.
 Strategy: project-aware grouping, linked-session chaining, greedy packing.
 
+Budget is token-based: each session's char_count is converted to estimated
+tokens, and batches are packed within max_batch_tokens from Settings.
+
 Reusable by friction analysis, skill analysis, and other batch-inference modules.
 """
 
@@ -10,6 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from vibelens.deps import get_settings
+from vibelens.llm.tokenizer import count_tokens
 from vibelens.services.context_extraction import SessionContext
 from vibelens.utils.log import get_logger
 
@@ -22,12 +26,12 @@ class SessionBatch:
 
     batch_id: str
     session_contexts: list[SessionContext]
-    total_chars: int
+    total_tokens: int
     project_paths: set[str] = field(default_factory=set)
 
 
 def build_batches(
-    session_contexts: list[SessionContext], max_batch_chars: int | None = None
+    session_contexts: list[SessionContext], max_batch_tokens: int | None = None
 ) -> list[SessionBatch]:
     """Group session contexts into batches for LLM calls.
 
@@ -40,8 +44,8 @@ def build_batches(
 
     Args:
         session_contexts: Extracted session contexts.
-        max_batch_chars: Max chars per batch (including overhead).
-            When None, reads from Settings.
+        max_batch_tokens: Max tokens per batch for session content.
+            When None, reads from Settings.max_batch_tokens.
 
     Returns:
         List of SessionBatch ready for concurrent LLM calls.
@@ -50,8 +54,7 @@ def build_batches(
         return []
 
     settings = get_settings()
-    effective_max = max_batch_chars if max_batch_chars is not None else settings.max_batch_chars
-    budget = effective_max - settings.prompt_overhead_chars
+    budget = max_batch_tokens if max_batch_tokens is not None else settings.max_batch_tokens
 
     project_groups = _group_by_project(session_contexts)
     all_chains = _build_all_chains(project_groups)
@@ -84,8 +87,11 @@ def _build_all_chains(
         chains = _merge_linked_sessions(contexts)
         all_chains.extend(chains)
 
-    # Sort chains by total size descending for better bin packing
-    all_chains.sort(key=lambda chain: sum(c.char_count for c in chain), reverse=True)
+    # Sort chains by total token estimate descending for better bin packing
+    all_chains.sort(
+        key=lambda chain: sum(count_tokens(c.context_text) for c in chain),
+        reverse=True,
+    )
     return all_chains
 
 
@@ -150,8 +156,13 @@ def _follow_chain(
     return chain
 
 
+def _chain_tokens(chain: list[SessionContext]) -> int:
+    """Estimate total tokens for a chain of session contexts."""
+    return sum(count_tokens(c.context_text) for c in chain)
+
+
 def _pack_batches(chains: list[list[SessionContext]], budget: int) -> list[SessionBatch]:
-    """Pack chains into batches greedily within the character budget.
+    """Pack chains into batches greedily within the token budget.
 
     Uses a first-fit-decreasing strategy: chains are pre-sorted by size
     descending (in _build_all_chains). Each chain starts a new batch,
@@ -161,7 +172,7 @@ def _pack_batches(chains: list[list[SessionContext]], budget: int) -> list[Sessi
 
     Args:
         chains: Session chains sorted by size descending.
-        budget: Available chars per batch (after overhead).
+        budget: Available tokens per batch for session content.
 
     Returns:
         List of SessionBatch objects.
@@ -173,11 +184,11 @@ def _pack_batches(chains: list[list[SessionContext]], budget: int) -> list[Sessi
         if i in used:
             continue
 
-        chain_chars = sum(c.char_count for c in chain)
+        chain_tok = _chain_tokens(chain)
 
         # Start new batch with this chain
         batch_contexts = list(chain)
-        batch_chars = chain_chars
+        batch_tokens = chain_tok
         batch_projects = {c.project_path or "__unknown__" for c in chain}
         used.add(i)
 
@@ -185,10 +196,10 @@ def _pack_batches(chains: list[list[SessionContext]], budget: int) -> list[Sessi
         for j, other_chain in enumerate(chains):
             if j in used:
                 continue
-            other_chars = sum(c.char_count for c in other_chain)
-            if batch_chars + other_chars <= budget:
+            other_tok = _chain_tokens(other_chain)
+            if batch_tokens + other_tok <= budget:
                 batch_contexts.extend(other_chain)
-                batch_chars += other_chars
+                batch_tokens += other_tok
                 batch_projects.update(c.project_path or "__unknown__" for c in other_chain)
                 used.add(j)
 
@@ -197,17 +208,17 @@ def _pack_batches(chains: list[list[SessionContext]], budget: int) -> list[Sessi
             SessionBatch(
                 batch_id=batch_id,
                 session_contexts=batch_contexts,
-                total_chars=batch_chars,
+                total_tokens=batch_tokens,
                 project_paths=batch_projects,
             )
         )
 
     if batches:
         logger.info(
-            "Built %d batch(es) from %d chain(s), avg %d chars/batch",
+            "Built %d batch(es) from %d chain(s), avg %d tokens/batch",
             len(batches),
             len(chains),
-            sum(b.total_chars for b in batches) // len(batches),
+            sum(b.total_tokens for b in batches) // len(batches),
         )
 
     return batches

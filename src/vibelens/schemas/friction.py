@@ -10,7 +10,7 @@ class FrictionMeta(BaseModel):
     session_ids: list[str] = Field(description="Sessions that were analyzed.")
     event_count: int = Field(description="Number of friction events found.")
     summary_preview: str = Field(description="First ~120 chars of the summary.")
-    computed_at: str = Field(description="ISO timestamp of analysis.")
+    created_at: str = Field(description="ISO timestamp of analysis.")
     model: str = Field(description="Model used for analysis.")
     cost_usd: float | None = Field(default=None, description="Inference cost.")
     batch_count: int = Field(default=1, description="Number of LLM batches used.")

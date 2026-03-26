@@ -81,10 +81,7 @@ def _collect_step_ids(session_ids: list[str]) -> dict[str, list[str]]:
         if not trajectories:
             continue
         step_ids = [
-            step.step_id
-            for traj in trajectories
-            for step in traj.steps
-            if step.source == "agent"
+            step.step_id for traj in trajectories for step in traj.steps if step.source == "agent"
         ]
         if step_ids:
             pool[sid] = step_ids
@@ -196,8 +193,7 @@ def _build_mock_events(pool: dict[str, list[str]]) -> list[FrictionEvent]:
                     action_type="update_claude_md",
                     target="Task Execution",
                     content=(
-                        "Only change what was explicitly requested. "
-                        "Never refactor adjacent code."
+                        "Only change what was explicitly requested. Never refactor adjacent code."
                     ),
                 ),
                 Mitigation(

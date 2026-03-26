@@ -228,7 +228,6 @@ export interface StepRef {
   session_id: string;
   start_step_id: string;
   end_step_id: string | null;
-  tool_call_id: string | null;
 }
 
 export interface Mitigation {
@@ -270,7 +269,7 @@ export interface FrictionAnalysisResult {
   backend_id: string;
   model: string;
   cost_usd: number | null;
-  computed_at: string;
+  created_at: string;
 }
 
 export interface FrictionMeta {
@@ -278,7 +277,7 @@ export interface FrictionMeta {
   session_ids: string[];
   event_count: number;
   summary_preview: string;
-  computed_at: string;
+  created_at: string;
   model: string;
   cost_usd: number | null;
   batch_count: number;
@@ -338,20 +337,16 @@ export interface FeaturedSkillsResponse {
 export type SkillMode = "retrieval" | "creation" | "evolution";
 
 export interface WorkflowPattern {
-  pattern_id: string;
+  title: string;
   description: string;
-  tool_sequence: string[];
-  frequency: number;
   pain_point: string;
   example_refs: StepRef[];
+  frequency: number;
 }
 
 export interface SkillRecommendation {
   skill_name: string;
-  source: string;
   match_reason: string;
-  matched_patterns: string[];
-  url: string;
   confidence: number;
 }
 
@@ -359,11 +354,10 @@ export interface SkillCreation {
   name: string;
   description: string;
   skill_md_content: string;
-  source_patterns: string[];
   rationale: string;
 }
 
-export interface SkillEditKind {
+export interface SkillEdit {
   kind: string;
   target: string;
   replacement: string | null;
@@ -372,9 +366,8 @@ export interface SkillEditKind {
 
 export interface SkillEvolutionSuggestion {
   skill_name: string;
-  edits: SkillEditKind[];
+  edits: SkillEdit[];
   rationale: string;
-  source_patterns: string[];
 }
 
 export interface SkillAnalysisResult {
@@ -391,7 +384,7 @@ export interface SkillAnalysisResult {
   backend_id: string;
   model: string;
   cost_usd: number | null;
-  computed_at: string;
+  created_at: string;
 }
 
 export interface SkillAnalysisMeta {
@@ -400,7 +393,7 @@ export interface SkillAnalysisMeta {
   session_ids: string[];
   pattern_count: number;
   summary_preview: string;
-  computed_at: string;
+  created_at: string;
   model: string;
   cost_usd: number | null;
 }

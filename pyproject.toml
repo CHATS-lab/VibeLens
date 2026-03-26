@@ -1,6 +1,6 @@
 [project]
 name = "vibelens"
-version = "0.9.2"
+version = "0.9.3"
 description = "Agent Trajectory visualization and analysis platform"
 readme = "README.md"
 license = "MIT"
@@ -27,6 +27,7 @@ dependencies = [
     "python-multipart>=0.0.22",
     "litellm>=1.40.0",
     "jinja2>=3.1.0",
+    "tiktoken>=0.7.0",
 ]
 
 [project.optional-dependencies]

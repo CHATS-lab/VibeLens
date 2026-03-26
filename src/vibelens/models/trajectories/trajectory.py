@@ -116,7 +116,7 @@ class Trajectory(BaseModel):
         total_tc = sum(len(s.tool_calls) for s in self.steps)
         total_obs = sum(len(s.observation.results) for s in self.steps if s.observation)
         if total_tc != total_obs:
-            logger.warning(
+            logger.debug(
                 "Trajectory %s: %d total tool_calls but %d observation results",
                 self.session_id,
                 total_tc,

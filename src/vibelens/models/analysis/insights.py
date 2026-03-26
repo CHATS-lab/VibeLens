@@ -4,6 +4,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
+from vibelens.models.inference import BackendType
+
 
 class InsightCategory(StrEnum):
     """Category of an insight item detected in a session."""
@@ -68,10 +70,10 @@ class InsightReport(BaseModel):
     friction: FrictionReport | None = Field(
         default=None, description="Friction analysis (None if not requested)."
     )
-    backend_id: str = Field(description="Inference backend that generated this report.")
+    backend_id: BackendType = Field(description="Inference backend that generated this report.")
     model: str = Field(description="Model used for generation.")
     cost_usd: float | None = Field(
         default=None,
         description="Total inference cost in USD. None for free backends.",
     )
-    computed_at: str = Field(description="ISO 8601 timestamp when the report was generated.")
+    created_at: str = Field(description="ISO 8601 timestamp when the report was generated.")

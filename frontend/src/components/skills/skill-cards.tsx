@@ -42,8 +42,8 @@ export function SkillCard({
           onClick={() => onViewDetail(skill)}
           className="flex-1 text-left px-4 py-3 flex items-start gap-3 min-w-0"
         >
-          <div className="shrink-0 mt-0.5 p-1.5 rounded-md bg-violet-600/20">
-            <Package className="w-4 h-4 text-violet-400" />
+          <div className="shrink-0 mt-0.5 p-1.5 rounded-md bg-teal-600/20">
+            <Package className="w-4 h-4 text-teal-400" />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
@@ -67,7 +67,7 @@ export function SkillCard({
         <div className="flex items-center gap-1 px-2 py-3 shrink-0">
           <button
             onClick={() => onEdit(skill)}
-            className="p-1.5 text-zinc-500 hover:text-violet-400 hover:bg-zinc-700 rounded transition"
+            className="p-1.5 text-zinc-500 hover:text-teal-400 hover:bg-zinc-700 rounded transition"
             title="Edit skill"
           >
             <Pencil className="w-3.5 h-3.5" />
@@ -160,8 +160,8 @@ export function SkillDetailPopup({
     <Modal onClose={onClose} maxWidth="max-w-3xl">
       <ModalHeader onClose={onClose}>
         <div className="flex items-center gap-3">
-          <div className="p-1.5 rounded-md bg-violet-600/20">
-            <Package className="w-4 h-4 text-violet-400" />
+          <div className="p-1.5 rounded-md bg-teal-600/20">
+            <Package className="w-4 h-4 text-teal-400" />
           </div>
           <div>
             <h2 className="text-base font-bold font-mono text-white">{skill.name}</h2>

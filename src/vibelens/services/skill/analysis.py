@@ -1,13 +1,14 @@
 """Skill analysis service — LLM-powered workflow pattern detection and skill recommendations.
 
 Pipeline: load sessions -> build signals -> digest -> gather context ->
-prompt -> infer -> validate -> persist -> cache.
+select prompt by mode -> infer -> validate -> persist -> cache.
 """
 
 import hashlib
 import json
 import time
 from datetime import UTC, datetime
+from pathlib import Path
 
 from pydantic import BaseModel, ValidationError
 
@@ -20,7 +21,10 @@ from vibelens.deps import (
     is_demo_mode,
 )
 from vibelens.llm.backend import InferenceBackend, InferenceError
+from vibelens.llm.prompts.skill_creation import SKILL_CREATION_PROMPT
+from vibelens.llm.prompts.skill_evolution import SKILL_EVOLUTION_PROMPT
 from vibelens.llm.prompts.skill_retrieval import SKILL_RETRIEVAL_PROMPT
+from vibelens.models.analysis.prompts import AnalysisPrompt
 from vibelens.models.analysis.skills import (
     SkillAnalysisResult,
     SkillLLMOutput,
@@ -36,8 +40,15 @@ from vibelens.utils.log import get_logger
 logger = get_logger(__name__)
 
 CACHE_TTL_SECONDS = 3600
+FEATURED_SKILLS_PATH = Path(__file__).resolve().parents[3] / "featured-skills.json"
 
 _cache: dict[str, tuple[float, BaseModel]] = {}
+
+PROMPT_BY_MODE: dict[SkillMode, AnalysisPrompt] = {
+    SkillMode.RETRIEVAL: SKILL_RETRIEVAL_PROMPT,
+    SkillMode.CREATION: SKILL_CREATION_PROMPT,
+    SkillMode.EVOLUTION: SKILL_EVOLUTION_PROMPT,
+}
 
 
 async def analyze_skills(
@@ -58,10 +69,11 @@ async def analyze_skills(
     signals = build_step_signals(loaded_trajectories)
     digest = digest_step_signals_for_skills(signals)
 
+    prompt = PROMPT_BY_MODE[mode]
     installed_skills = _gather_installed_skills()
-    user_prompt = _format_skill_prompt(digest, len(loaded_ids), installed_skills, mode)
+    user_prompt = _render_user_prompt(prompt, digest, len(loaded_ids), installed_skills, mode)
 
-    system_prompt = SKILL_RETRIEVAL_PROMPT.render_system()
+    system_prompt = prompt.render_system()
     request = InferenceRequest(system=system_prompt, user=user_prompt)
     _log_prompt(system_prompt, user_prompt, loaded_ids, mode)
 
@@ -84,7 +96,7 @@ async def analyze_skills(
         backend_id=backend.backend_id,
         model=_get_backend_model(backend),
         cost_usd=result.cost_usd,
-        computed_at=datetime.now(UTC).isoformat(),
+        created_at=datetime.now(UTC).isoformat(),
     )
     get_skill_analysis_store().save(skill_result)
 
@@ -106,6 +118,7 @@ def _require_backend() -> InferenceBackend:
 
 
 def _get_backend_model(backend: InferenceBackend) -> str:
+    """Extract model name from a backend instance."""
     if hasattr(backend, "_model"):
         return backend._model or "unknown"
     return "unknown"
@@ -133,6 +146,7 @@ def _load_sessions(
 
 
 def _gather_installed_skills() -> list[dict]:
+    """Collect installed skill metadata from the central store."""
     managed_store = get_central_skill_store()
     skills = managed_store.get_cached()
     return [
@@ -149,16 +163,82 @@ def _gather_installed_skills() -> list[dict]:
     ]
 
 
-def _format_skill_prompt(
-    digest: str, session_count: int, installed_skills: list[dict], mode: SkillMode
+def _gather_installed_skill_contents() -> list[dict]:
+    """Collect installed skills with full SKILL.md content for evolution mode."""
+    managed_store = get_central_skill_store()
+    skills = managed_store.get_cached()
+    result = []
+    for skill_info in skills:
+        content = managed_store.read_content(skill_info.name)
+        result.append({
+            "name": skill_info.name,
+            "description": skill_info.description,
+            "content": content or "",
+        })
+    return result
+
+
+def _load_skill_candidates() -> list[dict]:
+    """Load skill candidates from the featured skills catalog for retrieval mode.
+
+    Returns a list of dicts with name, summary, and tags for each candidate.
+    The LLM picks from these candidates when recommending skills.
+    """
+    if not FEATURED_SKILLS_PATH.is_file():
+        return []
+    try:
+        raw = FEATURED_SKILLS_PATH.read_text(encoding="utf-8")
+        catalog = json.loads(raw)
+        return [
+            {
+                "name": entry.get("slug", entry.get("name", "")),
+                "summary": entry.get("summary", ""),
+                "tags": entry.get("tags", []),
+            }
+            for entry in catalog.get("skills", [])
+            if entry.get("summary")
+        ]
+    except (json.JSONDecodeError, OSError):
+        logger.warning("Failed to load featured skills catalog for retrieval candidates")
+        return []
+
+
+def _render_user_prompt(
+    prompt: AnalysisPrompt,
+    digest: str,
+    session_count: int,
+    installed_skills: list[dict],
+    mode: SkillMode,
 ) -> str:
-    output_schema = json.dumps(SKILL_RETRIEVAL_PROMPT.output_model.model_json_schema(), indent=2)
-    return SKILL_RETRIEVAL_PROMPT.render_user(
+    """Render the user prompt with mode-specific template variables."""
+    output_schema = json.dumps(prompt.output_model.model_json_schema(), indent=2)
+
+    if mode == SkillMode.RETRIEVAL:
+        skill_candidates = _load_skill_candidates()
+        return prompt.render_user(
+            session_count=session_count,
+            session_digest=digest,
+            output_schema=output_schema,
+            installed_skills=installed_skills if installed_skills else None,
+            skill_candidates=skill_candidates if skill_candidates else None,
+        )
+
+    if mode == SkillMode.EVOLUTION:
+        # Evolution needs full skill content to suggest granular edits
+        skill_contents = _gather_installed_skill_contents()
+        return prompt.render_user(
+            session_count=session_count,
+            session_digest=digest,
+            output_schema=output_schema,
+            installed_skills=skill_contents,
+        )
+
+    # Creation mode: only needs installed skill names to avoid duplicates
+    return prompt.render_user(
         session_count=session_count,
         session_digest=digest,
         output_schema=output_schema,
         installed_skills=installed_skills if installed_skills else None,
-        skill_catalog=None,
     )
 
 

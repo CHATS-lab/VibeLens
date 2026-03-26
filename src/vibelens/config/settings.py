@@ -110,18 +110,12 @@ class Settings(BaseSettings):
     )
 
     # LLM batching
-    max_batch_chars: int = Field(
-        default=80_000,
+    max_batch_tokens: int = Field(
+        default=24_000,
         description=(
-            "Maximum character count for the entire LLM prompt in one batch "
-            "(system + user + contexts). Increase for models with larger context windows."
-        ),
-    )
-    prompt_overhead_chars: int = Field(
-        default=12_000,
-        description=(
-            "Chars reserved for system prompt, JSON schema, and template. "
-            "Subtracted from max_batch_chars to get available budget for session contexts."
+            "Maximum input token budget for session contexts in one LLM batch. "
+            "Prompt overhead (system prompt, schema, template) is computed dynamically "
+            "and subtracted automatically. Increase for models with larger context windows."
         ),
     )
 

@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.9.3] - 2026-03-26
+
+### Added
+- **Token-based batch budgeting**: New `llm/tokenizer.py` module using tiktoken for accurate token counting. Session batcher now packs batches by token budget instead of character count.
+- **Skill creation & evolution prompts**: Dedicated Jinja2 prompt templates for skill creation (`skill_creation_system.j2`, `skill_creation_user.j2`) and evolution (`skill_evolution_system.j2`, `skill_evolution_user.j2`) LLM pipelines.
+- **Install target dialog**: New `install-target-dialog.tsx` for choosing which agent interface to install skills into.
+- **Sync after save dialog**: New `sync-after-save-dialog.tsx` for cross-agent skill sync after editing.
+- **Mock service modules**: Extracted mock data into `services/friction/mock.py` and `services/skill/mock.py` for cleaner test/demo separation.
+
+### Fixed
+- **Missing sessions**: Claude Code Desktop sessions not in `history.jsonl` are now discovered via orphaned file fallback in the index builder.
+- **Explore tab crash**: `TypeError: Q.map is not a function` — handle paginated API response (`{items, total}`) instead of assuming flat array.
+- **Log spam**: Downgraded 13K+ repeated Pydantic validator warnings (orphaned tool calls, observation mismatches) to DEBUG level.
+- **Tab switching stale content**: Switching between Retrieve/Create/Evolve tabs now clears the previous analysis result.
+- **Session refresh**: Added `refresh=true` parameter to `/sessions` endpoint for cache invalidation on page load.
+
+### Changed
+- **Skill analysis views**: Richer UI with icons, confidence progress bars, color-coded edit kinds, auto-expanding first pattern card, and improved mock data covering all edge cases.
+- **API rename**: `skills.py` → `skill_management.py` for clarity.
+- **Settings**: Replaced `max_batch_chars` with `max_batch_tokens` for token-based budgeting.
+
 ## [0.9.2] - 2026-03-25
 
 ### Fixed

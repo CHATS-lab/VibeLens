@@ -19,6 +19,7 @@ import pytest
 from vibelens.config.llm_config import load_llm_config
 from vibelens.llm.backends.litellm_backend import LiteLLMBackend
 from vibelens.llm.prompts.friction_analysis import FRICTION_ANALYSIS_PROMPT
+from vibelens.llm.tokenizer import count_tokens
 from vibelens.models.analysis.friction import FrictionLLMBatchOutput
 from vibelens.models.inference import InferenceRequest
 from vibelens.models.trajectories import Trajectory
@@ -33,7 +34,6 @@ from vibelens.services.session_batcher import build_batches
 
 EXAMPLES_DIR = Path(__file__).parent.parent / "examples" / "claude-codex-example" / "parsed"
 LOGS_DIR = Path(__file__).parent.parent / "logs" / "friction"
-CHARS_PER_TOKEN = 2.5
 
 _no_api_key = not os.environ.get("ANTHROPIC_API_KEY")
 SKIP_LIVE = os.environ.get("SKIP_LIVE_LLM", "0") == "1" or _no_api_key
@@ -97,7 +97,7 @@ def _run_friction_analysis(label: str, groups: dict[str, list[Trajectory]]) -> N
     print(f"  Batches: {len(batches)}")
     for batch in batches:
         n = len(batch.session_contexts)
-        print(f"    {batch.batch_id}: {n} sessions, {batch.total_chars:,} chars")
+        print(f"    {batch.batch_id}: {n} sessions, {batch.total_tokens:,} tokens")
 
     # Load LLM config and create backend
     llm_config = load_llm_config()
@@ -117,12 +117,11 @@ def _run_friction_analysis(label: str, groups: dict[str, list[Trajectory]]) -> N
             output_schema=output_schema,
         )
 
-        total_chars = len(system_prompt) + len(user_prompt)
-        total_tokens_est = int(total_chars / CHARS_PER_TOKEN)
+        total_prompt_tokens = count_tokens(system_prompt + user_prompt)
 
         print(f"\n  --- {batch.batch_id} ---")
         print(f"  Digest: {len(digest):,} chars")
-        print(f"  Total prompt: {total_chars:,} chars ({total_tokens_est:,} tok)")
+        print(f"  Total prompt: {total_prompt_tokens:,} tokens")
 
         request = InferenceRequest(
             system=system_prompt,

@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from unittest.mock import patch
 
 from vibelens.config.settings import Settings
+from vibelens.llm.tokenizer import count_tokens
 from vibelens.services.context_extraction import SessionContext
 from vibelens.services.session_batcher import (
     _group_by_project,
@@ -46,7 +47,7 @@ def test_single_session_single_batch():
     assert len(batches) == 1
     assert len(batches[0].session_contexts) == 1
     assert batches[0].batch_id == "batch-001"
-    print(f"Single session: {batches[0].total_chars} chars")
+    print(f"Single session: {batches[0].total_tokens} tokens")
 
 
 def test_multiple_sessions_single_batch():
@@ -57,22 +58,24 @@ def test_multiple_sessions_single_batch():
     assert len(batches) == 1
     total = sum(len(b.session_contexts) for b in batches)
     assert total == 5
-    print(f"5 sessions in 1 batch: {batches[0].total_chars} chars")
+    print(f"5 sessions in 1 batch: {batches[0].total_tokens} tokens")
 
 
 def test_budget_splits_into_multiple_batches():
-    """Large sessions get split across multiple batches."""
-    # Each session is 40K chars. Budget is 80K - 12K overhead = 68K.
-    # So each batch fits 1 session.
-    contexts = [_make_context(f"s{i}", char_count=40_000) for i in range(3)]
-    batches = build_batches(contexts, max_batch_chars=80_000)
+    """Large sessions get split across multiple batches.
 
-    assert len(batches) >= 2
+    Each session is 40K chars of 'x' = 5,000 tokens (tiktoken cl100k_base).
+    Budget is 6,000 tokens → each batch fits 1 session.
+    """
+    contexts = [_make_context(f"s{i}", char_count=40_000) for i in range(3)]
+    batches = build_batches(contexts, max_batch_tokens=6_000)
+
+    assert len(batches) == 3
     total = sum(len(b.session_contexts) for b in batches)
     assert total == 3
     for batch in batches:
         n = len(batch.session_contexts)
-        print(f"  {batch.batch_id}: {n} sessions, {batch.total_chars:,} chars")
+        print(f"  {batch.batch_id}: {n} sessions, {batch.total_tokens:,} tokens")
 
 
 def test_group_by_project():
@@ -117,33 +120,57 @@ def test_empty_input():
 
 
 def test_oversized_session():
-    """A session exceeding the budget gets its own batch."""
+    """A session exceeding the budget gets its own batch.
+
+    s1: 100K chars = 12,500 tokens. s2: 5K chars = 625 tokens.
+    Budget of 8,000 tokens → s1 exceeds budget, gets its own batch.
+    """
     contexts = [
         _make_context("s1", char_count=100_000),
         _make_context("s2", char_count=5_000),
     ]
-    batches = build_batches(contexts, max_batch_chars=80_000)
+    batches = build_batches(contexts, max_batch_tokens=8_000)
 
-    # The oversized session should be in its own batch
-    assert len(batches) >= 1
+    assert len(batches) == 2
     total = sum(len(b.session_contexts) for b in batches)
     assert total == 2
     for batch in batches:
         n = len(batch.session_contexts)
-        print(f"  {batch.batch_id}: {n} sessions, {batch.total_chars:,} chars")
+        print(f"  {batch.batch_id}: {n} sessions, {batch.total_tokens:,} tokens")
 
 
-def test_default_batch_chars_from_settings():
-    """When max_batch_chars is None, values come from Settings."""
-    custom_settings = Settings(max_batch_chars=50_000, prompt_overhead_chars=5_000)
+def test_default_batch_tokens_from_settings():
+    """When max_batch_tokens is None, values come from Settings.
+
+    Each session is 10K chars of 'x' = 1,250 tokens (tiktoken cl100k_base).
+    Budget = 2,000 tokens → fits 1 session per batch.
+    """
+    custom_settings = Settings(max_batch_tokens=2_000)
 
     with patch("vibelens.services.session_batcher.get_settings", return_value=custom_settings):
-        # Each session is 30K chars. Budget = 50K - 5K = 45K.
-        # So one batch fits 1 session (30K < 45K), but not 2 (60K > 45K).
-        contexts = [_make_context(f"s{i}", char_count=30_000) for i in range(3)]
+        contexts = [_make_context(f"s{i}", char_count=10_000) for i in range(3)]
         batches = build_batches(contexts)
 
-    assert len(batches) >= 2
+    assert len(batches) == 3
     total = sum(len(b.session_contexts) for b in batches)
     assert total == 3
     print(f"Settings-based batching: {len(batches)} batches from 3 sessions")
+
+
+def test_token_counting_accuracy():
+    """Token counting uses tiktoken and produces exact results."""
+    text = "Hello world, this is a test of token counting."
+    tokens = count_tokens(text)
+    assert tokens > 0
+
+    # A 10K char string of 'x' should be exactly 1,250 tokens
+    long_text = "x" * 10_000
+    tokens = count_tokens(long_text)
+    assert tokens == 1_250
+    print(f"10K 'x' chars → {tokens} tokens (exact)")
+
+    # Realistic mixed code/prose should tokenize predictably
+    code_text = 'def hello():\n    print("Hello, world!")\n' * 100
+    code_tokens = count_tokens(code_text)
+    print(f"Code sample ({len(code_text)} chars) → {code_tokens} tokens")
+    assert code_tokens > 0

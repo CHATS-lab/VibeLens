@@ -81,7 +81,7 @@ class FrictionStore:
         return FrictionMeta.model_validate_json(path.read_text(encoding="utf-8"))
 
     def list_analyses(self) -> list[FrictionMeta]:
-        """List all persisted analyses sorted by computed_at descending.
+        """List all persisted analyses sorted by created_at descending.
 
         Returns:
             List of FrictionMeta objects.
@@ -93,7 +93,7 @@ class FrictionStore:
                 analyses.append(meta)
             except (json.JSONDecodeError, ValueError):
                 logger.warning("Skipping corrupt friction metadata: %s", meta_path)
-        analyses.sort(key=lambda m: m.computed_at, reverse=True)
+        analyses.sort(key=lambda m: m.created_at, reverse=True)
         return analyses
 
     def delete(self, analysis_id: str) -> bool:
@@ -134,7 +134,7 @@ def _build_meta(analysis_id: str, result: FrictionAnalysisResult) -> FrictionMet
         session_ids=result.session_ids,
         event_count=len(result.events),
         summary_preview=preview,
-        computed_at=result.computed_at,
+        created_at=result.created_at,
         model=result.model,
         cost_usd=result.cost_usd,
         batch_count=result.batch_count,

@@ -1,0 +1,31 @@
+Analyze {{ session_count }} coding agent session{{ "s" if session_count != 1 else "" }} to detect workflow patterns and generate new skills.
+
+{{ session_digest }}
+
+{% if installed_skills %}
+## Installed Skills
+
+The user already has these skills installed. Do NOT generate skills that duplicate this functionality:
+{% for skill in installed_skills %}
+- **{{ skill.name }}**: {{ skill.description }}
+{% endfor %}
+{% endif %}
+
+## Output Schema
+
+{{ output_schema }}
+
+For every workflow pattern, provide:
+- `description`: What the pattern does and when it occurs.
+- `pain_point`: Why this is suboptimal or repetitive.
+- `example_refs`: StepRef objects with `session_id` and `start_step_id` pointing to real occurrences. Optionally include `end_step_id` for multi-step ranges.
+
+For every generated skill, provide:
+- `name`: Kebab-case skill name (e.g., `test-driven-fix`).
+- `description`: One-line trigger description for the YAML frontmatter.
+- `skill_md_content`: Complete SKILL.md content with YAML frontmatter and markdown body.
+- `rationale`: Why this skill would improve the user's workflow.
+
+After patterns and skills, provide:
+- `summary`: Narrative overview of the user's workflow and skill opportunities.
+- `user_profile`: Brief description of the user's working style and preferences.

@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 
 from vibelens.llm.prompts.friction_analysis import FRICTION_ANALYSIS_PROMPT
+from vibelens.llm.tokenizer import count_tokens
 from vibelens.models.analysis.friction import FrictionLLMBatchOutput
 from vibelens.models.trajectories import Trajectory
 from vibelens.services.context_extraction import extract_session_context
@@ -16,7 +17,6 @@ from vibelens.services.friction.digest import format_batch_digest
 from vibelens.services.session_batcher import build_batches
 
 EXAMPLES_DIR = Path(__file__).parent.parent / "examples" / "claude-codex-example" / "parsed"
-CHARS_PER_TOKEN = 4
 
 CONTEXT_WINDOWS = {
     "Claude (200K)": 200_000,
@@ -62,7 +62,11 @@ def test_friction_prompt_length():
         ctx = extract_session_context(traj_group)
         contexts.append(ctx)
         total_steps = sum(len(t.steps) for t in traj_group)
-        print(f"  {session_id[:12]}...  steps={total_steps:>4}  context={ctx.char_count:>6,} chars")
+        ctx_tokens = count_tokens(ctx.context_text)
+        print(
+            f"  {session_id[:12]}...  steps={total_steps:>4}"
+            f"  context={ctx.char_count:>6,} chars ({ctx_tokens:,} tok)"
+        )
 
     # Build batches
     batches = build_batches(contexts)
@@ -71,37 +75,38 @@ def test_friction_prompt_length():
     print(f"  Batches: {len(batches)}")
     for batch in batches:
         n = len(batch.session_contexts)
-        print(f"  {batch.batch_id}: {n} sessions, {batch.total_chars:,} chars")
+        print(f"  {batch.batch_id}: {n} sessions, {batch.total_tokens:,} tokens")
 
     # Format first batch as sample prompt
     batch = batches[0]
     digest = format_batch_digest(batch)
-    digest_chars = len(digest)
 
     output_schema = json.dumps(FrictionLLMBatchOutput.model_json_schema(), indent=2)
+    system_prompt = FRICTION_ANALYSIS_PROMPT.render_system()
     user_prompt = FRICTION_ANALYSIS_PROMPT.render_user(
         session_count=len(batch.session_contexts),
         batch_digest=digest,
         output_schema=output_schema,
     )
 
-    system_chars = len(FRICTION_ANALYSIS_PROMPT.render_system())
-    user_chars = len(user_prompt)
-    schema_chars = len(output_schema)
-    total_chars = system_chars + user_chars
-    total_tokens_est = total_chars // CHARS_PER_TOKEN
+    system_tokens = count_tokens(system_prompt)
+    user_tokens = count_tokens(user_prompt)
+    schema_tokens = count_tokens(output_schema)
+    digest_tokens = count_tokens(digest)
+    total_tokens = count_tokens(system_prompt + user_prompt)
 
     print("\n--- Prompt Size Breakdown (batch-001) ---")
-    print(f"  System prompt:  {system_chars:>8,} chars  ({system_chars // CHARS_PER_TOKEN:,} tok)")
-    print(f"  Output schema:  {schema_chars:>8,} chars  ({schema_chars // CHARS_PER_TOKEN:,} tok)")
-    print(f"  Batch digest:   {digest_chars:>8,} chars  ({digest_chars // CHARS_PER_TOKEN:,} tok)")
-    print(f"  User prompt:    {user_chars:>8,} chars  ({user_chars // CHARS_PER_TOKEN:,} tok)")
-    print(f"  Total:          {total_chars:>8,} chars  ({total_tokens_est:,} tok)")
+    print(f"  System prompt:  {len(system_prompt):>8,} chars  ({system_tokens:,} tok)")
+    print(f"  Output schema:  {len(output_schema):>8,} chars  ({schema_tokens:,} tok)")
+    print(f"  Batch digest:   {len(digest):>8,} chars  ({digest_tokens:,} tok)")
+    print(f"  User prompt:    {len(user_prompt):>8,} chars  ({user_tokens:,} tok)")
+    total_chars = len(system_prompt) + len(user_prompt)
+    print(f"  Total:          {total_chars:>8,} chars  ({total_tokens:,} tok)")
 
     print("\n--- Context Window Fit ---")
     for model_name, window_size in CONTEXT_WINDOWS.items():
-        pct = (total_tokens_est / window_size) * 100
-        remaining = window_size - total_tokens_est
+        pct = (total_tokens / window_size) * 100
+        remaining = window_size - total_tokens
         status = "OK" if pct < 80 else "TIGHT" if pct < 95 else "OVER"
         print(
             f"  {model_name:>20}: {pct:5.1f}% used  ({remaining:>+10,} tok remaining)  [{status}]"
@@ -113,5 +118,5 @@ def test_friction_prompt_length():
     print(f"\n{'=' * 70}")
 
     assert len(contexts) > 0
-    assert digest_chars > 0
-    assert total_tokens_est > 0
+    assert len(digest) > 0
+    assert total_tokens > 0

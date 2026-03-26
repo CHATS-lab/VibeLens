@@ -89,7 +89,7 @@ class Step(BaseModel):
 
         orphaned_tc = tc_ids - obs_ids
         if orphaned_tc:
-            logger.warning(
+            logger.debug(
                 "Step %s: tool_call(s) without matching observation: %s", self.step_id, orphaned_tc
             )
         return self

@@ -7,13 +7,13 @@ Replaces the old tier-based digest tests.
 import json
 from pathlib import Path
 
+from vibelens.llm.tokenizer import count_tokens
 from vibelens.models.trajectories import Trajectory
 from vibelens.services.context_extraction import extract_session_context
 from vibelens.services.friction.digest import format_batch_digest
 from vibelens.services.session_batcher import build_batches
 
 EXAMPLES_DIR = Path(__file__).parent.parent / "examples" / "claude-codex-example" / "parsed"
-CHARS_PER_TOKEN = 4
 
 
 def _load_trajectory_groups() -> dict[str, list[Trajectory]]:
@@ -60,7 +60,7 @@ def test_context_extraction():
         print(f"    Total steps: {total_steps}")
         print(f"    Has compaction: {has_compaction}")
         print(f"    Context chars: {ctx.char_count:,}")
-        print(f"    Context tokens (est): {ctx.char_count // CHARS_PER_TOKEN:,}")
+        print(f"    Context tokens: {count_tokens(ctx.context_text):,}")
         print(f"    Project: {ctx.project_path or 'unknown'}")
         print(f"    Last ref: {ctx.last_trajectory_ref_id or 'none'}")
         print(f"    Continued ref: {ctx.continued_trajectory_ref_id or 'none'}")
@@ -94,7 +94,7 @@ def test_batching_small():
     print(f"  Batches: {len(batches)}")
     for batch in batches:
         n = len(batch.session_contexts)
-        print(f"  {batch.batch_id}: {n} sessions, {batch.total_chars:,} chars")
+        print(f"  {batch.batch_id}: {n} sessions, {batch.total_tokens:,} tokens")
 
     assert len(batches) >= 1
     total_sessions = sum(len(b.session_contexts) for b in batches)
@@ -122,7 +122,7 @@ def test_batching_all():
         digest = format_batch_digest(batch)
         print(
             f"  {batch.batch_id}: {len(batch.session_contexts)} sessions, "
-            f"{batch.total_chars:,} chars, digest={len(digest):,} chars"
+            f"{batch.total_tokens:,} tokens, digest={len(digest):,} chars"
         )
 
     assert len(batches) >= 1

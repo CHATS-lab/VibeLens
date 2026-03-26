@@ -15,9 +15,10 @@ from vibelens.deps import get_inference_backend, get_store
 from vibelens.llm.backend import InferenceBackend, InferenceError
 from vibelens.llm.digest import digest_trajectory, select_depth
 from vibelens.llm.prompts import PROMPT_REGISTRY
+from vibelens.llm.tokenizer import count_tokens
 from vibelens.models.analysis.insights import InsightReport
 from vibelens.models.analysis.prompts import AnalysisPrompt
-from vibelens.models.inference import InferenceRequest
+from vibelens.models.inference import BackendType, InferenceRequest
 from vibelens.models.trajectories import Trajectory
 from vibelens.services.upload_visibility import is_session_visible
 from vibelens.utils.log import get_logger
@@ -25,7 +26,6 @@ from vibelens.utils.log import get_logger
 logger = get_logger(__name__)
 
 CACHE_TTL_SECONDS = 3600
-CHARS_PER_TOKEN_ESTIMATE = 4
 
 _cache: dict[str, tuple[float, BaseModel]] = {}
 
@@ -43,7 +43,7 @@ def get_backend_status() -> dict:
     """
     backend = get_inference_backend()
     if not backend:
-        return {"available": False, "backend_id": "disabled", "model": None}
+        return {"available": False, "backend_id": BackendType.DISABLED, "model": None}
     return {
         "available": True,
         "backend_id": backend.backend_id,
@@ -122,7 +122,7 @@ async def get_session_report(session_id: str, session_token: str | None = None) 
         backend_id=backend.backend_id,
         model=_get_backend_model(backend),
         cost_usd=total_cost,
-        computed_at=datetime.now(UTC).isoformat(),
+        created_at=datetime.now(UTC).isoformat(),
     )
 
 
@@ -141,13 +141,13 @@ async def estimate_cost(session_id: str, session_token: str | None = None) -> fl
         return None
 
     # CLI backends are free
-    if backend.backend_id in ("claude-cli", "codex-cli"):
+    if backend.backend_id in (BackendType.CLAUDE_CLI, BackendType.CODEX_CLI):
         return None
 
     trajectories = _load_session(session_id, session_token)
     digest = _prepare_digest(trajectories)
 
-    estimated_input_tokens = len(digest) // CHARS_PER_TOKEN_ESTIMATE
+    estimated_input_tokens = count_tokens(digest)
     estimated_output_tokens = 1000
 
     from vibelens.llm.pricing import TOKENS_PER_MTOK, lookup_pricing

@@ -1,4 +1,4 @@
-import { Code2, Package, Plus, RefreshCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Code2, Package, Plus, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppContext } from "../../app";
 import type { SkillInfo, SkillSourceInfo } from "../../types";
@@ -6,6 +6,7 @@ import { SEARCH_DEBOUNCE_MS } from "../../styles";
 import { ConfirmDialog } from "../confirm-dialog";
 import { SkillCard, SkillDetailPopup } from "./skill-cards";
 import { SkillEditorDialog } from "./skill-editor-dialog";
+import { SyncAfterSaveDialog } from "./sync-after-save-dialog";
 import {
   EmptyState,
   ErrorBanner,
@@ -15,6 +16,9 @@ import {
   SkillSearchBar,
   SourceFilterBar,
 } from "./skill-shared";
+
+const DEFAULT_PAGE_SIZE = 50;
+const PAGE_SIZE_OPTIONS = [25, 50, 100];
 
 interface EditorState {
   open: boolean;
@@ -39,23 +43,30 @@ export function LocalSkillsTab() {
   const [detailSkill, setDetailSkill] = useState<SkillInfo | null>(null);
   const [sourceFilter, setSourceFilter] = useState<string | null>(null);
   const [agentSources, setAgentSources] = useState<SkillSourceInfo[]>([]);
+  const [syncPromptSkill, setSyncPromptSkill] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [totalSkills, setTotalSkills] = useState(0);
 
   const fetchSkills = useCallback(async (forceRefresh = false) => {
     setLoading(true);
     setError(null);
     try {
-      const url = forceRefresh ? "/api/skills/local?refresh=true" : "/api/skills/local";
-      const res = await fetchWithToken(url);
+      const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+      if (forceRefresh) params.set("refresh", "true");
+      const res = await fetchWithToken(`/api/skills/local?${params}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
-      const data: SkillInfo[] = await res.json();
-      setSkills(data);
-      setFilteredSkills(data);
+      const data = await res.json();
+      const items: SkillInfo[] = data.items ?? data;
+      setSkills(items);
+      setFilteredSkills(items);
+      setTotalSkills(data.total ?? items.length);
     } catch (err) {
       setError(String(err));
     } finally {
       setLoading(false);
     }
-  }, [fetchWithToken]);
+  }, [fetchWithToken, page, pageSize]);
 
   const fetchSources = useCallback(async () => {
     try {
@@ -131,15 +142,21 @@ export function LocalSkillsTab() {
           const body = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
           throw new Error(body.detail || `HTTP ${res.status}`);
         }
+        const savedName = name;
+        const wasEdit = !isCreate;
         setEditorState(EDITOR_CLOSED);
         await fetchSkills();
+        // After editing, prompt to sync to agent interfaces
+        if (wasEdit && agentSources.length > 0) {
+          setSyncPromptSkill(savedName);
+        }
       } catch (err) {
         setError(String(err));
       } finally {
         setSaving(false);
       }
     },
-    [editorState.mode, fetchWithToken, fetchSkills],
+    [editorState.mode, fetchWithToken, fetchSkills, agentSources.length],
   );
 
   const handleDelete = useCallback(
@@ -184,8 +201,8 @@ export function LocalSkillsTab() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-violet-600/20">
-            <Code2 className="w-5 h-5 text-violet-400" />
+          <div className="p-2 rounded-lg bg-teal-600/20">
+            <Code2 className="w-5 h-5 text-teal-400" />
           </div>
           <div>
             <h2 className="text-lg font-bold text-zinc-100">Skills</h2>
@@ -195,7 +212,7 @@ export function LocalSkillsTab() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setEditorState({ open: true, mode: "create", name: "", content: "" })}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-violet-600 hover:bg-violet-500 rounded-md transition"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-teal-600 hover:bg-teal-500 rounded-md transition"
           >
             <Plus className="w-3.5 h-3.5" />
             New Skill
@@ -234,7 +251,7 @@ export function LocalSkillsTab() {
         >
           <button
             onClick={() => setEditorState({ open: true, mode: "create", name: "", content: "" })}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-violet-600 hover:bg-violet-500 rounded-md transition"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-teal-600 hover:bg-teal-500 rounded-md transition"
           >
             <Plus className="w-3.5 h-3.5" />
             Create your first skill
@@ -246,7 +263,7 @@ export function LocalSkillsTab() {
 
       {filteredSkills.length > 0 && (
         <div className="space-y-2">
-          <SkillCount filtered={filteredSkills.length} total={skills.length} />
+          <SkillCount filtered={filteredSkills.length} total={totalSkills} />
           {filteredSkills.map((skill) => (
             <SkillCard
               key={skill.name}
@@ -256,6 +273,13 @@ export function LocalSkillsTab() {
               onViewDetail={setDetailSkill}
             />
           ))}
+          <PaginationBar
+            page={page}
+            pageSize={pageSize}
+            total={totalSkills}
+            onPageChange={setPage}
+            onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+          />
         </div>
       )}
 
@@ -290,6 +314,67 @@ export function LocalSkillsTab() {
           onRefresh={fetchSkills}
         />
       )}
+
+      {syncPromptSkill && (
+        <SyncAfterSaveDialog
+          skillName={syncPromptSkill}
+          agentSources={agentSources}
+          fetchWithToken={fetchWithToken}
+          onClose={() => setSyncPromptSkill(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function PaginationBar({
+  page,
+  pageSize,
+  total,
+  onPageChange,
+  onPageSizeChange,
+}: {
+  page: number;
+  pageSize: number;
+  total: number;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (size: number) => void;
+}) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  if (total <= PAGE_SIZE_OPTIONS[0]) return null;
+
+  return (
+    <div className="flex items-center justify-between pt-4 border-t border-zinc-800 text-xs text-zinc-500">
+      <div className="flex items-center gap-2">
+        <span>Show</span>
+        <select
+          value={pageSize}
+          onChange={(e) => onPageSizeChange(Number(e.target.value))}
+          className="bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-zinc-300 text-xs"
+        >
+          {PAGE_SIZE_OPTIONS.map((opt) => (
+            <option key={opt} value={opt}>{opt}</option>
+          ))}
+        </select>
+        <span>per page</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <span>{(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} of {total}</span>
+        <button
+          onClick={() => onPageChange(page - 1)}
+          disabled={page <= 1}
+          className="p-1 rounded hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed transition"
+        >
+          <ChevronLeft className="w-3.5 h-3.5" />
+        </button>
+        <button
+          onClick={() => onPageChange(page + 1)}
+          disabled={page >= totalPages}
+          className="p-1 rounded hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed transition"
+        >
+          <ChevronRight className="w-3.5 h-3.5" />
+        </button>
+      </div>
     </div>
   );
 }

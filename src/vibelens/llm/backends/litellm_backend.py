@@ -19,7 +19,7 @@ from vibelens.llm.backend import (
     InferenceRateLimitError,
     InferenceTimeoutError,
 )
-from vibelens.models.inference import InferenceRequest, InferenceResult, TokenUsage
+from vibelens.models.inference import BackendType, InferenceRequest, InferenceResult, TokenUsage
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -120,9 +120,9 @@ class LiteLLMBackend(InferenceBackend):
         return bool(self._config.api_key)
 
     @property
-    def backend_id(self) -> str:
+    def backend_id(self) -> BackendType:
         """Return the backend type identifier."""
-        return "litellm"
+        return BackendType.LITELLM
 
     def _build_kwargs(self, request: InferenceRequest) -> dict:
         """Build keyword arguments for litellm.acompletion."""

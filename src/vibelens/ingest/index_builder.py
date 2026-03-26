@@ -46,7 +46,13 @@ def _collect_all_skeletons(
     file_index: dict[str, tuple[Path, BaseParser]],
     data_dirs: dict[BaseParser, Path],
 ) -> list[Trajectory]:
-    """Collect skeleton trajectories from all parsers using polymorphic dispatch."""
+    """Collect skeleton trajectories from all parsers using polymorphic dispatch.
+
+    When a parser's fast index (e.g. history.jsonl) exists but doesn't
+    cover all discovered files, orphaned files are parsed individually
+    as a fallback. This handles sessions created by Claude Code Desktop
+    or other tools that don't write to the index file.
+    """
     all_trajectories: list[Trajectory] = []
 
     for parser in parsers:
@@ -54,11 +60,66 @@ def _collect_all_skeletons(
         if data_dir:
             skeletons = parser.parse_session_index(data_dir)
             if skeletons is not None:
-                all_trajectories.extend(_reconcile_index_skeletons(parser, skeletons, file_index))
+                reconciled = _reconcile_index_skeletons(parser, skeletons, file_index)
+                all_trajectories.extend(reconciled)
+                # Fall back to file parsing for sessions not in the index
+                indexed_ids = {t.session_id for t in reconciled}
+                orphaned = _build_orphaned_skeletons(parser, file_index, indexed_ids)
+                if orphaned:
+                    logger.info(
+                        "Recovered %d sessions not in %s index via file parsing",
+                        len(orphaned),
+                        parser.AGENT_TYPE.value,
+                    )
+                    all_trajectories.extend(orphaned)
                 continue
         all_trajectories.extend(_build_file_parse_skeletons(parser, file_index))
 
     return all_trajectories
+
+
+def _build_orphaned_skeletons(
+    parser: BaseParser,
+    file_index: dict[str, tuple[Path, BaseParser]],
+    indexed_ids: set[str],
+) -> list[Trajectory]:
+    """Parse session files not covered by the parser's fast index.
+
+    Some sessions (e.g. from Claude Code Desktop) exist on disk but
+    aren't recorded in history.jsonl. This function finds and parses them.
+
+    Args:
+        parser: The parser instance to use.
+        file_index: Session file index.
+        indexed_ids: Session IDs already covered by the fast index.
+
+    Returns:
+        Skeleton trajectories for orphaned files.
+    """
+    orphaned_entries = [
+        (sid, fpath, p)
+        for sid, (fpath, p) in file_index.items()
+        if p is parser and sid not in indexed_ids
+    ]
+    if not orphaned_entries:
+        return []
+
+    result: list[Trajectory] = []
+    for old_sid, fpath, p in orphaned_entries:
+        try:
+            trajs = p.parse_file(fpath)
+            if not trajs:
+                continue
+            main = trajs[0]
+            real_sid = main.session_id
+            if real_sid != old_sid:
+                file_index.pop(old_sid, None)
+                file_index[real_sid] = (fpath, p)
+            main.steps = []
+            result.append(main)
+        except Exception:
+            logger.debug("Failed to parse orphaned file %s, skipping", fpath)
+    return result
 
 
 def _reconcile_index_skeletons(

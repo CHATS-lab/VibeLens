@@ -7,18 +7,18 @@ Analyze {{ session_count }} coding agent session{{ "s" if session_count != 1 els
 
 The user already has these skills installed locally:
 {% for skill in installed_skills %}
-- **{{ skill.name }}**: {{ skill.description }}{% if skill.allowed_tools %} (tools: {{ skill.allowed_tools | join(", ") }}){% endif %}
+- **{{ skill.name }}**: {{ skill.description }}
 {% endfor %}
 
 Do not recommend skills that duplicate already-installed functionality.
 {% endif %}
 
-{% if skill_catalog %}
-## Skill Catalog
+{% if skill_candidates %}
+## Skill Candidates
 
-Available skills that may match the user's patterns:
-{% for entry in skill_catalog %}
-- **{{ entry.name }}**: {{ entry.description }}{% if entry.url %} ({{ entry.url }}){% endif %}
+Choose from these skills to recommend. Only recommend skills that genuinely match detected patterns:
+{% for candidate in skill_candidates %}
+- **{{ candidate.name }}**: {{ candidate.summary }}{% if candidate.tags %} [{{ candidate.tags | join(", ") }}]{% endif %}
 {% endfor %}
 {% endif %}
 
@@ -27,18 +27,13 @@ Available skills that may match the user's patterns:
 {{ output_schema }}
 
 For every workflow pattern, provide:
-- `pattern_id`: Sequential identifier (p-001, p-002, ...).
 - `description`: What the pattern does and when it occurs.
-- `tool_sequence`: Ordered tools used in this pattern.
-- `frequency`: Number of occurrences across sessions.
 - `pain_point`: Why this is suboptimal or repetitive.
-- `example_refs`: StepRef objects with session_id and start_step_id pointing to real occurrences.
+- `example_refs`: StepRef objects with `session_id` and `start_step_id` pointing to real occurrences. Optionally include `end_step_id` for multi-step ranges.
 
 For every recommendation, provide:
-- `skill_name`: Name from the catalog or "local" for installed skills.
-- `source`: Where the skill comes from.
+- `skill_name`: Name from the candidate list.
 - `match_reason`: Why this skill fits the detected patterns.
-- `matched_patterns`: List of pattern_ids this skill addresses.
 - `confidence`: 0.0-1.0 match confidence.
 
 After patterns and recommendations, provide:

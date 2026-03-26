@@ -92,11 +92,13 @@ def _create_subprocess_backend(backend_id: str, config: LLMConfig) -> InferenceB
         Configured SubprocessBackend instance.
     """
     from vibelens.llm.backends.subprocess import SubprocessBackend
+    from vibelens.models.inference import BackendType
 
     cli_name = "claude" if backend_id == "claude-cli" else "codex"
+    bt = BackendType.CLAUDE_CLI if backend_id == "claude-cli" else BackendType.CODEX_CLI
     return SubprocessBackend(
         cli_name=cli_name,
-        backend_type=backend_id,
+        backend_type=bt,
         model=config.model or None,
         timeout=config.timeout,
     )

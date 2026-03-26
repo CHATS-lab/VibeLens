@@ -10,12 +10,15 @@ from vibelens.deps import get_central_skill_store, get_store
 from vibelens.models.analysis.skills import (
     SkillAnalysisResult,
     SkillCreation,
+    SkillEdit,
+    SkillEditKind,
     SkillEvolutionSuggestion,
     SkillMode,
     SkillRecommendation,
     WorkflowPattern,
 )
 from vibelens.models.analysis.step_ref import StepRef
+from vibelens.models.inference import BackendType
 
 
 def build_mock_skill_result(session_ids: list[str], mode: SkillMode) -> SkillAnalysisResult:
@@ -33,18 +36,17 @@ def build_mock_skill_result(session_ids: list[str], mode: SkillMode) -> SkillAna
     skipped = [sid for sid in session_ids if sid not in step_pool]
 
     patterns = _build_mock_patterns(step_pool)
-    pattern_ids = [p.pattern_id for p in patterns]
 
     recommendations: list[SkillRecommendation] = []
     generated_skills: list[SkillCreation] = []
     evolution_suggestions: list[SkillEvolutionSuggestion] = []
 
     if mode == SkillMode.RETRIEVAL:
-        recommendations = _build_mock_recommendations(pattern_ids)
+        recommendations = _build_mock_recommendations()
     elif mode == SkillMode.CREATION:
-        generated_skills = _build_mock_creations(pattern_ids)
+        generated_skills = _build_mock_creations()
     elif mode == SkillMode.EVOLUTION:
-        evolution_suggestions = _build_mock_evolutions(pattern_ids)
+        evolution_suggestions = _build_mock_evolutions()
 
     return SkillAnalysisResult(
         mode=mode,
@@ -55,7 +57,9 @@ def build_mock_skill_result(session_ids: list[str], mode: SkillMode) -> SkillAna
         summary=(
             f"Analyzed {len(loaded_ids)} sessions and detected {len(patterns)} "
             f"recurring workflow patterns. The most frequent pattern involves "
-            f"search-then-read-then-edit sequences that could be automated with skills."
+            f"search-then-read-then-edit sequences that could be automated with skills. "
+            f"Several test-driven development loops and file scaffolding patterns were also "
+            f"identified as strong candidates for skill automation."
         ),
         user_profile=(
             "Developer focused on Python/TypeScript full-stack projects. "
@@ -64,106 +68,156 @@ def build_mock_skill_result(session_ids: list[str], mode: SkillMode) -> SkillAna
         ),
         session_ids=loaded_ids,
         sessions_skipped=skipped,
-        backend_id="mock",
+        backend_id=BackendType.MOCK,
         model="mock/test-model",
         cost_usd=0.035,
-        computed_at=datetime.now(UTC).isoformat(),
+        created_at=datetime.now(UTC).isoformat(),
     )
 
 
+MAX_MOCK_SESSIONS = 5
+
+
 def _collect_step_ids(session_ids: list[str]) -> dict[str, list[str]]:
-    """Load trajectories and collect step IDs per session."""
+    """Load trajectories and collect step IDs per session.
+
+    Only loads up to MAX_MOCK_SESSIONS to avoid slow I/O in mock mode.
+    All remaining session_ids are reported as loaded (with no step refs).
+    """
     store = get_store()
     pool: dict[str, list[str]] = {}
-    for sid in session_ids:
+    for sid in session_ids[:MAX_MOCK_SESSIONS]:
         trajectories = store.load(sid)
         if not trajectories:
             continue
         step_ids = [step.step_id for traj in trajectories for step in traj.steps]
         if step_ids:
             pool[sid] = step_ids
+    # Mark remaining sessions as "loaded" without step data
+    for sid in session_ids[MAX_MOCK_SESSIONS:]:
+        if sid not in pool:
+            pool[sid] = []
     return pool
 
 
 def _build_mock_patterns(pool: dict[str, list[str]]) -> list[WorkflowPattern]:
-    """Build mock workflow patterns from real step IDs."""
+    """Build mock workflow patterns with varying frequencies for edge-case coverage."""
     if not pool:
         return []
 
     sids = list(pool.keys())
-    refs: list[StepRef] = []
-    for sid in sids[:3]:
+
+    # Build a large pool of step refs across sessions
+    all_refs: list[StepRef] = []
+    for sid in sids[:5]:
         steps = pool[sid]
-        if steps:
-            refs.append(StepRef(session_id=sid, start_step_id=steps[0]))
+        for step_id in steps[:3]:
+            all_refs.append(StepRef(session_id=sid, start_step_id=step_id))
 
     return [
         WorkflowPattern(
-            pattern_id="p-001",
+            title="Search-Read-Edit Cycle",
             description=(
-                "Search-read-edit cycle: Grep for pattern, read matching file, then edit it."
+                "Grep for a pattern, read the matching file, then edit it. "
+                "This three-step sequence appears whenever code modifications are needed."
             ),
-            tool_sequence=["Grep", "Read", "Edit"],
-            frequency=max(len(pool) * 2, 4),
             pain_point=(
-                "Manual three-step workflow repeated across sessions. Could be a single skill."
+                "Manual three-step workflow repeated across sessions. "
+                "Could be a single skill that searches, reads context, and applies edits."
             ),
-            example_refs=refs[:2],
+            example_refs=all_refs[:6],
         ),
         WorkflowPattern(
-            pattern_id="p-002",
-            description="Test-fix loop: Run tests, read failure, apply fix, re-run tests.",
-            tool_sequence=["Bash", "Read", "Edit", "Bash"],
-            frequency=max(len(pool), 3),
+            title="Test-Fix Loop",
+            description=(
+                "Run tests, read failure output, apply fix, re-run tests. "
+                "Iterative debugging cycle until all tests pass."
+            ),
             pain_point=(
-                "Repetitive cycle consumes context. "
+                "Repetitive cycle consumes context window and developer attention. "
                 "A skill could automate the read-fix-verify loop."
             ),
-            example_refs=refs[:1],
+            example_refs=all_refs[:3],
         ),
         WorkflowPattern(
-            pattern_id="p-003",
+            title="New File Scaffolding",
             description=(
-                "New file scaffolding: Create file with boilerplate, add imports, run linter."
+                "Create file with boilerplate structure, add standard imports, "
+                "then run the linter. Identical scaffolding repeated for every new module."
             ),
-            tool_sequence=["Write", "Edit", "Bash"],
-            frequency=max(len(pool), 2),
             pain_point=(
-                "Boilerplate structure is identical across files. A skill could generate it."
+                "Boilerplate structure is identical across files. "
+                "A skill could generate the full scaffold in one step."
             ),
-            example_refs=refs[1:3] if len(refs) > 1 else refs,
+            example_refs=all_refs[1:3] if len(all_refs) > 1 else all_refs[:1],
+        ),
+        WorkflowPattern(
+            title="Dependency Upgrade Workflow",
+            description=(
+                "Check outdated packages, read changelogs, update version constraints, "
+                "run tests, and fix any breaking changes. Multi-step process per dependency."
+            ),
+            pain_point=(
+                "Each dependency upgrade requires 4-5 manual steps. "
+                "Batching multiple upgrades amplifies the effort."
+            ),
+            example_refs=all_refs[:1],
+        ),
+        WorkflowPattern(
+            title="Config-Driven Feature Toggle",
+            description=(
+                "Read config files, add feature flags, update environment templates, "
+                "and modify conditional logic in multiple source files."
+            ),
+            pain_point=(
+                "Feature toggles touch config, env templates, and source code. "
+                "Easy to miss one location, causing inconsistencies."
+            ),
+            example_refs=all_refs[2:6] if len(all_refs) > 2 else all_refs,
         ),
     ]
 
 
-def _build_mock_recommendations(pattern_ids: list[str]) -> list[SkillRecommendation]:
-    """Build mock skill recommendations."""
+def _build_mock_recommendations() -> list[SkillRecommendation]:
+    """Build mock skill recommendations with varying confidence levels."""
     return [
         SkillRecommendation(
             skill_name="smart-refactor",
-            source="skillhub",
             match_reason=(
-                "Automates the search-read-edit pattern with intelligent code refactoring."
+                "Automates the search-read-edit pattern with intelligent code refactoring. "
+                "Matches your most frequent workflow pattern with high confidence."
             ),
-            matched_patterns=[pattern_ids[0]] if pattern_ids else [],
-            url="https://www.skillhub.club/skills/smart-refactor",
-            confidence=0.85,
+            confidence=0.92,
         ),
         SkillRecommendation(
             skill_name="test-driven-fix",
-            source="skillhub",
-            match_reason="Automates the test-fix-verify loop with structured error analysis.",
-            matched_patterns=[pattern_ids[1]] if len(pattern_ids) > 1 else [],
-            url="https://www.skillhub.club/skills/test-driven-fix",
-            confidence=0.72,
+            match_reason=(
+                "Automates the test-fix-verify loop with structured error analysis. "
+                "Reads test output, identifies root cause, and applies targeted fixes."
+            ),
+            confidence=0.78,
+        ),
+        SkillRecommendation(
+            skill_name="project-scaffold",
+            match_reason=(
+                "Generates standard project file scaffolding with imports and docstrings. "
+                "Partially matches your file creation patterns."
+            ),
+            confidence=0.61,
+        ),
+        SkillRecommendation(
+            skill_name="dep-updater",
+            match_reason=(
+                "Automates dependency version bumps with changelog analysis. "
+                "Low match — your upgrade pattern is infrequent."
+            ),
+            confidence=0.35,
         ),
     ]
 
 
-def _build_mock_creations(
-    pattern_ids: list[str],
-) -> list[SkillCreation]:
-    """Build mock skill creations."""
+def _build_mock_creations() -> list[SkillCreation]:
+    """Build mock skill creations covering different complexity levels."""
     return [
         SkillCreation(
             name="project-scaffold",
@@ -180,29 +234,147 @@ def _build_mock_creations(
                 "3. Add module docstring following Google style\n"
                 "4. Run the linter after creation\n"
             ),
-            source_patterns=[pattern_ids[2]] if len(pattern_ids) > 2 else [],
-            rationale="Detected repeated file creation with identical boilerplate structure.",
+            rationale=(
+                "Detected repeated file creation with identical boilerplate structure "
+                "across 3 sessions. Automating this saves ~2 minutes per new file."
+            ),
+        ),
+        SkillCreation(
+            name="search-and-replace",
+            description="Intelligent multi-file search and replace with preview and rollback.",
+            skill_md_content=(
+                "---\n"
+                "description: Intelligent multi-file search and replace "
+                "with context-aware matching.\n"
+                "allowed-tools: Grep, Read, Edit, Bash\n"
+                "---\n\n"
+                "# Search and Replace\n\n"
+                "When the user asks to rename or replace across files:\n"
+                "1. Use Grep to find all occurrences with context\n"
+                "2. Show a preview of proposed changes\n"
+                "3. Apply changes file-by-file with Edit tool\n"
+                "4. Run linter and tests to verify no breakage\n"
+                "5. Summarize changes made\n"
+            ),
+            rationale=(
+                "Your search-read-edit cycle is the most frequent pattern. "
+                "This skill packages it into a single, repeatable workflow."
+            ),
+        ),
+        SkillCreation(
+            name="test-fix-loop",
+            description="Automated test-driven debugging: run, diagnose, fix, verify.",
+            skill_md_content=(
+                "---\n"
+                "description: Automated test-driven debugging loop.\n"
+                "allowed-tools: Bash, Read, Edit, Grep\n"
+                "---\n\n"
+                "# Test-Fix Loop\n\n"
+                "When tests fail:\n"
+                "1. Parse the test output to identify failing tests\n"
+                "2. Read the relevant source files for context\n"
+                "3. Diagnose the root cause\n"
+                "4. Apply the minimal fix\n"
+                "5. Re-run only the affected tests\n"
+                "6. If still failing, repeat from step 2 (max 3 iterations)\n"
+            ),
+            rationale=(
+                "Test-fix loops consumed significant context in 2 sessions. "
+                "Automating the diagnosis step alone would save ~40% of iterations."
+            ),
         ),
     ]
 
 
-def _build_mock_evolutions(pattern_ids: list[str]) -> list[SkillEvolutionSuggestion]:
+def _build_mock_evolutions() -> list[SkillEvolutionSuggestion]:
     """Build mock evolution suggestions using installed skills."""
     skill_store = get_central_skill_store()
     skills = skill_store.get_cached()
 
-    if not skills:
-        return []
+    suggestions: list[SkillEvolutionSuggestion] = []
 
-    first_skill = skills[0]
-    return [
-        SkillEvolutionSuggestion(
-            skill_name=first_skill.name,
-            edits=[],
-            rationale=(
-                f"Skill '{first_skill.name}' could benefit from additional "
-                f"instructions based on observed usage patterns."
-            ),
-            source_patterns=pattern_ids[:1],
-        ),
-    ]
+    if skills:
+        first_skill = skills[0]
+        suggestions.append(
+            SkillEvolutionSuggestion(
+                skill_name=first_skill.name,
+                edits=[
+                    SkillEdit(
+                        kind=SkillEditKind.ADD_INSTRUCTION,
+                        target="end of skill body",
+                        replacement=(
+                            "5. Run `ruff check` after every edit "
+                            "to catch lint errors early."
+                        ),
+                        rationale="User frequently runs linter manually after edits.",
+                    ),
+                    SkillEdit(
+                        kind=SkillEditKind.UPDATE_DESCRIPTION,
+                        target="skill description",
+                        replacement=(
+                            f"{first_skill.name} with automatic linting and error checking"
+                        ),
+                        rationale="Updated trigger description to reflect new capabilities.",
+                    ),
+                    SkillEdit(
+                        kind=SkillEditKind.ADD_TOOL,
+                        target="allowed-tools",
+                        replacement="Grep",
+                        rationale="Skill could benefit from Grep for searching related files.",
+                    ),
+                ],
+                rationale=(
+                    f"Skill '{first_skill.name}' could benefit from additional "
+                    f"instructions based on observed usage patterns. "
+                    f"Adding linting and search capabilities would align it with your workflow."
+                ),
+            )
+        )
+
+    if len(skills) > 1:
+        second_skill = skills[1]
+        suggestions.append(
+            SkillEvolutionSuggestion(
+                skill_name=second_skill.name,
+                edits=[
+                    SkillEdit(
+                        kind=SkillEditKind.REMOVE_INSTRUCTION,
+                        target="Step 3: Manual verification",
+                        replacement=None,
+                        rationale="This step is redundant — automated tests already cover it.",
+                    ),
+                    SkillEdit(
+                        kind=SkillEditKind.REPLACE_INSTRUCTION,
+                        target="Step 2: Read all files in directory",
+                        replacement="Step 2: Read only modified files (use `git diff --name-only`)",
+                        rationale="Reading all files wastes context. Focus on changed files only.",
+                    ),
+                ],
+                rationale=(
+                    f"Skill '{second_skill.name}' has redundant steps and reads too many files. "
+                    f"Streamlining it would reduce context usage by ~30%."
+                ),
+            )
+        )
+
+    # Add a suggestion even if no skills installed
+    if not suggestions:
+        suggestions.append(
+            SkillEvolutionSuggestion(
+                skill_name="example-skill",
+                edits=[
+                    SkillEdit(
+                        kind=SkillEditKind.ADD_INSTRUCTION,
+                        target="end of skill body",
+                        replacement="Always verify changes with the linter before completing.",
+                        rationale="Consistent linting reduces review cycles.",
+                    ),
+                ],
+                rationale=(
+                    "No installed skills found. This is an example suggestion showing "
+                    "how evolution analysis would improve your skills."
+                ),
+            )
+        )
+
+    return suggestions

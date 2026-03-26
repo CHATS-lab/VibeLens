@@ -102,7 +102,7 @@ async def analyze_friction(
         backend_id=backend.backend_id,
         model=_get_backend_model(backend),
         cost_usd=total_cost if total_cost > 0 else None,
-        computed_at=datetime.now(UTC).isoformat(),
+        created_at=datetime.now(UTC).isoformat(),
     )
 
     get_friction_store().save(friction_result)

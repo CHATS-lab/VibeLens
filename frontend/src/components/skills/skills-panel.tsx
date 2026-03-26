@@ -20,7 +20,7 @@ const TAB_CONFIG: { id: SkillTab; label: string }[] = [
   { id: "evolve", label: "Evolve" },
 ];
 
-const ACTIVE_TAB_STYLE = "bg-violet-600/20 text-violet-300 border border-violet-500/30";
+const ACTIVE_TAB_STYLE = "bg-teal-600/20 text-teal-300 border border-teal-500/30";
 const INACTIVE_TAB_STYLE = "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 border border-transparent";
 
 const MODE_MAP: Record<string, SkillMode> = {
@@ -71,7 +71,6 @@ export function SkillsPanel({ checkedIds }: SkillsPanelProps) {
 
   const handleHistorySelect = useCallback((loaded: SkillAnalysisResult) => {
     setAnalysisResult(loaded);
-    setShowHistory(false);
     const tabMap: Record<SkillMode, SkillTab> = {
       retrieval: "retrieve",
       creation: "create",
@@ -90,12 +89,19 @@ export function SkillsPanel({ checkedIds }: SkillsPanelProps) {
 
   return (
     <div className="h-full flex flex-col">
-      {/* Sub-tab bar — unified violet accent, enlarged text */}
+      {/* Sub-tab bar — unified teal accent, enlarged text */}
       <div className="flex items-center gap-1 px-4 py-2 border-b border-zinc-800 shrink-0">
         {TAB_CONFIG.map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => {
+              // Clear stale analysis results when switching between analysis tabs
+              if (tab.id !== activeTab && MODE_MAP[tab.id] && MODE_MAP[activeTab]) {
+                setAnalysisResult(null);
+                setAnalysisError(null);
+              }
+              setActiveTab(tab.id);
+            }}
             className={`flex-1 px-3 py-1.5 text-sm font-semibold rounded-md transition text-center ${
               activeTab === tab.id ? ACTIVE_TAB_STYLE : INACTIVE_TAB_STYLE
             }`}
@@ -147,7 +153,7 @@ export function SkillsPanel({ checkedIds }: SkillsPanelProps) {
 
         {isAnalysisTab && showHistory && (
           <div className="w-56 shrink-0 bg-zinc-900/50 overflow-y-auto">
-            <SkillsHistory onSelect={handleHistorySelect} refreshTrigger={historyRefresh} />
+            <SkillsHistory onSelect={handleHistorySelect} refreshTrigger={historyRefresh} filterMode={currentMode} />
           </div>
         )}
       </div>

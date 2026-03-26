@@ -954,9 +954,9 @@ function SeverityBadge({ severity }: { severity: number }) {
 }
 
 function AnalysisMeta({ result }: { result: FrictionAnalysisResult }) {
-  const computedDate = new Date(result.computed_at);
+  const computedDate = new Date(result.created_at);
   const timeStr = isNaN(computedDate.getTime())
-    ? result.computed_at
+    ? result.created_at
     : computedDate.toLocaleString();
 
   return (

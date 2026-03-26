@@ -1,5 +1,5 @@
 import { Clock, Loader2, Trash2, Workflow } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAppContext } from "../../app";
 import type { SkillAnalysisMeta, SkillAnalysisResult, SkillMode } from "../../types";
 
@@ -10,7 +10,7 @@ const MODE_LABELS: Record<SkillMode, string> = {
 };
 
 const MODE_COLORS: Record<SkillMode, string> = {
-  retrieval: "bg-cyan-900/30 text-cyan-400",
+  retrieval: "bg-teal-900/30 text-teal-400",
   creation: "bg-emerald-900/30 text-emerald-400",
   evolution: "bg-amber-900/30 text-amber-400",
 };
@@ -35,7 +35,7 @@ function HistoryCard({
     [onDelete],
   );
 
-  const date = new Date(meta.computed_at);
+  const date = new Date(meta.created_at);
   const dateStr = date.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
@@ -87,9 +87,11 @@ function HistoryCard({
 export function SkillsHistory({
   onSelect,
   refreshTrigger,
+  filterMode,
 }: {
   onSelect: (result: SkillAnalysisResult) => void;
   refreshTrigger: number;
+  filterMode: SkillMode | null;
 }) {
   const { fetchWithToken } = useAppContext();
   const [analyses, setAnalyses] = useState<SkillAnalysisMeta[]>([]);
@@ -113,6 +115,11 @@ export function SkillsHistory({
   useEffect(() => {
     fetchHistory();
   }, [fetchHistory, refreshTrigger]);
+
+  const filteredAnalyses = useMemo(() => {
+    if (!filterMode) return analyses;
+    return analyses.filter((a) => a.mode === filterMode);
+  }, [analyses, filterMode]);
 
   const handleSelect = useCallback(
     async (meta: SkillAnalysisMeta) => {
@@ -143,11 +150,15 @@ export function SkillsHistory({
     [fetchWithToken],
   );
 
+  const modeLabel = filterMode ? MODE_LABELS[filterMode] : null;
+
   return (
     <div className="flex flex-col h-full border-l border-zinc-800">
       <div className="flex items-center gap-2 px-3 py-3 border-b border-zinc-800 shrink-0">
         <Clock className="w-3.5 h-3.5 text-zinc-500" />
-        <span className="text-xs font-semibold text-zinc-400">History</span>
+        <span className="text-xs font-semibold text-zinc-400">
+          {modeLabel ? `${modeLabel} History` : "History"}
+        </span>
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-1.5">
@@ -157,14 +168,16 @@ export function SkillsHistory({
           </div>
         )}
 
-        {!loading && analyses.length === 0 && (
+        {!loading && filteredAnalyses.length === 0 && (
           <div className="text-center py-8 px-2">
             <Workflow className="w-6 h-6 text-zinc-700 mx-auto mb-2" />
-            <p className="text-[10px] text-zinc-600">No analyses yet</p>
+            <p className="text-[10px] text-zinc-600">
+              {modeLabel ? `No ${modeLabel.toLowerCase()} analyses yet` : "No analyses yet"}
+            </p>
           </div>
         )}
 
-        {analyses.map((meta) => (
+        {filteredAnalyses.map((meta) => (
           <HistoryCard
             key={meta.analysis_id}
             meta={meta}
