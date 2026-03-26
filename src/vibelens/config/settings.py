@@ -111,7 +111,7 @@ class Settings(BaseSettings):
 
     # LLM batching
     max_batch_tokens: int = Field(
-        default=24_000,
+        default=80_000,
         description=(
             "Maximum input token budget for session contexts in one LLM batch. "
             "Prompt overhead (system prompt, schema, template) is computed dynamically "

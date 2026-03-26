@@ -254,14 +254,17 @@ export interface TypeSummary {
   affected_sessions: number;
   avg_severity: number;
   total_estimated_cost: FrictionCost;
+  description?: string | null;
 }
 
 export interface FrictionAnalysisResult {
   analysis_id: string | null;
+  title?: string | null;
   events: FrictionEvent[];
   summary: string;
   top_mitigation: Mitigation | null;
   type_summary: TypeSummary[];
+  cross_batch_patterns?: string[];
   session_ids: string[];
   sessions_skipped: string[];
   batch_count: number;
@@ -273,6 +276,7 @@ export interface FrictionAnalysisResult {
 
 export interface FrictionMeta {
   analysis_id: string;
+  title?: string | null;
   session_ids: string[];
   event_count: number;
   summary_preview: string;

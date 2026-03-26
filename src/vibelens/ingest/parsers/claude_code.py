@@ -83,6 +83,9 @@ _AGENT_ID_PATTERN = re.compile(r"agentId:\s*([a-f0-9]+)")
 _PERSISTED_PATH_PATTERN = re.compile(r"Full output saved to: (.+?)(?:\n|$)")
 
 
+MAX_PATH_LENGTH = 1024
+
+
 def _read_persisted_agent_id(content: str) -> str:
     """Read a persisted tool output file to extract agentId.
 
@@ -93,10 +96,14 @@ def _read_persisted_agent_id(content: str) -> str:
     match = _PERSISTED_PATH_PATTERN.search(content)
     if not match:
         return content
-    path = Path(match.group(1).strip())
-    if not path.is_file():
+    raw_path = match.group(1).strip()
+    # Guard against regex capturing content blobs instead of real file paths
+    if len(raw_path) > MAX_PATH_LENGTH or "\n" in raw_path:
         return content
+    path = Path(raw_path)
     try:
+        if not path.is_file():
+            return content
         text = path.read_text(encoding="utf-8", errors="replace")
         # agentId is near the end of Agent tool output
         TAIL_SIZE = 2000

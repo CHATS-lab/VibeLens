@@ -7,6 +7,7 @@ Model hierarchy:
 - StepSignal: Input (kept for skill analysis compatibility)
 - FrictionLLMEvent → FrictionEvent: LLM output → enriched with computed cost
 - FrictionLLMBatchOutput: Raw output for one batch
+- FrictionSynthesisOutput: LLM output from post-batch synthesis
 - FrictionAnalysisResult: Final merged result across all batches
 """
 
@@ -121,8 +122,35 @@ class FrictionLLMBatchOutput(BaseModel):
     )
 
 
+class FrictionTypeDescription(BaseModel):
+    """LLM-generated description for a single friction type."""
+
+    friction_type: str = Field(description="Kebab-case friction type label matching batch events.")
+    description: str = Field(
+        description="1-2 sentence explanation of the friction pattern observed."
+    )
+
+
+class FrictionSynthesisOutput(BaseModel):
+    """LLM output from post-batch synthesis — cohesive narrative across all sessions."""
+
+    title: str = Field(description="Short title for the analysis (max 10 words).")
+    summary: str = Field(
+        description="High-level narrative overview (max 80 words)."
+    )
+    type_descriptions: list[FrictionTypeDescription] = Field(
+        default_factory=list, description="One description per friction type found."
+    )
+    cross_session_patterns: list[str] = Field(
+        default_factory=list, description="0-3 cross-session observations."
+    )
+    mitigations: list[Mitigation] = Field(
+        default_factory=list, description="0-3 highest-impact actionable recommendations."
+    )
+
+
 class TypeSummary(BaseModel):
-    """Aggregated statistics per friction_type. Replaces ModeSummary."""
+    """Aggregated statistics per friction_type."""
 
     friction_type: str = Field(
         description="Friction type label (matches FrictionEvent.friction_type)."
@@ -133,6 +161,9 @@ class TypeSummary(BaseModel):
     total_estimated_cost: FrictionCost = Field(
         default_factory=FrictionCost, description="Aggregated cost across all events of this type."
     )
+    description: str | None = Field(
+        default=None, description="LLM-generated description of this friction pattern."
+    )
 
 
 class FrictionAnalysisResult(BaseModel):
@@ -140,6 +171,9 @@ class FrictionAnalysisResult(BaseModel):
 
     analysis_id: str | None = Field(
         default=None, description="Persistence ID. Set when the result is saved to disk."
+    )
+    title: str | None = Field(
+        default=None, description="Short title from synthesis LLM call."
     )
     model: str = Field(description="Model identifier.")
     created_at: str = Field(description="ISO timestamp of analysis completion.")
@@ -154,6 +188,9 @@ class FrictionAnalysisResult(BaseModel):
     )
     top_mitigation: Mitigation | None = Field(
         default=None, description="Single highest-impact mitigation across all batches."
+    )
+    cross_batch_patterns: list[str] = Field(
+        default_factory=list, description="Aggregate observations spanning multiple batches."
     )
     sessions_skipped: list[str] = Field(
         default_factory=list, description="Session IDs from the request that were not found."

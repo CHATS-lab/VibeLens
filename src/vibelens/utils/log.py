@@ -3,9 +3,13 @@
 Two-tier logging architecture:
   - **Overall logger**: ``vibelens`` root logger writes ALL messages to
     ``logs/vibelens.log`` and stderr — a single place to see everything.
-  - **Parser loggers**: Modules under ``vibelens.ingest.parsers.*`` get an
-    additional per-module file (e.g. ``logs/claude_code.log``) so each
-    parser's output can be inspected in isolation.
+  - **Category loggers**: Specific modules get additional file handlers
+    that aggregate related output into category log files.
+
+Category log files:
+  - ``parsers.log`` — all parser modules under ``vibelens.ingest.parsers.*``
+  - ``analysis-friction.log`` — friction analysis and friction store
+  - ``analysis-skill.log`` — skill analysis and skill analysis store
 """
 
 import logging
@@ -17,11 +21,16 @@ LOG_FORMAT = "%(asctime)s | %(name)s:%(lineno)d | %(levelname)s | %(message)s"
 LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 DEFAULT_LOG_DIR = Path(__file__).resolve().parents[3] / "logs"
 
-PARSER_LOGGER_PREFIX = "vibelens.ingest.parsers."
-# Modules that get per-module log files (in addition to parser modules)
-PER_MODULE_LOGGERS = {"vibelens.services.friction.analysis"}
+# Maps logger name prefix → log filename. Order matters: first match wins.
+# Prefix matching allows grouping related modules into one log file.
+CATEGORY_LOG_FILES: dict[str, str] = {
+    "vibelens.ingest.parsers.": "parsers.log",
+    "vibelens.services.friction.": "analysis-friction.log",
+    "vibelens.services.skill.analysis": "analysis-skill.log",
+}
 
 _root_configured = False
+_category_handlers: dict[str, logging.FileHandler] = {}
 
 
 def _get_log_level() -> int:
@@ -68,6 +77,38 @@ def _ensure_root_logger(log_dir: Path) -> None:
     _root_configured = True
 
 
+def _resolve_category_log(name: str) -> str | None:
+    """Find the category log filename for a logger name, if any."""
+    for prefix, filename in CATEGORY_LOG_FILES.items():
+        if name.startswith(prefix):
+            return filename
+    return None
+
+
+def _get_category_handler(log_dir: Path, filename: str) -> logging.FileHandler:
+    """Get or create a shared file handler for a category log file.
+
+    Multiple modules sharing the same category (e.g. all parsers → parsers.log)
+    reuse a single FileHandler to avoid duplicate writes.
+
+    Args:
+        log_dir: Directory for log files.
+        filename: Category log filename (e.g. "parsers.log").
+
+    Returns:
+        Shared FileHandler for the category.
+    """
+    if filename in _category_handlers:
+        return _category_handlers[filename]
+
+    log_dir.mkdir(parents=True, exist_ok=True)
+    handler = logging.FileHandler(log_dir / filename, mode="a")
+    handler.setLevel(_get_log_level())
+    handler.setFormatter(_build_formatter())
+    _category_handlers[filename] = handler
+    return handler
+
+
 def _module_name_from_path(filepath: str) -> str:
     """Derive a dotted module name from a file path.
 
@@ -91,9 +132,9 @@ def get_logger(
     """Create a named logger under the ``vibelens`` hierarchy.
 
     All loggers propagate to the ``vibelens`` root logger which writes
-    to stderr and ``logs/vibelens.log``.  Parser modules (names starting
-    with ``vibelens.ingest.parsers.``) additionally get a per-module log
-    file (e.g. ``logs/claude_code.log``).
+    to stderr and ``logs/vibelens.log``. Modules matching a category
+    prefix in CATEGORY_LOG_FILES additionally write to a shared
+    category log file (e.g. ``logs/parsers.log``).
 
     Args:
         name: Logger name (typically ``__name__`` of the calling module).
@@ -104,7 +145,7 @@ def get_logger(
 
     Returns:
         Configured logger that writes to stderr and the overall log file,
-        plus a per-module file for parser modules.
+        plus a category file for matched modules.
     """
     if name == "__main__" and filepath:
         name = _module_name_from_path(filepath)
@@ -114,14 +155,9 @@ def get_logger(
 
     logger = logging.getLogger(name)
 
-    # Parser modules and specific service modules get per-module file handlers
-    needs_file = name.startswith(PARSER_LOGGER_PREFIX) or name in PER_MODULE_LOGGERS
-    if needs_file and not logger.handlers:
-        resolved_log_dir.mkdir(parents=True, exist_ok=True)
-        short_name = name.rsplit(".", 1)[-1]
+    category_file = _resolve_category_log(name)
+    if category_file and not logger.handlers:
+        handler = _get_category_handler(resolved_log_dir, category_file)
+        logger.addHandler(handler)
 
-        file_handler = logging.FileHandler(resolved_log_dir / f"{short_name}.log", mode="a")
-        file_handler.setLevel(_get_log_level())
-        file_handler.setFormatter(_build_formatter())
-        logger.addHandler(file_handler)
     return logger

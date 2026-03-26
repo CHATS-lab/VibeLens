@@ -102,6 +102,6 @@ Each mitigation must be structured with:
 - Text fields (`user_intention`, `friction_detail`, `summary`) must NOT reference step IDs
 - `user_intention`: What the user wanted (max 15 words)
 - `friction_detail`: Why the agent failed (max 20 words, or empty if self-evident)
-- `summary`: Narrative overview of friction (max 50 words). Be terse.
+- `summary`: Narrative overview of friction in these sessions (max 50 words). Be terse.
 - `mitigation.content`: Exact text to add/change (max 30 words)
 - If a session has zero friction, return `{"events": [], "summary": "No friction detected.", "top_mitigation": null}`

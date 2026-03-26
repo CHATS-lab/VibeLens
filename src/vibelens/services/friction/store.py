@@ -153,6 +153,7 @@ def _build_meta(analysis_id: str, result: FrictionAnalysisResult) -> FrictionMet
 
     return FrictionMeta(
         analysis_id=analysis_id,
+        title=result.title,
         session_ids=result.session_ids,
         event_count=len(result.events),
         summary_preview=preview,

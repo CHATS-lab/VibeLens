@@ -114,6 +114,9 @@ function HistoryCard({
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0 space-y-1.5">
+          {item.title && (
+            <p className="text-xs text-zinc-200 font-semibold truncate">{item.title}</p>
+          )}
           <p className="text-xs text-zinc-100 line-clamp-2 leading-relaxed font-medium">
             {item.summary_preview}
           </p>

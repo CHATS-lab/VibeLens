@@ -11,6 +11,9 @@ from vibelens.models.analysis.friction import (
 from vibelens.schemas.friction import FrictionMeta
 from vibelens.services.friction.analysis import analyze_friction
 from vibelens.services.mock import build_mock_friction_result
+from vibelens.utils.log import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/analysis", tags=["friction"])
 
@@ -41,6 +44,12 @@ async def friction_analysis(
         raise HTTPException(status_code=status, detail=str(exc)) from exc
     except InferenceError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Unexpected error in friction analysis")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal error: {type(exc).__name__}: {exc}",
+        ) from exc
 
 
 @router.get("/friction/history")

@@ -2,7 +2,8 @@
 
 Pipeline: load sessions → extract context per session → build batches →
 concurrent LLM inference → compute costs from step spans → merge batch
-results → validate step_id refs → compute type_summary → persist → cache.
+results → validate step_id refs → compute type_summary → synthesize
+final report via LLM → persist → cache.
 """
 
 import asyncio
@@ -22,13 +23,17 @@ from vibelens.deps import (
     is_demo_mode,
 )
 from vibelens.llm.backend import InferenceBackend, InferenceError
-from vibelens.llm.prompts.friction_analysis import FRICTION_ANALYSIS_PROMPT
+from vibelens.llm.prompts.friction_analysis import (
+    FRICTION_ANALYSIS_PROMPT,
+    FRICTION_SYNTHESIS_PROMPT,
+)
 from vibelens.models.analysis.friction import (
     FrictionAnalysisResult,
     FrictionCost,
     FrictionEvent,
     FrictionLLMBatchOutput,
     FrictionLLMEvent,
+    FrictionSynthesisOutput,
     Mitigation,
     TypeSummary,
 )
@@ -46,8 +51,10 @@ logger = get_logger(__name__)
 CACHE_TTL_SECONDS = 3600
 FRICTION_OUTPUT_TOKENS = 8192
 FRICTION_TIMEOUT_SECONDS = 300
+SYNTHESIS_OUTPUT_TOKENS = 4096
+SYNTHESIS_TIMEOUT_SECONDS = 120
 FRICTION_LOG_DIR = Path("logs/friction")
-ANALYSIS_FRICTION_LOG = Path("logs/analysis-friction.log")
+MAX_EVENTS_FOR_SYNTHESIS = 7
 
 _cache: dict[str, tuple[float, BaseModel]] = {}
 
@@ -92,18 +99,41 @@ async def analyze_friction(
     for ctx in contexts:
         all_trajectories.extend(ctx.trajectory_group)
 
-    # Pipeline: concurrent LLM inference → merge batch outputs → validate refs → aggregate
+    # Pipeline: concurrent LLM inference → merge → type summary → synthesize
     batch_results = await _run_all_batches(backend, batches, log_dir)
-    events, summary, top_mitigation, total_cost = _merge_batch_results(
+    events, raw_summary, top_mitigation, total_cost = _merge_batch_results(
         batch_results, all_trajectories
     )
     type_summary = _compute_type_summary(events)
 
+    # Post-batch synthesis: produce title, cohesive summary, type descriptions
+    title, summary, cross_batch_patterns = None, raw_summary, []
+    if events:
+        batch_summaries = [br[0].summary for br in batch_results if br[0].summary]
+        try:
+            synthesis, syn_cost = await _synthesize_results(
+                backend, batch_summaries, type_summary, events,
+                len(batches), len(loaded_ids), log_dir,
+            )
+            total_cost += syn_cost
+            title = synthesis.title
+            summary = synthesis.summary or raw_summary
+            cross_batch_patterns = synthesis.cross_session_patterns
+            if synthesis.mitigations:
+                top_mitigation = synthesis.mitigations[0]
+            desc_map = {td.friction_type: td.description for td in synthesis.type_descriptions}
+            for ts in type_summary:
+                ts.description = desc_map.get(ts.friction_type)
+        except Exception:
+            logger.warning("Synthesis failed, using raw batch summaries", exc_info=True)
+
     friction_result = FrictionAnalysisResult(
         events=events,
+        title=title,
         summary=summary,
         top_mitigation=top_mitigation,
         type_summary=type_summary,
+        cross_batch_patterns=cross_batch_patterns,
         session_ids=loaded_ids,
         sessions_skipped=skipped_ids,
         batch_count=len(batches),
@@ -140,7 +170,12 @@ def _extract_all_contexts(
         if demo and not is_session_visible(store.get_metadata(sid), session_token):
             skipped_ids.append(sid)
             continue
-        trajectories = store.load(sid)
+        try:
+            trajectories = store.load(sid)
+        except Exception as exc:
+            logger.warning("Failed to load session %s, skipping: %s", sid, exc)
+            skipped_ids.append(sid)
+            continue
         if not trajectories:
             skipped_ids.append(sid)
             continue
@@ -219,6 +254,123 @@ async def _run_all_batches(
         for idx, batch in enumerate(batches)
     ]
     return await asyncio.gather(*tasks)
+
+
+async def _synthesize_results(
+    backend: InferenceBackend,
+    batch_summaries: list[str],
+    type_summary: list[TypeSummary],
+    events: list[FrictionEvent],
+    batch_count: int,
+    session_count: int,
+    log_dir: Path,
+) -> tuple[FrictionSynthesisOutput, float]:
+    """Run a lightweight LLM call to synthesize batch results into a cohesive report.
+
+    Feeds batch summaries, type statistics, and top event summaries (no full
+    transcripts) to produce a title, cohesive summary, and type descriptions.
+
+    Args:
+        backend: Configured inference backend.
+        batch_summaries: Per-batch narrative summaries from the analysis phase.
+        type_summary: Aggregated per-type statistics.
+        events: All friction events (top N used for context).
+        batch_count: Number of batches in the analysis.
+        session_count: Number of sessions analyzed.
+        log_dir: Timestamped directory for saving prompts and outputs.
+
+    Returns:
+        Tuple of (synthesis output, cost in USD).
+    """
+    type_stats = [
+        {
+            "friction_type": ts.friction_type,
+            "count": ts.count,
+            "affected_sessions": ts.affected_sessions,
+            "avg_severity": ts.avg_severity,
+        }
+        for ts in type_summary
+    ]
+
+    top_events = [
+        {
+            "friction_type": e.friction_type,
+            "severity": e.severity,
+            "user_intention": e.user_intention,
+            "friction_detail": e.friction_detail,
+        }
+        for e in events[:MAX_EVENTS_FOR_SYNTHESIS]
+    ]
+
+    output_schema = json.dumps(
+        FRICTION_SYNTHESIS_PROMPT.output_model.model_json_schema(), indent=2
+    )
+    system_prompt = FRICTION_SYNTHESIS_PROMPT.render_system()
+    user_prompt = FRICTION_SYNTHESIS_PROMPT.render_user(
+        batch_count=batch_count,
+        session_count=session_count,
+        batch_summaries=batch_summaries,
+        type_stats=type_stats,
+        top_events=top_events,
+        output_schema=output_schema,
+    )
+
+    request = InferenceRequest(
+        system=system_prompt,
+        user=user_prompt,
+        max_tokens=SYNTHESIS_OUTPUT_TOKENS,
+        timeout=SYNTHESIS_TIMEOUT_SECONDS,
+    )
+
+    _save_friction_log(log_dir, "synthesis_system.txt", system_prompt)
+    _save_friction_log(log_dir, "synthesis_user.txt", user_prompt)
+
+    result = await backend.generate(request)
+    _save_friction_log(log_dir, "synthesis_raw_output.txt", result.text)
+
+    synthesis = _parse_synthesis_output(result.text)
+    cost = result.cost_usd or 0.0
+    logger.info(
+        "Synthesis complete: title=%r, %d type descriptions",
+        synthesis.title, len(synthesis.type_descriptions),
+    )
+    return synthesis, cost
+
+
+def _parse_synthesis_output(text: str) -> FrictionSynthesisOutput:
+    """Parse LLM output text into FrictionSynthesisOutput.
+
+    Args:
+        text: Raw LLM output text.
+
+    Returns:
+        Validated FrictionSynthesisOutput instance.
+
+    Raises:
+        InferenceError: If parsing or validation fails.
+    """
+    if not text or not text.strip():
+        raise InferenceError("Synthesis LLM returned empty response.")
+
+    json_str = _extract_json(text)
+    try:
+        data = json.loads(json_str)
+    except json.JSONDecodeError:
+        repaired = _repair_truncated_json(json_str)
+        try:
+            data = json.loads(repaired)
+            logger.warning("Repaired truncated synthesis JSON output")
+        except json.JSONDecodeError as exc:
+            raise InferenceError(
+                f"Synthesis output is not valid JSON: {exc}"
+            ) from exc
+
+    try:
+        return FrictionSynthesisOutput.model_validate(data)
+    except ValidationError as exc:
+        raise InferenceError(
+            f"Synthesis JSON does not match FrictionSynthesisOutput schema: {exc}"
+        ) from exc
 
 
 def _merge_batch_results(
@@ -601,10 +753,10 @@ def _log_analysis_summary(
     batches: list[SessionBatch],
     backend: InferenceBackend,
 ) -> None:
-    """Append a structured summary line to the analysis friction log.
+    """Log a structured summary of the analysis run.
 
-    Records session IDs, batch composition, and token counts without
-    including the full prompt text.
+    Uses the standard logger which writes to both vibelens.log
+    and analysis-friction.log via the category log system.
 
     Args:
         loaded_ids: Successfully loaded session IDs.
@@ -612,29 +764,23 @@ def _log_analysis_summary(
         batches: Built session batches.
         backend: Inference backend in use.
     """
-    batch_details = []
+    total_tokens = sum(b.total_tokens for b in batches)
+    logger.info(
+        "Analysis run: %d loaded, %d skipped, %d batches, %d total tokens, "
+        "model=%s, backend=%s",
+        len(loaded_ids),
+        len(skipped_ids),
+        len(batches),
+        total_tokens,
+        _get_backend_model(backend),
+        backend.backend_id,
+    )
     for batch in batches:
         sids = [ctx.session_id for ctx in batch.session_contexts]
-        batch_details.append({
-            "batch_id": batch.batch_id,
-            "session_ids": sids,
-            "session_count": len(sids),
-            "total_tokens": batch.total_tokens,
-        })
-
-    entry = {
-        "timestamp": datetime.now(UTC).isoformat(),
-        "session_ids": loaded_ids,
-        "sessions_skipped": skipped_ids,
-        "batch_count": len(batches),
-        "model": _get_backend_model(backend),
-        "backend_id": backend.backend_id,
-        "batches": batch_details,
-    }
-
-    try:
-        ANALYSIS_FRICTION_LOG.parent.mkdir(parents=True, exist_ok=True)
-        with ANALYSIS_FRICTION_LOG.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(entry) + "\n")
-    except OSError as exc:
-        logger.warning("Failed to write analysis friction log: %s", exc)
+        logger.info(
+            "Batch %s: %d sessions, %d tokens, ids=%s",
+            batch.batch_id,
+            len(sids),
+            batch.total_tokens,
+            sids,
+        )

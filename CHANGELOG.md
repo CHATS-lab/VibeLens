@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.9.5] - 2026-03-26
+
+### Added
+- **Friction synthesis LLM call**: After per-batch analysis, a lightweight LLM call synthesizes all batch results into a cohesive user-facing report with title, summary, per-type descriptions, cross-session patterns, and top mitigations.
+- **Friction synthesis prompts**: New Jinja2 templates (`friction_synthesis_system.j2`, `friction_synthesis_user.j2`) and `FRICTION_SYNTHESIS_PROMPT` registration.
+- **Synthesis output model**: `FrictionSynthesisOutput` with title, summary, type descriptions, cross-session patterns, and 0-3 structured mitigations.
+- **Type descriptions**: `TypeSummary` now carries an optional LLM-generated `description` field explaining the specific friction pattern observed.
+- **Category logging**: Refactored logging to use shared category log files (`parsers.log`, `analysis-friction.log`, `analysis-skill.log`) instead of per-module files. Multiple modules in the same category share a single FileHandler.
+- **Friction API error handling**: Unexpected exceptions in the friction analysis endpoint now return structured 500 responses with type and message.
+
+### Changed
+- **Friction prompts rewritten for users**: Synthesis prompt writes for a developer audience — no references to batches, chunks, or internal processing. Summary capped at 80 words (down from 150) for scanability.
+- **Cross-session patterns**: Renamed `cross_batch_patterns` → `cross_session_patterns` throughout models, prompts, and templates.
+- **Synthesis mitigations override batch mitigations**: If the synthesis call produces mitigations, the first one replaces the per-batch `top_mitigation`.
+- **Batch token budget**: Default `max_batch_tokens` increased from 24K to 80K for fewer batches and better context per analysis call.
+- **Session load resilience**: `_extract_all_contexts` now catches and skips sessions that fail to load instead of aborting the entire analysis.
+- **Claude Code parser guard**: `_read_persisted_agent_id` rejects paths longer than 1024 chars or containing newlines before touching the filesystem.
+
+### Removed
+- **Helpfulness badge**: Removed `HelpfulnessBadge` from friction event cards, along with `HELPFULNESS_LABELS`, `HELPFULNESS_COLORS` constants, and `Heart` icon import.
+- **Batch count in UI**: Removed batch count display from the friction result header subtitle.
+
+### UI
+- **Session severity sort**: Friction events section now sorts session groups by max event severity (highest first).
+- **Analysis title**: Result header displays the LLM-generated title (falls back to "Friction Analysis").
+- **Cross-session patterns**: Summary section renders cross-session patterns as a bullet list.
+- **Type descriptions**: Friction type cards show the LLM-generated description below the badge row.
+- **History card titles**: History sidebar cards display the analysis title when available.
+
 ## [0.9.4] - 2026-03-26
 
 ### Added

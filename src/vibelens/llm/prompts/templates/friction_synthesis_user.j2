@@ -1,0 +1,25 @@
+Synthesize friction analysis results from {{ session_count }} session{{ "s" if session_count != 1 else "" }}.
+
+## Analysis Summaries
+
+{% for summary in batch_summaries %}
+{{ summary }}
+{% endfor %}
+
+## Friction Type Statistics
+
+{% for stat in type_stats %}
+- **{{ stat.friction_type }}**: {{ stat.count }} event{{ "s" if stat.count != 1 else "" }}, {{ stat.affected_sessions }} session{{ "s" if stat.affected_sessions != 1 else "" }}, avg severity {{ stat.avg_severity }}
+{% endfor %}
+
+## Top Friction Events (by severity)
+
+{% for event in top_events %}
+- [severity={{ event.severity }}] {{ event.friction_type }}: "{{ event.user_intention }}" — {{ event.friction_detail }}
+{% endfor %}
+
+## Output Schema
+
+{{ output_schema }}
+
+**Respond with raw JSON only. No markdown fences, no prose.**

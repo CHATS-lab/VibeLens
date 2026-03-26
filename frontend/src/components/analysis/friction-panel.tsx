@@ -11,7 +11,6 @@ import {
   Coins,
   Footprints,
   Hash,
-  Heart,
   History,
   Loader2,
   Pencil,
@@ -53,22 +52,6 @@ const SEVERITY_DESCRIPTIONS: Record<number, string> = {
   3: "Moderate — Multiple corrections or visible frustration",
   4: "High — User takes over manually or reverts agent work",
   5: "Critical — User abandons task or loses work",
-};
-
-const HELPFULNESS_LABELS: Record<number, string> = {
-  1: "Unhelpful",
-  2: "Slightly",
-  3: "Moderate",
-  4: "Very",
-  5: "Essential",
-};
-
-const HELPFULNESS_COLORS: Record<number, string> = {
-  1: "bg-rose-900/30 border-rose-700/30 text-rose-300",
-  2: "bg-orange-900/30 border-orange-700/30 text-orange-300",
-  3: "bg-amber-900/30 border-amber-700/30 text-amber-300",
-  4: "bg-emerald-900/30 border-emerald-700/30 text-emerald-300",
-  5: "bg-cyan-900/30 border-cyan-700/30 text-cyan-300",
 };
 
 const ACTION_TYPE_COLORS: Record<string, string> = {
@@ -172,7 +155,7 @@ export function FrictionPanel({ checkedIds }: FrictionPanelProps) {
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-4xl mx-auto px-6 py-8 space-y-8">
           <ResultHeader result={result} onRerun={handleRunAnalysis} onNew={handleNewAnalysis} />
-          <SummarySection summary={result.summary} topMitigation={result.top_mitigation} />
+          <SummarySection summary={result.summary} topMitigation={result.top_mitigation} crossBatchPatterns={result.cross_batch_patterns} />
           {result.type_summary.length > 0 && (
             <TypeSummarySection types={result.type_summary} />
           )}
@@ -555,13 +538,10 @@ function ResultHeader({
         <Activity className="w-6 h-6 text-amber-400" />
         <div>
           <h2 className="text-xl font-bold text-zinc-100">
-            Friction Analysis
+            {result.title || "Friction Analysis"}
           </h2>
           <p className="text-sm text-zinc-400">
             {eventCount} event{eventCount !== 1 ? "s" : ""} across {sessionCount} session{sessionCount !== 1 ? "s" : ""}
-            {result.batch_count > 1 && (
-              <span className="text-zinc-500"> &middot; {result.batch_count} batches</span>
-            )}
             {result.sessions_skipped.length > 0 && (
               <span className="text-zinc-500">
                 {" "}&middot; {result.sessions_skipped.length} skipped
@@ -592,13 +572,22 @@ function ResultHeader({
 function SummarySection({
   summary,
   topMitigation,
+  crossBatchPatterns,
 }: {
   summary: string;
   topMitigation: Mitigation | null;
+  crossBatchPatterns?: string[];
 }) {
   return (
     <div className="bg-zinc-900/80 border border-zinc-700/60 rounded-xl p-5 space-y-3">
       <p className="text-sm text-zinc-200 leading-relaxed">{summary}</p>
+      {crossBatchPatterns && crossBatchPatterns.length > 0 && (
+        <ul className="space-y-1 ml-4 list-disc">
+          {crossBatchPatterns.map((pattern, i) => (
+            <li key={i} className="text-xs text-zinc-300">{pattern}</li>
+          ))}
+        </ul>
+      )}
       {topMitigation && (
         <Tip text="The single highest-impact action to reduce friction across all analyzed sessions.">
           <div className="flex items-start gap-3 bg-amber-900/15 border border-amber-700/30 rounded-lg px-5 py-4">
@@ -638,6 +627,10 @@ function TypeCard({ type, maxCost }: { type: TypeSummary; maxCost: number }) {
         <TypeBadge type={type.friction_type} />
         <SeverityBadge severity={Math.round(type.avg_severity)} />
       </div>
+
+      {type.description && (
+        <p className="text-xs text-zinc-400 leading-relaxed">{type.description}</p>
+      )}
 
       <div className="flex items-center gap-3">
         <Tip text="Number of friction events of this type">
@@ -695,6 +688,11 @@ function EventsSection({
       <div className="space-y-3">
         {[...eventsBySession.entries()]
           .filter(([, evts]) => evts.length > 0)
+          .sort(([, a], [, b]) => {
+            const maxA = Math.max(...a.map((e) => e.severity));
+            const maxB = Math.max(...b.map((e) => e.severity));
+            return maxB - maxA;
+          })
           .map(([sid, evts]) => (
             <SessionEventGroup key={sid} sessionId={sid} events={evts} />
           ))}
@@ -772,7 +770,6 @@ function EventCard({ event }: { event: FrictionEvent }) {
             <div className="flex items-center gap-2 mb-1.5 flex-wrap">
               <SeverityBadge severity={event.severity} />
               <TypeBadge type={event.friction_type} />
-              <HelpfulnessBadge level={event.claude_helpfulness} />
               <button
                 onClick={handleGoToStep}
                 className="inline-flex items-center gap-1.5 px-2.5 py-1 text-sm text-zinc-400 hover:text-cyan-400 hover:bg-cyan-900/20 rounded transition"
@@ -840,20 +837,6 @@ function MitigationCard({ mitigation }: { mitigation: Mitigation }) {
         <CopyButton text={mitigation.content} className="shrink-0 mt-0.5" />
       </div>
     </div>
-  );
-}
-
-function HelpfulnessBadge({ level }: { level: number }) {
-  const label = HELPFULNESS_LABELS[level] ?? "Unknown";
-  const colorClass = HELPFULNESS_COLORS[level] ?? HELPFULNESS_COLORS[3];
-
-  return (
-    <Tip text={`Claude helpfulness: ${level}/5 — ${label}. How helpful was Claude for the overall task context.`}>
-      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium border ${colorClass}`}>
-        <Heart className="w-3 h-3" />
-        {label}
-      </span>
-    </Tip>
   );
 }
 
