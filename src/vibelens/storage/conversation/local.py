@@ -71,6 +71,7 @@ class LocalStore(TrajectoryStore):
                 AgentType.CLAUDE_CODE: settings.claude_dir,
                 AgentType.CODEX: settings.codex_dir,
                 AgentType.GEMINI: settings.gemini_dir,
+                AgentType.OPENCLAW: settings.openclaw_dir,
             }
         for parser in self._parsers:
             data_dir = overrides.get(parser.AGENT_TYPE) or parser.LOCAL_DATA_DIR

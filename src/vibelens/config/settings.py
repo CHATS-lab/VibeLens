@@ -56,6 +56,10 @@ class Settings(BaseSettings):
         default=Path.home() / ".gemini",
         description="Root directory for Gemini CLI session data.",
     )
+    openclaw_dir: Path = Field(
+        default=Path.home() / ".openclaw",
+        description="Root directory for OpenClaw session data.",
+    )
 
     # Shares
     share_dir: Path = Field(
@@ -151,6 +155,7 @@ class Settings(BaseSettings):
         self.claude_dir = self.claude_dir.expanduser()
         self.codex_dir = self.codex_dir.expanduser()
         self.gemini_dir = self.gemini_dir.expanduser()
+        self.openclaw_dir = self.openclaw_dir.expanduser()
         self.managed_skills_dir = self.managed_skills_dir.expanduser()
         self.skills_dir = self.skills_dir.expanduser()
         self.share_dir = self.share_dir.expanduser()

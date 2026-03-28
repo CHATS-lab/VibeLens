@@ -255,9 +255,6 @@ function interleaveSections(
   userCards: FlowUserCardData[],
   phaseGroups: FlowPhaseGroup[]
 ): FlowSection[] {
-  const sections: FlowSection[] = [];
-
-  // Build a sorted list of (stepIndex, section) for interleaving
   type Entry = { stepIndex: number; section: FlowSection };
   const entries: Entry[] = [];
 
@@ -268,27 +265,73 @@ function interleaveSections(
     });
   }
 
+  // Split phase groups at user anchor boundaries
   for (const group of phaseGroups) {
-    // Use the first card's stepIndex as the group's position
-    const firstIdx = group.cards.length > 0 ? group.cards[0].data.stepIndex : 0;
-    entries.push({
-      stepIndex: firstIdx,
-      section: { type: "phase", data: group },
-    });
+    const sortedCards = [...group.cards].sort(
+      (a, b) => a.data.stepIndex - b.data.stepIndex
+    );
+    if (sortedCards.length === 0) continue;
+
+    const firstIdx = sortedCards[0].data.stepIndex;
+    const lastIdx = sortedCards[sortedCards.length - 1].data.stepIndex;
+
+    // Find anchor stepIndices that fall within this group's range
+    const splitPoints = userCards
+      .map((u) => u.stepIndex)
+      .filter((idx) => idx > firstIdx && idx <= lastIdx)
+      .sort((a, b) => a - b);
+
+    if (splitPoints.length === 0) {
+      // No anchors bisect this group — emit as-is
+      entries.push({ stepIndex: firstIdx, section: { type: "phase", data: group } });
+    } else {
+      // Split cards into sub-groups at anchor boundaries
+      let currentCards: FlowCard[] = [];
+      let splitIdx = 0;
+
+      for (const card of sortedCards) {
+        // If this card's stepIndex crosses the next split point, flush the sub-group
+        while (
+          splitIdx < splitPoints.length &&
+          card.data.stepIndex >= splitPoints[splitIdx]
+        ) {
+          if (currentCards.length > 0) {
+            const { toolCount, dominantCategory } = computePhaseSummary(currentCards);
+            entries.push({
+              stepIndex: currentCards[0].data.stepIndex,
+              section: {
+                type: "phase",
+                data: { phase: group.phase, cards: currentCards, toolCount, dominantCategory },
+              },
+            });
+          }
+          currentCards = [];
+          splitIdx++;
+        }
+        currentCards.push(card);
+      }
+
+      // Flush remaining cards
+      if (currentCards.length > 0) {
+        const { toolCount, dominantCategory } = computePhaseSummary(currentCards);
+        entries.push({
+          stepIndex: currentCards[0].data.stepIndex,
+          section: {
+            type: "phase",
+            data: { phase: group.phase, cards: currentCards, toolCount, dominantCategory },
+          },
+        });
+      }
+    }
   }
 
   // Sort by stepIndex; anchors before phases at the same index
   entries.sort((a, b) => {
     if (a.stepIndex !== b.stepIndex) return a.stepIndex - b.stepIndex;
-    // User anchors come before phases at the same position
     return a.section.type === "anchor" ? -1 : 1;
   });
 
-  for (const entry of entries) {
-    sections.push(entry.section);
-  }
-
-  return sections;
+  return entries.map((e) => e.section);
 }
 
 function buildDependencyMap(

@@ -181,10 +181,10 @@ function AgentStep({ step }: { step: Step }) {
 
   return (
     <div className="space-y-1">
+      {step.reasoning_content && <ThinkingBlock text={step.reasoning_content} />}
       {step.message && (typeof step.message !== "string" || step.message.trim()) && (
         <TextBlock content={step.message} />
       )}
-      {step.reasoning_content && <ThinkingBlock text={step.reasoning_content} />}
       {(step.tool_calls.length > 0 || orphanResults.length > 0) && (
         <div className="flex flex-col gap-1 mt-1.5">
           {hasConcurrentCalls ? (

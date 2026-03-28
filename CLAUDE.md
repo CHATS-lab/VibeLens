@@ -9,7 +9,7 @@ src/vibelens/
 ├── api/               # FastAPI route handlers. Thin HTTP layer delegating to services/.
 ├── config/            # Pydantic Settings model, YAML config loading, auto-discovery.
 ├── ingest/            # Raw data → ATIF trajectories. Parsers, discovery, fingerprinting.
-│   └── parsers/       # One parser per agent CLI format (Claude Code, Codex, Gemini, Dataclaw).
+│   └── parsers/       # One parser per agent CLI format (Claude Code, Codex, Gemini, Dataclaw, OpenClaw).
 ├── llm/               # LLM utilities — pricing, model name normalization, semantic analysis.
 │   └── pricing/       # Pricing table (reference data), model name resolution, cost lookup.
 ├── models/            # Pydantic domain models (no business logic, no I/O).
@@ -47,6 +47,7 @@ tests/                 # Unit and integration tests mirroring src/ structure.
 - **Codex CLI:** `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` — One rollout file per session. Uses OpenAI Responses API format.
 - **Gemini CLI:** `~/.gemini/tmp/{sha256-hash}/chats/session-*.json` — Single JSON per session. Hash dirs resolved via `.project_root` file or `projects.json`.
 - **Dataclaw:** HuggingFace JSONL exports — One complete session per line in `conversations.jsonl`.
+- **OpenClaw:** `~/.openclaw/agents/main/sessions/{uuid}.jsonl` — Event-based JSONL with `type: "message"` wrapping `role: user/assistant/toolResult`. Index at `sessions.json`.
 
 ## Reference Repos
 
@@ -101,3 +102,12 @@ tests/                 # Unit and integration tests mirroring src/ structure.
 - Ruff: `ruff check src/ tests/`
 - Run: `pytest tests/ -v -s` (use `-s` to see print output).
 - Tests should log detailed output with `print()` for manual verification, not just assertions.
+
+## Release
+
+1. **Version bump**: Update `version` in both `pyproject.toml` and `src/vibelens/__init__.py`.
+2. **Changelog**: Add entry to `CHANGELOG.md` under `## [x.y.z] - YYYY-MM-DD`.
+3. **Commit & push**: `git commit` then `git push origin main`.
+4. **Tag**: `git tag v{version} {commit_sha}` then `git push origin v{version}`.
+5. **GitHub Release**: `gh release create v{version} --title "v{version}" --latest --notes "..."`.
+6. **PyPI**: `rm -rf dist/ && python -m build && twine upload dist/*`.

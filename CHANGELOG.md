@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.9.9] - 2026-03-28
+
+### Added
+- **OpenClaw parser**: New `openclaw.py` parser for `~/.openclaw/agents/main/sessions/` event-based JSONL format. Registered in discovery, local store, and settings with `openclaw_dir` config field.
+
+### Fixed
+- **Think block ordering**: ThinkingBlock (reasoning_content) now renders BEFORE message text in timeline view, matching the actual agent workflow (think first, then respond).
+- **Flow mode interleaving**: Phase groups in flow view are now split at user prompt boundaries, so user prompts appear interleaved between agent steps instead of being clustered after a single phase block.
+
+### Changed
+- **CLAUDE.md updated**: Added OpenClaw to parsers list and agent data directories. Added Release section with versioning workflow.
+
 ## [0.9.8] - 2026-03-28
 
 ### Added

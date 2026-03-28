@@ -10,6 +10,7 @@ from vibelens.ingest.parsers.base import BaseParser
 from vibelens.ingest.parsers.claude_code import ClaudeCodeParser
 from vibelens.ingest.parsers.codex import CodexParser
 from vibelens.ingest.parsers.gemini import GeminiParser
+from vibelens.ingest.parsers.openclaw import OpenClawParser
 from vibelens.models.enums import AgentType
 
 # Claude Code session discovery constants
@@ -25,6 +26,7 @@ _PARSERS_BY_TYPE: dict[AgentType, type[BaseParser]] = {
     AgentType.CLAUDE_CODE: ClaudeCodeParser,
     AgentType.CODEX: CodexParser,
     AgentType.GEMINI: GeminiParser,
+    AgentType.OPENCLAW: OpenClawParser,
 }
 
 

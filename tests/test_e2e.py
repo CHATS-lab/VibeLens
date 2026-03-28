@@ -33,6 +33,7 @@ def test_settings(tmp_path):
             claude_dir=claude_dir,
             codex_dir=tmp_path / ".codex",
             gemini_dir=tmp_path / ".gemini",
+            openclaw_dir=tmp_path / ".openclaw",
         ),
         claude_dir,
         test_project,
@@ -548,6 +549,7 @@ class TestEdgeCases:
                 claude_dir=base / ".claude",
                 codex_dir=base / ".codex",
                 gemini_dir=base / ".gemini",
+                openclaw_dir=base / ".openclaw",
             )
             source = LocalSource(settings=settings)
 
