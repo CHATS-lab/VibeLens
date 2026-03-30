@@ -67,13 +67,6 @@ export function UsageOverTimeChart({
     [values, maxVal, grouped.length]
   );
 
-  const lineD = points
-    .map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`)
-    .join(" ");
-  const areaD =
-    lineD +
-    ` L${points[points.length - 1].x},${MT + PH} L${points[0].x},${MT + PH} Z`;
-
   const gridFractions = [0.25, 0.5, 0.75, 1];
   const gridLines = gridFractions.map((f) => MT + PH * (1 - f));
 
@@ -149,6 +142,7 @@ export function UsageOverTimeChart({
     { key: "year", label: "Year" },
   ];
 
+  // Guard: must come before lineD/areaD which access points[0]
   if (grouped.length < 1) {
     return (
       <div>
@@ -161,6 +155,14 @@ export function UsageOverTimeChart({
       </div>
     );
   }
+
+  // Compute path data after the empty guard — points[0] is safe here
+  const lineD = points
+    .map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`)
+    .join(" ");
+  const areaD =
+    lineD +
+    ` L${points[points.length - 1].x},${MT + PH} L${points[0].x},${MT + PH} Z`;
 
   return (
     <div>

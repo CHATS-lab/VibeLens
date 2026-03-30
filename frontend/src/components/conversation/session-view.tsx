@@ -25,6 +25,7 @@ import {
   HardDrive,
   DollarSign,
   Link2,
+  Shield,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppContext } from "../../app";
@@ -561,6 +562,14 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
                 tooltip={main.project_path}
               />
             )}
+            {!!main.extra?._anonymized && (
+              <MetaPill
+                icon={<Shield className="w-3 h-3" />}
+                label="Redacted"
+                color="text-emerald-400"
+                tooltip={`Anonymized: ${(main.extra?._anonymize_stats as Record<string, number> | undefined)?.secrets_redacted ?? 0} secrets, ${(main.extra?._anonymize_stats as Record<string, number> | undefined)?.paths_anonymized ?? 0} paths, ${(main.extra?._anonymize_stats as Record<string, number> | undefined)?.pii_redacted ?? 0} PII`}
+              />
+            )}
           </div>
 
           {/* Row 2.5: Continuation Chain Nav */}
@@ -658,6 +667,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
                                   <SubAgentBlock
                                     trajectory={sub}
                                     allTrajectories={trajectories}
+                                    concise={isConcise}
                                   />
                                 </div>
                               ))}
@@ -677,6 +687,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
                       <SubAgentBlock
                         trajectory={sub}
                         allTrajectories={trajectories}
+                        concise={isConcise}
                       />
                     </div>
                   ))}

@@ -392,7 +392,7 @@ export function DashboardView({ cache }: DashboardViewProps) {
         {/* Usage Over Time */}
         <div className="rounded-xl border border-zinc-700/60 bg-zinc-900/80 p-5">
           <UsageOverTimeChart
-            data={stats.daily_stats}
+            data={stats.daily_stats ?? []}
             onHover={show}
             onMove={move}
             onLeave={hide}

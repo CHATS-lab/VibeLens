@@ -1,5 +1,6 @@
 import {
   ArrowLeft,
+  AlertCircle,
   CheckCircle2,
   ChevronRight,
   FileArchive,
@@ -126,27 +127,36 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
     };
 
     xhr.onload = () => {
+      const errorResult = (msg: string) => ({
+        files_received: 1,
+        sessions_parsed: 0,
+        steps_stored: 0,
+        skipped: 0,
+        secrets_redacted: 0,
+        paths_anonymized: 0,
+        pii_redacted: 0,
+        errors: [{ filename: file.name, error: msg }],
+      });
+
+      if (xhr.status === 413) {
+        setResult(errorResult(
+          "File too large for the server's upload limit. If behind nginx, increase client_max_body_size in your nginx config."
+        ));
+        setUploading(false);
+        return;
+      }
+
       try {
         const data = JSON.parse(xhr.responseText);
         if (xhr.status >= 200 && xhr.status < 300) {
           setResult(data);
         } else {
-          setResult({
-            files_received: 1,
-            sessions_parsed: 0,
-            steps_stored: 0,
-            skipped: 0,
-            errors: [{ filename: file.name, error: data.detail || `HTTP ${xhr.status}` }],
-          });
+          setResult(errorResult(data.detail || `HTTP ${xhr.status}`));
         }
       } catch {
-        setResult({
-          files_received: 1,
-          sessions_parsed: 0,
-          steps_stored: 0,
-          skipped: 0,
-          errors: [{ filename: file.name, error: xhr.responseText || `HTTP ${xhr.status}` }],
-        });
+        // Strip HTML tags from error responses (e.g., nginx error pages)
+        const cleaned = xhr.responseText?.replace(/<[^>]*>/g, "").trim();
+        setResult(errorResult(cleaned || `HTTP ${xhr.status}`));
       }
       setUploading(false);
     };
@@ -157,6 +167,9 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
         sessions_parsed: 0,
         steps_stored: 0,
         skipped: 0,
+        secrets_redacted: 0,
+        paths_anonymized: 0,
+        pii_redacted: 0,
         errors: [{ filename: file.name, error: "Network error" }],
       });
       setUploading(false);
@@ -406,15 +419,24 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
                 </div>
               ) : result ? (
                 <div className="space-y-4">
-                  <div className="flex flex-col items-center gap-2 py-3">
-                    <CheckCircle2 className="w-8 h-8 text-emerald-400" />
-                    <p className="text-2xl font-semibold text-zinc-100 font-mono">
-                      {result.sessions_parsed}
-                    </p>
-                    <p className="text-xs text-zinc-400">
-                      {result.sessions_parsed === 1 ? "session" : "sessions"} imported
-                    </p>
-                  </div>
+                  {result.errors.length > 0 && result.sessions_parsed === 0 ? (
+                    <div className="flex flex-col items-center gap-2 py-3">
+                      <AlertCircle className="w-8 h-8 text-rose-400" />
+                      <p className="text-sm font-semibold text-rose-300">
+                        Upload failed
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-2 py-3">
+                      <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+                      <p className="text-2xl font-semibold text-zinc-100 font-mono">
+                        {result.sessions_parsed}
+                      </p>
+                      <p className="text-xs text-zinc-400">
+                        {result.sessions_parsed === 1 ? "session" : "sessions"} imported
+                      </p>
+                    </div>
+                  )}
                   <ResultStats result={result} />
                   <div className="flex justify-end">
                     <button

@@ -8,9 +8,10 @@ import { StepBlock } from "./message-block";
 interface SubAgentBlockProps {
   trajectory: Trajectory;
   allTrajectories: Trajectory[];
+  concise?: boolean;
 }
 
-export function SubAgentBlock({ trajectory, allTrajectories }: SubAgentBlockProps) {
+export function SubAgentBlock({ trajectory, allTrajectories, concise }: SubAgentBlockProps) {
   const [open, setOpen] = useState(false);
 
   const steps = trajectory.steps || [];
@@ -53,15 +54,23 @@ export function SubAgentBlock({ trajectory, allTrajectories }: SubAgentBlockProp
           </span>
         </div>
         {steps
-          .filter((s) => s.source === "user" || s.source === "agent")
+          .filter((s) => {
+            if (s.source !== "user" && s.source !== "agent") return false;
+            if (concise && s.source === "agent") {
+              const text = typeof s.message === "string" ? s.message.trim() : "";
+              return !!text;
+            }
+            return true;
+          })
           .map((step) => (
-            <StepBlock key={step.step_id} step={step} />
+            <StepBlock key={step.step_id} step={step} concise={concise} />
           ))}
         {childSubAgents.map((child) => (
           <SubAgentBlock
             key={child.session_id}
             trajectory={child}
             allTrajectories={allTrajectories}
+            concise={concise}
           />
         ))}
       </div>

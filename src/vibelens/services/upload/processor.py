@@ -23,7 +23,9 @@ from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile
 
+from vibelens.config.anonymize import AnonymizeConfig
 from vibelens.deps import get_settings, get_store
+from vibelens.ingest.anonymize.rule_anonymizer.anonymizer import RuleAnonymizer
 from vibelens.ingest.discovery import discover_session_files, get_parser
 from vibelens.ingest.parsers.base import BaseParser
 from vibelens.models.enums import AgentType
@@ -325,12 +327,14 @@ async def process_zip(
         upload_store.initialize()
 
         parser = get_parser(agent_type=agent_type)
+        anonymizer = RuleAnonymizer(AnonymizeConfig(enabled=True))
         session_details = await asyncio.to_thread(
             _parse_and_store_files,
             session_files=session_files,
             parser=parser,
             store=upload_store,
             result=result,
+            anonymizer=anonymizer,
         )
 
         # 4. Append metadata to the global metadata.jsonl
@@ -362,19 +366,25 @@ async def process_zip(
 
 
 def _parse_and_store_files(
-    session_files: list[Path], parser: BaseParser, store: DiskStore, result: UploadResult
+    session_files: list[Path],
+    parser: BaseParser,
+    store: DiskStore,
+    result: UploadResult,
+    anonymizer: RuleAnonymizer,
 ) -> list[dict]:
-    """Parse discovered session files and persist via the disk store.
+    """Parse discovered session files, anonymize, and persist via the disk store.
 
     Iterates over each discovered file, parses it into trajectories,
-    and saves them. Skips files that produce no trajectories. Accumulates
-    per-session details for the upload metadata manifest.
+    anonymizes them to redact sensitive data, and saves them. Skips files
+    that produce no trajectories. Accumulates per-session details for
+    the upload metadata manifest.
 
     Args:
         session_files: List of session file paths from discovery.
         parser: Parser instance for the agent type.
         store: DiskStore for trajectory persistence.
         result: UploadResult to update with counts.
+        anonymizer: RuleAnonymizer for redacting sensitive data.
 
     Returns:
         List of per-session detail dicts for the upload metadata.
@@ -399,6 +409,11 @@ def _parse_and_store_files(
         if main is None:
             result.skipped += 1
             continue
+
+        # Anonymize all trajectories in the batch before storing
+        trajectories = _anonymize_trajectories(
+            trajectories=trajectories, anonymizer=anonymizer, result=result
+        )
 
         session_id = main.session_id
         try:
@@ -428,6 +443,38 @@ def _parse_and_store_files(
         )
 
     return session_details
+
+
+def _anonymize_trajectories(
+    trajectories: list, anonymizer: RuleAnonymizer, result: UploadResult
+) -> list:
+    """Anonymize a batch of trajectories and tag each with redaction metadata.
+
+    Args:
+        trajectories: Parsed trajectories from a single session file.
+        anonymizer: RuleAnonymizer instance for redacting sensitive data.
+        result: UploadResult to accumulate aggregate anonymization stats.
+
+    Returns:
+        List of anonymized trajectories with ``extra._anonymized`` and
+        ``extra._anonymize_stats`` metadata tags.
+    """
+    anonymized_results = anonymizer.anonymize_batch(trajectories)
+    anonymized_trajectories = []
+
+    for anon_traj, anon_result in anonymized_results:
+        if anon_traj.extra is None:
+            anon_traj.extra = {}
+        anon_traj.extra["_anonymized"] = True
+        anon_traj.extra["_anonymize_stats"] = anon_result.model_dump()
+        anonymized_trajectories.append(anon_traj)
+
+        # Accumulate into aggregate upload result
+        result.secrets_redacted += anon_result.secrets_redacted
+        result.paths_anonymized += anon_result.paths_anonymized
+        result.pii_redacted += anon_result.pii_redacted
+
+    return anonymized_trajectories
 
 
 def _build_upload_metadata(
@@ -460,5 +507,8 @@ def _build_upload_metadata(
             "steps_stored": result.steps_stored,
             "skipped": result.skipped,
             "errors": len(result.errors),
+            "secrets_redacted": result.secrets_redacted,
+            "paths_anonymized": result.paths_anonymized,
+            "pii_redacted": result.pii_redacted,
         },
     }

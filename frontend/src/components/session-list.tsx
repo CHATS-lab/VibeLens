@@ -15,6 +15,8 @@ import {
   Heart,
   Download,
   ArrowLeftRight,
+  ShieldCheck,
+  FileUp,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppContext } from "../app";
@@ -36,6 +38,7 @@ interface SessionListProps {
   agentFilter: string;
   onAgentFilterChange: (agent: string) => void;
   availableAgents: string[];
+  onUpload?: () => void;
   onDonate?: () => void;
   donateDisabled?: boolean;
   onDownload?: () => void;
@@ -55,6 +58,7 @@ export function SessionList({
   agentFilter,
   onAgentFilterChange,
   availableAgents,
+  onUpload,
   onDonate,
   donateDisabled,
   onDownload,
@@ -197,10 +201,23 @@ export function SessionList({
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <div className="p-3 space-y-2 border-b border-zinc-800">
-        {/* Donate for Research */}
-        {onDonate && (
+        {/* Upload + Donate row */}
+        {onUpload && onDonate ? (
+          <div className="flex items-stretch gap-1.5">
+            <button
+              onClick={onUpload}
+              className="w-[88px] shrink-0 flex items-center justify-center gap-1 py-1.5 text-xs font-semibold bg-violet-600 hover:bg-violet-500 text-white rounded-md border border-violet-500 transition"
+            >
+              <FileUp className="w-3.5 h-3.5" />
+              Upload
+            </button>
+            <div className="flex-1 min-w-0">
+              <DonateButton onClick={onDonate} disabled={!!donateDisabled} compact />
+            </div>
+          </div>
+        ) : onDonate ? (
           <DonateButton onClick={onDonate} disabled={!!donateDisabled} />
-        )}
+        ) : null}
 
         <div className="relative">
           {searchLoading ? (
@@ -406,7 +423,7 @@ export function SessionList({
             <button
               onClick={onDownload}
               disabled={downloadDisabled}
-              className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium bg-emerald-600/80 hover:bg-emerald-500 text-white rounded transition disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium bg-cyan-600/80 hover:bg-cyan-500 text-white rounded transition disabled:opacity-40 disabled:cursor-not-allowed"
               title={downloadDisabled ? "Select sessions to download" : `Download ${checkedCount} session${checkedCount !== 1 ? "s" : ""}`}
             >
               <Download className="w-3 h-3" />
@@ -470,6 +487,9 @@ function SessionRow({
               {baseProjectName(session.project_path || "")}
             </span>
             <div className="flex items-center gap-1">
+              {!!session.extra?._anonymized && (
+                <span title="Session anonymized"><ShieldCheck className="w-3 h-3 text-emerald-400" /></span>
+              )}
               {(session.last_trajectory_ref || session.continued_trajectory_ref || session.parent_trajectory_ref) && (
                 <span title="Part of continuation chain"><Link2 className="w-3 h-3 text-violet-400" /></span>
               )}
@@ -484,6 +504,9 @@ function SessionRow({
             {truncate(session.first_message || "", 120) || "Empty session"}
           </p>
           <div className="flex items-center gap-1 shrink-0">
+            {!showProject && !!session.extra?._anonymized && (
+              <span title="Session anonymized"><ShieldCheck className="w-3 h-3 text-emerald-400" /></span>
+            )}
             {!showProject && (session.last_trajectory_ref || session.continued_trajectory_ref || session.parent_trajectory_ref) && (
               <span title="Part of continuation chain"><Link2 className="w-3 h-3 text-violet-400" /></span>
             )}
@@ -499,7 +522,7 @@ function SessionRow({
   );
 }
 
-function DonateButton({ onClick, disabled }: { onClick: () => void; disabled: boolean }) {
+function DonateButton({ onClick, disabled, compact }: { onClick: () => void; disabled: boolean; compact?: boolean }) {
   const [showTooltip, setShowTooltip] = useState(false);
 
   return (
@@ -510,13 +533,13 @@ function DonateButton({ onClick, disabled }: { onClick: () => void; disabled: bo
     >
       <button
         onClick={disabled ? undefined : onClick}
-        className={`w-full flex items-center justify-center gap-1.5 py-2.5 text-sm font-semibold rounded-md border transition ${
+        className={`w-full flex items-center justify-center gap-1.5 ${compact ? "py-1.5 text-xs" : "py-2.5 text-sm"} font-semibold rounded-md border transition ${
           disabled
             ? "bg-rose-600/40 text-rose-200 border-rose-500/30 cursor-not-allowed opacity-60"
             : "bg-rose-600 hover:bg-rose-500 text-white border-rose-500 shadow-sm shadow-rose-900/40"
         }`}
       >
-        <Heart className="w-4 h-4" />
+        <Heart className={compact ? "w-3.5 h-3.5" : "w-4 h-4"} />
         Donate for Research
       </button>
       {showTooltip && (

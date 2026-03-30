@@ -1,7 +1,6 @@
 import {
   Menu,
   PanelLeftClose,
-  FileUp,
   Settings,
   Share2,
 } from "lucide-react";
@@ -382,20 +381,6 @@ export function App() {
               </button>
             </div>
 
-            {/* Upload toolbar (demo mode only) */}
-            {appMode === "demo" && (
-              <div className="shrink-0 border-b border-zinc-800 px-3 py-2.5">
-                <button
-                  onClick={() => setShowUploadDialog(true)}
-                  className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium bg-violet-600 hover:bg-violet-500 text-white rounded transition"
-                  title="Upload conversation files"
-                >
-                  <FileUp className="w-3.5 h-3.5" />
-                  Upload
-                </button>
-              </div>
-            )}
-
             <SessionList
               sessions={sessions}
               selectedId={selectedSessionId}
@@ -407,6 +392,7 @@ export function App() {
               agentFilter={agentFilter}
               onAgentFilterChange={setAgentFilter}
               availableAgents={availableAgents}
+              onUpload={appMode === "demo" ? () => setShowUploadDialog(true) : undefined}
               onDonate={handleDonateClick}
               donateDisabled={checkedIds.size === 0}
               onDownload={handleDownloadClick}

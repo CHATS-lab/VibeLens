@@ -93,6 +93,9 @@ export interface UploadResult {
   sessions_parsed: number;
   steps_stored: number;
   skipped: number;
+  secrets_redacted: number;
+  paths_anonymized: number;
+  pii_redacted: number;
   errors: Array<{ filename: string; error: string }>;
 }
 
