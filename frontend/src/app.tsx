@@ -85,11 +85,16 @@ export function App() {
   });
 
 
-  // Ephemeral token: new on every page load, never persisted
-  const [sessionToken] = useState(() =>
-    crypto.randomUUID?.() ??
-    Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("")
-  );
+  const SESSION_TOKEN_KEY = "vibelens-session-token";
+  const [sessionToken] = useState(() => {
+    const stored = localStorage.getItem(SESSION_TOKEN_KEY);
+    if (stored) return stored;
+    const token =
+      crypto.randomUUID?.() ??
+      Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
+    localStorage.setItem(SESSION_TOKEN_KEY, token);
+    return token;
+  });
 
   const MIN_SIDEBAR_WIDTH = 240;
   const MAX_SIDEBAR_WIDTH = 600;
@@ -394,7 +399,14 @@ export function App() {
               availableAgents={availableAgents}
               onUpload={appMode === "demo" ? () => setShowUploadDialog(true) : undefined}
               onDonate={handleDonateClick}
-              donateDisabled={checkedIds.size === 0}
+              donateDisabled={checkedIds.size === 0 || !sessions.some(s => checkedIds.has(s.session_id) && s._upload_id)}
+              donateTooltip={
+                checkedIds.size === 0
+                  ? "Select sessions first to donate"
+                  : !sessions.some(s => checkedIds.has(s.session_id) && s._upload_id)
+                    ? "Example sessions cannot be donated"
+                    : undefined
+              }
               onDownload={handleDownloadClick}
               downloadDisabled={checkedIds.size === 0}
               checkedCount={checkedIds.size}

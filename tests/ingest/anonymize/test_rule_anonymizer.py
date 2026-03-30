@@ -101,6 +101,25 @@ class TestRuleAnonymizer:
         print(f"  high_entropy: secrets={result.secrets_redacted}, msg='{msg}'")
         assert secret not in msg
 
+    def test_tool_description_not_redacted(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Tool descriptions should survive high-entropy redaction."""
+        monkeypatch.setenv("USER", "testuser")
+        config = AnonymizeConfig(
+            enabled=True,
+            redact_credentials=False,
+            redact_pii=False,
+            redact_high_entropy=True,
+            anonymize_paths=False,
+        )
+        anon = RuleAnonymizer(config)
+        description = "Launch a new agent to handle complex, multi-step tasks autonomously."
+        t = _make_trajectory(f'"description": "{description}"')
+        result_t, result = anon.anonymize_trajectory(t)
+        msg = result_t.steps[0].message
+        print(f"  tool_description: secrets={result.secrets_redacted}, msg='{msg}'")
+        assert description in msg
+        assert result.secrets_redacted == 0
+
     def test_credential_only_flag(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """When only credentials are enabled, PII and paths are untouched."""
         monkeypatch.setenv("USER", "testuser")

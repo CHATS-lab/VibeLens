@@ -1,5 +1,6 @@
 """Session donation — package and send sessions to the donation server."""
 
+from vibelens.deps import is_demo_mode
 from vibelens.schemas.session import DonateResult
 from vibelens.services.donation.sender import send_donation
 from vibelens.services.session.store_resolver import get_metadata_from_stores
@@ -48,10 +49,15 @@ def _filter_visible_ids(session_ids: list[str], session_token: str | None) -> _V
     Returns:
         Result with visible IDs and error dicts for invisible ones.
     """
+    demo = is_demo_mode()
     result = _VisibilityResult()
     for session_id in session_ids:
-        if is_session_visible(get_metadata_from_stores(session_id), session_token):
-            result.valid.append(session_id)
-        else:
+        meta = get_metadata_from_stores(session_id)
+        if not is_session_visible(meta, session_token):
             result.errors.append({"session_id": session_id, "error": "Session not found"})
+        elif demo and meta and not meta.get("_upload_id"):
+            error = "Example sessions cannot be donated"
+            result.errors.append({"session_id": session_id, "error": error})
+        else:
+            result.valid.append(session_id)
     return result

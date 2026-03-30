@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.13] - 2026-03-30
+
+### Fixed
+- **Stateless session visibility**: Eliminated in-memory state (`_token_uploads` dict, `_rebuilt_from_disk` flag) that became stale after the first metadata rebuild. Visibility is now a pure function of `_session_token` metadata tags written into each upload's `index.jsonl`.
+- **Upload isolation between browser tabs**: Each upload's DiskStore `default_tags` now includes `_session_token` (the browser's UUID) alongside `_upload_id`, enabling stateless per-user visibility filtering.
+- **Duplicate session_id dedup ordering**: Sorted `rglob` index discovery so newer upload directories (timestamp-prefixed) are processed last, ensuring the most recent upload wins dedup for `get_metadata()`/`load()`.
+- **Multi-upload metadata preservation**: Added `_all_metadata` list to `TrajectoryStore` so `list_metadata()` returns ALL entries (including duplicate session_ids from different uploads), enabling `filter_visible()` to correctly match per-upload tokens.
+
 ## [0.9.12] - 2026-03-30
 
 ### Changed

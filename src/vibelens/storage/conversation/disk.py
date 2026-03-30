@@ -78,13 +78,18 @@ class DiskStore(TrajectoryStore):
 
         logger.info(
             "DiskStore.save: session=%s file=%s index=%s tags=%s",
-            session_id, full_path, index_path, self._default_tags,
+            session_id,
+            full_path,
+            index_path,
+            self._default_tags,
         )
 
         # Incremental cache update (skip full rebuild)
         if self._metadata_cache is not None:
             self._metadata_cache[session_id] = summary
             self._index[session_id] = (full_path, self._parser)
+            if self._all_metadata is not None:
+                self._all_metadata.append(summary)
 
     def copy_to_dir(self, session_id: str, dest_dir: Path) -> None:
         """Copy a session's .json file to the given directory.
@@ -107,13 +112,18 @@ class DiskStore(TrajectoryStore):
         """Build metadata index by reading all index.jsonl files recursively."""
         self._index = {}
         self._metadata_cache = {}
+        self._all_metadata = []
 
         if not self._root.exists():
             logger.info("DiskStore._build_index: root does not exist: %s", self._root)
             return
 
-        index_files = list(self._root.rglob(INDEX_FILENAME))
-        logger.info("DiskStore._build_index: root=%s found %d index files", self._root, len(index_files))
+        # Sort so newer upload directories (timestamp-prefixed names) are
+        # read last and win the session_id dedup for get_metadata()/load().
+        index_files = sorted(self._root.rglob(INDEX_FILENAME))
+        logger.info(
+            "DiskStore._build_index: root=%s found %d index files", self._root, len(index_files)
+        )
 
         for index_path in index_files:
             parent_dir = index_path.parent
@@ -125,6 +135,7 @@ class DiskStore(TrajectoryStore):
                     continue
                 self._metadata_cache[sid] = line
                 self._index[sid] = (parent_dir / f"{sid}.json", self._parser)
+                self._all_metadata.append(line)
 
         logger.info("DiskStore._build_index: total sessions indexed: %d", len(self._index))
 

@@ -15,7 +15,7 @@ import { SkillsHistory } from "./skills-history";
 const TAB_CONFIG: { id: SkillTab; label: string }[] = [
   { id: "local", label: "Local Skills" },
   { id: "explore", label: "Explore" },
-  { id: "retrieve", label: "Retrieve" },
+  { id: "retrieve", label: "Recommend" },
   { id: "create", label: "Create" },
   { id: "evolve", label: "Evolve" },
 ];

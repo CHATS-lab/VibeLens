@@ -166,7 +166,7 @@ export function AnalysisResultView({
         <PatternSection patterns={result.workflow_patterns} />
       )}
 
-      {/* Recommended Skills (Retrieve) */}
+      {/* Recommended Skills (Recommend) */}
       {activeTab === "retrieve" && result.recommendations.length > 0 && (
         <RecommendationSection recommendations={result.recommendations} />
       )}
@@ -416,7 +416,7 @@ function JumpToStepButton({ stepRef }: { stepRef: StepRef }) {
   );
 }
 
-/* ── Recommendations (Retrieve) ── */
+/* ── Recommendations (Recommend) ── */
 
 function RecommendationSection({ recommendations }: { recommendations: SkillRecommendation[] }) {
   return (

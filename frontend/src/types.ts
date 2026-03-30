@@ -81,6 +81,7 @@ export interface Trajectory {
   extra?: Record<string, unknown> | null;
   steps?: Step[];
   timestamp?: string | null;
+  _upload_id?: string;
 }
 
 export interface UploadCommands {

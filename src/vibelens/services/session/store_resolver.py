@@ -25,7 +25,9 @@ def list_all_metadata() -> list[dict]:
     metadata = list(store.list_metadata())
     logger.info(
         "list_all_metadata: primary store=%s returned %d sessions (demo=%s)",
-        type(store).__name__, len(metadata), is_demo_mode(),
+        type(store).__name__,
+        len(metadata),
+        is_demo_mode(),
     )
     if is_demo_mode():
         seen_ids = {m.get("session_id") for m in metadata}
@@ -34,7 +36,9 @@ def list_all_metadata() -> list[dict]:
             if m.get("session_id") not in seen_ids:
                 metadata.append(m)
                 example_count += 1
-        logger.info("list_all_metadata: added %d example sessions, total=%d", example_count, len(metadata))
+        logger.info(
+            "list_all_metadata: added %d example sessions, total=%d", example_count, len(metadata)
+        )
     return metadata
 
 

@@ -8,6 +8,7 @@ from vibelens.ingest.anonymize.rule_anonymizer.patterns import (
     compute_shannon_entropy,
     has_mixed_char_types,
     is_allowlisted,
+    is_natural_text,
     is_valid_high_entropy,
 )
 from vibelens.ingest.anonymize.rule_anonymizer.redactor import scan_text
@@ -65,6 +66,44 @@ class TestIsAllowlisted:
             print(f"  allowlisted: {ip}")
 
 
+class TestIsNaturalText:
+    def test_english_sentences_detected(self) -> None:
+        sentences = [
+            "Launch a new agent to handle complex, multi-step tasks autonomously.",
+            "Reads a file from the local filesystem. You can access any file.",
+            "Execute a given bash command and returns its output.",
+            "Use this tool to create a structured task list for your session.",
+            "Optional model to use for this agent. If not specified, inherits from parent.",
+        ]
+        for sentence in sentences:
+            result = is_natural_text(sentence)
+            space_ratio = sum(1 for c in sentence if c == " ") / len(sentence)
+            print(f"  is_natural_text={result}, space%={space_ratio:.1%}: {sentence[:60]}...")
+            assert result is True
+
+    def test_api_key_not_detected(self) -> None:
+        assert is_natural_text("aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2uV3wX4yZ5!@$") is False
+
+    def test_base64_not_detected(self) -> None:
+        assert is_natural_text("dGhpcyBpcyBhIGJhc2U2NCBlbmNvZGVkIHN0cmluZw==") is False
+
+    def test_empty_returns_false(self) -> None:
+        assert is_natural_text("") is False
+
+    def test_url_not_detected(self) -> None:
+        assert is_natural_text("https://example.com/very/long/path/to/resource/file.html") is False
+
+    def test_boundary_at_ten_percent(self) -> None:
+        # 10 chars with 1 space = exactly 10% — should be detected
+        text = "abcdefgh i"
+        assert is_natural_text(text) is True
+        # 11 chars with 1 space = 9.1% — should not be detected
+        text_below = "abcdefghi j"
+        space_ratio = sum(1 for c in text_below if c == " ") / len(text_below)
+        print(f"  boundary below: space%={space_ratio:.3f}")
+        assert is_natural_text(text_below) is (space_ratio >= 0.10)
+
+
 class TestIsValidHighEntropy:
     def test_short_string_returns_false(self) -> None:
         # Below HIGH_ENTROPY_MIN_LENGTH (40)
@@ -80,6 +119,25 @@ class TestIsValidHighEntropy:
         result = is_valid_high_entropy(secret)
         print(f"  is_valid_high_entropy(genuine secret) = {result}")
         assert result is True
+
+    @pytest.mark.parametrize(
+        "description",
+        [
+            "Launch a new agent to handle complex, multi-step tasks autonomously.",
+            "Reads a file from the local filesystem. You can access any file directly.",
+            "A short (3-5 word) description of the task",
+            "Execute a given bash command and returns its output.",
+            "Use this tool to create a structured task list for your coding session.",
+            "Optional model to use for this agent. If not specified, inherits from parent.",
+            "The regular expression pattern to search for in file contents",
+            "The prompt to run on the fetched content",
+        ],
+    )
+    def test_tool_description_not_flagged(self, description: str) -> None:
+        """Tool descriptions from agent system prompts must not be flagged as secrets."""
+        result = is_valid_high_entropy(description)
+        print(f"  is_valid_high_entropy={result}: {description[:60]}...")
+        assert result is False
 
 
 class TestCredentialPatterns:

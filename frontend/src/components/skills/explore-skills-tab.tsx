@@ -140,7 +140,7 @@ export function ExploreSkillsTab() {
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-teal-300">Not sure which skills to add?</p>
             <p className="text-xs text-teal-400/70 mt-0.5">
-              Switch to the <span className="font-semibold text-teal-300">Retrieve</span> tab — it analyzes your coding sessions and recommends skills tailored to your workflow.
+              Switch to the <span className="font-semibold text-teal-300">Recommend</span> tab — it analyzes your coding sessions and recommends skills tailored to your workflow.
             </p>
           </div>
           <Sparkles className="w-5 h-5 text-teal-500/40 shrink-0" />

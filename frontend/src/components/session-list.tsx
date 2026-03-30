@@ -41,6 +41,7 @@ interface SessionListProps {
   onUpload?: () => void;
   onDonate?: () => void;
   donateDisabled?: boolean;
+  donateTooltip?: string;
   onDownload?: () => void;
   downloadDisabled?: boolean;
   checkedCount?: number;
@@ -61,6 +62,7 @@ export function SessionList({
   onUpload,
   onDonate,
   donateDisabled,
+  donateTooltip,
   onDownload,
   downloadDisabled,
   checkedCount = 0,
@@ -212,11 +214,11 @@ export function SessionList({
               Upload
             </button>
             <div className="flex-1 min-w-0">
-              <DonateButton onClick={onDonate} disabled={!!donateDisabled} />
+              <DonateButton onClick={onDonate} disabled={!!donateDisabled} tooltip={donateTooltip} />
             </div>
           </div>
         ) : onDonate ? (
-          <DonateButton onClick={onDonate} disabled={!!donateDisabled} />
+          <DonateButton onClick={onDonate} disabled={!!donateDisabled} tooltip={donateTooltip} />
         ) : null}
 
         <div className="relative">
@@ -487,6 +489,9 @@ function SessionRow({
               {baseProjectName(session.project_path || "")}
             </span>
             <div className="flex items-center gap-1">
+              {!session._upload_id && (
+                <span className="px-1 py-0.5 text-[9px] font-medium bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded" title="Example session (not donatable)">Example</span>
+              )}
               {!!session.extra?._anonymized && (
                 <span title="Session anonymized"><ShieldCheck className="w-3 h-3 text-emerald-400" /></span>
               )}
@@ -504,6 +509,9 @@ function SessionRow({
             {truncate(session.first_message || "", 120) || "Empty session"}
           </p>
           <div className="flex items-center gap-1 shrink-0">
+            {!showProject && !session._upload_id && (
+              <span className="px-1 py-0.5 text-[9px] font-medium bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded" title="Example session (not donatable)">Example</span>
+            )}
             {!showProject && !!session.extra?._anonymized && (
               <span title="Session anonymized"><ShieldCheck className="w-3 h-3 text-emerald-400" /></span>
             )}
@@ -522,7 +530,7 @@ function SessionRow({
   );
 }
 
-function DonateButton({ onClick, disabled }: { onClick: () => void; disabled: boolean }) {
+function DonateButton({ onClick, disabled, tooltip }: { onClick: () => void; disabled: boolean; tooltip?: string }) {
   const [showTooltip, setShowTooltip] = useState(false);
 
   return (
@@ -542,9 +550,9 @@ function DonateButton({ onClick, disabled }: { onClick: () => void; disabled: bo
         <Heart className="w-3.5 h-3.5" />
         Donate for Research
       </button>
-      {showTooltip && (
+      {showTooltip && tooltip && (
         <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1.5 z-50 px-2.5 py-1.5 rounded-md bg-zinc-950 border border-zinc-700 text-[11px] text-zinc-300 whitespace-nowrap shadow-lg pointer-events-none">
-          Select sessions first to donate
+          {tooltip}
         </div>
       )}
     </div>

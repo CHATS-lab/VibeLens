@@ -36,6 +36,9 @@ class TrajectoryStore(ABC):
     def __init__(self) -> None:
         self._index: dict[str, tuple[Path, BaseParser]] = {}
         self._metadata_cache: dict[str, dict] | None = None
+        # Preserves ALL metadata entries including duplicate session_ids from
+        # different uploads, so filter_visible() can match per-upload tokens.
+        self._all_metadata: list[dict] | None = None
 
     @abstractmethod
     def initialize(self) -> None:
@@ -44,10 +47,16 @@ class TrajectoryStore(ABC):
     def list_metadata(self) -> list[dict]:
         """Return all trajectory summaries without steps.
 
+        Returns ALL entries including duplicate session_ids from different
+        uploads so that visibility filtering can match per-upload tokens.
+
         Returns:
             Unsorted list of trajectory summary dicts.
         """
-        return list(self._ensure_index().values())
+        self._ensure_index()
+        if self._all_metadata is not None:
+            return list(self._all_metadata)
+        return list(self._metadata_cache.values()) if self._metadata_cache else []
 
     def list_projects(self) -> list[str]:
         """Return all unique project paths from stored sessions.
@@ -177,6 +186,7 @@ class TrajectoryStore(ABC):
     def invalidate_index(self) -> None:
         """Clear cached index, forcing rebuild on next access."""
         self._metadata_cache = None
+        self._all_metadata = None
         self._index = {}
 
     @staticmethod

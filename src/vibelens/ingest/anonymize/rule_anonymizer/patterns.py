@@ -11,6 +11,7 @@ from typing import NamedTuple
 
 SHANNON_ENTROPY_THRESHOLD = 3.5
 HIGH_ENTROPY_MIN_LENGTH = 40
+NATURAL_TEXT_SPACE_RATIO = 0.10
 
 
 class PatternDef(NamedTuple):
@@ -190,6 +191,25 @@ def has_mixed_char_types(text: str) -> bool:
     return type_count >= MIN_MIXED_TYPES
 
 
+def is_natural_text(text: str) -> bool:
+    """Detect natural language by checking whether spaces make up >= 10% of characters.
+
+    Tool descriptions, JSON schema descriptions, and other English prose
+    consistently have space ratios of 13-17%, while secrets and base64 strings
+    have 0%. The 10% threshold provides a wide safety margin.
+
+    Args:
+        text: The string to check.
+
+    Returns:
+        True if the text appears to be natural language.
+    """
+    if not text:
+        return False
+    space_count = sum(1 for c in text if c == " ")
+    return (space_count / len(text)) >= NATURAL_TEXT_SPACE_RATIO
+
+
 def is_allowlisted(text: str) -> bool:
     """Check whether a matched string is in the known-safe allowlist.
 
@@ -216,5 +236,7 @@ def is_valid_high_entropy(text: str) -> bool:
         True if the string has high entropy AND mixed character types.
     """
     if len(text) < HIGH_ENTROPY_MIN_LENGTH:
+        return False
+    if is_natural_text(text):
         return False
     return compute_shannon_entropy(text) >= SHANNON_ENTROPY_THRESHOLD and has_mixed_char_types(text)

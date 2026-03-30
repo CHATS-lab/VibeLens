@@ -880,97 +880,121 @@ class TestDiskStore:
 
 
 class TestFilterVisible:
-    """Test upload visibility filtering from upload_visibility."""
+    """Test stateless upload visibility filtering."""
 
-    def test_root_sessions_always_visible(self):
-        """Root-level sessions (no _upload_id) are always visible."""
+    def test_example_sessions_visible_without_token(self):
+        """Example sessions (no _upload_id) are visible when no token is provided."""
         from vibelens.services.upload.visibility import filter_visible
 
         summaries = [{"session_id": "root-001"}, {"session_id": "root-002"}]
         result = filter_visible(summaries, session_token=None)
         assert len(result) == 2
-        print("Root sessions visible without token")
+        print("Example sessions visible without token")
 
     def test_upload_sessions_hidden_without_token(self):
-        """Upload-scoped sessions are hidden when no token is provided."""
+        """Uploaded sessions are hidden when no token is provided."""
         from vibelens.services.upload.visibility import filter_visible
 
         summaries = [
             {"session_id": "root-001"},
-            {"session_id": "upload-001", "_upload_id": "upload_abc"},
+            {"session_id": "upload-001", "_upload_id": "u1", "_session_token": "tok-a"},
         ]
         result = filter_visible(summaries, session_token=None)
         assert len(result) == 1
         assert result[0]["session_id"] == "root-001"
         print("Upload sessions hidden without token")
 
-    def test_upload_sessions_visible_with_owning_token(self):
-        """Token with uploads sees only its last upload; examples are hidden."""
-        from vibelens.services.upload.visibility import filter_visible, register_upload
-
-        register_upload("token-abc", "upload_abc")
-
-        summaries = [
-            {"session_id": "root-001"},
-            {"session_id": "upload-001", "_upload_id": "upload_abc"},
-        ]
-        result = filter_visible(summaries, session_token="token-abc")
-        assert len(result) == 1
-        assert result[0]["session_id"] == "upload-001"
-        print("Token with uploads sees only last upload, examples hidden")
-
-    def test_last_upload_replaces_previous(self):
-        """A new upload replaces the previous one; only the latest is visible."""
-        from vibelens.services.upload.visibility import filter_visible, register_upload
-
-        register_upload("token-replace", "upload_old")
-        register_upload("token-replace", "upload_new")
-
-        summaries = [
-            {"session_id": "old-001", "_upload_id": "upload_old"},
-            {"session_id": "new-001", "_upload_id": "upload_new"},
-        ]
-        result = filter_visible(summaries, session_token="token-replace")
-        assert len(result) == 1
-        assert result[0]["session_id"] == "new-001"
-        print("Only the last upload is visible after re-upload")
-
-    def test_upload_sessions_hidden_with_wrong_token(self):
-        """Upload sessions are hidden when the token doesn't own the upload."""
+    def test_own_uploads_visible_with_matching_token(self):
+        """Token sees only its own uploads when _session_token matches."""
         from vibelens.services.upload.visibility import filter_visible
 
         summaries = [
             {"session_id": "root-001"},
-            {"session_id": "upload-001", "_upload_id": "upload_xyz"},
+            {"session_id": "upload-001", "_upload_id": "u1", "_session_token": "tok-a"},
         ]
-        result = filter_visible(summaries, session_token="token-wrong")
+        result = filter_visible(summaries, session_token="tok-a")
+        assert len(result) == 1
+        assert result[0]["session_id"] == "upload-001"
+        print("Own uploads visible, examples hidden when token has uploads")
+
+    def test_multiple_uploads_all_visible(self):
+        """All uploads from the same token are visible."""
+        from vibelens.services.upload.visibility import filter_visible
+
+        summaries = [
+            {"session_id": "old-001", "_upload_id": "u_old", "_session_token": "tok-m"},
+            {"session_id": "new-001", "_upload_id": "u_new", "_session_token": "tok-m"},
+        ]
+        result = filter_visible(summaries, session_token="tok-m")
+        assert len(result) == 2
+        result_ids = {s["session_id"] for s in result}
+        assert result_ids == {"old-001", "new-001"}
+        print("All uploads from same token visible")
+
+    def test_other_users_uploads_hidden(self):
+        """Token without uploads sees examples; other users' uploads are hidden."""
+        from vibelens.services.upload.visibility import filter_visible
+
+        summaries = [
+            {"session_id": "root-001"},
+            {"session_id": "upload-001", "_upload_id": "u1", "_session_token": "tok-other"},
+        ]
+        result = filter_visible(summaries, session_token="tok-mine")
         assert len(result) == 1
         assert result[0]["session_id"] == "root-001"
-        print("Upload sessions hidden with wrong token")
+        print("Other users' uploads hidden, examples shown")
+
+    def test_mixed_visibility_isolation(self):
+        """Each token sees only its own uploads; neither sees the other's."""
+        from vibelens.services.upload.visibility import filter_visible
+
+        summaries = [
+            {"session_id": "root-001"},
+            {"session_id": "alice-001", "_upload_id": "u_a", "_session_token": "tok-alice"},
+            {"session_id": "bob-001", "_upload_id": "u_b", "_session_token": "tok-bob"},
+        ]
+
+        alice_result = filter_visible(summaries, session_token="tok-alice")
+        assert len(alice_result) == 1
+        assert alice_result[0]["session_id"] == "alice-001"
+
+        bob_result = filter_visible(summaries, session_token="tok-bob")
+        assert len(bob_result) == 1
+        assert bob_result[0]["session_id"] == "bob-001"
+        print("Alice and Bob each see only their own uploads")
 
     def test_is_session_visible(self):
-        """is_session_visible() checks single session visibility."""
-        from vibelens.services.upload.visibility import (
-            is_session_visible,
-            register_upload,
-        )
+        """is_session_visible() checks each visibility rule."""
+        from vibelens.services.upload.visibility import is_session_visible
 
         # No metadata -> not visible
         assert is_session_visible(None, "token") is False
 
-        # Root session -> always visible
+        # Example session (no _upload_id) -> always visible
         assert is_session_visible({"session_id": "root"}, None) is True
+        assert is_session_visible({"session_id": "root"}, "any-token") is True
 
         # Upload session without token -> not visible
-        assert is_session_visible({"session_id": "up", "_upload_id": "u1"}, None) is False
+        assert is_session_visible(
+            {"session_id": "up", "_upload_id": "u1", "_session_token": "tok-a"}, None
+        ) is False
 
-        # Upload session with owning token -> visible
-        register_upload("my-token", "u1")
-        assert is_session_visible({"session_id": "up", "_upload_id": "u1"}, "my-token") is True
+        # Upload session with matching token -> visible
+        assert is_session_visible(
+            {"session_id": "up", "_upload_id": "u1", "_session_token": "tok-a"}, "tok-a"
+        ) is True
 
-        # Root session with token that has uploads -> hidden
-        assert is_session_visible({"session_id": "root"}, "my-token") is False
-        print("is_session_visible() correctly checks visibility")
+        # Upload session with wrong token -> not visible
+        assert is_session_visible(
+            {"session_id": "up", "_upload_id": "u1", "_session_token": "tok-a"}, "tok-b"
+        ) is False
+
+        # Upload without _session_token (legacy) + any token -> not visible
+        assert is_session_visible(
+            {"session_id": "up", "_upload_id": "u1"}, "tok-a"
+        ) is False
+
+        print("is_session_visible() correctly checks all visibility rules")
 
 
 class TestDualStore:

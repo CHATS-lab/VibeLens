@@ -34,7 +34,6 @@ from vibelens.services.dashboard.loader import (
     invalidate_cache as invalidate_dashboard_cache,
 )
 from vibelens.services.session.search import invalidate_search_index
-from vibelens.services.upload.visibility import register_upload
 from vibelens.storage.conversation.disk import DiskStore
 from vibelens.utils import get_logger
 from vibelens.utils.zip import extract_zip, validate_zip
@@ -46,17 +45,18 @@ logger = get_logger(__name__)
 UPLOAD_COMMANDS: dict[str, dict[str, dict[str, str]]] = {
     AgentType.CLAUDE_CODE: {
         "macos": {
-            "command": "cd ~/.claude && zip -r claude-data.zip projects/ -i '*.jsonl' -x '**/._*' '**/__MACOSX/*'",
+            "command": (
+                "cd ~/.claude && zip -r claude-data.zip projects/ -x '**/._*' '**/__MACOSX/*'"
+            ),
             "description": "Output: ~/.claude/claude-data.zip",
         },
         "linux": {
-            "command": "cd ~/.claude && zip -r claude-data.zip projects/ -i '*.jsonl'",
+            "command": "cd ~/.claude && zip -r claude-data.zip projects/",
             "description": "Output: ~/.claude/claude-data.zip",
         },
         "windows": {
             "command": (
-                "cd $env:USERPROFILE\\.claude;"
-                " Compress-Archive -Path projects\\*"
+                "cd $env:USERPROFILE\\.claude; Compress-Archive -Path projects\\*"
                 " -DestinationPath claude-data.zip"
             ),
             "description": "Output: ~\\.claude\\claude-data.zip",
@@ -64,7 +64,9 @@ UPLOAD_COMMANDS: dict[str, dict[str, dict[str, str]]] = {
     },
     AgentType.CODEX: {
         "macos": {
-            "command": "cd ~/.codex && zip -r codex-data.zip sessions/",
+            "command": (
+                "cd ~/.codex && zip -r codex-data.zip sessions/ -x '**/._*' '**/__MACOSX/*'"
+            ),
             "description": "Output: ~/.codex/codex-data.zip",
         },
         "linux": {
@@ -73,8 +75,7 @@ UPLOAD_COMMANDS: dict[str, dict[str, dict[str, str]]] = {
         },
         "windows": {
             "command": (
-                "cd $env:USERPROFILE\\.codex;"
-                " Compress-Archive -Path sessions\\*"
+                "cd $env:USERPROFILE\\.codex; Compress-Archive -Path sessions\\*"
                 " -DestinationPath codex-data.zip"
             ),
             "description": "Output: ~\\.codex\\codex-data.zip",
@@ -91,8 +92,7 @@ UPLOAD_COMMANDS: dict[str, dict[str, dict[str, str]]] = {
         },
         "windows": {
             "command": (
-                "cd $env:USERPROFILE\\.gemini;"
-                " Compress-Archive -Path tmp\\*"
+                "cd $env:USERPROFILE\\.gemini; Compress-Archive -Path tmp\\*"
                 " -DestinationPath gemini-data.zip"
             ),
             "description": "Output: ~\\.gemini\\gemini-data.zip",
@@ -337,9 +337,10 @@ async def process_zip(
 
         # 3. Parse files and store trajectories under {upload_dir}/{upload_id}/
         #    The _upload_id tag lets the main store enforce visibility filtering.
-        upload_store = DiskStore(
-            root=settings.upload_dir / upload_id, default_tags={"_upload_id": upload_id}
-        )
+        tags: dict[str, str] = {"_upload_id": upload_id}
+        if session_token:
+            tags["_session_token"] = session_token
+        upload_store = DiskStore(root=settings.upload_dir / upload_id, default_tags=tags)
         upload_store.initialize()
 
         parser = get_parser(agent_type=agent_type)
@@ -368,23 +369,11 @@ async def process_zip(
             filename=filename,
             session_details=session_details,
             result=result,
+            session_token=session_token,
         )
         append_upload_metadata(upload_dir=settings.upload_dir, metadata=metadata)
 
-        # 5. Register ownership so only this browser tab sees the uploaded sessions
-        if session_token and result.sessions_parsed > 0:
-            register_upload(session_token=session_token, upload_id=upload_id)
-            logger.info(
-                "Registered upload visibility: token=%s -> upload_id=%s", token_short, upload_id
-            )
-        else:
-            logger.info(
-                "Skipped register_upload: token=%s sessions_parsed=%d",
-                token_short,
-                result.sessions_parsed,
-            )
-
-        # 6. Invalidate caches so the main store picks up new sessions
+        # 5. Invalidate caches so the main store picks up new sessions
         main_store.invalidate_index()
         invalidate_search_index()
         invalidate_dashboard_cache()
@@ -525,6 +514,7 @@ def _build_upload_metadata(
     filename: str,
     session_details: list[dict],
     result: UploadResult,
+    session_token: str | None = None,
 ) -> dict:
     """Build the upload manifest metadata dict.
 
@@ -534,11 +524,12 @@ def _build_upload_metadata(
         filename: Original uploaded filename.
         session_details: Per-session detail dicts.
         result: UploadResult with aggregate counts.
+        session_token: Browser tab token that owns this upload.
 
     Returns:
         Metadata dict for appending to metadata.jsonl.
     """
-    return {
+    meta: dict = {
         "upload_id": upload_id,
         "timestamp": datetime.now(UTC).isoformat(),
         "agent_type": agent_type,
@@ -554,3 +545,6 @@ def _build_upload_metadata(
             "pii_redacted": result.pii_redacted,
         },
     }
+    if session_token:
+        meta["session_token"] = session_token
+    return meta
