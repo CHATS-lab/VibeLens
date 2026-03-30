@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.9.10] - 2026-03-29
+
+### Added
+- **Donation service**: New `services/donation/` package with sender and receiver modules. Self-use instances package raw session files + parsed trajectories into a ZIP and POST to the configured donation server. Demo instances receive and store donated ZIPs with append-only index. New `POST /donation/receive` endpoint.
+- **Trajectory anonymization**: Pluggable `ingest/anonymize/` package with `BaseAnonymizer` ABC and rule-based implementation. `RuleAnonymizer` chains credential, PII, high-entropy, and custom-string redaction with path username hashing. Deep traversal engine walks ATIF trees applying transforms to text fields while preserving structural data. Configurable via `AnonymizeConfig` with per-category toggles.
+- **Session file resolution**: `BaseParser.get_session_files()` returns all files for a session (main + sub-agents). `ClaudeCodeParser` overrides to include `subagents/agent-*.jsonl` files.
+- **Store source lookup**: `TrajectoryStore.get_session_source()` returns the file path and parser for any session, enabling donation to locate raw files.
+- **LocalStore data dir access**: `LocalStore.get_data_dir()` exposes per-parser data directories for computing relative ZIP paths in donations.
+- **Multi-store resolver**: New `services/session/store_resolver.py` extracts `list_all_metadata`, `load_from_stores`, `get_metadata_from_stores` — primary-then-fallback-to-examples business logic separated from DI.
+- **Donation config**: `donation_url` and `donation_dir` settings with YAML mapping in `config/loader.py`.
+- **Examples dir setting**: `examples_dir` field in Settings for demo mode example storage location.
+
+### Changed
+- **deps.py registry pattern**: Replaced 13 module-level globals and `global` statements with a single `_registry` dict and `_get_or_create()` helper. Added `reset_singletons()` for complete test isolation (previously only 2 of 13 globals were reset between tests).
+- **Upload visibility scoping**: Tokens with uploads now see only the **last** upload's sessions — example sessions are hidden. Previous behavior showed all uploads plus examples. `_token_uploads: dict[str, set[str]]` replaced with `_token_last_upload: dict[str, str]`.
+- **Upload button demo-only**: Upload toolbar button only renders in demo mode (`appMode === "demo"`).
+- **Upload dialog redesigned**: New multi-step flow with confirmation screen and dedicated result screen showing session count with check icon, progress bar, and detailed stats.
+- **Dashboard refresh on upload**: `dashboardPreloaded` ref and cache state reset when `refreshKey` changes. `DashboardView` remounts via `key={refreshKey}` to reflect uploaded data immediately.
+- **Upload processor refactored**: Removed hardcoded `DATASETS_ROOT` global; all paths derive from `settings.upload_dir`. Upload metadata stored in append-only `metadata.jsonl` instead of per-upload `metadata.json`. Sub-agent-only files skipped during parsing.
+- **Demo store uses settings**: `deps.py` demo mode store switched from `DiskStore(DATASETS_ROOT)` to `DiskStore(settings.upload_dir)`.
+- **Donation endpoint moved**: `POST /sessions/donate` moved from `api/sessions.py` to dedicated `api/donation.py` router. Business logic extracted from `services/session/crud.py` to `services/session/donation.py`.
+- **DiskStore index filename**: Renamed `_index.jsonl` → `index.jsonl` throughout DiskStore and docstrings.
+- **Index cache filename**: Renamed `index_cache.json` → `session_index.json` with `indent=2` formatting.
+- **macOS resource fork filtering**: `discover_all_session_files()` and `ClaudeCodeParser.discover_session_files()` skip `._*` Apple Double files.
+
 ## [0.9.9] - 2026-03-28
 
 ### Added

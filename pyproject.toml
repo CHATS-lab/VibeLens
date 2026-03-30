@@ -1,6 +1,6 @@
 [project]
 name = "vibelens"
-version = "0.9.9"
+version = "0.9.10"
 description = "Agent Trajectory visualization and analysis platform"
 readme = "README.md"
 license = "MIT"
@@ -28,13 +28,13 @@ dependencies = [
     "litellm>=1.40.0",
     "jinja2>=3.1.0",
     "tiktoken>=0.7.0",
+    "httpx>=0.27.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.24.0",
-    "httpx>=0.27.0",
     "ruff>=0.8.0",
 ]
 

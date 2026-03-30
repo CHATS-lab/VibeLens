@@ -91,5 +91,8 @@ def discover_all_session_files(directory: Path) -> list[Path]:
                 continue
             if filepath.name == HISTORY_INDEX_FILENAME:
                 continue
+            # macOS resource forks (Apple Double ._* files) are not session data
+            if filepath.name.startswith("._"):
+                continue
             files.append(filepath)
     return sorted(files)

@@ -173,8 +173,18 @@ class ClaudeCodeParser(BaseParser):
         return [
             f
             for f in sorted(data_dir.rglob("*.jsonl"))
-            if not _SKIP_DIR_NAMES.intersection(f.parts) and f.name != HISTORY_INDEX_FILENAME
+            if not _SKIP_DIR_NAMES.intersection(f.parts)
+            and f.name != HISTORY_INDEX_FILENAME
+            and not f.name.startswith("._")
         ]
+
+    def get_session_files(self, session_file: Path) -> list[Path]:
+        """Return main session file plus all sub-agent JSONL files."""
+        files = [session_file]
+        subagent_dir = session_file.parent / session_file.stem / SUBAGENTS_DIR_NAME
+        if subagent_dir.is_dir():
+            files.extend(sorted(subagent_dir.glob("agent-*.jsonl")))
+        return files
 
     def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
         """Parse JSONL session content into Trajectory objects.
@@ -1346,10 +1356,7 @@ def _collect_tool_results(raw_entries: list[dict]) -> dict[str, dict]:
                     output: str | list = (
                         result_content if has_images else coerce_to_string(result_content)
                     )
-                    result_entry: dict = {
-                        "output": output,
-                        "is_error": bool(is_error),
-                    }
+                    result_entry: dict = {"output": output, "is_error": bool(is_error)}
                     if tool_use_result and isinstance(tool_use_result, dict):
                         result_entry["tool_use_result"] = tool_use_result
                     tool_results[tool_use_id] = result_entry

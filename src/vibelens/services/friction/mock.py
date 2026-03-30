@@ -7,7 +7,6 @@ covering all severity levels, spread across available sessions.
 from collections import defaultdict
 from datetime import UTC, datetime
 
-from vibelens.deps import get_store
 from vibelens.models.analysis.friction import (
     FrictionAnalysisResult,
     FrictionCost,
@@ -17,6 +16,7 @@ from vibelens.models.analysis.friction import (
 )
 from vibelens.models.analysis.step_ref import StepRef
 from vibelens.models.inference import BackendType
+from vibelens.services.session.store_resolver import load_from_stores
 
 
 def build_mock_friction_result(session_ids: list[str]) -> FrictionAnalysisResult:
@@ -74,10 +74,9 @@ def _collect_step_ids(session_ids: list[str]) -> dict[str, list[str]]:
     Returns:
         Mapping of session_id to list of step_ids (agent steps only).
     """
-    store = get_store()
     pool: dict[str, list[str]] = {}
     for sid in session_ids:
-        trajectories = store.load(sid)
+        trajectories = load_from_stores(sid)
         if not trajectories:
             continue
         step_ids = [

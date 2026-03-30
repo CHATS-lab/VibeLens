@@ -58,6 +58,18 @@ class TrajectoryStore(ABC):
         index = self._ensure_index()
         return sorted({m.get("project_path") for m in index.values() if m.get("project_path")})
 
+    def get_session_source(self, session_id: str) -> tuple[Path, BaseParser] | None:
+        """Return the file path and parser for a session.
+
+        Args:
+            session_id: Main session identifier.
+
+        Returns:
+            Tuple of (file_path, parser), or None if not found.
+        """
+        self._ensure_index()
+        return self._index.get(session_id)
+
     def load(self, session_id: str) -> list[Trajectory] | None:
         """Load a full trajectory group by session ID.
 

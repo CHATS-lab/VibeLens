@@ -19,8 +19,6 @@ sources:
   codex_dir: ~/.codex
   gemini_dir: ~/.gemini
 
-# LLM config is now in config/llm.yaml (auto-created on first configure)
-
 upload:
   dir: ~/.vibelens/uploads
   max_zip_bytes: 209715200        # 200 MB

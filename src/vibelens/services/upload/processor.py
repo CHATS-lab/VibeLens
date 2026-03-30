@@ -1,4 +1,18 @@
-"""Upload orchestration — stream, validate, extract, parse, store."""
+"""Upload orchestration — stream, validate, extract, parse, store.
+
+Handles the full upload lifecycle:
+1. Stream incoming zip to ``{settings.upload_dir}/{upload_id}/{upload_id}.zip``
+2. Validate and extract the archive
+3. Discover session files using the agent-specific parser
+4. Parse and store trajectories into ``{settings.upload_dir}/{upload_id}/``
+5. Append upload metadata to ``{settings.upload_dir}/metadata.jsonl``
+6. Clean up temporary extraction directory
+
+Everything (zip, parsed trajectories, metadata) lives under
+``settings.upload_dir``.  In demo mode the main DiskStore also
+points to ``settings.upload_dir`` so uploaded sessions are
+discovered automatically via rglob.
+"""
 
 import asyncio
 import json
@@ -9,7 +23,7 @@ from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile
 
-from vibelens.deps import DATASETS_ROOT, get_settings, get_store
+from vibelens.deps import get_settings, get_store
 from vibelens.ingest.discovery import discover_session_files, get_parser
 from vibelens.ingest.parsers.base import BaseParser
 from vibelens.models.enums import AgentType
@@ -87,6 +101,7 @@ UPLOAD_COMMANDS: dict[str, dict[str, dict[str, str]]] = {
 UPLOAD_ID_TIME_FORMAT = "%Y%m%d%H%M%S"
 SHORT_UUID_LENGTH = 4
 EXTRACTED_SUBDIR = "_extracted"
+METADATA_FILENAME = "metadata.jsonl"
 
 
 def get_upload_command(agent_type: str, os_platform: str) -> dict:
@@ -121,7 +136,7 @@ def generate_upload_id() -> str:
     """Create a unique upload identifier.
 
     Returns:
-        String in format {YYYYMMDDHHMMSS}_{short_uuid}.
+        String in format ``{YYYYMMDDHHMMSS}_{short_uuid}``.
     """
     timestamp = datetime.now(UTC).strftime(UPLOAD_ID_TIME_FORMAT)
     short_uuid = uuid4().hex[:SHORT_UUID_LENGTH]
@@ -129,13 +144,16 @@ def generate_upload_id() -> str:
 
 
 async def receive_zip(
-    file: UploadFile, root: Path, upload_id: str, max_bytes: int, chunk_size: int
+    file: UploadFile, upload_dir: Path, upload_id: str, max_bytes: int, chunk_size: int
 ) -> Path:
     """Stream an uploaded zip file to disk.
 
+    Writes to ``{upload_dir}/{upload_id}/{upload_id}.zip``, reading in
+    fixed-size chunks to keep memory bounded.
+
     Args:
         file: The uploaded file from FastAPI.
-        root: Base storage directory.
+        upload_dir: Base upload storage directory (settings.upload_dir).
         upload_id: Unique identifier for this upload.
         max_bytes: Maximum file size allowed.
         chunk_size: Read chunk size in bytes.
@@ -146,10 +164,10 @@ async def receive_zip(
     Raises:
         HTTPException: If file exceeds size limit.
     """
-    upload_dir = root / upload_id
-    upload_dir.mkdir(parents=True, exist_ok=True)
+    dest_dir = upload_dir / upload_id
+    dest_dir.mkdir(parents=True, exist_ok=True)
 
-    zip_path = upload_dir / f"{upload_id}.zip"
+    zip_path = dest_dir / f"{upload_id}.zip"
     total_written = 0
 
     with open(zip_path, "wb") as f:
@@ -161,7 +179,8 @@ async def receive_zip(
             if total_written > max_bytes:
                 zip_path.unlink(missing_ok=True)
                 raise HTTPException(
-                    status_code=400, detail=f"File exceeds {max_bytes // (1024 * 1024)} MB limit"
+                    status_code=400,
+                    detail=f"File exceeds {max_bytes // (1024 * 1024)} MB limit",
                 )
             f.write(chunk)
 
@@ -177,6 +196,8 @@ def extract_and_discover(
 ) -> list[Path]:
     """Validate zip, extract contents, and discover session files.
 
+    Extraction goes into a ``_extracted`` sibling directory next to the zip.
+
     Args:
         zip_path: Path to the uploaded zip file.
         agent_type: Agent CLI identifier for file discovery.
@@ -187,43 +208,56 @@ def extract_and_discover(
     Returns:
         List of discovered session file paths.
     """
-    validate_zip(zip_path, max_zip_bytes, max_extracted_bytes, max_file_count)
-
-    extracted_dir = zip_path.parent / EXTRACTED_SUBDIR
-    extract_zip(zip_path, extracted_dir)
-
-    return discover_session_files(extracted_dir, agent_type)
-
-
-def write_upload_metadata(root: Path, upload_id: str, metadata: dict) -> None:
-    """Write the upload manifest file.
-
-    Args:
-        root: Base storage directory.
-        upload_id: Upload identifier (subdirectory name).
-        metadata: Upload metadata dict (timestamp, agent_type, sessions, etc.).
-    """
-    upload_dir = root / upload_id
-    meta_path = upload_dir / "metadata.json"
-    meta_path.write_text(
-        json.dumps(metadata, indent=2, default=str, ensure_ascii=False), encoding="utf-8"
+    validate_zip(
+        zip_path=zip_path,
+        max_zip_bytes=max_zip_bytes,
+        max_extracted_bytes=max_extracted_bytes,
+        max_file_count=max_file_count,
     )
 
+    extracted_dir = zip_path.parent / EXTRACTED_SUBDIR
+    extract_zip(zip_path=zip_path, dest_dir=extracted_dir)
 
-def cleanup_extraction(root: Path, upload_id: str) -> None:
-    """Remove the temporary extraction directory for an upload.
+    return discover_session_files(extracted_dir=extracted_dir, agent_type=agent_type)
+
+
+def append_upload_metadata(upload_dir: Path, metadata: dict) -> None:
+    """Append one upload record to the global metadata.jsonl file.
+
+    All upload metadata is stored in a single append-only JSONL file
+    at ``{upload_dir}/metadata.jsonl``, one JSON object per line.
 
     Args:
-        root: Base storage directory.
+        upload_dir: Base upload storage directory (settings.upload_dir).
+        metadata: Upload metadata dict (timestamp, agent_type, sessions, etc.).
+    """
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    meta_path = upload_dir / METADATA_FILENAME
+    line = json.dumps(metadata, default=str, ensure_ascii=False)
+    with open(meta_path, "a", encoding="utf-8") as f:
+        f.write(line + "\n")
+
+
+def cleanup_extraction(upload_dir: Path, upload_id: str) -> None:
+    """Remove the temporary extraction directory for an upload.
+
+    The zip file itself is kept as a permanent archive;
+    only the ``_extracted/`` subdirectory is removed.
+
+    Args:
+        upload_dir: Base upload storage directory (settings.upload_dir).
         upload_id: Upload identifier whose extraction dir to clean up.
     """
-    extracted_dir = root / upload_id / EXTRACTED_SUBDIR
+    extracted_dir = upload_dir / upload_id / EXTRACTED_SUBDIR
     if extracted_dir.exists():
         shutil.rmtree(extracted_dir, ignore_errors=True)
 
 
 def _require_disk_store() -> DiskStore:
     """Get the current store, asserting it is a DiskStore.
+
+    Uploads require DiskStore (demo mode). In self-use mode the store
+    is a LocalStore which does not support writes.
 
     Returns:
         The DiskStore instance.
@@ -242,9 +276,10 @@ async def process_zip(
 ) -> UploadResult:
     """Full upload orchestration: stream -> validate -> extract -> parse -> store.
 
-    Creates a separate DiskStore for the upload subdirectory with
-    default_tags embedding _upload_id so the main store can enforce
-    visibility filtering.
+    Everything (zip, parsed trajectories, metadata) goes under
+    ``settings.upload_dir``.  The per-upload DiskStore at
+    ``{upload_dir}/{upload_id}/`` tags each trajectory with
+    ``_upload_id`` for visibility filtering.
 
     Args:
         file: Uploaded zip file.
@@ -262,37 +297,57 @@ async def process_zip(
     upload_id = generate_upload_id()
 
     try:
+        # 1. Stream zip to settings.upload_dir/{upload_id}/{upload_id}.zip
         zip_path = await receive_zip(
-            file, DATASETS_ROOT, upload_id, settings.max_zip_bytes, settings.stream_chunk_size
+            file=file,
+            upload_dir=settings.upload_dir,
+            upload_id=upload_id,
+            max_bytes=settings.max_zip_bytes,
+            chunk_size=settings.stream_chunk_size,
         )
+
+        # 2. Validate, extract, and discover session files
         session_files = await asyncio.to_thread(
             extract_and_discover,
-            zip_path,
-            agent_type,
-            settings.max_zip_bytes,
-            settings.max_extracted_bytes,
-            settings.max_file_count,
+            zip_path=zip_path,
+            agent_type=agent_type,
+            max_zip_bytes=settings.max_zip_bytes,
+            max_extracted_bytes=settings.max_extracted_bytes,
+            max_file_count=settings.max_file_count,
         )
         logger.info("Discovered %d session files in %s", len(session_files), filename)
 
-        # Create a separate DiskStore with _upload_id tag for visibility filtering
+        # 3. Parse files and store trajectories under {upload_dir}/{upload_id}/
+        #    The _upload_id tag lets the main store enforce visibility filtering.
         upload_store = DiskStore(
-            root=DATASETS_ROOT / upload_id, default_tags={"_upload_id": upload_id}
+            root=settings.upload_dir / upload_id, default_tags={"_upload_id": upload_id}
         )
         upload_store.initialize()
 
-        parser = get_parser(agent_type)
+        parser = get_parser(agent_type=agent_type)
         session_details = await asyncio.to_thread(
-            _parse_and_store_files, session_files, parser, upload_store, result
+            _parse_and_store_files,
+            session_files=session_files,
+            parser=parser,
+            store=upload_store,
+            result=result,
         )
 
-        metadata = _build_upload_metadata(upload_id, agent_type, filename, session_details, result)
-        write_upload_metadata(DATASETS_ROOT, upload_id, metadata)
+        # 4. Append metadata to the global metadata.jsonl
+        metadata = _build_upload_metadata(
+            upload_id=upload_id,
+            agent_type=agent_type,
+            filename=filename,
+            session_details=session_details,
+            result=result,
+        )
+        append_upload_metadata(upload_dir=settings.upload_dir, metadata=metadata)
 
+        # 5. Register ownership so only this browser tab sees the uploaded sessions
         if session_token:
-            register_upload(session_token, upload_id)
+            register_upload(session_token=session_token, upload_id=upload_id)
 
-        # Invalidate main store so rglob picks up new sessions
+        # 6. Invalidate caches so the main store picks up new sessions
         main_store.invalidate_index()
         invalidate_search_index()
         invalidate_dashboard_cache()
@@ -300,7 +355,8 @@ async def process_zip(
         logger.warning("Upload processing failed for %s: %s", filename, exc)
         result.errors.append({"filename": filename, "error": str(exc)})
     finally:
-        cleanup_extraction(DATASETS_ROOT, upload_id)
+        # Clean up extraction dir; keep the zip as a permanent archive
+        cleanup_extraction(upload_dir=settings.upload_dir, upload_id=upload_id)
 
     return result
 
@@ -310,10 +366,14 @@ def _parse_and_store_files(
 ) -> list[dict]:
     """Parse discovered session files and persist via the disk store.
 
+    Iterates over each discovered file, parses it into trajectories,
+    and saves them. Skips files that produce no trajectories. Accumulates
+    per-session details for the upload metadata manifest.
+
     Args:
-        session_files: List of session file paths.
+        session_files: List of session file paths from discovery.
         parser: Parser instance for the agent type.
-        store: DiskStore for persistence.
+        store: DiskStore for trajectory persistence.
         result: UploadResult to update with counts.
 
     Returns:
@@ -323,7 +383,7 @@ def _parse_and_store_files(
 
     for file_path in session_files:
         try:
-            trajectories = parser.parse_file(file_path)
+            trajectories = parser.parse_file(file_path=file_path)
         except Exception as exc:
             logger.warning("Failed to parse %s: %s", file_path.name, exc)
             result.errors.append({"filename": file_path.name, "error": str(exc)})
@@ -333,9 +393,16 @@ def _parse_and_store_files(
             result.skipped += 1
             continue
 
-        session_id = trajectories[0].session_id
+        # Find the main trajectory (no parent ref). Skip sub-agent-only files
+        # since sub-agents are already included when parsing the main session.
+        main = next((t for t in trajectories if not t.parent_trajectory_ref), None)
+        if main is None:
+            result.skipped += 1
+            continue
+
+        session_id = main.session_id
         try:
-            store.save(trajectories)
+            store.save(trajectories=trajectories)
         except Exception as exc:
             logger.warning("Failed to store %s: %s", file_path.name, exc)
             result.errors.append({"filename": file_path.name, "error": str(exc)})
@@ -380,7 +447,7 @@ def _build_upload_metadata(
         result: UploadResult with aggregate counts.
 
     Returns:
-        Metadata dict for writing to metadata.json.
+        Metadata dict for appending to metadata.jsonl.
     """
     return {
         "upload_id": upload_id,

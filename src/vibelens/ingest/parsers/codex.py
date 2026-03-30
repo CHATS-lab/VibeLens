@@ -47,7 +47,12 @@ from vibelens.models.trajectories import (
     Trajectory,
     TrajectoryRef,
 )
-from vibelens.utils import coerce_to_string, get_logger, normalize_timestamp, parse_iso_timestamp
+from vibelens.utils import (
+    coerce_to_string,
+    get_logger,
+    normalize_timestamp,
+    parse_iso_timestamp,
+)
 
 logger = get_logger(__name__)
 

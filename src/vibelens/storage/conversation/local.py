@@ -78,6 +78,17 @@ class LocalStore(TrajectoryStore):
             if data_dir:
                 self._data_dirs[parser] = data_dir
 
+    def get_data_dir(self, parser: BaseParser) -> Path | None:
+        """Return the data directory for a parser.
+
+        Args:
+            parser: Parser instance to look up.
+
+        Returns:
+            Data directory path, or None if not configured.
+        """
+        return self._data_dirs.get(parser)
+
     def initialize(self) -> None:
         """No-op — index is loaded lazily on first access."""
 
@@ -92,7 +103,7 @@ class LocalStore(TrajectoryStore):
     def invalidate_index(self) -> None:
         """Clear in-memory index cache, keeping persistent cache.
 
-        The persistent cache (~/.vibelens/index_cache.json) is preserved
+        The persistent cache (~/.vibelens/session_index.json) is preserved
         because _build_index will revalidate it via mtime checks. Only
         stale/new files trigger re-parsing; unchanged files load from cache.
         """
@@ -101,7 +112,7 @@ class LocalStore(TrajectoryStore):
     def _build_index(self) -> None:
         """Build metadata index from all agent data directories.
 
-        Uses a persistent JSON cache (~/.vibelens/index_cache.json) to
+        Uses a persistent JSON cache (~/.vibelens/session_index.json) to
         skip full rebuilds when files haven't changed. Thread-safe: if
         another thread is already building, this blocks until it finishes
         and reuses the result.

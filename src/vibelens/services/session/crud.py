@@ -1,15 +1,16 @@
-"""Session retrieval, export, and donation business logic."""
+"""Session retrieval and export business logic."""
 
 from vibelens.deps import get_store
 from vibelens.models.trajectories import Trajectory
-from vibelens.schemas.session import DonateResult
+from vibelens.services.session.store_resolver import (
+    get_metadata_from_stores,
+    list_all_metadata,
+    load_from_stores,
+)
 from vibelens.services.upload.visibility import filter_visible, is_session_visible
-from vibelens.storage.conversation.disk import DiskStore
 from vibelens.utils import get_logger
 
 logger = get_logger(__name__)
-
-DONATION_DIR_NAME = "donation"
 
 
 def list_sessions(
@@ -26,7 +27,7 @@ def list_sessions(
     Returns:
         List of trajectory summary dicts (no steps).
     """
-    summaries = get_store().list_metadata()
+    summaries = list_all_metadata()
     summaries = filter_visible(summaries, session_token)
     summaries.sort(key=lambda s: s.get("timestamp") or "", reverse=True)
     if project_name:
@@ -46,51 +47,20 @@ def get_session(session_id: str, session_token: str | None = None) -> list[Traje
     Returns:
         List of Trajectory objects, or None if not found.
     """
-    store = get_store()
-    if not is_session_visible(store.get_metadata(session_id), session_token):
+    if not is_session_visible(get_metadata_from_stores(session_id), session_token):
         return None
-    return store.load(session_id)
+    return load_from_stores(session_id)
 
 
 def list_projects() -> list[str]:
-    """List all known project paths.
+    """List all known project paths from all active stores.
 
     Returns:
-        Sorted list of project path strings.
+        Sorted list of unique project path strings.
     """
-    return get_store().list_projects()
+    from vibelens.deps import get_example_store, is_demo_mode
 
-
-def donate_sessions(session_ids: list[str], session_token: str | None = None) -> DonateResult:
-    """Copy sessions to the donation directory.
-
-    Args:
-        session_ids: Session IDs to donate.
-        session_token: Browser tab token for upload scoping (demo mode).
-
-    Returns:
-        DonateResult with counts and per-session errors.
-    """
-    store = get_store()
-    # copy_to_dir is DiskStore-specific (efficient file copy without re-serialization)
-    if not isinstance(store, DiskStore):
-        return DonateResult(total=len(session_ids), donated=0, errors=[])
-    donation_dir = store.root / DONATION_DIR_NAME
-    donation_dir.mkdir(parents=True, exist_ok=True)
-
-    donated = 0
-    errors: list[dict] = []
-
-    for session_id in session_ids:
-        if not is_session_visible(store.get_metadata(session_id), session_token):
-            errors.append({"session_id": session_id, "error": "Session not found"})
-            continue
-        try:
-            store.copy_to_dir(session_id, donation_dir)
-            donated += 1
-        except FileNotFoundError:
-            errors.append({"session_id": session_id, "error": "Session not found"})
-        except OSError as exc:
-            errors.append({"session_id": session_id, "error": str(exc)})
-
-    return DonateResult(total=len(session_ids), donated=donated, errors=errors)
+    projects = set(get_store().list_projects())
+    if is_demo_mode():
+        projects.update(get_example_store().list_projects())
+    return sorted(projects)

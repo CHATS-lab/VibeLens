@@ -91,26 +91,30 @@ class Settings(BaseSettings):
         description="Directory for persisted skill analysis results.",
     )
 
+    # Donation
+    donation_url: str = Field(
+        default="https://vibelens.chats-lab.org",
+        description="URL of the donation server to send donated sessions to.",
+    )
+    donation_dir: Path = Field(
+        default=Path.home() / ".vibelens" / "donations",
+        description="Directory for storing received donation ZIP files and index.",
+    )
+
     # Upload
     upload_dir: Path = Field(
         default=Path.home() / ".vibelens" / "uploads",
         description="Directory to store uploaded zip files.",
     )
     max_zip_bytes: int = Field(
-        default=10 * 1024 * 1024 * 1024,
-        description="Maximum zip file size (10 GB).",
+        default=10 * 1024 * 1024 * 1024, description="Maximum zip file size (10 GB)."
     )
     max_extracted_bytes: int = Field(
-        default=20 * 1024 * 1024 * 1024,
-        description="Maximum total extracted size (20 GB).",
+        default=20 * 1024 * 1024 * 1024, description="Maximum total extracted size (20 GB)."
     )
-    max_file_count: int = Field(
-        default=10_000,
-        description="Maximum files in a zip archive.",
-    )
+    max_file_count: int = Field(default=10_000, description="Maximum files in a zip archive.")
     stream_chunk_size: int = Field(
-        default=64 * 1024,
-        description="Chunk size in bytes for streaming uploads to disk.",
+        default=64 * 1024, description="Chunk size in bytes for streaming uploads to disk."
     )
 
     # LLM batching
@@ -135,6 +139,10 @@ class Settings(BaseSettings):
     )
 
     # Demo mode
+    examples_dir: Path = Field(
+        default=Path.home() / ".vibelens" / "examples",
+        description="Directory for storing parsed demo example trajectories.",
+    )
     demo_example_sessions: str = Field(
         default="",
         description="Comma-separated file paths to pre-load as example sessions.",
@@ -161,7 +169,9 @@ class Settings(BaseSettings):
         self.share_dir = self.share_dir.expanduser()
         self.friction_dir = self.friction_dir.expanduser()
         self.skill_analysis_dir = self.skill_analysis_dir.expanduser()
+        self.donation_dir = self.donation_dir.expanduser()
         self.upload_dir = self.upload_dir.expanduser()
+        self.examples_dir = self.examples_dir.expanduser()
         return self
 
 

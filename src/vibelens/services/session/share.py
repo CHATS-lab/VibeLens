@@ -50,15 +50,11 @@ class ShareService:
 
         payload = [t.model_dump(mode="json") for t in trajectories]
         self._data_path(token).write_text(
-            json.dumps(payload, indent=2, default=str, ensure_ascii=False),
-            encoding="utf-8",
+            json.dumps(payload, indent=2, default=str, ensure_ascii=False), encoding="utf-8"
         )
 
         meta = ShareMeta(token=token, session_id=session_id, title=title, created_at=now)
-        self._meta_path(token).write_text(
-            meta.model_dump_json(indent=2),
-            encoding="utf-8",
-        )
+        self._meta_path(token).write_text(meta.model_dump_json(indent=2), encoding="utf-8")
 
         logger.info("Created share %s for session %s", token, session_id)
         return meta

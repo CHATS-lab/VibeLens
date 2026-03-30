@@ -19,6 +19,8 @@ from vibelens.utils import get_logger
 
 logger = get_logger(__name__)
 
+_ALL_PARSERS: list[type[BaseParser]] = [*LOCAL_PARSER_CLASSES, DataclawParser]
+
 
 def _has_cached_examples(root: Path) -> bool:
     """Check if previously cached example trajectories exist.
@@ -36,7 +38,7 @@ def load_demo_examples(settings: Settings, store: DiskStore) -> int:
     """Parse configured example paths and save via the disk store.
 
     On subsequent startups, skips parsing entirely when a cached
-    _index.jsonl is found in the store root directory.
+    index.jsonl is found in the store root directory.
 
     Each path can be either a JSON file (array of Trajectory dicts) or
     a directory containing raw session files to auto-detect and parse.
@@ -49,7 +51,6 @@ def load_demo_examples(settings: Settings, store: DiskStore) -> int:
         Number of sessions loaded.
     """
     if _has_cached_examples(store.root):
-        # Trigger index rebuild to count cached sessions
         store.invalidate_index()
         count = store.session_count()
         logger.info("Skipping parse — %d cached examples found", count)
@@ -86,9 +87,6 @@ def _load_json_file(file_path: Path, store: DiskStore) -> int:
         return 0
     trajectories = [Trajectory(**item) for item in raw]
     return _save_trajectories(trajectories, store)
-
-
-_ALL_PARSERS: list[type[BaseParser]] = [*LOCAL_PARSER_CLASSES, DataclawParser]
 
 
 def _load_directory(dir_path: Path, store: DiskStore) -> int:

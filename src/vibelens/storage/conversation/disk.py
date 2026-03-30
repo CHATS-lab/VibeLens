@@ -2,10 +2,10 @@
 
 Persists parsed trajectories as JSON files on disk.
 Each session gets a ``{session_id}.json`` file with the full trajectory
-group. A single ``_index.jsonl`` file per directory holds one summary
+group. A single ``index.jsonl`` file per directory holds one summary
 line per session for fast listing without opening every JSON file.
 
-Uses rglob to discover all ``_index.jsonl`` files under the root
+Uses rglob to discover all ``index.jsonl`` files under the root
 directory, so sessions saved to subdirectories (e.g. by upload service)
 are found automatically.
 """
@@ -21,14 +21,14 @@ from vibelens.utils import get_logger
 
 logger = get_logger(__name__)
 
-INDEX_FILENAME = "_index.jsonl"
+INDEX_FILENAME = "index.jsonl"
 
 
 class DiskStore(TrajectoryStore):
     """File-system trajectory store.
 
     Saves and loads trajectories as JSON files under a single root
-    directory. The ``_build_index`` method discovers all ``_index.jsonl``
+    directory. The ``_build_index`` method discovers all ``index.jsonl``
     files via rglob, including those in upload subdirectories.
 
     Inherits concrete read methods (list_metadata, load, exists, etc.)
@@ -99,7 +99,7 @@ class DiskStore(TrajectoryStore):
         shutil.copy2(str(source), str(dest_dir / f"{session_id}.json"))
 
     def _build_index(self) -> None:
-        """Build metadata index by reading all _index.jsonl files recursively."""
+        """Build metadata index by reading all index.jsonl files recursively."""
         self._index = {}
         self._metadata_cache = {}
 

@@ -854,7 +854,7 @@ class TestDiskStore:
         sub_store.initialize()
         sub_store.save([_make_test_trajectory("tagged-001", "Tagged session")])
 
-        # Main store picks up the tag via rglob on _index.jsonl
+        # Main store picks up the tag via rglob on index.jsonl
         summaries = store.list_metadata()
         tagged = [s for s in summaries if s.get("_upload_id") == "upload_xyz"]
         assert len(tagged) == 1
@@ -905,7 +905,7 @@ class TestFilterVisible:
         print("Upload sessions hidden without token")
 
     def test_upload_sessions_visible_with_owning_token(self):
-        """Upload sessions are visible when the token owns the upload."""
+        """Token with uploads sees only its last upload; examples are hidden."""
         from vibelens.services.upload.visibility import filter_visible, register_upload
 
         register_upload("token-abc", "upload_abc")
@@ -915,8 +915,25 @@ class TestFilterVisible:
             {"session_id": "upload-001", "_upload_id": "upload_abc"},
         ]
         result = filter_visible(summaries, session_token="token-abc")
-        assert len(result) == 2
-        print("Upload sessions visible with owning token")
+        assert len(result) == 1
+        assert result[0]["session_id"] == "upload-001"
+        print("Token with uploads sees only last upload, examples hidden")
+
+    def test_last_upload_replaces_previous(self):
+        """A new upload replaces the previous one; only the latest is visible."""
+        from vibelens.services.upload.visibility import filter_visible, register_upload
+
+        register_upload("token-replace", "upload_old")
+        register_upload("token-replace", "upload_new")
+
+        summaries = [
+            {"session_id": "old-001", "_upload_id": "upload_old"},
+            {"session_id": "new-001", "_upload_id": "upload_new"},
+        ]
+        result = filter_visible(summaries, session_token="token-replace")
+        assert len(result) == 1
+        assert result[0]["session_id"] == "new-001"
+        print("Only the last upload is visible after re-upload")
 
     def test_upload_sessions_hidden_with_wrong_token(self):
         """Upload sessions are hidden when the token doesn't own the upload."""
@@ -950,7 +967,137 @@ class TestFilterVisible:
         # Upload session with owning token -> visible
         register_upload("my-token", "u1")
         assert is_session_visible({"session_id": "up", "_upload_id": "u1"}, "my-token") is True
+
+        # Root session with token that has uploads -> hidden
+        assert is_session_visible({"session_id": "root"}, "my-token") is False
         print("is_session_visible() correctly checks visibility")
+
+
+class TestDualStore:
+    """Test dual DiskStore metadata merging for demo mode."""
+
+    def test_list_all_metadata_merges_stores(self, tmp_path):
+        """list_all_metadata() returns sessions from both upload and example stores."""
+        from vibelens.storage.conversation.disk import DiskStore
+
+        upload_dir = tmp_path / "uploads"
+        examples_dir = tmp_path / "examples"
+
+        upload_store = DiskStore(root=upload_dir)
+        upload_store.initialize()
+        upload_store.save([_make_test_trajectory("upload-001", "Uploaded session")])
+
+        example_store = DiskStore(root=examples_dir)
+        example_store.initialize()
+        example_store.save([_make_test_trajectory("example-001", "Example session")])
+
+        # Verify each store has one session
+        assert upload_store.session_count() == 1
+        assert example_store.session_count() == 1
+
+        # Simulate list_all_metadata by combining both
+        merged = list(upload_store.list_metadata()) + list(example_store.list_metadata())
+        session_ids = {m["session_id"] for m in merged}
+        assert session_ids == {"upload-001", "example-001"}
+        print(f"Merged metadata contains {len(merged)} sessions from dual stores")
+
+    def test_load_from_stores_fallback(self, tmp_path):
+        """load_from_stores() falls back to example store when primary returns None."""
+        from vibelens.storage.conversation.disk import DiskStore
+
+        upload_dir = tmp_path / "uploads"
+        examples_dir = tmp_path / "examples"
+
+        upload_store = DiskStore(root=upload_dir)
+        upload_store.initialize()
+
+        example_store = DiskStore(root=examples_dir)
+        example_store.initialize()
+        example_store.save([_make_test_trajectory("example-only", "Only in examples")])
+
+        # Primary store doesn't have this session
+        assert upload_store.load("example-only") is None
+
+        # Example store has it
+        result = example_store.load("example-only")
+        assert result is not None
+        assert result[0].session_id == "example-only"
+        print("Fallback to example store works for sessions not in upload store")
+
+    def test_get_metadata_from_stores_fallback(self, tmp_path):
+        """get_metadata_from_stores() checks example store when primary returns None."""
+        from vibelens.storage.conversation.disk import DiskStore
+
+        upload_dir = tmp_path / "uploads"
+        examples_dir = tmp_path / "examples"
+
+        upload_store = DiskStore(root=upload_dir)
+        upload_store.initialize()
+
+        example_store = DiskStore(root=examples_dir)
+        example_store.initialize()
+        example_store.save([_make_test_trajectory("ex-meta", "Example metadata")])
+
+        # Primary store returns None
+        assert upload_store.get_metadata("ex-meta") is None
+
+        # Example store returns metadata
+        meta = example_store.get_metadata("ex-meta")
+        assert meta is not None
+        assert meta["session_id"] == "ex-meta"
+        print("Metadata fallback to example store works correctly")
+
+    def test_stores_are_independent(self, tmp_path):
+        """Uploads and examples don't bleed into each other's indexes."""
+        from vibelens.storage.conversation.disk import DiskStore
+
+        upload_dir = tmp_path / "uploads"
+        examples_dir = tmp_path / "examples"
+
+        upload_store = DiskStore(root=upload_dir)
+        upload_store.initialize()
+        upload_store.save([_make_test_trajectory("upload-only", "Upload session")])
+
+        example_store = DiskStore(root=examples_dir)
+        example_store.initialize()
+        example_store.save([_make_test_trajectory("example-only", "Example session")])
+
+        # Each store only knows about its own sessions
+        upload_ids = {m["session_id"] for m in upload_store.list_metadata()}
+        example_ids = {m["session_id"] for m in example_store.list_metadata()}
+        assert upload_ids == {"upload-only"}
+        assert example_ids == {"example-only"}
+        assert upload_ids.isdisjoint(example_ids)
+        print("Upload and example stores are fully independent")
+
+    def test_deduplication_when_same_session_in_both(self, tmp_path):
+        """Sessions present in both stores appear only once (upload wins)."""
+        from vibelens.storage.conversation.disk import DiskStore
+
+        upload_dir = tmp_path / "uploads"
+        examples_dir = tmp_path / "examples"
+
+        upload_store = DiskStore(root=upload_dir)
+        upload_store.initialize()
+        upload_store.save([_make_test_trajectory("shared-001", "Upload version")])
+
+        example_store = DiskStore(root=examples_dir)
+        example_store.initialize()
+        example_store.save([_make_test_trajectory("shared-001", "Example version")])
+        example_store.save([_make_test_trajectory("example-only", "Only in examples")])
+
+        # Simulate list_all_metadata deduplication logic
+        metadata = list(upload_store.list_metadata())
+        seen_ids = {m.get("session_id") for m in metadata}
+        for m in example_store.list_metadata():
+            if m.get("session_id") not in seen_ids:
+                metadata.append(m)
+
+        session_ids = [m["session_id"] for m in metadata]
+        assert len(session_ids) == 2
+        assert session_ids.count("shared-001") == 1
+        assert "example-only" in session_ids
+        print("Deduplication: shared session appears once, unique example included")
 
 
 def _make_test_trajectory(session_id: str, first_message: str) -> Trajectory:

@@ -10,13 +10,11 @@ from vibelens.app import create_app
 
 
 @pytest.fixture(autouse=True)
-def reset_singletons():
-    """Reset module-level singletons between tests."""
-    deps._settings = None
-    deps._store = None
+def _reset_singletons():
+    """Clear all cached singletons between tests for full isolation."""
+    deps.reset_singletons()
     yield
-    deps._settings = None
-    deps._store = None
+    deps.reset_singletons()
 
 
 @pytest.fixture

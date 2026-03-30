@@ -6,7 +6,7 @@ recommendations, using real step IDs from loaded trajectories.
 
 from datetime import UTC, datetime
 
-from vibelens.deps import get_central_skill_store, get_store
+from vibelens.deps import get_central_skill_store
 from vibelens.models.analysis.step_ref import StepRef
 from vibelens.models.inference import BackendType
 from vibelens.models.skill.skills import (
@@ -19,6 +19,7 @@ from vibelens.models.skill.skills import (
     SkillRecommendation,
     WorkflowPattern,
 )
+from vibelens.services.session.store_resolver import load_from_stores
 
 
 def build_mock_skill_result(session_ids: list[str], mode: SkillMode) -> SkillAnalysisResult:
@@ -84,10 +85,9 @@ def _collect_step_ids(session_ids: list[str]) -> dict[str, list[str]]:
     Only loads up to MAX_MOCK_SESSIONS to avoid slow I/O in mock mode.
     All remaining session_ids are reported as loaded (with no step refs).
     """
-    store = get_store()
     pool: dict[str, list[str]] = {}
     for sid in session_ids[:MAX_MOCK_SESSIONS]:
-        trajectories = store.load(sid)
+        trajectories = load_from_stores(sid)
         if not trajectories:
             continue
         step_ids = [step.step_id for traj in trajectories for step in traj.steps]

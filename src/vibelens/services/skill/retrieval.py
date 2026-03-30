@@ -16,7 +16,6 @@ from vibelens.deps import (
     get_central_skill_store,
     get_inference_backend,
     get_skill_analysis_store,
-    get_store,
     is_demo_mode,
 )
 from vibelens.llm.backend import InferenceBackend, InferenceError
@@ -31,6 +30,7 @@ from vibelens.models.skill.skills import (
 )
 from vibelens.models.trajectories import Trajectory
 from vibelens.services.friction.signals import build_step_signals
+from vibelens.services.session.store_resolver import get_metadata_from_stores, load_from_stores
 from vibelens.services.skill.digest import digest_step_signals_for_skills
 from vibelens.services.upload.visibility import is_session_visible
 from vibelens.utils.log import get_logger
@@ -156,16 +156,15 @@ def _get_backend_model(backend: InferenceBackend) -> str:
 def _load_sessions(
     session_ids: list[str], session_token: str | None
 ) -> tuple[list[Trajectory], list[str], list[str]]:
-    store = get_store()
     demo = is_demo_mode()
     loaded_trajectories: list[Trajectory] = []
     loaded_ids: list[str] = []
     skipped_ids: list[str] = []
     for sid in session_ids:
-        if demo and not is_session_visible(store.get_metadata(sid), session_token):
+        if demo and not is_session_visible(get_metadata_from_stores(sid), session_token):
             skipped_ids.append(sid)
             continue
-        trajectories = store.load(sid)
+        trajectories = load_from_stores(sid)
         if not trajectories:
             skipped_ids.append(sid)
             continue

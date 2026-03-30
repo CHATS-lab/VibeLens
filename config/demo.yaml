@@ -12,6 +12,9 @@ app:
 demo:
   example_sessions: "examples/claude-codex-example, examples/codex-example"
 
+donation:
+  dir: ~/.vibelens/donations
+
 server:
   host: 0.0.0.0                      # Bind to all interfaces for public access
   port: 12001

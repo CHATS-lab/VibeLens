@@ -181,6 +181,13 @@ export function App() {
   } | null>(null);
   const dashboardPreloaded = useRef(false);
 
+  // Reset dashboard preload when data changes (e.g., after upload)
+  useEffect(() => {
+    if (refreshKey === 0) return;
+    dashboardPreloaded.current = false;
+    setDashboardCache(null);
+  }, [refreshKey]);
+
   useEffect(() => {
     if (sessions.length === 0 || dashboardPreloaded.current) return;
     dashboardPreloaded.current = true;
@@ -375,15 +382,17 @@ export function App() {
             </div>
 
             {/* Toolbar */}
-            <div className="shrink-0 border-b border-zinc-800 px-3 py-2.5 grid grid-cols-3 gap-2 text-xs text-zinc-400">
-              <button
-                onClick={() => setShowUploadDialog(true)}
-                className="flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium bg-violet-600 hover:bg-violet-500 text-white rounded transition"
-                title="Upload conversation files"
-              >
-                <FileUp className="w-3.5 h-3.5" />
-                Upload
-              </button>
+            <div className={`shrink-0 border-b border-zinc-800 px-3 py-2.5 grid gap-2 text-xs text-zinc-400 ${appMode === "demo" ? "grid-cols-3" : "grid-cols-2"}`}>
+              {appMode === "demo" && (
+                <button
+                  onClick={() => setShowUploadDialog(true)}
+                  className="flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium bg-violet-600 hover:bg-violet-500 text-white rounded transition"
+                  title="Upload conversation files"
+                >
+                  <FileUp className="w-3.5 h-3.5" />
+                  Upload
+                </button>
+              )}
               <button
                 onClick={handleDownloadClick}
                 disabled={checkedIds.size === 0}
@@ -495,7 +504,7 @@ export function App() {
             ) : mainView === "friction" ? (
               <FrictionPanel checkedIds={checkedIds} />
             ) : mainView === "analyze" ? (
-              <DashboardView cache={dashboardCache} />
+              <DashboardView key={refreshKey} cache={dashboardCache} />
             ) : selectedSessionId ? (
               <SessionView
                 sessionId={selectedSessionId}

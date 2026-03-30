@@ -15,7 +15,7 @@ from vibelens.utils.log import get_logger
 logger = get_logger(__name__)
 
 CACHE_VERSION = 1
-DEFAULT_CACHE_PATH = Path.home() / ".vibelens" / "index_cache.json"
+DEFAULT_CACHE_PATH = Path.home() / ".vibelens" / "session_index.json"
 
 
 def load_cache(cache_path: Path = DEFAULT_CACHE_PATH) -> dict | None:
@@ -69,7 +69,7 @@ def save_cache(
         "entries": metadata_cache,
     }
     try:
-        cache_path.write_text(json.dumps(payload), encoding="utf-8")
+        cache_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         logger.info("Wrote index cache: %d entries", len(metadata_cache))
     except OSError:
         logger.warning("Failed to write index cache to %s", cache_path)

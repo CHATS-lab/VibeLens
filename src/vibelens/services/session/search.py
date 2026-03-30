@@ -8,10 +8,10 @@ the frontend to filter its existing summary list.
 import time
 from dataclasses import dataclass
 
-from vibelens.deps import get_store
 from vibelens.models.enums import StepSource
 from vibelens.models.trajectories import Trajectory
 from vibelens.models.trajectories.content import ContentPart
+from vibelens.services.session.store_resolver import list_all_metadata, load_from_stores
 from vibelens.services.upload.visibility import filter_visible
 from vibelens.utils import get_logger
 
@@ -96,10 +96,9 @@ def _ensure_index_fresh(session_token: str | None) -> None:
 
 def _build_index(session_token: str | None) -> None:
     """Iterate all sessions and extract searchable text into the index."""
-    store = get_store()
     _search_index.clear()
 
-    summaries = store.list_metadata()
+    summaries = list_all_metadata()
     summaries = filter_visible(summaries, session_token)
     logger.info("Building search index for %d sessions", len(summaries))
 
@@ -108,7 +107,7 @@ def _build_index(session_token: str | None) -> None:
         if not session_id:
             continue
 
-        trajectories = store.load(session_id)
+        trajectories = load_from_stores(session_id)
         if not trajectories:
             continue
 

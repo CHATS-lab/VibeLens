@@ -8,9 +8,8 @@ from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from vibelens.deps import get_store
-from vibelens.schemas.session import DonateRequest, DonateResult, DownloadRequest
+from vibelens.schemas.session import DownloadRequest
 from vibelens.services.session.crud import (
-    donate_sessions,
     get_session,
     list_projects,
     list_sessions,
@@ -155,22 +154,6 @@ async def download_sessions(
         media_type="application/zip",
         headers={"Content-Disposition": 'attachment; filename="vibelens-export.zip"'},
     )
-
-
-@router.post("/sessions/donate")
-async def donate_sessions_endpoint(
-    request: DonateRequest, x_session_token: str | None = Header(None)
-) -> DonateResult:
-    """Donate selected sessions by copying them to the donation directory.
-
-    Args:
-        request: DonateRequest with session_ids to donate.
-        x_session_token: Browser tab token for upload scoping.
-
-    Returns:
-        DonateResult with counts and per-session errors.
-    """
-    return donate_sessions(request.session_ids, session_token=x_session_token)
 
 
 @router.get("/projects")

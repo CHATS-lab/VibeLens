@@ -1,30 +1,37 @@
 """Upload visibility state and filtering.
 
-Owns the mapping of browser session tokens to upload directories.
+Owns the mapping of browser session tokens to their last upload.
 The storage layer tags metadata with _upload_id; this module provides
 filter_visible() and is_session_visible() for service-layer callers
 to enforce visibility without circular imports.
+
+After a user uploads, only sessions from that last upload are shown;
+example sessions are hidden. Tokens without uploads see examples only.
 """
 
-# Upload ownership: maps browser session token -> set of upload_ids
-_token_uploads: dict[str, set[str]] = {}
+# Maps browser session token -> last upload_id
+_token_last_upload: dict[str, str] = {}
 
 
 def register_upload(session_token: str, upload_id: str) -> None:
-    """Associate an upload subdirectory with a browser session token.
+    """Record the last upload for a browser session token.
+
+    Replaces any previously tracked upload so the user only sees
+    sessions from their most recent upload.
 
     Args:
         session_token: Browser tab UUID from X-Session-Token header.
         upload_id: Upload subdirectory name.
     """
-    _token_uploads.setdefault(session_token, set()).add(upload_id)
+    _token_last_upload[session_token] = upload_id
 
 
 def filter_visible(summaries: list[dict], session_token: str | None) -> list[dict]:
     """Filter metadata summaries to those visible to the given token.
 
-    Root-level sessions (_upload_id absent) are always visible.
-    Upload sessions require the token to own the upload.
+    When the token has uploaded, only sessions from the last upload
+    are returned; example sessions are hidden. Tokens without uploads
+    see only example (root-level) sessions.
 
     Args:
         summaries: List of trajectory summary dicts.
@@ -33,12 +40,18 @@ def filter_visible(summaries: list[dict], session_token: str | None) -> list[dic
     Returns:
         Filtered list of visible summaries.
     """
-    allowed = _token_uploads.get(session_token, set()) if session_token else set()
-    return [s for s in summaries if not s.get("_upload_id") or s.get("_upload_id") in allowed]
+    last_id = _token_last_upload.get(session_token) if session_token else None
+    if last_id:
+        return [s for s in summaries if s.get("_upload_id") == last_id]
+    return [s for s in summaries if not s.get("_upload_id")]
 
 
 def is_session_visible(meta: dict | None, session_token: str | None) -> bool:
     """Check if a single session is visible to the given token.
+
+    When the token has uploaded, only the last upload's sessions are
+    visible; example sessions are hidden. Tokens without uploads see
+    only example sessions.
 
     Args:
         meta: Session metadata dict (may contain _upload_id).
@@ -50,8 +63,7 @@ def is_session_visible(meta: dict | None, session_token: str | None) -> bool:
     if not meta:
         return False
     upload_id = meta.get("_upload_id")
-    if not upload_id:
-        return True
-    if not session_token:
-        return False
-    return upload_id in _token_uploads.get(session_token, set())
+    last_id = _token_last_upload.get(session_token) if session_token else None
+    if last_id:
+        return upload_id == last_id
+    return not upload_id

@@ -1,5 +1,6 @@
 import {
   ArrowLeft,
+  CheckCircle2,
   ChevronRight,
   FileArchive,
   Loader2,
@@ -17,7 +18,7 @@ interface UploadDialogProps {
   onComplete: () => void;
 }
 
-type Step = "select" | "upload";
+type Step = "select" | "upload" | "confirm" | "result";
 
 const AGENT_OPTIONS: { type: AgentType; label: string }[] = [
   { type: "claude_code", label: "Claude Code" },
@@ -30,6 +31,12 @@ const OS_OPTIONS: { platform: OSPlatform; label: string }[] = [
   { platform: "linux", label: "Linux" },
   { platform: "windows", label: "Windows" },
 ];
+
+const AGENT_LABELS: Record<AgentType, string> = {
+  claude_code: "Claude Code",
+  codex: "Codex CLI",
+  gemini: "Gemini CLI",
+};
 
 const DEFAULT_AGENT: AgentType = "claude_code";
 const DEFAULT_OS: OSPlatform = "macos";
@@ -94,6 +101,7 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
 
   const handleUpload = useCallback(() => {
     if (!file) return;
+    setStep("result");
     setUploading(true);
     setResult(null);
     setUploadProgress(0);
@@ -164,8 +172,6 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
     onClose();
   }, [result, onClose, onComplete]);
 
-  const hasResult = result !== null;
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div
@@ -176,9 +182,9 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
           <div className="flex items-center gap-2">
-            {step === "upload" && !uploading && (
+            {(step === "upload" || step === "confirm") && !uploading && (
               <button
-                onClick={() => setStep("select")}
+                onClick={() => setStep(step === "confirm" ? "upload" : "select")}
                 className="text-zinc-500 hover:text-zinc-300 transition"
               >
                 <ArrowLeft className="w-4 h-4" />
@@ -316,30 +322,12 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
                     </button>
                   </div>
                   <button
-                    onClick={hasResult ? handleDone : handleUpload}
-                    disabled={uploading || fileTooLarge}
+                    onClick={() => setStep("confirm")}
+                    disabled={fileTooLarge}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white bg-violet-600 hover:bg-violet-500 rounded transition disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
                   >
-                    {uploading ? (
-                      uploadPhase === "processing" ? (
-                        <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          Processing...
-                        </>
-                      ) : (
-                        <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          {uploadProgress}%
-                        </>
-                      )
-                    ) : hasResult ? (
-                      "Done"
-                    ) : (
-                      <>
-                        <Upload className="w-3.5 h-3.5" />
-                        Upload
-                      </>
-                    )}
+                    <Upload className="w-3.5 h-3.5" />
+                    Upload
                   </button>
                 </div>
               )}
@@ -350,30 +338,94 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
                   File exceeds the {maxZipMB} MB limit. Try excluding large sessions or splitting the archive.
                 </p>
               )}
+            </div>
+          )}
 
-              {/* Progress bar */}
-              {uploading && (
-                <div className="space-y-1.5">
-                  <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                    {uploadPhase === "sending" ? (
-                      <div
-                        className="h-full bg-violet-500 rounded-full transition-all duration-300"
-                        style={{ width: `${uploadProgress}%` }}
-                      />
-                    ) : (
-                      <div className="h-full bg-violet-500 rounded-full animate-pulse w-full" />
-                    )}
-                  </div>
-                  <p className="text-[10px] text-zinc-500 text-center">
-                    {uploadPhase === "sending"
-                      ? `Uploading — ${uploadProgress}% of ${((file?.size ?? 0) / (1024 * 1024)).toFixed(0)} MB`
-                      : "Server is extracting and parsing sessions…"}
-                  </p>
+          {step === "confirm" && file && (
+            <div className="space-y-5">
+              <p className="text-sm text-zinc-300">
+                Ready to upload? Please confirm the details below.
+              </p>
+
+              <div className="bg-zinc-800/50 border border-zinc-700 rounded-lg p-4 space-y-2.5">
+                <div className="flex items-center gap-2 text-sm text-zinc-200">
+                  <FileArchive className="w-4 h-4 text-violet-400 shrink-0" />
+                  <span className="truncate">{file.name}</span>
                 </div>
-              )}
+                <div className="flex items-center gap-4 text-xs text-zinc-400">
+                  <span>{(file.size / (1024 * 1024)).toFixed(1)} MB</span>
+                  <span>{AGENT_LABELS[agentType]}</span>
+                </div>
+              </div>
 
-              {/* Inline result */}
-              {result && <ResultStats result={result} />}
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setStep("upload")}
+                  className="px-4 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 border border-zinc-700 hover:border-zinc-500 rounded transition"
+                >
+                  Back
+                </button>
+                <button
+                  onClick={handleUpload}
+                  className="flex items-center gap-1.5 px-4 py-1.5 text-xs text-white bg-violet-600 hover:bg-violet-500 rounded transition"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  Confirm Upload
+                </button>
+              </div>
+            </div>
+          )}
+
+          {step === "result" && (
+            <div className="space-y-5">
+              {uploading ? (
+                <div className="space-y-4">
+                  <div className="flex flex-col items-center gap-3 py-4">
+                    <Loader2 className="w-8 h-8 text-violet-400 animate-spin" />
+                    <p className="text-sm text-zinc-300">
+                      {uploadPhase === "sending" ? "Uploading..." : "Processing sessions..."}
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                      {uploadPhase === "sending" ? (
+                        <div
+                          className="h-full bg-violet-500 rounded-full transition-all duration-300"
+                          style={{ width: `${uploadProgress}%` }}
+                        />
+                      ) : (
+                        <div className="h-full bg-violet-500 rounded-full animate-pulse w-full" />
+                      )}
+                    </div>
+                    <p className="text-[10px] text-zinc-500 text-center">
+                      {uploadPhase === "sending"
+                        ? `Uploading — ${uploadProgress}% of ${((file?.size ?? 0) / (1024 * 1024)).toFixed(0)} MB`
+                        : "Server is extracting and parsing sessions…"}
+                    </p>
+                  </div>
+                </div>
+              ) : result ? (
+                <div className="space-y-4">
+                  <div className="flex flex-col items-center gap-2 py-3">
+                    <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+                    <p className="text-2xl font-semibold text-zinc-100 font-mono">
+                      {result.sessions_parsed}
+                    </p>
+                    <p className="text-xs text-zinc-400">
+                      {result.sessions_parsed === 1 ? "session" : "sessions"} imported
+                    </p>
+                  </div>
+                  <ResultStats result={result} />
+                  <div className="flex justify-end">
+                    <button
+                      onClick={handleDone}
+                      className="px-4 py-1.5 text-xs text-white bg-violet-600 hover:bg-violet-500 rounded transition"
+                    >
+                      Done
+                    </button>
+                  </div>
+                </div>
+              ) : null}
             </div>
           )}
         </div>

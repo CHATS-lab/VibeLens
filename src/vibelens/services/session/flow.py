@@ -1,8 +1,8 @@
 """Flow analysis service — tool dependency graph and phase detection."""
 
-from vibelens.deps import get_store
 from vibelens.models.trajectories import Trajectory
 from vibelens.services.session.phase import detect_phases
+from vibelens.services.session.store_resolver import get_metadata_from_stores, load_from_stores
 from vibelens.services.session.tool_graph import build_tool_graph
 from vibelens.services.upload.visibility import is_session_visible
 
@@ -47,10 +47,9 @@ def get_session_flow(
     Returns:
         Dict with session_id, tool_graph, and phase_segments, or None if not found.
     """
-    store = get_store()
-    if not is_session_visible(store.get_metadata(session_id), session_token):
+    if not is_session_visible(get_metadata_from_stores(session_id), session_token):
         return None
-    group = store.load(session_id)
+    group = load_from_stores(session_id)
     if not group:
         return None
     return compute_flow_from_trajectories(group, session_id)

@@ -16,6 +16,7 @@ from vibelens.deps import (
     get_agent_skill_stores,
     get_central_skill_store,
     get_codex_skill_store,
+    get_example_store,
     get_skill_analysis_store,
     get_skill_store,
     get_store,
@@ -23,7 +24,6 @@ from vibelens.deps import (
 from vibelens.models.enums import AppMode
 from vibelens.services.dashboard.loader import warm_cache
 from vibelens.services.session.demo import load_demo_examples
-from vibelens.storage.conversation.disk import DiskStore
 from vibelens.utils import get_logger
 
 logger = get_logger(__name__)
@@ -49,8 +49,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     store.initialize()
 
     if settings.app_mode == AppMode.DEMO:
-        assert isinstance(store, DiskStore), "Demo mode requires DiskStore"
-        loaded = load_demo_examples(settings, store)
+        example_store = get_example_store()
+        example_store.initialize()
+        loaded = load_demo_examples(settings, example_store)
         if loaded:
             logger.info("Loaded %d trajectory groups for demo mode", loaded)
 
@@ -133,8 +134,9 @@ def _seed_mock_skill_history() -> None:
     if analysis_store.list_analyses():
         return
 
-    store = get_store()
-    metadata = store.list_metadata()
+    from vibelens.services.session.store_resolver import list_all_metadata
+
+    metadata = list_all_metadata()
     session_ids = [m["session_id"] for m in metadata if "session_id" in m][:3]
     if not session_ids:
         logger.info("No sessions available to seed skill analysis history")

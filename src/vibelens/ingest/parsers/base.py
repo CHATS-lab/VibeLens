@@ -161,6 +161,20 @@ class BaseParser(ABC):
         """
         return []
 
+    def get_session_files(self, session_file: Path) -> list[Path]:
+        """Return all files related to a session including sub-agent files.
+
+        Default returns just the session file. Override in parsers with
+        multi-file sessions (e.g., Claude Code sub-agents).
+
+        Args:
+            session_file: Path to the main session file.
+
+        Returns:
+            List of all file paths belonging to this session.
+        """
+        return [session_file]
+
     @abstractmethod
     def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
         """Parse raw file content into Trajectory objects.
