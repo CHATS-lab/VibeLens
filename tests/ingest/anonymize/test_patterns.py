@@ -1,54 +1,13 @@
-"""Tests for regex patterns, entropy, and allowlist utilities."""
+"""Tests for regex patterns and allowlist utilities."""
 
 import pytest
 
 from vibelens.ingest.anonymize.rule_anonymizer.patterns import (
     CREDENTIAL_PATTERNS,
     PII_PATTERNS,
-    compute_shannon_entropy,
-    has_mixed_char_types,
     is_allowlisted,
-    is_natural_text,
-    is_valid_high_entropy,
 )
 from vibelens.ingest.anonymize.rule_anonymizer.redactor import scan_text
-
-
-class TestShannonEntropy:
-    def test_empty_string_returns_zero(self) -> None:
-        result = compute_shannon_entropy("")
-        print(f"  entropy('') = {result}")
-        assert result == 0.0
-
-    def test_single_char_returns_zero(self) -> None:
-        result = compute_shannon_entropy("aaaaaaa")
-        print(f"  entropy('aaaaaaa') = {result}")
-        assert result == 0.0
-
-    def test_random_base64_has_high_entropy(self) -> None:
-        # Simulated base64-like random string
-        text = "aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2uV3wX4yZ5"
-        result = compute_shannon_entropy(text)
-        print(f"  entropy(base64-like) = {result:.3f}")
-        assert result > 4.0
-
-    def test_natural_text_has_moderate_entropy(self) -> None:
-        text = "the quick brown fox jumps over the lazy dog"
-        result = compute_shannon_entropy(text)
-        print(f"  entropy(natural text) = {result:.3f}")
-        assert 2.0 < result < 5.0
-
-
-class TestHasMixedCharTypes:
-    def test_all_lowercase_returns_false(self) -> None:
-        assert has_mixed_char_types("abcdef") is False
-
-    def test_upper_lower_digit_symbol_returns_true(self) -> None:
-        assert has_mixed_char_types("Abc123!@") is True
-
-    def test_two_types_returns_false(self) -> None:
-        # Only upper + lower = 2 types, threshold is 3
-        assert has_mixed_char_types("AbCdEf") is False
 
 
 class TestIsAllowlisted:
@@ -64,80 +23,6 @@ class TestIsAllowlisted:
         for ip in ["8.8.8.8", "8.8.4.4", "1.1.1.1", "1.0.0.1"]:
             assert is_allowlisted(ip) is True
             print(f"  allowlisted: {ip}")
-
-
-class TestIsNaturalText:
-    def test_english_sentences_detected(self) -> None:
-        sentences = [
-            "Launch a new agent to handle complex, multi-step tasks autonomously.",
-            "Reads a file from the local filesystem. You can access any file.",
-            "Execute a given bash command and returns its output.",
-            "Use this tool to create a structured task list for your session.",
-            "Optional model to use for this agent. If not specified, inherits from parent.",
-        ]
-        for sentence in sentences:
-            result = is_natural_text(sentence)
-            space_ratio = sum(1 for c in sentence if c == " ") / len(sentence)
-            print(f"  is_natural_text={result}, space%={space_ratio:.1%}: {sentence[:60]}...")
-            assert result is True
-
-    def test_api_key_not_detected(self) -> None:
-        assert is_natural_text("aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2uV3wX4yZ5!@$") is False
-
-    def test_base64_not_detected(self) -> None:
-        assert is_natural_text("dGhpcyBpcyBhIGJhc2U2NCBlbmNvZGVkIHN0cmluZw==") is False
-
-    def test_empty_returns_false(self) -> None:
-        assert is_natural_text("") is False
-
-    def test_url_not_detected(self) -> None:
-        assert is_natural_text("https://example.com/very/long/path/to/resource/file.html") is False
-
-    def test_boundary_at_ten_percent(self) -> None:
-        # 10 chars with 1 space = exactly 10% — should be detected
-        text = "abcdefgh i"
-        assert is_natural_text(text) is True
-        # 11 chars with 1 space = 9.1% — should not be detected
-        text_below = "abcdefghi j"
-        space_ratio = sum(1 for c in text_below if c == " ") / len(text_below)
-        print(f"  boundary below: space%={space_ratio:.3f}")
-        assert is_natural_text(text_below) is (space_ratio >= 0.10)
-
-
-class TestIsValidHighEntropy:
-    def test_short_string_returns_false(self) -> None:
-        # Below HIGH_ENTROPY_MIN_LENGTH (40)
-        assert is_valid_high_entropy("abc123") is False
-
-    def test_low_entropy_long_string_returns_false(self) -> None:
-        # 50 chars but all the same character — zero entropy
-        assert is_valid_high_entropy("a" * 50) is False
-
-    def test_genuine_secret_returns_true(self) -> None:
-        # High entropy, mixed char types, long enough
-        secret = "aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2uV3wX4yZ5!@#$"
-        result = is_valid_high_entropy(secret)
-        print(f"  is_valid_high_entropy(genuine secret) = {result}")
-        assert result is True
-
-    @pytest.mark.parametrize(
-        "description",
-        [
-            "Launch a new agent to handle complex, multi-step tasks autonomously.",
-            "Reads a file from the local filesystem. You can access any file directly.",
-            "A short (3-5 word) description of the task",
-            "Execute a given bash command and returns its output.",
-            "Use this tool to create a structured task list for your coding session.",
-            "Optional model to use for this agent. If not specified, inherits from parent.",
-            "The regular expression pattern to search for in file contents",
-            "The prompt to run on the fetched content",
-        ],
-    )
-    def test_tool_description_not_flagged(self, description: str) -> None:
-        """Tool descriptions from agent system prompts must not be flagged as secrets."""
-        result = is_valid_high_entropy(description)
-        print(f"  is_valid_high_entropy={result}: {description[:60]}...")
-        assert result is False
 
 
 class TestCredentialPatterns:
@@ -158,6 +43,43 @@ class TestCredentialPatterns:
             ("pem_private_key", "-----BEGIN RSA PRIVATE KEY-----"),
             ("stripe_key", "sk_test_abcdefghijklmnopqrstuv"),
             ("db_url_postgres", "postgres://admin:p@ssw0rd@db.example.com:5432/mydb"),
+            # New patterns
+            (
+                "slack_webhook",
+                "https://hooks.slack.com/services/T03EXAMPLE/B05EXAMPLE/aBC123xYz789",
+            ),
+            (
+                "discord_webhook",
+                "https://discord.com/api/webhooks/1234567890/abcdefABCDEF_1234567890",
+            ),
+            ("basic_auth_url", "https://admin:secretpass@api.example.com/v1"),
+            ("auth_header", "Authorization: Basic dXNlcjpwYXNz"),
+            ("auth_header", "Authorization: Token abc12345defghijk"),
+            ("vercel_token", "vercel_abcdefghijklmnopqrstuv"),
+            ("netlify_token", "nfp_abcdefghijklmnopqrstuv"),
+            ("supabase_key", "sbp_abcdefghijklmnopqrstuv"),
+            ("twilio_key", "SK" + "0" * 32),
+            ("sendgrid_key", "SG.abcdefghijk.lmnopqrstuvwxyz1234567890"),
+            ("sentry_dsn", "https://abc123def456@o123456.ingest.sentry.io/789012"),
+            (
+                "session_cookie_token",
+                "session_id=abc123def456ghi789jkl012mno345",
+            ),
+            (
+                "json_yaml_secret",
+                '"password": "my_super_secret_password"',
+            ),
+            ("azure_client_secret", "AZURE_CLIENT_SECRET=abcdef12345678"),
+            (
+                "gcp_service_account_key",
+                '"private_key_id": "0123456789abcdef0123456789abcdef01234567"',
+            ),
+            ("datadog_api_key", "DD_API_KEY=0123456789abcdef0123456789abcdef"),
+            (
+                "long_hex_secret",
+                "secret="
+                + "a1b2c3d4e5f6" * 11,  # 66 hex chars
+            ),
         ],
     )
     def test_credential_detected(self, name: str, sample: str) -> None:
@@ -165,6 +87,44 @@ class TestCredentialPatterns:
         matched_names = [f.name for f in findings]
         print(f"  {name}: matched={matched_names}")
         assert len(findings) >= 1, f"Expected {name} to be detected in: {sample}"
+
+
+class TestFalsePositiveRegression:
+    """Strings that must NOT be redacted — guards against over-matching."""
+
+    @pytest.mark.parametrize(
+        "label",
+        [
+            'File "/usr/lib/python3.12/site-packages/pip/_vendor/rich/console.py", line 42',
+            'File "/home/dev/.local/lib/python3.11/site-packages/requests/adapters.py"',
+            "  File \"/app/src/vibelens/ingest/parsers/claude.py\", line 128, in parse",
+            "/usr/lib/python3.12/importlib/metadata/__init__.py",
+        ],
+    )
+    def test_traceback_file_paths_not_redacted(self, label: str) -> None:
+        """Python traceback file paths must not be flagged as secrets."""
+        findings = scan_text(label, CREDENTIAL_PATTERNS)
+        print(f"  traceback path findings: {[(f.name, f.matched_text) for f in findings]}")
+        assert len(findings) == 0, f"False positive on traceback path: {findings}"
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "d94e305a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e",
+            "sha256:abc123def456abc123def456abc123def456abc123def456abc123def456abcd",
+        ],
+    )
+    def test_git_hashes_and_checksums_not_redacted(self, text: str) -> None:
+        """Bare git hashes and checksums must not be flagged."""
+        findings = scan_text(text, CREDENTIAL_PATTERNS)
+        print(f"  hash findings: {[(f.name, f.matched_text) for f in findings]}")
+        assert len(findings) == 0, f"False positive on hash/checksum: {findings}"
+
+    def test_natural_text_not_redacted(self) -> None:
+        """Long natural-language strings must not be flagged."""
+        text = "Launch a new agent to handle complex, multi-step tasks autonomously."
+        findings = scan_text(text, CREDENTIAL_PATTERNS)
+        assert len(findings) == 0
 
 
 class TestPIIPatterns:

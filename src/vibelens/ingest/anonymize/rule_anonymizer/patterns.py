@@ -1,17 +1,12 @@
-"""Regex patterns for credential, PII, and high-entropy secret detection.
+"""Regex patterns for credential and PII secret detection.
 
 Patterns are ordered most-specific-first within each category so that
 narrow matches (e.g. ``sk-ant-api03-...``) take priority over broad ones
 (e.g. generic bearer tokens) during scanning.
 """
 
-import math
 import re
 from typing import NamedTuple
-
-SHANNON_ENTROPY_THRESHOLD = 3.5
-HIGH_ENTROPY_MIN_LENGTH = 40
-NATURAL_TEXT_SPACE_RATIO = 0.10
 
 
 class PatternDef(NamedTuple):
@@ -34,6 +29,8 @@ CREDENTIAL_PATTERNS: list[PatternDef] = [
     _compile("db_url_postgres", r"postgres(?:ql)?://[^\s\"'`]+:[^\s\"'`]+@[^\s\"'`]+"),
     _compile("db_url_mysql", r"mysql(?:\+[a-z]+)?://[^\s\"'`]+:[^\s\"'`]+@[^\s\"'`]+"),
     _compile("db_url_mongodb", r"mongodb(?:\+srv)?://[^\s\"'`]+:[^\s\"'`]+@[^\s\"'`]+"),
+    # Generic basic-auth URLs (user:pass@host) — after specific DB patterns
+    _compile("basic_auth_url", r"https?://[^\s\"'`]+:[^\s\"'`]+@[^\s\"'`]+"),
     # Anthropic API keys
     _compile("anthropic_key", r"sk-ant-(?:api03|admin01)-[A-Za-z0-9_-]{20,}"),
     # OpenAI API keys
@@ -58,19 +55,85 @@ CREDENTIAL_PATTERNS: list[PatternDef] = [
         "aws_secret_key",
         r"(?:aws_secret_access_key|AWS_SECRET_ACCESS_KEY)\s*[=:]\s*[A-Za-z0-9/+=]{40}",
     ),
-    # Slack tokens
+    # Slack tokens and webhooks
     _compile("slack_token", r"xox[bporas]-[A-Za-z0-9-]{10,}"),
-    # Discord tokens
+    _compile(
+        "slack_webhook",
+        r"https://hooks\.slack\.com/services/T[A-Za-z0-9]+/B[A-Za-z0-9]+/[A-Za-z0-9]+",
+    ),
+    # Discord tokens and webhooks
     _compile(
         "discord_token",
         r"(?:mfa\.[A-Za-z0-9_-]{80,}|[A-Za-z0-9_-]{24}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,})",
+    ),
+    _compile(
+        "discord_webhook",
+        r"https://discord(?:app)?\.com/api/webhooks/\d+/[A-Za-z0-9_-]+",
     ),
     # NPM tokens
     _compile("npm_token", r"npm_[A-Za-z0-9]{36,}"),
     # PyPI tokens
     _compile("pypi_token", r"pypi-[A-Za-z0-9_-]{50,}"),
-    # PEM private keys (multiline — captured as header line only)
+    # Vercel tokens
+    _compile("vercel_token", r"vercel_[A-Za-z0-9_-]{20,}"),
+    # Netlify tokens
+    _compile("netlify_token", r"nfp_[A-Za-z0-9_-]{20,}"),
+    # Supabase keys
+    _compile("supabase_key", r"sbp_[A-Za-z0-9_-]{20,}"),
+    # Twilio keys (SK + 32 hex chars)
+    _compile("twilio_key", r"SK[0-9a-fA-F]{32}"),
+    # SendGrid keys
+    _compile("sendgrid_key", r"SG\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+"),
+    # Firebase FCM server keys
+    _compile("firebase_key", r"AAAA[A-Za-z0-9_-]{7,}:[A-Za-z0-9_-]{100,}"),
+    # Sentry DSN
+    _compile("sentry_dsn", r"https://[0-9a-f]+@[^\s\"'`]*\.sentry\.io/\d+"),
+    # PEM private keys (full block with body)
+    _compile(
+        "pem_key_body",
+        r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----"
+        r"[\s\S]*?"
+        r"-----END (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----",
+        re.DOTALL,
+    ),
+    # PEM private keys (header-only fallback for partial content)
     _compile("pem_private_key", r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----"),
+    # Non-Bearer auth headers (Basic, Token)
+    _compile(
+        "auth_header",
+        r"Authorization:\s*(?:Basic|Token)\s+[A-Za-z0-9_./+=-]{8,}",
+        re.IGNORECASE,
+    ),
+    # Session cookie tokens (keyword-gated)
+    _compile(
+        "session_cookie_token",
+        r"(?:session_id|sessionid|JSESSIONID|connect\.sid)\s*=\s*[A-Za-z0-9_./-]{16,}",
+        re.IGNORECASE,
+    ),
+    # JSON/YAML secret values (quoted key + quoted value)
+    _compile(
+        "json_yaml_secret",
+        r"""(?:"(?:password|secret|api_key|apikey|token|private_key|client_secret)"\s*:\s*"[^"]{8,}")""",
+        re.IGNORECASE,
+    ),
+    # Azure client secret
+    _compile(
+        "azure_client_secret",
+        r"AZURE_CLIENT_SECRET\s*=\s*[^\s\"']{8,}",
+    ),
+    # GCP service account private key ID (40-char hex in JSON)
+    _compile(
+        "gcp_service_account_key",
+        r""""private_key_id"\s*:\s*"[0-9a-f]{40}""",
+    ),
+    # Datadog API key (env var assignment with 32 hex chars)
+    _compile("datadog_api_key", r"DD_API_KEY\s*=\s*[0-9a-fA-F]{32}"),
+    # Long hex secret (keyword-gated to avoid git hash false positives)
+    _compile(
+        "long_hex_secret",
+        r"(?:secret|token|key|password)\s*=\s*[0-9a-fA-F]{64,}",
+        re.IGNORECASE,
+    ),
     # CLI token flags (e.g. --token=abc123, --api-key "abc123")
     _compile(
         "cli_token_flag",
@@ -104,11 +167,6 @@ PII_PATTERNS: list[PatternDef] = [
         r"(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}"
         r")\b",
     ),
-]
-
-# High-entropy quoted strings (potential embedded secrets)
-HIGH_ENTROPY_PATTERNS: list[PatternDef] = [
-    _compile("high_entropy_quoted", r"""['"]([\x20-\x7E]{40,})['"]"""),
 ]
 
 # Allowlist — known-safe strings that should not be redacted
@@ -146,70 +204,6 @@ ALLOWLIST: frozenset[str] = frozenset(
 )
 
 
-def compute_shannon_entropy(text: str) -> float:
-    """Compute Shannon entropy (bits per character) of a string.
-
-    Higher entropy indicates more randomness, suggesting the string
-    may be a secret or key rather than natural language.
-
-    Args:
-        text: The string to analyze.
-
-    Returns:
-        Entropy in bits. Typical English text ~4.0, random base64 ~5.5+.
-    """
-    if not text:
-        return 0.0
-    length = len(text)
-    freq: dict[str, int] = {}
-    for char in text:
-        freq[char] = freq.get(char, 0) + 1
-    return -sum((count / length) * math.log2(count / length) for count in freq.values())
-
-
-def has_mixed_char_types(text: str) -> bool:
-    """Check if text contains a mix of character types (letters, digits, symbols).
-
-    Secrets typically mix character types while natural language tends to
-    be mostly alphabetic with spaces.
-
-    Args:
-        text: The string to check.
-
-    Returns:
-        True if at least 3 of {uppercase, lowercase, digits, symbols} are present.
-    """
-    type_count = sum(
-        [
-            any(c.isupper() for c in text),
-            any(c.islower() for c in text),
-            any(c.isdigit() for c in text),
-            any(not c.isalnum() and not c.isspace() for c in text),
-        ]
-    )
-    MIN_MIXED_TYPES = 3
-    return type_count >= MIN_MIXED_TYPES
-
-
-def is_natural_text(text: str) -> bool:
-    """Detect natural language by checking whether spaces make up >= 10% of characters.
-
-    Tool descriptions, JSON schema descriptions, and other English prose
-    consistently have space ratios of 13-17%, while secrets and base64 strings
-    have 0%. The 10% threshold provides a wide safety margin.
-
-    Args:
-        text: The string to check.
-
-    Returns:
-        True if the text appears to be natural language.
-    """
-    if not text:
-        return False
-    space_count = sum(1 for c in text if c == " ")
-    return (space_count / len(text)) >= NATURAL_TEXT_SPACE_RATIO
-
-
 def is_allowlisted(text: str) -> bool:
     """Check whether a matched string is in the known-safe allowlist.
 
@@ -220,23 +214,3 @@ def is_allowlisted(text: str) -> bool:
         True if the text exactly matches an allowlisted value.
     """
     return text in ALLOWLIST
-
-
-def is_valid_high_entropy(text: str) -> bool:
-    """Determine if a quoted string is likely a secret based on entropy and character mix.
-
-    Used as a secondary filter for HIGH_ENTROPY_PATTERNS matches:
-    the regex captures any quoted string >= 40 chars, and this function
-    filters to only those with genuinely high randomness.
-
-    Args:
-        text: The inner content of a quoted string (without quotes).
-
-    Returns:
-        True if the string has high entropy AND mixed character types.
-    """
-    if len(text) < HIGH_ENTROPY_MIN_LENGTH:
-        return False
-    if is_natural_text(text):
-        return False
-    return compute_shannon_entropy(text) >= SHANNON_ENTROPY_THRESHOLD and has_mixed_char_types(text)

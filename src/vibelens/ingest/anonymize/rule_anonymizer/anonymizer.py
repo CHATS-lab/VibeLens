@@ -6,7 +6,6 @@ from vibelens.ingest.anonymize.base import AnonymizeResult, BaseAnonymizer
 from vibelens.ingest.anonymize.rule_anonymizer.path_hasher import PathHasher
 from vibelens.ingest.anonymize.rule_anonymizer.patterns import (
     CREDENTIAL_PATTERNS,
-    HIGH_ENTROPY_PATTERNS,
     PII_PATTERNS,
 )
 from vibelens.ingest.anonymize.rule_anonymizer.redactor import (
@@ -24,7 +23,7 @@ class RuleAnonymizer(BaseAnonymizer):
     """Regex-based anonymizer that chains credential, PII, and path redaction.
 
     Applies redaction in order: credential patterns -> PII patterns ->
-    high-entropy patterns -> custom strings -> path username hashing.
+    custom strings -> path username hashing.
     Each category is independently controlled by ``AnonymizeConfig`` flags.
     """
 
@@ -35,8 +34,6 @@ class RuleAnonymizer(BaseAnonymizer):
             patterns.extend(CREDENTIAL_PATTERNS)
         if self.config.redact_pii:
             patterns.extend(PII_PATTERNS)
-        if self.config.redact_high_entropy:
-            patterns.extend(HIGH_ENTROPY_PATTERNS)
         return patterns
 
     def _create_transform(
@@ -60,7 +57,7 @@ class RuleAnonymizer(BaseAnonymizer):
             if not text:
                 return text
 
-            # Phase 1: Regex pattern redaction (credentials, PII, high-entropy)
+            # Phase 1: Regex pattern redaction (credentials, PII)
             secrets_count = 0
             pii_count = 0
             if patterns:

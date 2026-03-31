@@ -8,6 +8,8 @@ from vibelens.config.anonymize import AnonymizeConfig
 from vibelens.ingest.anonymize.rule_anonymizer.anonymizer import RuleAnonymizer
 from vibelens.models.trajectories import Agent, Step, Trajectory
 
+SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/T03EXAMPLE/B05EXAMPLE/aBC123xYz789"
+
 
 def _make_trajectory(message: str, **overrides) -> Trajectory:
     """Build a minimal Trajectory with a single step containing the given message."""
@@ -83,42 +85,42 @@ class TestRuleAnonymizer:
         assert result.paths_anonymized >= 1
         assert "testuser" not in result_t.steps[0].message
 
-    def test_high_entropy(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_webhook_url_redacted(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Slack webhook URLs should be redacted as credentials."""
         monkeypatch.setenv("USER", "testuser")
         config = AnonymizeConfig(
             enabled=True,
-            redact_credentials=False,
+            redact_credentials=True,
             redact_pii=False,
-            redact_high_entropy=True,
             anonymize_paths=False,
         )
         anon = RuleAnonymizer(config)
-        # A high-entropy quoted string (>40 chars, mixed types)
-        secret = "aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2uV3wX4yZ5!@#$"
-        t = _make_trajectory(f'the value is "{secret}" here')
+        t = _make_trajectory(f"webhook: {SLACK_WEBHOOK_URL}")
         result_t, result = anon.anonymize_trajectory(t)
         msg = result_t.steps[0].message
-        print(f"  high_entropy: secrets={result.secrets_redacted}, msg='{msg}'")
-        assert secret not in msg
+        print(f"  webhook: secrets={result.secrets_redacted}, msg='{msg}'")
+        assert result.secrets_redacted >= 1
+        assert "hooks.slack.com" not in msg
 
-    def test_tool_description_not_redacted(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Tool descriptions should survive high-entropy redaction."""
+    def test_file_path_not_redacted(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Python traceback file paths must not be redacted (regression)."""
         monkeypatch.setenv("USER", "testuser")
         config = AnonymizeConfig(
             enabled=True,
-            redact_credentials=False,
+            redact_credentials=True,
             redact_pii=False,
-            redact_high_entropy=True,
             anonymize_paths=False,
         )
         anon = RuleAnonymizer(config)
-        description = "Launch a new agent to handle complex, multi-step tasks autonomously."
-        t = _make_trajectory(f'"description": "{description}"')
+        traceback_line = (
+            'File "/usr/lib/python3.12/site-packages/pip/_vendor/rich/console.py", line 42'
+        )
+        t = _make_trajectory(traceback_line)
         result_t, result = anon.anonymize_trajectory(t)
         msg = result_t.steps[0].message
-        print(f"  tool_description: secrets={result.secrets_redacted}, msg='{msg}'")
-        assert description in msg
+        print(f"  file_path: secrets={result.secrets_redacted}, msg='{msg}'")
         assert result.secrets_redacted == 0
+        assert "console.py" in msg
 
     def test_credential_only_flag(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """When only credentials are enabled, PII and paths are untouched."""

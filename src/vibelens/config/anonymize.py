@@ -30,8 +30,8 @@ class AnonymizeConfig(BaseModel):
         description="Hash usernames found in file paths (macOS /Users/X/, Linux /home/X/).",
     )
     redact_high_entropy: bool = Field(
-        default=True,
-        description="Redact quoted strings with high Shannon entropy (likely secrets).",
+        default=False,
+        description="Deprecated — accepted but ignored. High-entropy heuristic removed in v0.9.15.",
     )
     placeholder: str = Field(
         default=REDACTED_PLACEHOLDER,

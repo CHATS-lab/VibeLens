@@ -8,10 +8,8 @@ import re
 from typing import NamedTuple
 
 from vibelens.ingest.anonymize.rule_anonymizer.patterns import (
-    HIGH_ENTROPY_PATTERNS,
     PatternDef,
     is_allowlisted,
-    is_valid_high_entropy,
 )
 
 
@@ -27,8 +25,7 @@ class Finding(NamedTuple):
 def scan_text(text: str, patterns: list[PatternDef]) -> list[Finding]:
     """Scan text for all non-overlapping secret matches.
 
-    Runs each pattern against the text, filters out allowlisted matches,
-    and applies secondary validation for high-entropy patterns.
+    Runs each pattern against the text and filters out allowlisted matches.
 
     Args:
         text: The source text to scan.
@@ -43,12 +40,6 @@ def scan_text(text: str, patterns: list[PatternDef]) -> list[Finding]:
             matched = match.group(0)
             if is_allowlisted(matched):
                 continue
-            # High-entropy patterns need secondary validation on the
-            # captured group (inner content without quotes)
-            if pdef in HIGH_ENTROPY_PATTERNS:
-                inner = match.group(1) if match.lastindex else matched
-                if not is_valid_high_entropy(inner):
-                    continue
             findings.append(Finding(pdef.name, match.start(), match.end(), matched))
     findings.sort(key=lambda f: f.start)
     return findings
