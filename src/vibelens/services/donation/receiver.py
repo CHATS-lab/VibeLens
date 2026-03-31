@@ -7,6 +7,7 @@ Supports both new-format ZIPs (wrapping directory with manifest inside)
 and legacy ZIPs (root-level manifest.json) for backward compatibility.
 """
 
+import asyncio
 import json
 import zipfile
 from datetime import UTC, datetime
@@ -16,6 +17,7 @@ from fastapi import HTTPException, UploadFile
 
 from vibelens.deps import get_settings
 from vibelens.services.upload.processor import generate_upload_id
+from vibelens.utils.json_helpers import locked_jsonl_append
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -50,7 +52,8 @@ async def receive_donation(file: UploadFile) -> dict:
 
     total_written = await _stream_to_disk(file, temp_path, settings.max_zip_bytes)
 
-    manifest = _read_manifest(temp_path)
+    # Offloaded to thread pool -- ZIP reading is blocking I/O
+    manifest = await asyncio.to_thread(_read_manifest, temp_path)
 
     # Use donation_id from manifest if present (new format), else generate one
     donation_id = manifest.get("donation_id") or generate_upload_id()
@@ -68,7 +71,11 @@ async def receive_donation(file: UploadFile) -> dict:
         "sessions": manifest.get("sessions", []),
         "vibelens_version": manifest.get("vibelens_version"),
     }
-    _append_to_index(donation_dir, index_entry)
+    # Append a donation entry to the index.jsonl file
+    # (offloaded to thread pool -- file lock can block under contention)
+    await asyncio.to_thread(
+        locked_jsonl_append, path=donation_dir / INDEX_FILENAME, data=index_entry
+    )
 
     session_count = len(manifest.get("sessions", []))
     logger.info(
@@ -169,16 +176,3 @@ def _read_manifest(zip_path: Path) -> dict:
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
         logger.warning("Invalid manifest in %s: %s", zip_path.name, exc)
         return {}
-
-
-def _append_to_index(donation_dir: Path, entry: dict) -> None:
-    """Append a donation entry to the index.jsonl file.
-
-    Args:
-        donation_dir: Directory containing the donation index.
-        entry: Donation metadata dict to append.
-    """
-    index_path = donation_dir / INDEX_FILENAME
-    line = json.dumps(entry, default=str, ensure_ascii=False)
-    with open(index_path, "a", encoding="utf-8") as f:
-        f.write(line + "\n")

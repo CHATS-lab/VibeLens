@@ -18,6 +18,7 @@ from vibelens.ingest.parsers.parsed import ParsedTrajectoryParser
 from vibelens.models.trajectories import Trajectory
 from vibelens.storage.conversation.base import TrajectoryStore
 from vibelens.utils import get_logger
+from vibelens.utils.json_helpers import locked_jsonl_append
 
 logger = get_logger(__name__)
 
@@ -71,16 +72,14 @@ class DiskStore(TrajectoryStore):
             json.dumps(full_data, indent=2, default=str, ensure_ascii=False), encoding="utf-8"
         )
 
-        # Append summary to the JSONL index (atomic per-line append)
-        index_path = self._root / INDEX_FILENAME
-        with open(index_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(summary, default=str, ensure_ascii=False) + "\n")
+        # Append one line to the index file with locked write
+        locked_jsonl_append(self._root / INDEX_FILENAME, summary)
 
         logger.info(
             "DiskStore.save: session=%s file=%s index=%s tags=%s",
             session_id,
             full_path,
-            index_path,
+            self._root / INDEX_FILENAME,
             self._default_tags,
         )
 

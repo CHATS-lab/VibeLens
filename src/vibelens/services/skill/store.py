@@ -10,6 +10,7 @@ from pathlib import Path
 
 from vibelens.models.skill.skills import SkillAnalysisResult
 from vibelens.schemas.skills import SkillAnalysisMeta
+from vibelens.utils.json_helpers import locked_jsonl_append, locked_jsonl_remove
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -89,16 +90,11 @@ class SkillAnalysisStore:
 
     def _append_meta(self, meta: SkillAnalysisMeta) -> None:
         """Append one metadata record to the JSONL index."""
-        with self._meta_path.open("a", encoding="utf-8") as fh:
-            fh.write(meta.model_dump_json() + "\n")
+        locked_jsonl_append(self._meta_path, meta.model_dump(mode="json"))
 
     def _remove_meta(self, analysis_id: str) -> None:
         """Remove one entry from the JSONL index by rewriting without it."""
-        if not self._meta_path.exists():
-            return
-        lines = self._meta_path.read_text(encoding="utf-8").splitlines()
-        kept = [ln for ln in lines if ln.strip() and f'"{analysis_id}"' not in ln]
-        self._meta_path.write_text("\n".join(kept) + "\n" if kept else "", encoding="utf-8")
+        locked_jsonl_remove(self._meta_path, "analysis_id", analysis_id)
 
     def _migrate_legacy_meta_files(self) -> None:
         """Migrate old per-analysis .meta.json files into the single JSONL index."""

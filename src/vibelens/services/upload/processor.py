@@ -15,7 +15,6 @@ discovered automatically via rglob.
 """
 
 import asyncio
-import json
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
@@ -36,6 +35,7 @@ from vibelens.services.dashboard.loader import (
 from vibelens.services.session.search import invalidate_search_index
 from vibelens.storage.conversation.disk import DiskStore
 from vibelens.utils import get_logger
+from vibelens.utils.json_helpers import locked_jsonl_append
 from vibelens.utils.zip import extract_zip, validate_zip
 
 logger = get_logger(__name__)
@@ -222,23 +222,6 @@ def extract_and_discover(
     return discover_session_files(extracted_dir=extracted_dir, agent_type=agent_type)
 
 
-def append_upload_metadata(upload_dir: Path, metadata: dict) -> None:
-    """Append one upload record to the global metadata.jsonl file.
-
-    All upload metadata is stored in a single append-only JSONL file
-    at ``{upload_dir}/metadata.jsonl``, one JSON object per line.
-
-    Args:
-        upload_dir: Base upload storage directory (settings.upload_dir).
-        metadata: Upload metadata dict (timestamp, agent_type, sessions, etc.).
-    """
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    meta_path = upload_dir / METADATA_FILENAME
-    line = json.dumps(metadata, default=str, ensure_ascii=False)
-    with open(meta_path, "a", encoding="utf-8") as f:
-        f.write(line + "\n")
-
-
 def cleanup_extraction(upload_dir: Path, upload_id: str) -> None:
     """Remove the temporary extraction directory for an upload.
 
@@ -370,7 +353,11 @@ async def process_zip(
             result=result,
             session_token=session_token,
         )
-        append_upload_metadata(upload_dir=settings.upload_dir, metadata=metadata)
+        # Append one upload record to the global metadata.jsonl file
+        # (offloaded to thread pool -- file lock can block under contention)
+        await asyncio.to_thread(
+            locked_jsonl_append, path=settings.upload_dir / METADATA_FILENAME, data=metadata
+        )
 
         # 5. Invalidate caches so the main store picks up new sessions
         main_store.invalidate_index()
@@ -382,7 +369,10 @@ async def process_zip(
         result.errors.append({"filename": filename, "error": str(exc)})
     finally:
         # Clean up extraction dir; keep the zip as a permanent archive
-        cleanup_extraction(upload_dir=settings.upload_dir, upload_id=upload_id)
+        # (offloaded to thread pool -- shutil.rmtree can block on large trees)
+        await asyncio.to_thread(
+            cleanup_extraction, upload_dir=settings.upload_dir, upload_id=upload_id
+        )
 
     logger.info(
         "process_zip END: upload_id=%s result=parsed=%d stored=%d skipped=%d errors=%d",

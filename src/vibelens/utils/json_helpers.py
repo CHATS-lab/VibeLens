@@ -1,5 +1,6 @@
 """JSON parsing and serialization helpers."""
 
+import fcntl
 import hashlib
 import json
 from pathlib import Path
@@ -160,6 +161,80 @@ def coerce_json_field(value: str | dict | list | None) -> dict | list | None:
         return json.loads(stripped)
     except (json.JSONDecodeError, TypeError):
         return None
+
+
+def locked_jsonl_append(path: Path, data: dict) -> None:
+    """Append one JSON object as a line to a JSONL file under an exclusive lock.
+
+    Uses ``fcntl.flock(LOCK_EX)`` so concurrent appenders within the same
+    process (or across processes on the same host) serialize safely.
+
+    Args:
+        path: Path to the JSONL file (created if missing).
+        data: Dictionary to serialize and append.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    line = json.dumps(data, default=str, ensure_ascii=False) + "\n"
+    with open(path, "a", encoding="utf-8") as fh:
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        try:
+            fh.write(line)
+            fh.flush()
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
+
+
+def locked_jsonl_remove(path: Path, match_key: str, match_value: str) -> int:
+    """Remove lines from a JSONL file where a key matches a value, under exclusive lock.
+
+    Holds ``fcntl.flock(LOCK_EX)`` for the entire read-filter-write cycle
+    so concurrent appenders block until the rewrite completes.  This
+    prevents the classic lost-update race where an append between the
+    read and the write is silently overwritten.
+
+    Corrupt or unparseable lines are kept as-is.
+
+    Args:
+        path: Path to the JSONL file.
+        match_key: JSON key to check (e.g. ``"analysis_id"``).
+        match_value: Value to match for removal.
+
+    Returns:
+        Number of lines removed.
+    """
+    if not path.exists():
+        return 0
+
+    # Open r+b so we can read, seek, truncate, and write under one lock.
+    # Binary mode avoids platform-specific newline translation issues
+    # when truncating.
+    with open(path, "r+b") as fh:
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        try:
+            raw = fh.read().decode("utf-8")
+            lines = raw.splitlines()
+            kept: list[str] = []
+            removed = 0
+            for line in lines:
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                try:
+                    data = json.loads(stripped)
+                    if data.get(match_key) == match_value:
+                        removed += 1
+                        continue
+                except json.JSONDecodeError:
+                    pass
+                kept.append(stripped)
+            new_content = ("\n".join(kept) + "\n") if kept else ""
+            fh.seek(0)
+            fh.truncate()
+            fh.write(new_content.encode("utf-8"))
+            fh.flush()
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
+    return removed
 
 
 def deterministic_id(namespace: str, *components: str) -> str:

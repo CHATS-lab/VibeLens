@@ -10,6 +10,7 @@ from pathlib import Path
 
 from vibelens.models.analysis.friction import FrictionAnalysisResult
 from vibelens.schemas.friction import FrictionMeta
+from vibelens.utils.json_helpers import locked_jsonl_append, locked_jsonl_remove
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -52,8 +53,7 @@ class FrictionStore:
         self._data_path(analysis_id).write_text(result.model_dump_json(indent=2), encoding="utf-8")
 
         meta = _build_meta(analysis_id, result)
-        with self._meta_path.open("a", encoding="utf-8") as fh:
-            fh.write(meta.model_dump_json() + "\n")
+        locked_jsonl_append(self._meta_path, meta.model_dump(mode="json"))
 
         logger.info("Saved friction analysis %s (%d events)", analysis_id, len(result.events))
         return meta
@@ -107,33 +107,9 @@ class FrictionStore:
         if not data_path.exists():
             return False
         data_path.unlink(missing_ok=True)
-        self._rewrite_meta_without(analysis_id)
+        locked_jsonl_remove(self._meta_path, "analysis_id", analysis_id)
         logger.info("Deleted friction analysis %s", analysis_id)
         return True
-
-    def _rewrite_meta_without(self, analysis_id: str) -> None:
-        """Remove a single entry from the meta JSONL by rewriting.
-
-        Args:
-            analysis_id: ID to remove from meta.jsonl.
-        """
-        if not self._meta_path.exists():
-            return
-        lines = self._meta_path.read_text(encoding="utf-8").splitlines()
-        kept = []
-        for line in lines:
-            stripped = line.strip()
-            if not stripped:
-                continue
-            try:
-                data = json.loads(stripped)
-                if data.get("analysis_id") == analysis_id:
-                    continue
-            except json.JSONDecodeError:
-                pass
-            kept.append(stripped)
-        self._meta_path.write_text("\n".join(kept) + "\n" if kept else "", encoding="utf-8")
-
 
 def _build_meta(analysis_id: str, result: FrictionAnalysisResult) -> FrictionMeta:
     """Build lightweight metadata from a full analysis result.
