@@ -1,5 +1,5 @@
-import { X, Bug, Lightbulb, Sparkles, BookOpen } from "lucide-react";
-import { ONBOARDING_STORAGE_KEY } from "./onboarding-constants";
+import { X, Bug, Lightbulb, Sparkles, Compass } from "lucide-react";
+import { TOUR_STORAGE_KEY } from "./tutorial/tour-steps";
 import { useSettings } from "../settings-context";
 import type { FontScale } from "../settings-context";
 
@@ -154,13 +154,13 @@ export function SettingsDialog({ onClose, onShowOnboarding }: SettingsDialogProp
             </h3>
             <button
               onClick={() => {
-                localStorage.removeItem(ONBOARDING_STORAGE_KEY);
+                localStorage.removeItem(TOUR_STORAGE_KEY);
                 onShowOnboarding?.();
               }}
               className="flex items-center gap-2 w-full py-2.5 px-3 text-xs font-medium text-zinc-300 hover:text-zinc-100 bg-zinc-800/80 hover:bg-zinc-700 rounded-lg border border-zinc-700/50 transition"
             >
-              <BookOpen className="w-4 h-4 text-cyan-400" />
-              Show Welcome Guide
+              <Compass className="w-4 h-4 text-cyan-400" />
+              Start Tutorial
             </button>
           </div>
         </div>

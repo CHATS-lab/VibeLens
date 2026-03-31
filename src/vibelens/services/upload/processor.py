@@ -181,8 +181,7 @@ async def receive_zip(
             if total_written > max_bytes:
                 zip_path.unlink(missing_ok=True)
                 raise HTTPException(
-                    status_code=400,
-                    detail=f"File exceeds {max_bytes // (1024 * 1024)} MB limit",
+                    status_code=400, detail=f"File exceeds {max_bytes // (1024 * 1024)} MB limit"
                 )
             f.write(chunk)
 

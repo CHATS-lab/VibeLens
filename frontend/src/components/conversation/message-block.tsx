@@ -29,6 +29,7 @@ import { CopyButton } from "../copy-button";
 const MAX_COLLAPSED_LINES = 8;
 const WRITE_PREVIEW_MAX_CHARS = 500;
 const AUTO_EXPAND_LINE_THRESHOLD = 20;
+const USER_PROMPT_COLLAPSE_LINE_THRESHOLD = 15;
 
 interface StepBlockProps {
   step: Step;
@@ -61,10 +62,39 @@ function UserStep({ step }: { step: Step }) {
   const text = extractMessageText(step.message);
   if (!text && typeof step.message === "string") return null;
   if (!text && Array.isArray(step.message) && step.message.length === 0) return null;
+
+  const lineCount = text ? text.split("\n").length : 0;
+  const isLong = lineCount > USER_PROMPT_COLLAPSE_LINE_THRESHOLD;
+  const [expanded, setExpanded] = useState(!isLong);
+
   return (
     <div className="flex justify-end">
       <div className="max-w-[85%] bg-gradient-to-br from-slate-600/70 to-slate-700/60 text-zinc-100 rounded-2xl rounded-br-md px-4 py-2.5 text-sm overflow-hidden break-words">
-        <ContentRenderer content={step.message} className="user-markdown" />
+        {!expanded ? (
+          <>
+            <div className="line-clamp-4">
+              <ContentRenderer content={step.message} className="user-markdown" />
+            </div>
+            <button
+              onClick={() => setExpanded(true)}
+              className="mt-1.5 text-xs text-cyan-400 hover:text-cyan-300 transition"
+            >
+              Show full prompt ({lineCount} lines)
+            </button>
+          </>
+        ) : (
+          <>
+            <ContentRenderer content={step.message} className="user-markdown" />
+            {isLong && (
+              <button
+                onClick={() => setExpanded(false)}
+                className="mt-1.5 text-xs text-cyan-400 hover:text-cyan-300 transition"
+              >
+                Collapse
+              </button>
+            )}
+          </>
+        )}
       </div>
     </div>
   );

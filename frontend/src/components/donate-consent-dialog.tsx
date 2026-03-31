@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { X } from "lucide-react";
+import { Modal, ModalHeader, ModalBody, ModalFooter } from "./modal";
 
 interface DonateConsentDialogProps {
   sessionCount: number;
@@ -8,10 +8,11 @@ interface DonateConsentDialogProps {
 }
 
 const CONSENT_ITEMS = [
+  "Before sharing, please ensure you have the necessary permissions to share this data and that it does not belong to a project with confidentiality restrictions.",
   "My donated sessions may contain code snippets, file paths, and conversation content from my coding agent interactions.",
-  "Donated data will be used for academic research on coding agent behavior by CHATS-Lab at Northeastern University.",
-  "I have reviewed the selected sessions and confirm they do not contain sensitive credentials, API keys, or private information I wish to keep confidential.",
-  "Donated data may be shared in anonymized or aggregated form in research publications and datasets.",
+  "Donated data will be used solely for academic research and will not be sold or used for commercial purposes.",
+  "Donated data may appear in anonymized or aggregated form in research publications and open datasets.",
+  "I may request deletion of my donated data by contacting the research team.",
 ];
 
 export function DonateConsentDialog({
@@ -22,29 +23,15 @@ export function DonateConsentDialog({
   const [agreed, setAgreed] = useState(false);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-        onClick={onCancel}
+    <Modal onClose={onCancel} maxWidth="max-w-lg">
+      <ModalHeader
+        title={`Donate ${sessionCount} Session${sessionCount !== 1 ? "s" : ""}`}
+        onClose={onCancel}
       />
 
-      <div className="relative bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl w-full max-w-lg mx-4">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
-          <h2 className="text-sm font-semibold text-zinc-100">
-            Donate {sessionCount} Session{sessionCount !== 1 ? "s" : ""}
-          </h2>
-          <button
-            onClick={onCancel}
-            className="text-zinc-500 hover:text-zinc-300 transition"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Body */}
-        <div className="px-5 py-4 space-y-4">
-          <p className="text-sm text-zinc-300">
+      <ModalBody>
+        <div className="space-y-4">
+          <p className="text-sm text-zinc-100 leading-relaxed">
             Your sessions will be donated to{" "}
             <a
               href="https://github.com/CHATS-lab"
@@ -54,51 +41,51 @@ export function DonateConsentDialog({
             >
               CHATS-Lab
             </a>{" "}
-            at Northeastern University for research on coding agent behavior.
+            at Northeastern University for academic research on coding agent
+            behavior. All donated data will be post-processed with
+            anonymization tools before use.
           </p>
 
-          <div className="space-y-2 text-xs text-zinc-400">
-            <p className="font-medium text-zinc-300">
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-zinc-100">
               By donating, you acknowledge that:
             </p>
-            <ul className="space-y-1.5 list-disc list-inside">
+            <ul className="space-y-1.5 list-disc pl-4 text-sm text-zinc-200 leading-relaxed">
               {CONSENT_ITEMS.map((item, i) => (
                 <li key={i}>{item}</li>
               ))}
             </ul>
           </div>
 
-          {/* Agreement checkbox */}
-          <label className="flex items-start gap-2.5 cursor-pointer group">
+          <label className="flex items-center gap-2.5 cursor-pointer group bg-zinc-800/50 rounded-md px-3 py-2.5">
             <input
               type="checkbox"
               checked={agreed}
               onChange={(e) => setAgreed(e.target.checked)}
-              className="mt-0.5 w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-cyan-500 focus:ring-cyan-500 focus:ring-offset-0 cursor-pointer"
+              className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-cyan-500 focus:ring-cyan-500 focus:ring-offset-0 cursor-pointer"
             />
-            <span className="text-xs text-zinc-300 group-hover:text-zinc-100 transition select-none">
+            <span className="text-sm text-zinc-100 group-hover:text-white transition select-none">
               I have read and agree to the above terms
             </span>
           </label>
         </div>
+      </ModalBody>
 
-        {/* Footer */}
-        <div className="flex justify-end gap-2 px-5 py-3 border-t border-zinc-800">
-          <button
-            onClick={onCancel}
-            className="px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 border border-zinc-700 hover:border-zinc-600 rounded transition"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            disabled={!agreed}
-            className="px-3 py-1.5 text-xs text-white bg-rose-600 hover:bg-rose-500 rounded transition disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Donate
-          </button>
-        </div>
-      </div>
-    </div>
+      <ModalFooter>
+        <button
+          onClick={onCancel}
+          className="px-3 py-1.5 text-sm text-zinc-400 hover:text-zinc-200 border border-zinc-700 hover:border-zinc-600 rounded transition"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={onConfirm}
+          disabled={!agreed}
+          className="px-3 py-1.5 text-sm text-white bg-rose-600 hover:bg-rose-500 rounded transition disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          Donate
+        </button>
+      </ModalFooter>
+    </Modal>
   );
 }

@@ -38,9 +38,11 @@ import { FlowDiagram } from "./flow-diagram";
 import { computeFlow } from "./flow-layout";
 import { formatTokens, formatDuration, formatCost, extractUserText, baseProjectName } from "../../utils";
 import { LoadingSpinner } from "../loading-spinner";
+import { Tooltip } from "../tooltip";
 import {
   METRIC_LABEL,
   SESSION_ID_SHORT, PREVIEW_SHORT, SHARE_STATUS_RESET_MS, SCROLL_SUPPRESS_MS,
+  SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH,
 } from "../../styles";
 
 interface SessionViewProps {
@@ -59,23 +61,20 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [activeStepId, setActiveStepId] = useState<string | null>(null);
-  const [promptNavWidth, setPromptNavWidth] = useState(224);
+  const [promptNavWidth, setPromptNavWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
   const [sessionCost, setSessionCost] = useState<number | null>(null);
   const [shareStatus, setShareStatus] = useState<"idle" | "sharing" | "copied">("idle");
-  const [viewMode, setViewMode] = useState<"timeline" | "concise" | "flow">("timeline");
+  const [viewMode, setViewMode] = useState<"timeline" | "concise" | "flow">("concise");
   const [flowData, setFlowData] = useState<FlowData | null>(null);
   const [flowLoading, setFlowLoading] = useState(false);
-  const [headerExpanded, setHeaderExpanded] = useState(true);
+  const [headerExpanded, setHeaderExpanded] = useState(false);
   const stepsRef = useRef<HTMLDivElement>(null);
   const isNavigatingRef = useRef(false);
   const isSharedView = !!sharedTrajectories;
 
-  const MIN_PROMPT_NAV_WIDTH = 160;
-  const MAX_PROMPT_NAV_WIDTH = 400;
-
   const handlePromptNavResize = useCallback((delta: number) => {
     setPromptNavWidth((w) =>
-      Math.min(MAX_PROMPT_NAV_WIDTH, Math.max(MIN_PROMPT_NAV_WIDTH, w + delta))
+      Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, w + delta))
     );
   }, []);
 
@@ -83,7 +82,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
     setActiveStepId(null);
     setSessionCost(null);
     setFlowData(null);
-    setViewMode("timeline");
+    setViewMode("concise");
 
     // When rendering shared data, skip the API fetch
     if (sharedTrajectories) {
@@ -393,33 +392,22 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
               <MetaPill
                 icon={<Hash className="w-3 h-3" />}
                 label={main.session_id.slice(0, SESSION_ID_SHORT)}
-                color="text-zinc-300"
+                color="text-cyan-300"
+                bg="bg-cyan-950/50 border border-cyan-800/30"
                 tooltip={`Session ID: ${main.session_id}`}
               />
-              <h2
-                className="text-lg font-semibold text-zinc-100 truncate"
-                title={main.first_message || "Session"}
-              >
-                {main.first_message || "Session"}
-              </h2>
+              <Tooltip text={main.first_message || "Session"} className="min-w-0">
+                <h2 className="text-lg font-semibold text-zinc-100 truncate">
+                  {main.first_message || "Session"}
+                </h2>
+              </Tooltip>
             </div>
             <div className="flex items-center gap-1 shrink-0 ml-3">
               {/* View mode toggle */}
-              <div className="flex rounded-md border border-blue-500/40 bg-zinc-800/60 mr-2 w-[240px]">
-                <button
-                  onClick={() => setViewMode("timeline")}
-                  className={`flex-1 flex items-center justify-center gap-1 px-2.5 py-1.5 text-xs rounded-l-md transition ${
-                    viewMode === "timeline"
-                      ? "bg-blue-600/40 text-blue-100 font-semibold shadow-inner shadow-blue-900/30"
-                      : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/40"
-                  }`}
-                >
-                  <List className="w-3 h-3" />
-                  Timeline
-                </button>
+              <div data-tour="view-modes" className="flex rounded-md border border-blue-500/40 bg-zinc-800/60 mr-2 w-[280px]">
                 <button
                   onClick={() => setViewMode("concise")}
-                  className={`flex-1 flex items-center justify-center gap-1 px-2.5 py-1.5 text-xs transition ${
+                  className={`flex-1 flex items-center justify-center gap-1 px-2.5 py-1.5 text-xs rounded-l-md transition ${
                     viewMode === "concise"
                       ? "bg-blue-600/40 text-blue-100 font-semibold shadow-inner shadow-blue-900/30"
                       : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/40"
@@ -427,6 +415,17 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
                 >
                   <AlignLeft className="w-3 h-3" />
                   Concise
+                </button>
+                <button
+                  onClick={() => setViewMode("timeline")}
+                  className={`flex-1 flex items-center justify-center gap-1 px-2.5 py-1.5 text-xs transition ${
+                    viewMode === "timeline"
+                      ? "bg-blue-600/40 text-blue-100 font-semibold shadow-inner shadow-blue-900/30"
+                      : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/40"
+                  }`}
+                >
+                  <List className="w-3 h-3" />
+                  Detail
                 </button>
                 <button
                   onClick={() => setViewMode("flow")}
@@ -437,7 +436,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
                   }`}
                 >
                   <GitBranch className="w-3 h-3" />
-                  Flow
+                  Workflow
                 </button>
               </div>
               {!isSharedView && (
@@ -730,20 +729,23 @@ function MetaPill({
   icon,
   label,
   color,
+  bg,
   tooltip,
 }: {
   icon: React.ReactNode;
   label: string;
   color: string;
+  bg?: string;
   tooltip?: string;
 }) {
   const [show, setShow] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
+  const bgClass = bg ?? "bg-zinc-800 border border-zinc-700/50";
 
   return (
     <span
       ref={ref}
-      className={`relative inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-800 border border-zinc-700/50 text-[11px] hover:bg-zinc-700/80 transition-colors ${color}`}
+      className={`relative inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] hover:brightness-125 transition-colors ${bgClass} ${color}`}
       onMouseEnter={() => setShow(true)}
       onMouseLeave={() => setShow(false)}
     >

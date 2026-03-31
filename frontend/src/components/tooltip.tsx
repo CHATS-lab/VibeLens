@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 interface TooltipProps {
   text: string;
   children: React.ReactNode;
+  className?: string;
 }
 
 /**
@@ -11,7 +12,7 @@ interface TooltipProps {
  * parent overflow boundaries. Shows instantly on hover. Automatically
  * flips vertically when the tooltip would overflow the viewport top.
  */
-export function Tooltip({ text, children }: TooltipProps) {
+export function Tooltip({ text, children, className }: TooltipProps) {
   const [visible, setVisible] = useState(false);
   const [coords, setCoords] = useState<{ top: number; left: number; flipped: boolean } | null>(null);
   const triggerRef = useRef<HTMLSpanElement>(null);
@@ -43,7 +44,7 @@ export function Tooltip({ text, children }: TooltipProps) {
   return (
     <span
       ref={triggerRef}
-      className="inline-flex"
+      className={`inline-flex ${className ?? ""}`}
       onMouseEnter={() => setVisible(true)}
       onMouseLeave={() => { setVisible(false); setCoords(null); }}
     >

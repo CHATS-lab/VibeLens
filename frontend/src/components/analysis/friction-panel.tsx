@@ -37,7 +37,7 @@ import type {
   TypeSummary,
 } from "../../types";
 import { formatCost, formatDuration, formatTokens } from "../../utils";
-import { SEVERITY_COLORS, SESSION_ID_SHORT } from "../../styles";
+import { SEVERITY_COLORS, SESSION_ID_SHORT, SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH } from "../../styles";
 import { CopyButton } from "../copy-button";
 import { LoadingSpinner } from "../loading-spinner";
 import { Modal, ModalBody, ModalFooter, ModalHeader } from "../modal";
@@ -69,9 +69,7 @@ const ACTION_KEYWORD_COLORS: [RegExp, string][] = [
 
 const DEFAULT_ACTION_COLOR = "bg-teal-500/20 border-teal-400/40 text-teal-200";
 
-const SIDEBAR_MIN_WIDTH = 180;
-const SIDEBAR_MAX_WIDTH = 400;
-const SIDEBAR_DEFAULT_WIDTH = 224;
+// Sidebar width constants imported from styles.ts
 
 function _actionColor(action: string): string {
   for (const [pattern, color] of ACTION_KEYWORD_COLORS) {
@@ -618,11 +616,14 @@ function EmptyState({
     <div className="flex items-center justify-center h-full">
       <div className="text-center max-w-md">
         <Sparkles className="w-12 h-12 mx-auto mb-4 text-amber-400/50" />
-        <h3 className="text-lg font-semibold text-zinc-200 mb-2">
-          Friction Analysis
+        <h3 className="text-lg font-semibold text-zinc-200 mb-1">
+          Productivity Tips
         </h3>
+        <p className="text-xs text-zinc-500 mb-3">
+          Identify patterns that slow you down and get concrete improvements.
+        </p>
         <p className="text-sm text-zinc-400 mb-6">
-          Select sessions and run analysis to detect user dissatisfaction and generate mitigations.
+          Select sessions and run analysis to detect wasted effort, recurring mistakes, and generate actionable mitigations.
         </p>
         <LLMConfigSection
           llmStatus={llmStatus}

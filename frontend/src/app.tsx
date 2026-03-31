@@ -16,8 +16,8 @@ import { DashboardView } from "./components/analysis/dashboard-view";
 import { FrictionPanel } from "./components/analysis/friction-panel";
 import { SkillsPanel } from "./components/skills/skills-panel";
 import { SettingsDialog } from "./components/settings-dialog";
-import { OnboardingDialog } from "./components/onboarding-dialog";
-import { hasSeenOnboarding } from "./components/onboarding-constants";
+import { SpotlightTour } from "./components/tutorial/spotlight-tour";
+import { hasSeenTour } from "./components/tutorial/tour-steps";
 import type { DashboardStats, DonateResult, ToolUsageStat, Trajectory } from "./types";
 
 type MainView = "browse" | "analyze" | "friction" | "skills";
@@ -137,13 +137,12 @@ export function App() {
       });
   }, [fetchWithToken]);
 
-  // Show onboarding on first visit in self mode
+  // Show spotlight tour on first visit
   useEffect(() => {
     if (!settingsLoaded) return;
-    if (appMode !== "self") return;
-    if (hasSeenOnboarding()) return;
+    if (hasSeenTour()) return;
     setShowOnboarding(true);
-  }, [appMode, settingsLoaded]);
+  }, [settingsLoaded]);
 
   useEffect(() => {
     fetchWithToken("/api/projects")
@@ -372,7 +371,7 @@ export function App() {
             className="relative border-r border-zinc-800 flex flex-col shrink-0 bg-zinc-900"
           >
             <ResizeHandle side="left" onResize={handleSidebarResize} />
-            <div className="flex items-center justify-between px-4 h-[75px] border-b border-zinc-800 sticky top-0">
+            <div data-tour="sidebar-header" className="flex items-center justify-between px-4 h-[75px] border-b border-zinc-800 sticky top-0">
               <div className="flex items-center gap-3">
                 <img src="/icon.png" alt="VibeLens" className="w-12 h-12" />
                 <h1 className="text-2xl font-bold text-cyan-400">VibeLens</h1>
@@ -418,7 +417,7 @@ export function App() {
         {/* Main Content */}
         <main className="flex-1 flex flex-col min-w-0 bg-zinc-950">
           {/* View Toggle */}
-          <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-800 bg-zinc-900/80">
+          <div className="flex items-center justify-between px-4 py-2 border-b-2 border-zinc-700/60 bg-zinc-900 shadow-sm shadow-black/30">
             <div className="flex items-center gap-2">
               {!sidebarOpen && (
                 <button
@@ -441,6 +440,7 @@ export function App() {
                 Conversation
               </button>
               <button
+                data-tour="dashboard-tab"
                 onClick={() => setMainView("analyze")}
                 title="Aggregate analytics dashboard — session stats, tool usage patterns, cost breakdown, and timeline charts"
                 className={`min-w-[100px] text-center px-4 py-1.5 text-sm font-semibold rounded-md transition ${
@@ -451,30 +451,33 @@ export function App() {
               >
                 Dashboard
               </button>
-              <button
-                onClick={() => setMainView("friction")}
-                title="Identify wasted effort, root causes, and CLAUDE.md suggestions across sessions"
-                className={`min-w-[100px] text-center px-4 py-1.5 text-sm font-semibold rounded-md transition ${
-                  mainView === "friction"
-                    ? "bg-amber-600/30 text-amber-200 border border-amber-400/40 shadow-sm shadow-amber-900/40"
-                    : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
-                }`}
-              >
-                Pain Points
-              </button>
-              <button
-                onClick={() => setMainView("skills")}
-                title="View and manage personalized skills extracted from your sessions"
-                className={`min-w-[100px] text-center px-4 py-1.5 text-sm font-semibold rounded-md transition ${
-                  mainView === "skills"
-                    ? "bg-teal-600/30 text-teal-200 border border-teal-400/40 shadow-sm shadow-teal-900/40"
-                    : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
-                }`}
-              >
-                Personalization
-              </button>
+              <div data-tour="ai-tabs" className="flex items-center gap-2">
+                <button
+                  onClick={() => setMainView("friction")}
+                  title="Analyze sessions to find wasted effort, recurring mistakes, and actionable tips to improve your workflow"
+                  className={`min-w-[100px] text-center px-4 py-1.5 text-sm font-semibold rounded-md transition ${
+                    mainView === "friction"
+                      ? "bg-amber-600/30 text-amber-200 border border-amber-400/40 shadow-sm shadow-amber-900/40"
+                      : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+                  }`}
+                >
+                  Productivity Tips
+                </button>
+                <button
+                  onClick={() => setMainView("skills")}
+                  title="View and manage personalized skills extracted from your sessions"
+                  className={`min-w-[100px] text-center px-4 py-1.5 text-sm font-semibold rounded-md transition ${
+                    mainView === "skills"
+                      ? "bg-teal-600/30 text-teal-200 border border-teal-400/40 shadow-sm shadow-teal-900/40"
+                      : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+                  }`}
+                >
+                  Personalization
+                </button>
+              </div>
             </div>
             <button
+              data-tour="settings-button"
               onClick={() => setShowSettingsDialog(true)}
               className="p-1.5 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 rounded transition"
               title="Settings"
@@ -543,7 +546,7 @@ export function App() {
         )}
 
         {showOnboarding && (
-          <OnboardingDialog onClose={() => setShowOnboarding(false)} />
+          <SpotlightTour appMode={appMode} onComplete={() => setShowOnboarding(false)} />
         )}
       </div>
     </AppContext.Provider>

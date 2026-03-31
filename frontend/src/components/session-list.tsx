@@ -17,12 +17,14 @@ import {
   ArrowLeftRight,
   ShieldCheck,
   FileUp,
+  Check,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppContext } from "../app";
 import type { Trajectory } from "../types";
 import { formatTime, truncate, baseProjectName } from "../utils";
 import { SearchOptionsDialog } from "./search-options-dialog";
+import { Tooltip } from "./tooltip";
 import { SESSIONS_PER_PAGE, SEARCH_DEBOUNCE_MS } from "../styles";
 
 export type ViewMode = "time" | "project";
@@ -78,11 +80,12 @@ export function SessionList({
   const [searchLoading, setSearchLoading] = useState(false);
   const [showSearchOptions, setShowSearchOptions] = useState(false);
   const [searchSources, setSearchSources] = useState<Set<string>>(
-    () => new Set(["user_prompts"])
+    () => new Set(["user_prompts", "session_id"])
   );
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasAutoExpanded = useRef(false);
 
-  const DEFAULT_SOURCES = new Set(["user_prompts"]);
+  const DEFAULT_SOURCES = new Set(["user_prompts", "session_id"]);
   const hasNonDefaultSources =
     searchSources.size !== DEFAULT_SOURCES.size ||
     ![...DEFAULT_SOURCES].every((s) => searchSources.has(s));
@@ -154,6 +157,16 @@ export function SessionList({
     return groups;
   }, [filtered]);
 
+  // Auto-expand first project on initial load
+  useEffect(() => {
+    if (hasAutoExpanded.current || groupedByProject.size === 0) return;
+    const firstProject = groupedByProject.keys().next().value;
+    if (firstProject) {
+      setExpandedProjects(new Set([firstProject]));
+      hasAutoExpanded.current = true;
+    }
+  }, [groupedByProject]);
+
   // Client-side pagination for "time" view
   const paginatedFiltered = useMemo(() => {
     if (viewMode !== "time") return filtered;
@@ -201,14 +214,15 @@ export function SessionList({
   };
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
+    <div data-tour="session-list" className="flex flex-col flex-1 min-h-0">
       <div className="p-3 space-y-2 border-b border-zinc-800">
         {/* Upload + Donate row */}
         {onUpload && onDonate ? (
           <div className="flex items-stretch gap-1.5">
             <button
+              data-tour="upload-button"
               onClick={onUpload}
-              className="w-[88px] shrink-0 flex items-center justify-center gap-1 py-1.5 text-xs font-semibold bg-violet-600 hover:bg-violet-500 text-white rounded-md border border-violet-500 transition"
+              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-sm font-semibold bg-violet-600 hover:bg-violet-500 text-white rounded border border-violet-500 transition"
             >
               <FileUp className="w-3.5 h-3.5" />
               Upload
@@ -258,21 +272,11 @@ export function SessionList({
 
         {/* Agent Filter */}
         {availableAgents.length > 0 && (
-          <div className="relative">
-            <Bot className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500" />
-            <select
-              value={agentFilter}
-              onChange={(e) => onAgentFilterChange(e.target.value)}
-              className="w-full bg-zinc-800 text-zinc-200 text-sm rounded pl-7 pr-2 py-1.5 border border-zinc-700 focus:outline-none focus:border-cyan-600 appearance-none cursor-pointer"
-            >
-              <option value="all">All agents</option>
-              {availableAgents.map((agent) => (
-                <option key={agent} value={agent}>
-                  {agent}
-                </option>
-              ))}
-            </select>
-          </div>
+          <AgentFilterDropdown
+            value={agentFilter}
+            agents={availableAgents}
+            onChange={onAgentFilterChange}
+          />
         )}
 
         {/* Select All + View Mode Switch */}
@@ -290,19 +294,20 @@ export function SessionList({
             )}
             Select all ({filtered.length})
           </button>
-          <button
-            onClick={() => handleSetViewMode(viewMode === "project" ? "time" : "project")}
-            className="flex items-center gap-1 px-2 py-1 text-[11px] text-zinc-400 hover:text-zinc-200 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700/50 rounded-md transition"
-            title={viewMode === "project" ? "Switch to time view" : "Switch to project view"}
-          >
-            {viewMode === "project" ? (
-              <FolderOpen className="w-3 h-3" />
-            ) : (
-              <Clock className="w-3 h-3" />
-            )}
-            {viewMode === "project" ? "Project" : "Time"}
-            <ArrowLeftRight className="w-3 h-3 text-zinc-500" />
-          </button>
+          <Tooltip text={viewMode === "project" ? "Switch to time view" : "Switch to project view"}>
+            <button
+              onClick={() => handleSetViewMode(viewMode === "project" ? "time" : "project")}
+              className="flex items-center justify-center gap-1 w-[90px] px-2 py-1 text-[11px] font-medium text-cyan-300 hover:text-cyan-200 bg-cyan-900/30 hover:bg-cyan-800/40 border border-cyan-700/40 rounded-md transition"
+            >
+              {viewMode === "project" ? (
+                <FolderOpen className="w-3 h-3 shrink-0" />
+              ) : (
+                <Clock className="w-3 h-3 shrink-0" />
+              )}
+              {viewMode === "project" ? "Project" : "Time"}
+              <ArrowLeftRight className="w-3 h-3 text-cyan-500/60" />
+            </button>
+          </Tooltip>
         </div>
       </div>
 
@@ -484,11 +489,11 @@ function SessionRow({
         className="flex-1 text-left pr-3 py-2.5 min-w-0"
       >
         {showProject && (
-          <div className="flex items-center justify-between mb-0.5">
-            <span className="text-xs text-zinc-400 uppercase tracking-wide" title={session.project_path || ""}>
+          <div className="flex items-center justify-between mb-0.5 min-w-0">
+            <span className="text-xs text-zinc-400 uppercase tracking-wide truncate" title={session.project_path || ""}>
               {baseProjectName(session.project_path || "")}
             </span>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 shrink-0 ml-2">
               {!session._upload_id && (
                 <span className="px-1 py-0.5 text-[9px] font-medium bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded" title="Example session (not donatable)">Example</span>
               )}
@@ -498,14 +503,14 @@ function SessionRow({
               {(session.last_trajectory_ref || session.continued_trajectory_ref || session.parent_trajectory_ref) && (
                 <span title="Part of continuation chain"><Link2 className="w-3 h-3 text-violet-400" /></span>
               )}
-              <span className="text-xs text-zinc-400">
+              <span className="text-xs text-zinc-400 whitespace-nowrap">
                 {formatTime(session.timestamp ?? null)}
               </span>
             </div>
           </div>
         )}
-        <div className="flex items-center gap-2">
-          <p className="text-sm text-zinc-200 line-clamp-2 leading-relaxed flex-1 min-w-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <p className="text-sm text-zinc-200 truncate flex-1 min-w-0" title={session.first_message || ""}>
             {truncate(session.first_message || "", 120) || "Empty session"}
           </p>
           <div className="flex items-center gap-1 shrink-0">
@@ -519,13 +524,65 @@ function SessionRow({
               <span title="Part of continuation chain"><Link2 className="w-3 h-3 text-violet-400" /></span>
             )}
             {!showProject && (
-              <span className="text-xs text-zinc-400">
+              <span className="text-xs text-zinc-400 whitespace-nowrap">
                 {formatTime(session.timestamp ?? null)}
               </span>
             )}
           </div>
         </div>
       </button>
+    </div>
+  );
+}
+
+function AgentFilterDropdown({ value, agents, onChange }: { value: string; agents: string[]; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  const options = [{ value: "all", label: "All agents" }, ...agents.map((a) => ({ value: a, label: a }))];
+  const activeLabel = options.find((o) => o.value === value)?.label ?? "All agents";
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-2 bg-zinc-800 text-zinc-200 text-sm rounded px-2.5 py-1.5 border border-zinc-700 hover:border-zinc-600 transition cursor-pointer"
+      >
+        <Bot className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+        <span className="flex-1 text-left truncate">{activeLabel}</span>
+        <ChevronDown className={`w-3.5 h-3.5 text-zinc-500 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="absolute z-50 mt-1 w-full bg-zinc-800 border border-zinc-700 rounded-md shadow-xl overflow-hidden">
+          {options.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => { onChange(opt.value); setOpen(false); }}
+              className={`w-full flex items-center gap-2 px-2.5 py-1.5 text-sm transition ${
+                value === opt.value
+                  ? "bg-cyan-600/20 text-cyan-200"
+                  : "text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100"
+              }`}
+            >
+              {value === opt.value ? (
+                <Check className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+              ) : (
+                <span className="w-3.5 shrink-0" />
+              )}
+              <span className="truncate">{opt.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -541,14 +598,14 @@ function DonateButton({ onClick, disabled, tooltip }: { onClick: () => void; dis
     >
       <button
         onClick={disabled ? undefined : onClick}
-        className={`w-full flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold rounded-md border transition ${
+        className={`w-full flex items-center justify-center gap-1.5 py-1.5 text-sm font-semibold rounded border transition ${
           disabled
             ? "bg-rose-600/40 text-rose-200 border-rose-500/30 cursor-not-allowed opacity-60"
             : "bg-rose-600 hover:bg-rose-500 text-white border-rose-500 shadow-sm shadow-rose-900/40"
         }`}
       >
         <Heart className="w-3.5 h-3.5" />
-        Donate for Research
+        Donate Data
       </button>
       {showTooltip && tooltip && (
         <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1.5 z-50 px-2.5 py-1.5 rounded-md bg-zinc-950 border border-zinc-700 text-[11px] text-zinc-300 whitespace-nowrap shadow-lg pointer-events-none">

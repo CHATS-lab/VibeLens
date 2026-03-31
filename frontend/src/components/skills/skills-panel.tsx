@@ -2,6 +2,7 @@ import { History } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useAppContext } from "../../app";
 import type { SkillAnalysisResult, SkillMode } from "../../types";
+import { SIDEBAR_DEFAULT_WIDTH } from "../../styles";
 import { ExploreSkillsTab } from "./explore-skills-tab";
 import { LocalSkillsTab } from "./local-skills-tab";
 import {
@@ -152,7 +153,7 @@ export function SkillsPanel({ checkedIds }: SkillsPanelProps) {
         </div>
 
         {isAnalysisTab && showHistory && (
-          <div className="w-56 shrink-0 bg-zinc-900/50 overflow-y-auto">
+          <div style={{ width: SIDEBAR_DEFAULT_WIDTH }} className="shrink-0 bg-zinc-900/50 overflow-y-auto">
             <SkillsHistory onSelect={handleHistorySelect} refreshTrigger={historyRefresh} filterMode={currentMode} />
           </div>
         )}

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.9.14] - 2026-03-31
+
+### Changed
+- **Spotlight tutorial**: Replaced modal onboarding dialog with a step-by-step spotlight tour that highlights UI elements in place. Works in both self and demo modes. Relaunch via Settings > Start Tutorial.
+- **Donation consent dialog**: Rewrote consent copy for clarity. Anonymization is now handled by the research team (removed self-review burden). Added permissions reminder, non-commercial use clause, and right-to-delete. Migrated to shared Modal components.
+- **Prompt nav panel**: Starts collapsed as a thin strip with expand button. Redesigned with cyan-tinted dark background, card-style entries, and active-state highlighting for sub-agents.
+- **User prompt collapse**: Long user prompts (>15 lines) now auto-collapse with a "Show full prompt" toggle.
+- **Session list polish**: Upload and Donate buttons use larger text. Agent filter uses custom dropdown instead of native `<select>`. View mode toggle uses fixed width to prevent layout shift. First project auto-expands on load. Session messages truncate with ellipsis instead of multi-line clamp. Search defaults include session_id.
+- **Tab bar**: Stronger bottom border with shadow. "Pain Points" renamed to "Productivity Tips" with updated empty-state description. AI tabs grouped with `data-tour` attributes.
+- **Friction panel**: Sidebar width constants unified from shared `styles.ts`.
+
+### Fixed
+- **Session row overflow**: Project name and timestamp no longer push each other off-screen in narrow sidebars (`truncate`, `shrink-0`, `whitespace-nowrap`).
+
 ## [0.9.13] - 2026-03-30
 
 ### Fixed
