@@ -49,7 +49,7 @@ export function Tooltip({ text, children, className }: TooltipProps) {
       onMouseLeave={() => { setVisible(false); setCoords(null); }}
     >
       {children}
-      {visible &&
+      {visible && text &&
         createPortal(
           <span
             ref={tooltipRef}

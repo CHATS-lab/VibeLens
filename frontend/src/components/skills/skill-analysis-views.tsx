@@ -1,5 +1,4 @@
 import {
-  AlertCircle,
   ArrowRight,
   ArrowUpRight,
   BarChart3,
@@ -11,12 +10,9 @@ import {
   Download,
   FileCode,
   GitBranch,
-  Layers,
   Lightbulb,
   Loader2,
-  MessageSquare,
   Pencil,
-  Play,
   Plus,
   RefreshCw,
   Repeat,
@@ -65,68 +61,6 @@ export function AnalysisLoadingState({ mode, sessionCount }: { mode: SkillMode; 
   );
 }
 
-export function AnalysisEmptyState({
-  mode,
-  checkedCount,
-  error,
-  onRun,
-}: {
-  mode: SkillMode;
-  checkedCount: number;
-  error: string | null;
-  onRun: () => void;
-}) {
-  const modeDescriptions: Record<SkillMode, { title: string; desc: string; icon: React.ReactNode }> = {
-    retrieval: {
-      title: "Skill Retrieval",
-      desc: "Detect workflow patterns and recommend existing skills that match your coding style.",
-      icon: <Search className="w-8 h-8 text-teal-400" />,
-    },
-    creation: {
-      title: "Skill Creation",
-      desc: "Generate new SKILL.md files from detected automation opportunities in your sessions.",
-      icon: <Sparkles className="w-8 h-8 text-emerald-400" />,
-    },
-    evolution: {
-      title: "Skill Evolution",
-      desc: "Analyze installed skills against your usage data and suggest targeted improvements.",
-      icon: <TrendingUp className="w-8 h-8 text-amber-400" />,
-    },
-  };
-  const info = modeDescriptions[mode];
-
-  return (
-    <div className="flex items-center justify-center h-full">
-      <div className="max-w-md text-center px-6">
-        <div className="flex justify-center mb-5">{info.icon}</div>
-        <h3 className="text-xl font-bold text-zinc-100 mb-3">{info.title}</h3>
-        <p className="text-sm text-zinc-400 mb-6 leading-relaxed">{info.desc}</p>
-        {error && (
-          <div className="flex items-start gap-2 px-4 py-3 rounded-lg bg-red-900/20 border border-red-800/30 mb-4 text-left">
-            <AlertCircle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
-            <p className="text-sm text-red-300">{error}</p>
-          </div>
-        )}
-        <button
-          onClick={onRun}
-          disabled={checkedCount === 0}
-          className="inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold text-white bg-teal-600 hover:bg-teal-500 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          <Play className="w-4 h-4" />
-          {checkedCount > 0
-            ? `Analyze ${checkedCount} session${checkedCount !== 1 ? "s" : ""}`
-            : "Select sessions first"}
-        </button>
-        {checkedCount === 0 && (
-          <p className="text-xs text-zinc-600 mt-3">
-            Use the checkboxes in the session list to select sessions for analysis.
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
-
 export function AnalysisResultView({
   result,
   activeTab,
@@ -161,11 +95,6 @@ export function AnalysisResultView({
       {/* Summary card */}
       <SummaryCard summary={result.summary} userProfile={result.user_profile} />
 
-      {/* Workflow Patterns — always shown */}
-      {result.workflow_patterns.length > 0 && (
-        <PatternSection patterns={result.workflow_patterns} />
-      )}
-
       {/* Recommended Skills (Recommend) */}
       {activeTab === "retrieve" && result.recommendations.length > 0 && (
         <RecommendationSection recommendations={result.recommendations} />
@@ -183,6 +112,11 @@ export function AnalysisResultView({
       {/* Evolution Suggestions (Evolve) */}
       {activeTab === "evolve" && result.evolution_suggestions.length > 0 && (
         <EvolutionSection suggestions={result.evolution_suggestions} />
+      )}
+
+      {/* Workflow Patterns — shown at the bottom */}
+      {result.workflow_patterns.length > 0 && (
+        <PatternSection patterns={result.workflow_patterns} />
       )}
 
       {/* Metadata footer */}
@@ -203,29 +137,31 @@ function ResultHeader({
   return (
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-3">
-        <div className="p-2 rounded-lg bg-teal-600/20">
-          <BarChart3 className="w-5 h-5 text-teal-400" />
-        </div>
+        <BarChart3 className="w-6 h-6 text-teal-400" />
         <div>
-          <h3 className="text-base font-bold text-zinc-100">
+          <h2 className="text-xl font-bold text-zinc-100">
             {result.workflow_patterns.length} pattern{result.workflow_patterns.length !== 1 ? "s" : ""} detected
-          </h3>
-          <p className="text-xs text-zinc-500 mt-0.5">
+          </h2>
+          <p className="text-sm text-zinc-400">
             {result.session_ids.length} session{result.session_ids.length !== 1 ? "s" : ""} analyzed
-            {result.sessions_skipped.length > 0 && ` · ${result.sessions_skipped.length} skipped`}
+            {result.sessions_skipped.length > 0 && (
+              <span className="text-zinc-500">
+                {" "}&middot; {result.sessions_skipped.length} skipped
+              </span>
+            )}
           </p>
         </div>
       </div>
       <div className="flex items-center gap-2">
         <button
           onClick={onNew}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700/50 rounded-md transition"
+          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 border border-zinc-700 rounded-md transition"
         >
-          <Plus className="w-3.5 h-3.5" /> New
+          <Plus className="w-3 h-3" /> New
         </button>
         <button
           onClick={onRerun}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white bg-teal-600 hover:bg-teal-500 rounded-md transition"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-white bg-teal-600 hover:bg-teal-500 rounded-md transition"
         >
           <RefreshCw className="w-3.5 h-3.5" /> Re-run
         </button>
@@ -236,21 +172,14 @@ function ResultHeader({
 
 function SummaryCard({ summary, userProfile }: { summary: string; userProfile: string }) {
   return (
-    <div className="relative overflow-hidden rounded-xl bg-zinc-800/50 border border-zinc-700/30">
-      <div className="absolute inset-0 bg-gradient-to-br from-teal-900/10 via-transparent to-transparent" />
-      <div className="relative p-5">
-        <div className="flex items-center gap-2 mb-3">
-          <MessageSquare className="w-4 h-4 text-teal-400" />
-          <span className="text-xs font-semibold text-teal-400 uppercase tracking-wider">Analysis Summary</span>
+    <div className="bg-zinc-900/80 border border-zinc-700/60 rounded-xl p-5 space-y-3">
+      <p className="text-sm text-zinc-200 leading-relaxed">{summary}</p>
+      {userProfile && (
+        <div className="flex items-start gap-2 pt-3 border-t border-zinc-700/40">
+          <Shield className="w-3.5 h-3.5 text-zinc-500 mt-0.5 shrink-0" />
+          <p className="text-xs text-zinc-500 italic">{userProfile}</p>
         </div>
-        <p className="text-sm text-zinc-300 leading-relaxed">{summary}</p>
-        {userProfile && (
-          <div className="flex items-start gap-2 mt-3 pt-3 border-t border-zinc-700/30">
-            <Shield className="w-3.5 h-3.5 text-zinc-500 mt-0.5 shrink-0" />
-            <p className="text-xs text-zinc-500 italic">{userProfile}</p>
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 }
@@ -259,48 +188,42 @@ function SectionHeader({
   icon,
   title,
   tooltip,
-  count,
   accentColor = "text-teal-400",
 }: {
   icon: React.ReactNode;
   title: string;
   tooltip: string;
-  count?: number;
   accentColor?: string;
 }) {
   return (
-    <div className="flex items-center gap-2.5 mb-4">
-      <Tooltip text={tooltip}>
+    <Tooltip text={tooltip}>
+      <div className="flex items-center gap-2 mb-3 cursor-help">
         <span className={accentColor}>{icon}</span>
-      </Tooltip>
-      <Tooltip text={tooltip}>
-        <h4 className="text-base font-bold text-zinc-100 cursor-help">{title}</h4>
-      </Tooltip>
-      {count != null && (
-        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-zinc-700/60 text-zinc-400">
-          {count}
-        </span>
-      )}
-    </div>
+        <h3 className="text-base font-semibold text-zinc-100">{title}</h3>
+      </div>
+    </Tooltip>
   );
 }
 
 function MetadataFooter({ result }: { result: SkillAnalysisResult }) {
+  const computedDate = new Date(result.created_at);
+  const dateStr = isNaN(computedDate.getTime()) ? result.created_at : computedDate.toLocaleDateString();
+  const timeStr = isNaN(computedDate.getTime()) ? "" : computedDate.toLocaleTimeString();
+
   return (
-    <div className="flex items-center gap-4 text-xs text-zinc-600 pt-4 border-t border-zinc-800">
-      <div className="flex items-center gap-1.5">
-        <Layers className="w-3 h-3" />
-        <span>{result.backend_id}</span>
+    <Tooltip text="Inference backend, model, and estimated API cost for this analysis run">
+      <div className="border-t border-zinc-800 pt-4 text-xs text-zinc-500 flex items-center justify-between gap-4 w-full cursor-help">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span>{result.backend_id}/{result.model}</span>
+          {result.cost_usd != null && (
+            <span className="border-l border-zinc-700 pl-2">
+              ${result.cost_usd.toFixed(4)}
+            </span>
+          )}
+        </div>
+        <span className="shrink-0">{dateStr} {timeStr}</span>
       </div>
-      <div className="flex items-center gap-1.5">
-        <Code2 className="w-3 h-3" />
-        <span>{result.model}</span>
-      </div>
-      {result.cost_usd != null && (
-        <span>${result.cost_usd.toFixed(4)}</span>
-      )}
-      <span>{new Date(result.created_at).toLocaleString()}</span>
-    </div>
+    </Tooltip>
   );
 }
 
@@ -313,7 +236,6 @@ function PatternSection({ patterns }: { patterns: WorkflowPattern[] }) {
         icon={<Target className="w-5 h-5" />}
         title="Workflow Patterns"
         tooltip="Recurring tool sequences and task types detected across your sessions. Each pattern is a potential skill opportunity."
-        count={patterns.length}
       />
       <div className="space-y-3">
         {patterns.map((p, i) => <PatternCard key={i} pattern={p} index={i} />)}
@@ -425,7 +347,6 @@ function RecommendationSection({ recommendations }: { recommendations: SkillReco
         icon={<Search className="w-5 h-5" />}
         title="Recommended Skills"
         tooltip="Pre-built skills from the catalog that match your workflow patterns"
-        count={recommendations.length}
       />
       <div className="space-y-3">
         {recommendations.map((rec) => <RecommendationCard key={rec.skill_name} rec={rec} />)}
@@ -484,7 +405,6 @@ function CreationSection({
         icon={<Sparkles className="w-5 h-5" />}
         title="Generated Skills"
         tooltip="New SKILL.md files generated from your workflow patterns"
-        count={skills.length}
         accentColor="text-emerald-400"
       />
       <div className="space-y-3">
@@ -606,7 +526,6 @@ function EvolutionSection({ suggestions }: { suggestions: SkillEvolutionSuggesti
         icon={<TrendingUp className="w-5 h-5" />}
         title="Evolution Suggestions"
         tooltip="Targeted improvements for your installed skills based on real usage"
-        count={suggestions.length}
         accentColor="text-amber-400"
       />
       <div className="space-y-3">

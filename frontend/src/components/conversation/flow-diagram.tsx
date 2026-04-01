@@ -161,18 +161,18 @@ function UserAnchor({
   onMove: (e: React.MouseEvent) => void;
   onLeave: () => void;
 }) {
-  // Auto-prompts (plan mode, continuation) use a muted amber style;
-  // real user prompts use the standard emerald style.
+  // Auto-prompts (plan mode, continuation) use teal;
+  // real user prompts use cyan — matching the nav panel convention.
   const isAuto = data.isAutoPrompt;
   const borderClass = isAuto
-    ? "border-amber-500/20 bg-amber-950/20 hover:border-amber-400/35 hover:bg-amber-950/30"
-    : "border-emerald-500/25 bg-emerald-950/20 hover:border-emerald-400/40 hover:bg-emerald-950/30";
+    ? "border-teal-500/20 bg-teal-950/20 hover:border-teal-400/35 hover:bg-teal-950/30"
+    : "border-cyan-500/25 bg-cyan-950/20 hover:border-cyan-400/40 hover:bg-cyan-950/30";
   const iconBg = isAuto
-    ? "bg-amber-500/20 border-amber-400/15"
-    : "bg-emerald-500/20 border-emerald-400/15";
-  const iconText = isAuto ? "text-amber-300" : "text-emerald-300";
-  const labelText = isAuto ? "text-amber-200/70" : "text-emerald-100";
-  const indexText = isAuto ? "text-amber-400/60" : "text-emerald-400/80";
+    ? "bg-teal-500/20 border-teal-400/15"
+    : "bg-cyan-500/20 border-cyan-400/15";
+  const iconText = isAuto ? "text-teal-300" : "text-cyan-300";
+  const labelText = isAuto ? "text-teal-200/70" : "text-cyan-100";
+  const indexText = isAuto ? "text-teal-400/60" : "text-cyan-400/80";
 
   return (
     <div

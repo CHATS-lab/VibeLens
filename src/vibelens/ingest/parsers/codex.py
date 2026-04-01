@@ -413,7 +413,7 @@ def _collect_tool_outputs(
             continue
         call_id = payload.get("call_id", "")
         if call_id:
-            raw_output = payload.get("output", "")
+            raw_output = coerce_to_string(payload.get("output", ""))
             cleaned, has_error, metadata = _parse_structured_output(raw_output)
             outputs[call_id] = {
                 "output": cleaned,

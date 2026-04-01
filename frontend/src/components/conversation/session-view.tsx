@@ -62,6 +62,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
   const [error, setError] = useState("");
   const [activeStepId, setActiveStepId] = useState<string | null>(null);
   const [promptNavWidth, setPromptNavWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
+  const [navCollapsed, setNavCollapsed] = useState(true);
   const [sessionCost, setSessionCost] = useState<number | null>(null);
   const [shareStatus, setShareStatus] = useState<"idle" | "sharing" | "copied">("idle");
   const [viewMode, setViewMode] = useState<"timeline" | "concise" | "flow">("concise");
@@ -232,6 +233,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
     const el = document.getElementById(`flow-phase-${phaseIdx}`);
     if (!el) return;
     setActivePhaseIdx(phaseIdx);
+    setActiveStepId(null);
     el.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
 
@@ -273,6 +275,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
     if (!el) return;
     isNavigatingRef.current = true;
     setActiveStepId(stepId);
+    setActivePhaseIdx(null);
     el.scrollIntoView({ behavior: "smooth", block: "start" });
     setTimeout(() => {
       isNavigatingRef.current = false;
@@ -404,12 +407,12 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
             </div>
             <div className="flex items-center gap-1 shrink-0 ml-3">
               {/* View mode toggle */}
-              <div data-tour="view-modes" className="flex rounded-md border border-blue-500/40 bg-zinc-800/60 mr-2 w-[280px]">
+              <div data-tour="view-modes" className="flex rounded-md border border-cyan-700/40 bg-zinc-800/60 mr-2 w-[280px]">
                 <button
                   onClick={() => setViewMode("concise")}
                   className={`flex-1 flex items-center justify-center gap-1 px-2.5 py-1.5 text-xs rounded-l-md transition ${
                     viewMode === "concise"
-                      ? "bg-blue-600/40 text-blue-100 font-semibold shadow-inner shadow-blue-900/30"
+                      ? "bg-cyan-900/50 text-cyan-200 font-semibold"
                       : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/40"
                   }`}
                 >
@@ -420,7 +423,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
                   onClick={() => setViewMode("timeline")}
                   className={`flex-1 flex items-center justify-center gap-1 px-2.5 py-1.5 text-xs transition ${
                     viewMode === "timeline"
-                      ? "bg-blue-600/40 text-blue-100 font-semibold shadow-inner shadow-blue-900/30"
+                      ? "bg-cyan-900/50 text-cyan-200 font-semibold"
                       : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/40"
                   }`}
                 >
@@ -431,7 +434,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
                   onClick={() => setViewMode("flow")}
                   className={`flex-1 flex items-center justify-center gap-1 px-2.5 py-1.5 text-xs rounded-r-md transition ${
                     viewMode === "flow"
-                      ? "bg-blue-600/40 text-blue-100 font-semibold shadow-inner shadow-blue-900/30"
+                      ? "bg-cyan-900/50 text-cyan-200 font-semibold"
                       : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/40"
                   }`}
                 >
@@ -719,6 +722,8 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
           flowSections={flowSections}
           activePhaseIdx={activePhaseIdx}
           onPhaseNavigate={handlePhaseNavigate}
+          collapsed={navCollapsed}
+          onCollapsedChange={setNavCollapsed}
         />
       </div>
     </div>

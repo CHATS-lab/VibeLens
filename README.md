@@ -24,56 +24,76 @@
 
 ---
 
-VibeLens parses, visualizes, and analyzes conversation histories from **Claude Code**, **Codex CLI**, **Gemini CLI**, and **Dataclaw** — giving you full observability into your AI-assisted development workflow.
+<p align="center">
+  <img src="figures/comic-blurb.png" alt="VibeLens Comic — Understand your agent. Teach it. Master it." width="680">
+</p>
 
-One command. No config. Works with your local `~/.claude/` sessions out of the box.
+<p align="center"><em>Understand your agent. Teach it. Master it.</em> &mdash; <a href="docs/blurb.md">full blurb</a></p>
+
+Your AI coding agents run hundreds of tool calls, burn thousands of tokens, and you have no idea what happened. VibeLens changes that.
+
+- **Session visualization.** Step-by-step timeline with every tool call, thinking block, and sub-agent spawn.
+- **Dashboard analytics.** Cost breakdowns by model, peak-hour histograms, and per-project drill-downs.
+- **Productivity tips.** Flags retries, circular debugging, and abandoned approaches -- with suggested fixes.
+- **Skill personalization.** Recommend, create, and evolve reusable agent skills from your session history.
+- **Session sharing.** Share your interactions with your teammates with a link.
+
+Works with **Claude Code**, **Codex CLI**, **Gemini CLI**, and **OpenClaw** out of the box.
 
 ```bash
 pip install vibelens && vibelens serve
 ```
 
+### Session Viewer & Dashboard
+
 <table>
   <tr>
+    <td width="50%">
+      <kbd><img src="figures/01-conversation.png" alt="Session Viewer" width="100%" /></kbd>
+      <p align="center"><b>Session Viewer</b><br>Step-by-step timeline with tool calls, token counts, and sub-agent spawns.</p>
+    </td>
     <td width="50%">
       <kbd><img src="figures/02-dashboard.png" alt="Analytics Dashboard" width="100%" /></kbd>
       <p align="center"><b>Analytics Dashboard</b><br>Aggregate stats, cost estimation, and usage trends over time.</p>
     </td>
+  </tr>
+</table>
+
+### Productivity Tips & Skill Personalization
+
+<table>
+  <tr>
     <td width="50%">
-      <kbd><img src="figures/03-dashboard-charts.png" alt="Dashboard Charts" width="100%" /></kbd>
-      <p align="center"><b>Activity Heatmap & Charts</b><br>Peak hours, project breakdown, model and tool distribution.</p>
+      <kbd><img src="figures/03-productivity-tips.png" alt="Productivity Tips" width="100%" /></kbd>
+      <p align="center"><b>Productivity Tips</b><br>Detect friction patterns and get concrete improvement suggestions.</p>
+    </td>
+    <td width="50%">
+      <kbd><img src="figures/04-skill-retrieval.png" alt="Skill Retrieval" width="100%" /></kbd>
+      <p align="center"><b>Skill Retrieval</b><br>Match workflow patterns to pre-built skills from the catalog.</p>
     </td>
   </tr>
   <tr>
     <td width="50%">
-      <kbd><img src="figures/01-session-browser.png" alt="Session Browser" width="100%" /></kbd>
-      <p align="center"><b>Session Browser</b><br>Browse by project, view step-by-step timelines with tool calls.</p>
+      <kbd><img src="figures/05-skill-creation.png" alt="Skill Creation" width="100%" /></kbd>
+      <p align="center"><b>Skill Creation</b><br>Generate new SKILL.md files from your session history.</p>
     </td>
     <td width="50%">
-      <kbd><img src="figures/04-flow-diagram.png" alt="Conversation Flow" width="100%" /></kbd>
-      <p align="center"><b>Conversation Flow</b><br>Phase detection across exploration, implementation, and verification.</p>
+      <kbd><img src="figures/06-skill-evolution.png" alt="Skill Evolution" width="100%" /></kbd>
+      <p align="center"><b>Skill Evolution</b><br>Evolve installed skills with targeted edits based on real usage.</p>
     </td>
   </tr>
 </table>
-
-## Why VibeLens?
-
-- **What did my agent actually do?** Step-by-step timeline with tool calls, token counts, and elapsed time
-- **How much is it costing me?** Per-session and aggregate cost estimation across 45+ models from 12 providers
-- **Where are the bottlenecks?** Conversation flow diagrams with phase detection and tool dependency graphs
-- **How do I share a session?** Shareable permalink URLs with read-only session replay
-- **What are my usage trends?** Analytics dashboard with heatmaps, model distribution, and project breakdowns
 
 ## Features
 
 | Feature | Description |
 |---------|-------------|
-| **Multi-agent parsing** | Claude Code, Codex CLI, Gemini CLI, Dataclaw with auto-detection |
-| **Step timeline** | Tool calls, sub-agent spawns, elapsed time, image content |
-| **Cost estimation** | 45+ models, 12 providers, per-session and aggregate cost |
-| **Flow diagrams** | Phase-grouped conversation flow with tool dependency highlighting |
-| **Session sharing** | Shareable permalink URLs with read-only view |
-| **Analytics dashboard** | Stat cards, usage trends, activity heatmap, model distribution |
-| **Tool distribution** | Per-tool call counts, error rates, avg/session |
+| **Multi-agent parsing** | Claude Code, Codex CLI, Gemini CLI, OpenClaw with auto-detection |
+| **Conversation Visualization** | Tool calls, sub-agent spawns, elapsed time, image content |
+| **Dashboard Analytics** | Cost breakdowns by model, peak-hour histograms, and per-project drill-downs. |
+| **Productivity tips** | Friction detection, cross-session patterns, actionable mitigations |
+| **Skill personalization** | Retrieve, create, and evolve reusable agent skills |
+| **Session sharing** | Shareable URLs with read-only view |
 
 ## Quick Start
 
@@ -120,7 +140,7 @@ vibelens serve --host 0.0.0.0 --port 8080
 | **Claude Code** | JSONL | `~/.claude/projects/` |
 | **Codex CLI** | JSONL | `~/.codex/sessions/` |
 | **Gemini CLI** | JSON | `~/.gemini/tmp/` |
-| **Dataclaw** | JSONL | HuggingFace exports |
+| **OpenClaw** | JSONL | `~/.openclaw/agents/` |
 
 ## Data Donation
 

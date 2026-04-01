@@ -12,7 +12,7 @@ from vibelens.config import (
     load_settings,
     save_llm_config,
 )
-from vibelens.config.llm_config import DEFAULT_LLM_CONFIG_PATH, discover_llm_config_path
+from vibelens.config.llm_config import DEFAULT_SETTINGS_PATH, discover_settings_path
 from vibelens.llm.backend import InferenceBackend
 from vibelens.models.enums import AppMode
 from vibelens.storage.conversation.base import TrajectoryStore
@@ -126,10 +126,10 @@ def get_llm_config() -> LLMConfig:
 
 
 def set_llm_config(config: LLMConfig) -> None:
-    """Update LLM config singleton, persist to YAML, and recreate backend."""
+    """Update LLM config singleton, persist to settings.json, and recreate backend."""
     _registry["llm_config"] = config
 
-    config_path = discover_llm_config_path() or DEFAULT_LLM_CONFIG_PATH
+    config_path = discover_settings_path() or DEFAULT_SETTINGS_PATH
     save_llm_config(config, config_path)
 
     from vibelens.llm.backends import create_backend_from_llm_config

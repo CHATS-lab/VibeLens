@@ -4,7 +4,6 @@ import {
   ArrowUpRight,
   BarChart3,
   BookOpen,
-  Check,
   ChevronDown,
   ChevronRight,
   Clock,
@@ -13,10 +12,8 @@ import {
   Hash,
   History,
   Layers,
-  Loader2,
   PanelRightClose,
   PanelRightOpen,
-  Pencil,
   Play,
   Plus,
   Shield,
@@ -39,6 +36,7 @@ import type {
 import { formatCost, formatDuration, formatTokens } from "../../utils";
 import { SEVERITY_COLORS, SESSION_ID_SHORT, SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH } from "../../styles";
 import { CopyButton } from "../copy-button";
+import { AnalysisWelcomePage } from "../analysis-welcome";
 import { LoadingSpinner } from "../loading-spinner";
 import { Modal, ModalBody, ModalFooter, ModalHeader } from "../modal";
 import { FrictionHistory } from "./friction-history";
@@ -266,13 +264,17 @@ export function FrictionPanel({ checkedIds }: FrictionPanelProps) {
     return (
       <div className="h-full flex">
         <div className="flex-1">
-          <EmptyState
-            checkedCount={checkedIds.size}
-            error={error}
-            onRun={handleRequestAnalysis}
+          <AnalysisWelcomePage
+            icon={<Sparkles className="w-12 h-12 text-amber-400/50" />}
+            title="Productivity Tips"
+            description="Identify patterns that slow you down. Select sessions and run analysis to detect wasted effort, recurring mistakes, and get concrete improvement suggestions."
+            accentColor="amber"
             llmStatus={llmStatus}
             fetchWithToken={fetchWithToken}
             onLlmConfigured={refreshLlmStatus}
+            checkedCount={checkedIds.size}
+            error={error}
+            onRun={handleRequestAnalysis}
           />
         </div>
         {sidebar}
@@ -299,353 +301,6 @@ export function FrictionPanel({ checkedIds }: FrictionPanelProps) {
         </div>
       </div>
       {sidebar}
-    </div>
-  );
-}
-
-const MODEL_PRESETS = [
-  "anthropic/claude-haiku-4-5",
-  "anthropic/claude-sonnet-4-5",
-  "openai/gpt-4.1",
-  "openai/gpt-4.1-mini",
-  "google/gemini-2.5-flash",
-  "deepseek/deepseek-chat",
-  "openrouter/anthropic/claude-sonnet-4-5",
-];
-
-const BACKEND_OPTIONS = [
-  { value: "litellm", label: "LiteLLM (recommended)" },
-  { value: "claude-cli", label: "Claude CLI" },
-  { value: "codex-cli", label: "Codex CLI" },
-  { value: "disabled", label: "Disabled" },
-];
-
-function ModelCombobox({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <div className="relative">
-      <div className="flex">
-        <input
-          type="text"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onFocus={() => setOpen(true)}
-          placeholder="anthropic/claude-haiku-4-5"
-          className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-amber-600 pr-8"
-        />
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          className="absolute right-0 inset-y-0 px-2 flex items-center text-zinc-500 hover:text-zinc-300"
-        >
-          <ChevronDown className="w-3.5 h-3.5" />
-        </button>
-      </div>
-      {open && (
-        <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <ul className="absolute z-20 mt-1 w-full bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl overflow-hidden">
-            {MODEL_PRESETS.map((preset) => (
-              <li key={preset}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onChange(preset);
-                    setOpen(false);
-                  }}
-                  className={`w-full text-left px-3 py-2 text-sm hover:bg-zinc-700 transition ${
-                    value === preset ? "text-amber-400" : "text-zinc-200"
-                  }`}
-                >
-                  {preset}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-    </div>
-  );
-}
-
-function LLMConfigForm({
-  fetchWithToken,
-  onConfigured,
-  llmStatus,
-}: {
-  fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
-  onConfigured: () => void;
-  llmStatus: LLMStatus | null;
-}) {
-  const [backend, setBackend] = useState(llmStatus?.backend_id === "mock" ? "litellm" : llmStatus?.backend_id ?? "litellm");
-  const [apiKey, setApiKey] = useState("");
-  const [model, setModel] = useState(llmStatus?.model ?? "anthropic/claude-haiku-4-5");
-  const [baseUrl, setBaseUrl] = useState(llmStatus?.base_url ?? "");
-  const [timeout, setTimeout_] = useState(llmStatus?.timeout ?? 120);
-  const [maxTokens, setMaxTokens] = useState(llmStatus?.max_tokens ?? 4096);
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [configError, setConfigError] = useState<string | null>(null);
-
-  const isCliBackend = backend === "claude-cli" || backend === "codex-cli";
-  const hasExistingKey = !!llmStatus?.api_key_masked;
-
-  const handleSubmit = useCallback(async () => {
-    if (!isCliBackend && !apiKey.trim() && !hasExistingKey) return;
-    setSubmitting(true);
-    setConfigError(null);
-    try {
-      const payload: Record<string, unknown> = {
-        backend: backend.trim(),
-        api_key: apiKey.trim(),
-        model: model.trim(),
-        timeout,
-        max_tokens: maxTokens,
-      };
-      if (baseUrl.trim()) payload.base_url = baseUrl.trim();
-      const res = await fetchWithToken("/api/llm/configure", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.detail || `HTTP ${res.status}`);
-      }
-      onConfigured();
-    } catch (err) {
-      setConfigError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSubmitting(false);
-    }
-  }, [backend, apiKey, model, baseUrl, timeout, maxTokens, isCliBackend, hasExistingKey, fetchWithToken, onConfigured]);
-
-  return (
-    <div className="space-y-3">
-      <div>
-        <label className="block text-xs font-medium text-zinc-400 mb-1">Backend</label>
-        <select
-          value={backend}
-          onChange={(e) => setBackend(e.target.value)}
-          className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-200 focus:outline-none focus:border-amber-600"
-        >
-          {BACKEND_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
-      </div>
-
-      {!isCliBackend && backend !== "disabled" && (
-        <div>
-          <label className="block text-xs font-medium text-zinc-400 mb-1">API Key</label>
-          <input
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder={llmStatus?.api_key_masked ? `Keep existing (${llmStatus.api_key_masked})` : "sk-ant-..."}
-            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-amber-600"
-          />
-          {llmStatus?.api_key_masked && !apiKey && (
-            <p className="mt-1 text-xs text-zinc-500">
-              Key configured: {llmStatus.api_key_masked}. Leave empty to keep it.
-            </p>
-          )}
-        </div>
-      )}
-
-      {backend !== "disabled" && (
-        <div>
-          <label className="block text-xs font-medium text-zinc-400 mb-1">Model</label>
-          <ModelCombobox value={model} onChange={setModel} />
-        </div>
-      )}
-
-      {backend !== "disabled" && (
-        <button
-          type="button"
-          onClick={() => setShowAdvanced((v) => !v)}
-          className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300 transition"
-        >
-          {showAdvanced ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-          Advanced
-        </button>
-      )}
-
-      {showAdvanced && backend !== "disabled" && (
-        <div className="space-y-3 pl-3 border-l-2 border-zinc-700/50">
-          <div>
-            <label className="block text-xs font-medium text-zinc-400 mb-1">
-              Base URL <span className="text-zinc-600">(auto-resolved if empty)</span>
-            </label>
-            <input
-              type="text"
-              value={baseUrl}
-              onChange={(e) => setBaseUrl(e.target.value)}
-              placeholder="https://api.anthropic.com"
-              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-amber-600"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1">Timeout (s)</label>
-              <input
-                type="number"
-                value={timeout}
-                onChange={(e) => setTimeout_(parseInt(e.target.value) || 120)}
-                min={10}
-                max={600}
-                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-200 focus:outline-none focus:border-amber-600"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1">Max Tokens</label>
-              <input
-                type="number"
-                value={maxTokens}
-                onChange={(e) => setMaxTokens(parseInt(e.target.value) || 4096)}
-                min={256}
-                max={32768}
-                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-200 focus:outline-none focus:border-amber-600"
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {configError && (
-        <div className="px-3 py-2 bg-rose-900/20 border border-rose-800/50 rounded-lg text-xs text-rose-300">
-          {configError}
-        </div>
-      )}
-      <button
-        onClick={handleSubmit}
-        disabled={(!isCliBackend && backend !== "disabled" && !apiKey.trim() && !hasExistingKey) || submitting}
-        className="inline-flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"
-      >
-        {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-        {backend === "disabled" ? "Disable" : "Connect"}
-      </button>
-    </div>
-  );
-}
-
-function LLMConfigSection({
-  llmStatus,
-  fetchWithToken,
-  onConfigured,
-}: {
-  llmStatus: LLMStatus | null;
-  fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
-  onConfigured: () => void;
-}) {
-  const [showForm, setShowForm] = useState(false);
-  const isConnected = llmStatus?.available === true;
-  const isMock = llmStatus?.backend_id === "mock";
-
-  if (isMock) return null;
-
-  if (isConnected && !showForm) {
-    return (
-      <div className="flex items-center justify-between px-4 py-2.5 bg-zinc-800/60 border border-zinc-700/50 rounded-lg mb-6">
-        <span className="text-xs text-zinc-400">
-          <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5 align-middle" />
-          {llmStatus.backend_id} / {llmStatus.model}
-        </span>
-        <button
-          onClick={() => setShowForm(true)}
-          className="inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300 transition"
-        >
-          <Pencil className="w-3 h-3" />
-          Change
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="bg-zinc-900/80 border border-zinc-700/60 rounded-xl p-5 mb-6">
-      <h4 className="text-sm font-semibold text-zinc-200 mb-3">
-        {isConnected ? "Update LLM Configuration" : "Configure LLM Backend"}
-      </h4>
-      <p className="text-xs text-zinc-400 mb-4">
-        Provide an API key and model to enable LLM-powered friction analysis.
-      </p>
-      <LLMConfigForm
-        fetchWithToken={fetchWithToken}
-        llmStatus={llmStatus}
-        onConfigured={() => {
-          setShowForm(false);
-          onConfigured();
-        }}
-      />
-      {isConnected && (
-        <button
-          onClick={() => setShowForm(false)}
-          className="mt-2 text-xs text-zinc-500 hover:text-zinc-300 transition"
-        >
-          Cancel
-        </button>
-      )}
-    </div>
-  );
-}
-
-function EmptyState({
-  checkedCount,
-  error,
-  onRun,
-  llmStatus,
-  fetchWithToken,
-  onLlmConfigured,
-}: {
-  checkedCount: number;
-  error: string | null;
-  onRun: () => void;
-  llmStatus: LLMStatus | null;
-  fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
-  onLlmConfigured: () => void;
-}) {
-  return (
-    <div className="flex items-center justify-center h-full">
-      <div className="text-center max-w-md">
-        <Sparkles className="w-12 h-12 mx-auto mb-4 text-amber-400/50" />
-        <h3 className="text-lg font-semibold text-zinc-200 mb-1">
-          Productivity Tips
-        </h3>
-        <p className="text-xs text-zinc-500 mb-3">
-          Identify patterns that slow you down and get concrete improvements.
-        </p>
-        <p className="text-sm text-zinc-400 mb-6">
-          Select sessions and run analysis to detect wasted effort, recurring mistakes, and generate actionable mitigations.
-        </p>
-        <LLMConfigSection
-          llmStatus={llmStatus}
-          fetchWithToken={fetchWithToken}
-          onConfigured={onLlmConfigured}
-        />
-        {error && (
-          <div className="mb-4 px-4 py-2.5 bg-rose-900/20 border border-rose-800/50 rounded-lg text-xs text-rose-300">
-            {error}
-          </div>
-        )}
-        <Tip text="Check sessions in the sidebar to get started">
-          <button
-            onClick={onRun}
-            disabled={checkedCount === 0}
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <Play className="w-4 h-4" />
-            Analyze {checkedCount > 0 ? `${checkedCount} session${checkedCount !== 1 ? "s" : ""}` : "sessions"}
-          </button>
-        </Tip>
-      </div>
     </div>
   );
 }
@@ -721,7 +376,7 @@ function SummarySection({
             <div className="flex items-center gap-2">
               <Zap className="w-5 h-5 text-amber-400" />
               <h3 className="text-base font-semibold text-zinc-100">
-                Top Recommendation{topMitigations.length > 1 ? "s" : ""}
+                Top Productivity Tip{topMitigations.length > 1 ? "s" : ""}
               </h3>
             </div>
           </Tip>

@@ -1,17 +1,20 @@
 """Donation sender — collect session files, create ZIP, send to donation server.
 
-Packages raw session files and parsed trajectories into a ZIP archive
-and POSTs it to the configured donation server endpoint. Works with
-both LocalStore (raw JSONL files available) and DiskStore (only parsed
-JSON files available).
+Packages raw session files, parsed trajectories, and git bundles into
+a ZIP archive and POSTs it to the configured donation server endpoint.
+Works with both LocalStore (raw JSONL files available) and DiskStore
+(only parsed JSON files available).
 
 When sessions were uploaded (DiskStore with _upload_id tag), the original
-upload ZIP is included in raw/ instead of the parsed JSON duplicate.
+upload ZIP is included in sessions/raw/ instead of the parsed JSON duplicate.
 """
 
+import asyncio
 import json
+import shutil
 import tempfile
 import zipfile
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -20,11 +23,13 @@ import httpx
 from vibelens import __version__
 from vibelens.deps import get_settings, get_store
 from vibelens.ingest.parsers.base import BaseParser
+from vibelens.models.trajectories.trajectory import Trajectory
 from vibelens.schemas.session import DonateResult
 from vibelens.services.session.store_resolver import load_from_stores
 from vibelens.services.upload.processor import generate_upload_id
 from vibelens.storage.conversation.base import TrajectoryStore
 from vibelens.storage.conversation.local import LocalStore
+from vibelens.utils.git import compute_repo_hash, create_git_bundle, resolve_git_root
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -56,17 +61,26 @@ async def send_donation(session_ids: list[str], session_token: str | None = None
         return DonateResult(total=len(session_ids), donated=0, errors=sessions_data.errors)
 
     donation_id = generate_upload_id()
-    zip_path = _create_donation_zip(sessions_data, donation_id)
+    bundle_dir = Path(tempfile.mkdtemp(prefix="vibelens_bundles_"))
     try:
-        donation_url = f"{settings.donation_url.rstrip('/')}{DONATION_RECEIVE_PATH}"
-        await _send_zip(zip_path, donation_url, donation_id)
-        donated = len(sessions_data.valid_sessions)
-    except httpx.HTTPError as exc:
-        logger.warning("Donation upload failed: %s", exc)
-        sessions_data.errors.append({"error": f"Upload failed: {exc}"})
-        donated = 0
+        repo_bundles, repo_hash_map = await asyncio.to_thread(
+            _resolve_repo_bundles, sessions_data.valid_sessions, bundle_dir
+        )
+        for session in sessions_data.valid_sessions:
+            session.repo_hash = repo_hash_map.get(session.session_id)
+        zip_path = _create_donation_zip(sessions_data, donation_id, repo_bundles)
+        try:
+            donation_url = f"{settings.donation_url.rstrip('/')}{DONATION_RECEIVE_PATH}"
+            await _send_zip(zip_path, donation_url, donation_id)
+            donated = len(sessions_data.valid_sessions)
+        except httpx.HTTPError as exc:
+            logger.warning("Donation upload failed: %s", exc)
+            sessions_data.errors.append({"error": f"Upload failed: {exc}"})
+            donated = 0
+        finally:
+            zip_path.unlink(missing_ok=True)
     finally:
-        zip_path.unlink(missing_ok=True)
+        shutil.rmtree(bundle_dir, ignore_errors=True)
 
     return DonateResult(total=len(session_ids), donated=donated, errors=sessions_data.errors)
 
@@ -91,6 +105,9 @@ class _SessionData:
         trajectory_count: int,
         step_count: int,
         source_upload_id: str | None = None,
+        project_path: str | None = None,
+        repo_hash: str | None = None,
+        git_branch: str | None = None,
     ) -> None:
         self.session_id = session_id
         self.agent_type = agent_type
@@ -101,6 +118,19 @@ class _SessionData:
         self.step_count = step_count
         # Set when session was uploaded — points to the original upload ZIP
         self.source_upload_id = source_upload_id
+        self.project_path = project_path
+        self.repo_hash = repo_hash
+        self.git_branch = git_branch
+
+
+@dataclass
+class _RepoBundle:
+    """A successfully created git bundle for a single repository."""
+
+    repo_hash: str
+    bundle_path: Path
+    bundle_size: int = field(default=0)
+    session_ids: list[str] = field(default_factory=list)
 
 
 def _active_stores() -> list[TrajectoryStore]:
@@ -174,6 +204,10 @@ def _collect_sessions(
         )
         step_count = sum(len(t.steps) for t in trajectories)
 
+        main_trajectory = _find_main_trajectory(trajectories)
+        project_path = main_trajectory.project_path if main_trajectory else None
+        git_branch = _extract_git_branch(main_trajectory) if main_trajectory else None
+
         result.valid_sessions.append(
             _SessionData(
                 session_id=session_id,
@@ -183,6 +217,8 @@ def _collect_sessions(
                 trajectory_count=len(trajectories),
                 step_count=step_count,
                 source_upload_id=source_upload_id,
+                project_path=project_path,
+                git_branch=git_branch,
             )
         )
 
@@ -210,11 +246,11 @@ def _resolve_raw_files(
     Returns:
         List of (absolute_path, zip_relative_path) tuples.
     """
-    # Uploaded sessions: include the original upload ZIP in raw/
+    # Uploaded sessions: include the original upload ZIP in sessions/raw/
     if source_upload_id:
         upload_zip = _locate_upload_zip(source_upload_id)
         if upload_zip:
-            zip_path = f"raw/{source_upload_id}.zip"
+            zip_path = f"sessions/raw/{source_upload_id}.zip"
             return [(upload_zip, zip_path)]
         logger.warning(
             "Upload ZIP not found for %s, falling back to session files", source_upload_id
@@ -232,7 +268,7 @@ def _resolve_raw_files(
         if not f.exists():
             continue
         rel = f.relative_to(data_dir) if data_dir and f.is_relative_to(data_dir) else Path(f.name)
-        zip_path = f"raw/{parser.AGENT_TYPE.value}/{rel}"
+        zip_path = f"sessions/raw/{parser.AGENT_TYPE.value}/{rel}"
         raw_files.append((f, zip_path))
 
     return raw_files
@@ -254,8 +290,114 @@ def _locate_upload_zip(upload_id: str) -> Path | None:
     return None
 
 
-def _create_donation_zip(sessions_data: _SessionCollectionResult, donation_id: str) -> Path:
-    """Create a ZIP archive containing raw files, parsed JSON, and a manifest.
+def _find_main_trajectory(trajectories: list[Trajectory]) -> Trajectory | None:
+    """Return the main (non-sub-agent) trajectory from a group.
+
+    The main trajectory has no ``parent_trajectory_ref``.  Falls back to the
+    first trajectory if all are sub-agents.
+
+    Args:
+        trajectories: Parsed trajectory group for a session.
+
+    Returns:
+        The main trajectory, or None if the list is empty.
+    """
+    if not trajectories:
+        return None
+    for traj in trajectories:
+        if traj.parent_trajectory_ref is None:
+            return traj
+    return trajectories[0]
+
+
+def _extract_git_branch(trajectory: Trajectory) -> str | None:
+    """Extract the primary git branch from trajectory extra metadata.
+
+    Args:
+        trajectory: Main trajectory to inspect.
+
+    Returns:
+        First git branch string, or None if unavailable.
+    """
+    if not trajectory.extra:
+        return None
+    branches = trajectory.extra.get("git_branches")
+    if branches and isinstance(branches, list):
+        return branches[0]
+    return None
+
+
+def _resolve_repo_bundles(
+    sessions: list[_SessionData], bundle_dir: Path
+) -> tuple[list[_RepoBundle], dict[str, str]]:
+    """Create git bundles for repos referenced by sessions.
+
+    Deduplicates by both ``project_path`` string (avoids redundant
+    ``git rev-parse`` calls) and resolved git root (avoids duplicate bundles
+    when different paths resolve to the same repo).
+
+    Args:
+        sessions: Sessions with ``project_path`` populated.
+        bundle_dir: Temporary directory for bundle files.
+
+    Returns:
+        Tuple of (bundles, repo_hash_map) where repo_hash_map is
+        ``{session_id: repo_hash}`` for sessions that matched a repo.
+    """
+    # Cache resolve_git_root results by project_path string
+    path_to_root: dict[str, Path | None] = {}
+    root_to_hash: dict[Path, str] = {}
+    root_to_session_ids: dict[Path, list[str]] = {}
+
+    for session in sessions:
+        if not session.project_path:
+            continue
+
+        # Avoid redundant subprocess calls for the same project_path
+        if session.project_path not in path_to_root:
+            path_to_root[session.project_path] = resolve_git_root(Path(session.project_path))
+
+        git_root = path_to_root[session.project_path]
+        if not git_root:
+            logger.warning("No git repo found for project_path %s", session.project_path)
+            continue
+
+        if git_root not in root_to_hash:
+            root_to_hash[git_root] = compute_repo_hash(git_root)
+            root_to_session_ids[git_root] = []
+        root_to_session_ids[git_root].append(session.session_id)
+
+    bundles: list[_RepoBundle] = []
+    repo_hash_map: dict[str, str] = {}
+
+    for git_root, repo_hash in root_to_hash.items():
+        output_path = bundle_dir / f"{repo_hash}.bundle"
+        if not create_git_bundle(git_root, output_path):
+            logger.warning("Failed to bundle repo %s (hash %s)", git_root, repo_hash)
+            continue
+
+        session_ids = root_to_session_ids[git_root]
+        bundle_size = output_path.stat().st_size
+        bundle = _RepoBundle(
+            repo_hash=repo_hash,
+            bundle_path=output_path,
+            bundle_size=bundle_size,
+            session_ids=session_ids,
+        )
+        bundles.append(bundle)
+
+        for sid in session_ids:
+            repo_hash_map[sid] = repo_hash
+
+    return bundles, repo_hash_map
+
+
+def _create_donation_zip(
+    sessions_data: _SessionCollectionResult,
+    donation_id: str,
+    repo_bundles: list[_RepoBundle] | None = None,
+) -> Path:
+    """Create a ZIP archive containing raw files, parsed JSON, git bundles, and a manifest.
 
     All entries are prefixed with ``{donation_id}/`` so unzipping creates
     a single wrapping directory. Upload ZIPs shared by multiple sessions
@@ -264,6 +406,7 @@ def _create_donation_zip(sessions_data: _SessionCollectionResult, donation_id: s
     Args:
         sessions_data: Collected session data to package.
         donation_id: Unique donation identifier used as wrapping directory.
+        repo_bundles: Git bundles to include in repos/ directory.
 
     Returns:
         Path to the created temporary ZIP file.
@@ -286,7 +429,7 @@ def _create_donation_zip(sessions_data: _SessionCollectionResult, donation_id: s
                     written_raw_paths.add(prefixed_path)
                 raw_zip_paths.append(prefixed_path)
 
-            parsed_path = f"{donation_id}/parsed/{session.session_id}.json"
+            parsed_path = f"{donation_id}/sessions/parsed/{session.session_id}.json"
             zf.writestr(parsed_path, session.parsed_json)
 
             session_entry: dict = {
@@ -298,14 +441,35 @@ def _create_donation_zip(sessions_data: _SessionCollectionResult, donation_id: s
             }
             if session.source_upload_id:
                 session_entry["source_upload_id"] = session.source_upload_id
+            if session.repo_hash:
+                session_entry["repo_hash"] = session.repo_hash
+            if session.git_branch:
+                session_entry["git_branch"] = session.git_branch
             manifest_sessions.append(session_entry)
 
-        manifest = {
+        # Write git bundles into repos/
+        bundles = repo_bundles or []
+        for bundle in bundles:
+            bundle_zip_path = f"{donation_id}/repos/{bundle.repo_hash}.bundle"
+            zf.write(bundle.bundle_path, bundle_zip_path)
+
+        manifest_repos = [
+            {
+                "repo_hash": b.repo_hash,
+                "bundle_file": f"repos/{b.repo_hash}.bundle",
+                "bundle_size_bytes": b.bundle_size,
+                "session_ids": b.session_ids,
+            }
+            for b in bundles
+        ]
+        manifest: dict = {
             "donation_id": donation_id,
             "timestamp": datetime.now(UTC).isoformat(),
             "vibelens_version": __version__,
             "sessions": manifest_sessions,
         }
+        if manifest_repos:
+            manifest["repos"] = manifest_repos
         manifest_path = f"{donation_id}/{MANIFEST_FILENAME}"
         zf.writestr(manifest_path, json.dumps(manifest, indent=2, ensure_ascii=False))
 
@@ -326,8 +490,6 @@ async def _send_zip(zip_path: Path, url: str, donation_id: str) -> None:
     filename = f"{donation_id}.zip"
     async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SECONDS) as client:
         with open(zip_path, "rb") as f:
-            response = await client.post(
-                url, files={"file": (filename, f, "application/zip")}
-            )
+            response = await client.post(url, files={"file": (filename, f, "application/zip")})
             response.raise_for_status()
     logger.info("Donation uploaded successfully to %s", url)

@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.9.16] - 2026-04-01
+
+### Added
+- **Git-enriched donations**: Donation ZIPs now include `git bundle --all` for each repository referenced by donated sessions. Enables matching agent edits to git commits for edit-persistence analysis.
+- **Git utilities** (`utils/git.py`): `resolve_git_root()`, `create_git_bundle()`, `compute_repo_hash()` for repo resolution, bundling, and deduplication.
+- **Repo-to-session mapping**: Manifest `repos` array lists bundles with `session_ids` linking back to sessions. Per-session `repo_hash` and `git_branch` fields added.
+
+### Changed
+- **Donation ZIP layout**: Migrated from flat `raw/`+`parsed/` to `sessions/raw/`+`sessions/parsed/`, with new `repos/` directory for git bundles.
+- **Donation sender**: `_resolve_repo_bundles()` deduplicates by both `project_path` string (avoids redundant subprocess calls) and resolved git root (avoids duplicate bundles). Returns a mapping instead of mutating sessions. Bundle creation runs via `asyncio.to_thread`.
+- **Friction panel**: Renamed "Top Recommendations" to "Top Productivity Tips".
+- **Skill analysis UI**: Restyled result header, summary card, section headers, and metadata footer to match friction panel. Moved Workflow Patterns section to bottom. Removed count badges from section headers.
+- **Analysis welcome**: Moved session-selection hint into a tooltip on the disabled button.
+- **Tooltip**: Skip rendering portal when text is empty.
+- **README**: Added comic blurb, new screenshots (01-06), grouped figures, linked `docs/blurb.md`, updated feature table and supported agents.
+
 ## [0.9.15] - 2026-03-31
 
 ### Changed

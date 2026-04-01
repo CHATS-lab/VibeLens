@@ -1,23 +1,28 @@
-"""Mutable LLM configuration with YAML persistence and provider URL registry.
+"""Mutable LLM configuration with JSON persistence and provider URL registry.
 
 Separated from Settings (which is immutable after startup) because LLM
 config changes at runtime via ``POST /llm/configure`` and should persist
-across restarts.
+across restarts. Config is stored in ``~/.vibelens/settings.json`` under
+the ``"llm"`` key. Legacy YAML files are auto-migrated on first load.
 """
 
+import json
 import os
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
+from vibelens.models.inference import BackendType
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
 
 LLM_CONFIG_ENV_VAR = "VIBELENS_LLM_CONFIG"
 LLM_ENV_PREFIX = "VIBELENS_LLM_"
-DEFAULT_LLM_CONFIG_PATH = Path.home() / ".vibelens" / "llm.yaml"
+DEFAULT_SETTINGS_PATH = Path.home() / ".vibelens" / "settings.json"
+LEGACY_YAML_PATH = Path.home() / ".vibelens" / "llm.yaml"
+LEGACY_PROJECT_YAML_PATH = Path("config/llm.yaml")
 
 PROVIDER_BASE_URLS: dict[str, str] = {
     "anthropic": "https://api.anthropic.com",
@@ -48,45 +53,44 @@ API_KEY_MASK_SUFFIX_LEN = 4
 API_KEY_MASK = "***"
 
 
+LEGACY_BACKEND_ALIASES: dict[str, str] = {
+    "anthropic-api": "litellm",
+    "openai-api": "litellm",
+}
+
+
 class LLMConfig(BaseModel):
     """Mutable LLM configuration. Can be changed at runtime and persisted."""
 
-    backend: str = Field(
-        default="disabled",
+    backend: BackendType = Field(
+        default=BackendType.DISABLED,
         description="Backend: 'litellm', 'claude-cli', 'codex-cli', 'disabled'.",
     )
-    api_key: str = Field(
-        default="",
-        description="API key for the LLM provider.",
-    )
+    api_key: str = Field(default="", description="API key for the LLM provider.")
     base_url: str | None = Field(
-        default=None,
-        description="Custom base URL. Auto-resolved from PROVIDER_BASE_URLS if None.",
+        default=None, description="Custom base URL. Auto-resolved from PROVIDER_BASE_URLS if None."
     )
-    model: str = Field(
-        default="anthropic/claude-haiku-4-5",
-        description="Model in litellm format.",
-    )
-    timeout: int = Field(
-        default=120,
-        description="Inference timeout in seconds.",
-    )
-    max_tokens: int = Field(
-        default=4096,
-        description="Max output tokens.",
-    )
+    model: str = Field(default="anthropic/claude-haiku-4-5", description="Model in litellm format.")
+    timeout: int = Field(default=120, description="Inference timeout in seconds.")
+    max_tokens: int = Field(default=4096, description="Max output tokens.")
+
+    @field_validator("backend", mode="before")
+    @classmethod
+    def normalize_legacy_backend(cls, value: str) -> str:
+        """Map legacy backend strings to current BackendType values."""
+        if isinstance(value, str):
+            return LEGACY_BACKEND_ALIASES.get(value, value)
+        return value
 
 
-LEGACY_LLM_CONFIG_PATH = Path("config/llm.yaml")
-
-
-def discover_llm_config_path() -> Path | None:
-    """Find the LLM config file path.
+def discover_settings_path() -> Path | None:
+    """Find the settings file path, triggering YAML migration if needed.
 
     Checks (in order):
-        1. ``VIBELENS_LLM_CONFIG`` environment variable
-        2. ``~/.vibelens/llm.yaml`` (default)
-        3. ``config/llm.yaml`` (legacy fallback)
+        1. ``VIBELENS_LLM_CONFIG`` env var (backward compat)
+        2. ``~/.vibelens/settings.json`` (new default)
+        3. ``~/.vibelens/llm.yaml`` (migration trigger)
+        4. ``config/llm.yaml`` (legacy project fallback)
 
     Returns:
         Path if found, else None.
@@ -99,22 +103,25 @@ def discover_llm_config_path() -> Path | None:
         logger.warning("%s points to missing file: %s", LLM_CONFIG_ENV_VAR, path)
         return None
 
-    if DEFAULT_LLM_CONFIG_PATH.exists():
-        return DEFAULT_LLM_CONFIG_PATH
+    if DEFAULT_SETTINGS_PATH.exists():
+        return DEFAULT_SETTINGS_PATH
 
-    # Legacy fallback: config/llm.yaml in the working directory
-    if LEGACY_LLM_CONFIG_PATH.exists():
-        return LEGACY_LLM_CONFIG_PATH
+    if LEGACY_YAML_PATH.exists():
+        _migrate_yaml_to_json(LEGACY_YAML_PATH, DEFAULT_SETTINGS_PATH)
+        return DEFAULT_SETTINGS_PATH
+
+    if LEGACY_PROJECT_YAML_PATH.exists():
+        return LEGACY_PROJECT_YAML_PATH
 
     return None
 
 
 def load_llm_config(config_path: Path | None = None) -> LLMConfig:
-    """Load LLM config from YAML file, then apply env var overrides.
+    """Load LLM config from settings.json (or legacy YAML), then apply env overrides.
 
     Priority (highest to lowest):
         1. Environment variables (``VIBELENS_LLM_*``)
-        2. YAML config file values
+        2. Settings file values
         3. Field defaults
 
     Args:
@@ -123,11 +130,15 @@ def load_llm_config(config_path: Path | None = None) -> LLMConfig:
     Returns:
         Populated LLMConfig.
     """
-    resolved = config_path or discover_llm_config_path()
-    yaml_values = _load_yaml_values(resolved) if resolved else {}
+    resolved = config_path or discover_settings_path()
+    file_values: dict = {}
+    if resolved:
+        if resolved.suffix == ".json":
+            file_values = _load_json_values(resolved)
+        else:
+            file_values = _load_yaml_values(resolved)
 
-    # Apply env var overrides on top of YAML values
-    merged = _apply_env_overrides(yaml_values)
+    merged = _apply_env_overrides(file_values)
 
     config = LLMConfig(**merged)
     if resolved:
@@ -136,30 +147,33 @@ def load_llm_config(config_path: Path | None = None) -> LLMConfig:
 
 
 def save_llm_config(config: LLMConfig, config_path: Path) -> None:
-    """Persist LLM config to a YAML file.
+    """Persist LLM config to settings.json.
 
-    The API key is saved as-is so it can be reloaded on restart.
+    Reads existing file to preserve non-llm keys, then writes the
+    ``"llm"`` section with the current configuration.
 
     Args:
         config: Current LLM configuration.
-        config_path: Target file path.
+        config_path: Target file path (should be settings.json).
     """
-    data = {
-        "llm": {
-            "backend": config.backend,
-            "model": config.model,
-            "api_key": config.api_key,
-            "base_url": config.base_url,
-            "timeout": config.timeout,
-            "max_tokens": config.max_tokens,
-        }
+    existing: dict = {}
+    if config_path.exists():
+        try:
+            existing = json.loads(config_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            existing = {}
+
+    existing["llm"] = {
+        "backend": str(config.backend),
+        "model": config.model,
+        "api_key": config.api_key,
+        "base_url": config.base_url,
+        "timeout": config.timeout,
+        "max_tokens": config.max_tokens,
     }
 
     config_path.parent.mkdir(parents=True, exist_ok=True)
-    config_path.write_text(
-        yaml.dump(data, default_flow_style=False, sort_keys=False),
-        encoding="utf-8",
-    )
+    config_path.write_text(json.dumps(existing, indent=2) + "\n", encoding="utf-8")
     logger.info("Saved LLM config to %s", config_path)
 
 
@@ -191,6 +205,28 @@ def _extract_provider(model: str) -> str | None:
     return model.split("/", 1)[0].lower()
 
 
+def _load_json_values(config_path: Path) -> dict:
+    """Read the ``"llm"`` section from a JSON settings file.
+
+    Args:
+        config_path: Path to settings.json.
+
+    Returns:
+        Dict of field name → value from the llm section.
+    """
+    try:
+        raw = json.loads(config_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning("Cannot read settings file %s: %s", config_path, exc)
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    llm_section = raw.get("llm")
+    if not isinstance(llm_section, dict):
+        return {}
+    return {k: v for k, v in llm_section.items() if v is not None}
+
+
 def _load_yaml_values(config_path: Path) -> dict:
     """Read the ``llm:`` section from a YAML config file.
 
@@ -209,16 +245,33 @@ def _load_yaml_values(config_path: Path) -> dict:
     return {k: v for k, v in llm_section.items() if v is not None}
 
 
-def _apply_env_overrides(yaml_values: dict) -> dict:
-    """Overlay environment variables onto YAML-loaded values.
+def _migrate_yaml_to_json(yaml_path: Path, json_path: Path) -> None:
+    """Migrate LLM config from legacy YAML to settings.json.
 
     Args:
-        yaml_values: Values from YAML file.
+        yaml_path: Source YAML file (e.g. ``~/.vibelens/llm.yaml``).
+        json_path: Target JSON file (e.g. ``~/.vibelens/settings.json``).
+    """
+    yaml_values = _load_yaml_values(yaml_path)
+    if not yaml_values:
+        return
+
+    json_path.parent.mkdir(parents=True, exist_ok=True)
+    data = {"llm": yaml_values}
+    json_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    logger.info("Migrated LLM config from %s → %s", yaml_path, json_path)
+
+
+def _apply_env_overrides(file_values: dict) -> dict:
+    """Overlay environment variables onto file-loaded values.
+
+    Args:
+        file_values: Values from config file (JSON or YAML).
 
     Returns:
         Merged dict with env vars taking priority.
     """
-    merged = dict(yaml_values)
+    merged = dict(file_values)
     for env_key, field_name in _ENV_FIELD_MAP.items():
         env_value = os.environ.get(env_key)
         if env_value is not None:

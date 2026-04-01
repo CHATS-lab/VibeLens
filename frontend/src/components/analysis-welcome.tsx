@@ -1,0 +1,138 @@
+import { ArrowLeft, Play, Settings } from "lucide-react";
+import { useState } from "react";
+import type { LLMStatus } from "../types";
+import { LLMConfigForm } from "./llm-config";
+import { Tooltip } from "./tooltip";
+
+type AccentColor = "amber" | "teal" | "cyan";
+
+const ACCENT_BUTTON: Record<AccentColor, string> = {
+  amber: "bg-amber-600 hover:bg-amber-500",
+  teal: "bg-teal-600 hover:bg-teal-500",
+  cyan: "bg-cyan-600 hover:bg-cyan-500",
+};
+
+const ACCENT_LINK: Record<AccentColor, string> = {
+  amber: "text-amber-400 hover:text-amber-300",
+  teal: "text-teal-400 hover:text-teal-300",
+  cyan: "text-cyan-400 hover:text-cyan-300",
+};
+
+interface AnalysisWelcomePageProps {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  accentColor: AccentColor;
+  llmStatus: LLMStatus | null;
+  fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
+  onLlmConfigured: () => void;
+  checkedCount: number;
+  error: string | null;
+  onRun: () => void;
+}
+
+export function AnalysisWelcomePage({
+  icon,
+  title,
+  description,
+  accentColor,
+  llmStatus,
+  fetchWithToken,
+  onLlmConfigured,
+  checkedCount,
+  error,
+  onRun,
+}: AnalysisWelcomePageProps) {
+  const [view, setView] = useState<"intro" | "config">("intro");
+
+  const isConnected = llmStatus?.available === true;
+  const isMock = llmStatus?.backend_id === "mock";
+
+  if (view === "config") {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="max-w-md w-full px-6">
+          <button
+            onClick={() => setView("intro")}
+            className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition mb-6"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            Back
+          </button>
+          <h3 className="text-lg font-semibold text-zinc-200 mb-2">
+            Configure LLM Backend
+          </h3>
+          <p className="text-xs text-zinc-500 mb-5">
+            Provide an API key and model to enable LLM-powered analysis.
+          </p>
+          <LLMConfigForm
+            fetchWithToken={fetchWithToken}
+            llmStatus={llmStatus}
+            accentColor={accentColor}
+            onConfigured={() => {
+              onLlmConfigured();
+              setView("intro");
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center justify-center h-full">
+      <div className="text-center max-w-md px-6">
+        <div className="flex justify-center mb-4">{icon}</div>
+        <h3 className="text-lg font-semibold text-zinc-200 mb-2">{title}</h3>
+        <p className="text-sm text-zinc-400 mb-6 leading-relaxed">
+          {description}
+        </p>
+
+        {/* LLM status indicator */}
+        {!isMock && (
+          <div className="mb-6">
+            {isConnected ? (
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-zinc-800/60 border border-zinc-700/50 rounded-lg text-xs text-zinc-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                <span>{llmStatus.backend_id} / {llmStatus.model}</span>
+                <button
+                  onClick={() => setView("config")}
+                  className={`ml-1 ${ACCENT_LINK[accentColor]} transition`}
+                >
+                  Change
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setView("config")}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700/50 rounded-lg transition"
+              >
+                <Settings className="w-3.5 h-3.5" />
+                Configure LLM
+              </button>
+            )}
+          </div>
+        )}
+
+        {error && (
+          <div className="mb-4 px-4 py-2.5 bg-rose-900/20 border border-rose-800/50 rounded-lg text-xs text-rose-300 text-left">
+            {error}
+          </div>
+        )}
+
+        <Tooltip text={checkedCount === 0 ? "Use the checkboxes in the session list to select sessions for analysis." : ""}>
+          <button
+            onClick={onRun}
+            disabled={checkedCount === 0 || (!isConnected && !isMock)}
+            className={`inline-flex items-center gap-2 px-5 py-2.5 ${ACCENT_BUTTON[accentColor]} text-white text-sm font-medium rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed`}
+          >
+            <Play className="w-4 h-4" />
+            {checkedCount > 0
+              ? `Analyze ${checkedCount} session${checkedCount !== 1 ? "s" : ""}`
+              : "Select sessions first"}
+          </button>
+        </Tooltip>
+      </div>
+    </div>
+  );
+}

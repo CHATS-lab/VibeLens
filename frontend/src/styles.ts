@@ -64,7 +64,7 @@ export const SESSION_ID_SHORT = 8;
 export const SESSION_ID_MEDIUM = 12;
 export const PREVIEW_SHORT = 40;
 export const PREVIEW_MEDIUM = 60;
-export const PREVIEW_LONG = 80;
+export const PREVIEW_LONG = 150;
 export const LABEL_MAX_LENGTH = 120;
 
 // Timing constants
@@ -74,7 +74,7 @@ export const SEARCH_DEBOUNCE_MS = 300;
 export const SESSIONS_PER_PAGE = 100;
 
 // Right sidebar panel dimensions (shared across prompt nav, friction, skills)
-export const SIDEBAR_DEFAULT_WIDTH = 280;
+export const SIDEBAR_DEFAULT_WIDTH = 252;
 export const SIDEBAR_MIN_WIDTH = 180;
 export const SIDEBAR_MAX_WIDTH = 400;
 

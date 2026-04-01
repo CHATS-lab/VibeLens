@@ -1,12 +1,12 @@
-import { History } from "lucide-react";
-import { useCallback, useState } from "react";
+import { History, Search, Sparkles, TrendingUp } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { useAppContext } from "../../app";
-import type { SkillAnalysisResult, SkillMode } from "../../types";
+import type { LLMStatus, SkillAnalysisResult, SkillMode } from "../../types";
 import { SIDEBAR_DEFAULT_WIDTH } from "../../styles";
+import { AnalysisWelcomePage } from "../analysis-welcome";
 import { ExploreSkillsTab } from "./explore-skills-tab";
 import { LocalSkillsTab } from "./local-skills-tab";
 import {
-  AnalysisEmptyState,
   AnalysisLoadingState,
   AnalysisResultView,
   type SkillTab,
@@ -30,6 +30,24 @@ const MODE_MAP: Record<string, SkillMode> = {
   evolve: "evolution",
 };
 
+const MODE_DESCRIPTIONS: Record<SkillMode, { title: string; desc: string; icon: React.ReactNode }> = {
+  retrieval: {
+    title: "Skill Retrieval",
+    desc: "Detect workflow patterns and recommend existing skills that match your coding style.",
+    icon: <Search className="w-10 h-10 text-teal-400/50" />,
+  },
+  creation: {
+    title: "Skill Creation",
+    desc: "Generate new SKILL.md files from detected automation opportunities in your sessions.",
+    icon: <Sparkles className="w-10 h-10 text-emerald-400/50" />,
+  },
+  evolution: {
+    title: "Skill Evolution",
+    desc: "Analyze installed skills against your usage data and suggest targeted improvements.",
+    icon: <TrendingUp className="w-10 h-10 text-amber-400/50" />,
+  },
+};
+
 interface SkillsPanelProps {
   checkedIds: Set<string>;
 }
@@ -42,6 +60,20 @@ export function SkillsPanel({ checkedIds }: SkillsPanelProps) {
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(true);
   const [historyRefresh, setHistoryRefresh] = useState(0);
+  const [llmStatus, setLlmStatus] = useState<LLMStatus | null>(null);
+
+  const refreshLlmStatus = useCallback(async () => {
+    try {
+      const res = await fetchWithToken("/api/llm/status");
+      if (res.ok) setLlmStatus(await res.json());
+    } catch {
+      /* ignore — status check is best-effort */
+    }
+  }, [fetchWithToken]);
+
+  useEffect(() => {
+    refreshLlmStatus();
+  }, [refreshLlmStatus]);
 
   const handleRunAnalysis = useCallback(
     async (mode: SkillMode) => {
@@ -134,8 +166,14 @@ export function SkillsPanel({ checkedIds }: SkillsPanelProps) {
             <AnalysisLoadingState mode={currentMode} sessionCount={checkedIds.size} />
           )}
           {isAnalysisTab && !analysisLoading && !analysisResult && (
-            <AnalysisEmptyState
-              mode={currentMode}
+            <AnalysisWelcomePage
+              icon={MODE_DESCRIPTIONS[currentMode].icon}
+              title={MODE_DESCRIPTIONS[currentMode].title}
+              description={MODE_DESCRIPTIONS[currentMode].desc}
+              accentColor="teal"
+              llmStatus={llmStatus}
+              fetchWithToken={fetchWithToken}
+              onLlmConfigured={refreshLlmStatus}
               checkedCount={checkedIds.size}
               error={analysisError}
               onRun={() => handleRunAnalysis(currentMode)}
