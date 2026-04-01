@@ -28,7 +28,7 @@
   <img src="figures/comic-blurb.png" alt="VibeLens Comic" width="680">
 </p>
 
-<p align="center"><em>Analyze and understand your agent. Evolve it.</p>
+<p align="center"><em>Analyze and understand your agent. Evolve it.</em></p>
 
 Your AI coding agents run hundreds of tool calls, burn thousands of tokens, and you have no idea what happened. VibeLens changes that.
 
@@ -50,7 +50,7 @@ pip install vibelens && vibelens serve
   <tr>
     <td width="50%">
       <kbd><img src="figures/01-conversation.png" alt="Session Viewer" width="100%" /></kbd>
-      <p align="center"><b>Session Viewer</b><br>Step-by-step timeline with messages and sub-agent spawns.</p>
+      <p align="center"><b>Session Viewer</b><br>Step-by-step timeline with messages, tool calls, and sub-agent spawns.</p>
     </td>
     <td width="50%">
       <kbd><img src="figures/02-dashboard.png" alt="Analytics Dashboard" width="100%" /></kbd>
