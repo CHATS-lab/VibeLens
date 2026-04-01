@@ -126,6 +126,21 @@ class TestFalsePositiveRegression:
         findings = scan_text(text, CREDENTIAL_PATTERNS)
         assert len(findings) == 0
 
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "session_id = _extract_session_id(request)",
+            "session_id = generate_session_id()",
+            "session_id=self.session_data",
+        ],
+    )
+    def test_session_cookie_code_not_redacted(self, text: str) -> None:
+        """Code assignments like `session_id = func()` must not match session_cookie_token."""
+        findings = scan_text(text, CREDENTIAL_PATTERNS)
+        cookie_findings = [f for f in findings if f.name == "session_cookie_token"]
+        print(f"  session_cookie FP check: {[(f.name, f.matched_text) for f in findings]}")
+        assert len(cookie_findings) == 0, f"False positive on code pattern: {cookie_findings}"
+
 
 class TestPIIPatterns:
     def test_email_detected(self) -> None:
@@ -151,3 +166,100 @@ class TestPIIPatterns:
         findings = scan_text(text, PII_PATTERNS)
         print(f"  PII findings for allowlisted email: {findings}")
         assert len(findings) == 0
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "1.2.1.5",
+            "4.6.2.1",
+            "2.3.4.5",
+            "section 3.1.2.0",
+        ],
+    )
+    def test_section_numbers_not_detected_as_ip(self, text: str) -> None:
+        """Version/section numbers with single-digit first octet must not match public_ip."""
+        findings = scan_text(text, PII_PATTERNS)
+        ip_findings = [f for f in findings if f.name == "public_ip"]
+        print(f"  section number FP check: {[(f.name, f.matched_text) for f in findings]}")
+        assert len(ip_findings) == 0, f"False positive on section number: {ip_findings}"
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "icon/128x128@2x.png",
+            "images/64x64@3x.jpg",
+        ],
+    )
+    def test_icon_filenames_not_detected_as_email(self, text: str) -> None:
+        """Icon filenames like 128x128@2x.png must not match email pattern."""
+        findings = scan_text(text, PII_PATTERNS)
+        email_findings = [f for f in findings if f.name == "email"]
+        print(f"  icon filename FP check: {[(f.name, f.matched_text) for f in findings]}")
+        assert len(email_findings) == 0, f"False positive on icon filename: {email_findings}"
+
+    def test_git_remote_allowlisted(self) -> None:
+        """Git SSH remotes like git@github.com should be allowlisted."""
+        text = "git@github.com:user/repo.git"
+        findings = scan_text(text, PII_PATTERNS)
+        email_findings = [f for f in findings if f.name == "email"]
+        print(f"  git remote FP check: {[(f.name, f.matched_text) for f in findings]}")
+        assert len(email_findings) == 0
+
+    @pytest.mark.parametrize(
+        "phone",
+        [
+            "+14155551234",       # US
+            "+442071234567",      # UK
+            "+33612345678",       # France
+        ],
+    )
+    def test_phone_e164_detected(self, phone: str) -> None:
+        """E.164 phone numbers are detected."""
+        text = f"Call me at {phone} please"
+        findings = scan_text(text, PII_PATTERNS)
+        print(f"  phone findings: {[(f.name, f.matched_text) for f in findings]}")
+        assert any(f.name == "phone_e164" for f in findings)
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "+12345",             # Too short (< 8 digits total)
+            "x+14155551234",      # Preceded by word character
+        ],
+    )
+    def test_phone_e164_not_matched(self, text: str) -> None:
+        """Short numbers and word-prefixed patterns must not match."""
+        findings = scan_text(text, PII_PATTERNS)
+        phone_findings = [f for f in findings if f.name == "phone_e164"]
+        print(f"  phone FP check: {[(f.name, f.matched_text) for f in findings]}")
+        assert len(phone_findings) == 0
+
+    def test_ssn_detected(self) -> None:
+        """US SSN (3-2-4 format) is detected."""
+        text = "SSN: 123-45-6789"
+        findings = scan_text(text, PII_PATTERNS)
+        print(f"  SSN findings: {[(f.name, f.matched_text) for f in findings]}")
+        assert any(f.name == "ssn" for f in findings)
+
+    def test_ssn_not_matched(self) -> None:
+        """Digit-bounded strings must not match SSN pattern."""
+        text = "code 9123-45-67890 is not an SSN"
+        findings = scan_text(text, PII_PATTERNS)
+        ssn_findings = [f for f in findings if f.name == "ssn"]
+        print(f"  SSN FP check: {[(f.name, f.matched_text) for f in findings]}")
+        assert len(ssn_findings) == 0
+
+    def test_credit_card_detected(self) -> None:
+        """Credit card numbers with separators are detected."""
+        text = "Card: 4111-1111-1111-1111"
+        findings = scan_text(text, PII_PATTERNS)
+        print(f"  CC findings: {[(f.name, f.matched_text) for f in findings]}")
+        assert any(f.name == "credit_card" for f in findings)
+
+    def test_credit_card_uuid_not_matched(self) -> None:
+        """UUIDs (8-4-4-4-12) must not match the 4-4-4-4 credit card pattern."""
+        text = "id: 550e8400-e29b-41d4-a716-446655440000"
+        findings = scan_text(text, PII_PATTERNS)
+        cc_findings = [f for f in findings if f.name == "credit_card"]
+        print(f"  CC UUID FP check: {[(f.name, f.matched_text) for f in findings]}")
+        assert len(cc_findings) == 0

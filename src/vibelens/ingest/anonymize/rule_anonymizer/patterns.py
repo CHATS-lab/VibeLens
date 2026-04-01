@@ -29,8 +29,9 @@ CREDENTIAL_PATTERNS: list[PatternDef] = [
     _compile("db_url_postgres", r"postgres(?:ql)?://[^\s\"'`]+:[^\s\"'`]+@[^\s\"'`]+"),
     _compile("db_url_mysql", r"mysql(?:\+[a-z]+)?://[^\s\"'`]+:[^\s\"'`]+@[^\s\"'`]+"),
     _compile("db_url_mongodb", r"mongodb(?:\+srv)?://[^\s\"'`]+:[^\s\"'`]+@[^\s\"'`]+"),
-    # Generic basic-auth URLs (user:pass@host) — after specific DB patterns
-    _compile("basic_auth_url", r"https?://[^\s\"'`]+:[^\s\"'`]+@[^\s\"'`]+"),
+    # Generic basic-auth URLs (user:pass@host) — after specific DB patterns.
+    # User/pass must appear in the authority section (before the first path /).
+    _compile("basic_auth_url", r"https?://[^\s\"'`/:@]+:[^\s\"'`/@]+@[^\s\"'`]+"),
     # Anthropic API keys
     _compile("anthropic_key", r"sk-ant-(?:api03|admin01)-[A-Za-z0-9_-]{20,}"),
     # OpenAI API keys
@@ -100,14 +101,12 @@ CREDENTIAL_PATTERNS: list[PatternDef] = [
     _compile("pem_private_key", r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----"),
     # Non-Bearer auth headers (Basic, Token)
     _compile(
-        "auth_header",
-        r"Authorization:\s*(?:Basic|Token)\s+[A-Za-z0-9_./+=-]{8,}",
-        re.IGNORECASE,
+        "auth_header", r"Authorization:\s*(?:Basic|Token)\s+[A-Za-z0-9_./+=-]{8,}", re.IGNORECASE
     ),
-    # Session cookie tokens (keyword-gated)
+    # Session cookie tokens (keyword-gated, value must contain a digit to reject code identifiers)
     _compile(
         "session_cookie_token",
-        r"(?:session_id|sessionid|JSESSIONID|connect\.sid)\s*=\s*[A-Za-z0-9_./-]{16,}",
+        r"(?:session_id|sessionid|JSESSIONID|connect\.sid)\s*=\s*(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{16,}",
         re.IGNORECASE,
     ),
     # JSON/YAML secret values (quoted key + quoted value)
@@ -117,22 +116,14 @@ CREDENTIAL_PATTERNS: list[PatternDef] = [
         re.IGNORECASE,
     ),
     # Azure client secret
-    _compile(
-        "azure_client_secret",
-        r"AZURE_CLIENT_SECRET\s*=\s*[^\s\"']{8,}",
-    ),
+    _compile("azure_client_secret", r"AZURE_CLIENT_SECRET\s*=\s*[^\s\"']{8,}"),
     # GCP service account private key ID (40-char hex in JSON)
-    _compile(
-        "gcp_service_account_key",
-        r""""private_key_id"\s*:\s*"[0-9a-f]{40}""",
-    ),
+    _compile("gcp_service_account_key", r""""private_key_id"\s*:\s*"[0-9a-f]{40}"""),
     # Datadog API key (env var assignment with 32 hex chars)
     _compile("datadog_api_key", r"DD_API_KEY\s*=\s*[0-9a-fA-F]{32}"),
     # Long hex secret (keyword-gated to avoid git hash false positives)
     _compile(
-        "long_hex_secret",
-        r"(?:secret|token|key|password)\s*=\s*[0-9a-fA-F]{64,}",
-        re.IGNORECASE,
+        "long_hex_secret", r"(?:secret|token|key|password)\s*=\s*[0-9a-fA-F]{64,}", re.IGNORECASE
     ),
     # CLI token flags (e.g. --token=abc123, --api-key "abc123")
     _compile(
@@ -149,24 +140,28 @@ CREDENTIAL_PATTERNS: list[PatternDef] = [
     _compile("bearer_token", r"Bearer\s+[A-Za-z0-9_.-]{20,}"),
     # URL query params that look like secrets
     _compile(
-        "url_secret_param",
-        r"[?&](?:key|token|secret|password|api_key)=[^\s&]{8,}",
-        re.IGNORECASE,
+        "url_secret_param", r"[?&](?:key|token|secret|password|api_key)=[^\s&]{8,}", re.IGNORECASE
     ),
 ]
 
 # PII patterns
 PII_PATTERNS: list[PatternDef] = [
-    _compile("email", r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"),
+    _compile("email", r"[a-zA-Z0-9._%+-]{2,}@[a-zA-Z][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}"),
     _compile(
         "public_ip",
         r"\b(?:"
         # IPv4 — exclude private ranges (10.x, 172.16-31.x, 192.168.x, 127.x)
         r"(?!10\.)(?!172\.(?:1[6-9]|2[0-9]|3[01])\.)(?!192\.168\.)(?!127\.)"
-        r"(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]\d|\d)"
+        r"(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]\d)"
         r"(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}"
         r")\b",
     ),
+    # International phone numbers in E.164 format (+countrycode + 7-14 digits)
+    _compile("phone_e164", r"(?<!\w)\+[1-9]\d{7,14}(?!\d)"),
+    # US Social Security Numbers (3-2-4 digit grouping with dashes)
+    _compile("ssn", r"(?<!\d)\d{3}-\d{2}-\d{4}(?!\d)"),
+    # Credit card numbers with separators (4-4-4-4 grouping)
+    _compile("credit_card", r"(?<!\d)\d{4}[- ]\d{4}[- ]\d{4}[- ]\d{4}(?!\d)"),
 ]
 
 # Allowlist — known-safe strings that should not be redacted
@@ -181,6 +176,9 @@ ALLOWLIST: frozenset[str] = frozenset(
         "support@example.com",
         "noreply@anthropic.com",
         "noreply@github.com",
+        # Git SSH remotes that look like emails
+        "git@github.com",
+        "git@gitlab.com",
         # Python/JS decorators and builtins that look like emails
         "@property",
         "@staticmethod",

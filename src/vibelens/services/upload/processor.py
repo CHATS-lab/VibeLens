@@ -23,7 +23,7 @@ from uuid import uuid4
 from fastapi import HTTPException, UploadFile
 
 from vibelens.config.anonymize import AnonymizeConfig
-from vibelens.deps import get_settings, get_store
+from vibelens.deps import get_settings, is_demo_mode, register_upload_store
 from vibelens.ingest.anonymize.rule_anonymizer.anonymizer import RuleAnonymizer
 from vibelens.ingest.discovery import discover_session_files, get_parser
 from vibelens.ingest.parsers.base import BaseParser
@@ -237,24 +237,6 @@ def cleanup_extraction(upload_dir: Path, upload_id: str) -> None:
         shutil.rmtree(extracted_dir, ignore_errors=True)
 
 
-def _require_disk_store() -> DiskStore:
-    """Get the current store, asserting it is a DiskStore.
-
-    Uploads require DiskStore (demo mode). In self-use mode the store
-    is a LocalStore which does not support writes.
-
-    Returns:
-        The DiskStore instance.
-
-    Raises:
-        HTTPException: If store is not a DiskStore (uploads not supported).
-    """
-    store = get_store()
-    if not isinstance(store, DiskStore):
-        raise HTTPException(status_code=400, detail="Uploads not supported in self-use mode")
-    return store
-
-
 async def process_zip(
     file: UploadFile, agent_type: str, session_token: str | None = None
 ) -> UploadResult:
@@ -274,7 +256,8 @@ async def process_zip(
         UploadResult with counts and any errors.
     """
     settings = get_settings()
-    main_store = _require_disk_store()
+    if not is_demo_mode():
+        raise HTTPException(status_code=400, detail="Uploads not supported in self-use mode")
 
     filename = file.filename or "upload.zip"
     result = UploadResult(files_received=1)
@@ -359,11 +342,12 @@ async def process_zip(
             locked_jsonl_append, path=settings.upload_dir / METADATA_FILENAME, data=metadata
         )
 
-        # 5. Invalidate caches so the main store picks up new sessions
-        main_store.invalidate_index()
+        # 5. Register the upload store and invalidate downstream caches
+        if session_token:
+            register_upload_store(session_token, upload_store)
         invalidate_search_index()
         invalidate_dashboard_cache()
-        logger.info("Invalidated caches for main store at %s", main_store.root)
+        logger.info("Registered upload store %s for token=%s", upload_store.root, token_short)
     except Exception as exc:
         logger.warning("Upload processing failed for %s: %s", filename, exc, exc_info=True)
         result.errors.append({"filename": filename, "error": str(exc)})

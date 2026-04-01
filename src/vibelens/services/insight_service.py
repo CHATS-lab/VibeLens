@@ -21,7 +21,6 @@ from vibelens.models.inference import BackendType, InferenceRequest
 from vibelens.models.prompts import AnalysisPrompt
 from vibelens.models.trajectories import Trajectory
 from vibelens.services.session.store_resolver import get_metadata_from_stores, load_from_stores
-from vibelens.services.upload.visibility import is_session_visible
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -174,9 +173,9 @@ def _require_backend() -> InferenceBackend:
 
 def _load_session(session_id: str, session_token: str | None) -> list[Trajectory]:
     """Load trajectories for a session or raise if not found."""
-    if not is_session_visible(get_metadata_from_stores(session_id), session_token):
+    if get_metadata_from_stores(session_id, session_token) is None:
         raise ValueError(f"Session not found: {session_id}")
-    trajectories = load_from_stores(session_id)
+    trajectories = load_from_stores(session_id, session_token)
     if not trajectories:
         raise ValueError(f"Session not found: {session_id}")
     return trajectories

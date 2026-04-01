@@ -21,7 +21,6 @@ from vibelens.services.session.store_resolver import (
     list_all_metadata,
     load_from_stores,
 )
-from vibelens.services.upload.visibility import filter_visible, is_session_visible
 from vibelens.utils import get_logger
 from vibelens.utils.timestamps import parse_metadata_timestamp
 
@@ -60,8 +59,7 @@ def load_filtered_trajectories(
     Returns:
         Tuple of (loaded trajectories, filtered metadata list).
     """
-    metadata = list_all_metadata()
-    metadata = filter_visible(metadata, session_token)
+    metadata = list_all_metadata(session_token)
     filtered = filter_metadata(metadata, project_path, date_from, date_to)
 
     trajectories = []
@@ -70,7 +68,7 @@ def load_filtered_trajectories(
         if not session_id:
             continue
         try:
-            group = load_from_stores(session_id)
+            group = load_from_stores(session_id, session_token)
             if group:
                 traj = group[0]
                 # Enrich project_path from skeleton metadata when full
@@ -108,8 +106,7 @@ def get_dashboard_stats(
         if (time.monotonic() - cached_time) < CACHE_TTL_SECONDS:
             return cached_result
 
-    metadata = list_all_metadata()
-    metadata = filter_visible(metadata, session_token)
+    metadata = list_all_metadata(session_token)
     filtered = filter_metadata(metadata, project_path, date_from, date_to)
 
     if _has_enriched_metrics(filtered):
@@ -164,9 +161,9 @@ def get_session_analytics(session_id: str, session_token: str | None) -> Session
     Returns:
         SessionAnalytics, or None if session not found.
     """
-    if not is_session_visible(get_metadata_from_stores(session_id), session_token):
+    if get_metadata_from_stores(session_id, session_token) is None:
         return None
-    group = load_from_stores(session_id)
+    group = load_from_stores(session_id, session_token)
     if not group:
         return None
     return compute_session_analytics(group)
@@ -187,8 +184,7 @@ def warm_cache() -> None:
     cache_key_dash = "dash:all:None:None:None"
     cache_key_tools = "tools:all:None:None:None"
 
-    metadata = list_all_metadata()
-    metadata = filter_visible(metadata, session_token=None)
+    metadata = list_all_metadata(session_token=None)
     filtered = filter_metadata(metadata, None, None, None)
 
     # Dashboard stats from enriched metadata (no full trajectory loading)

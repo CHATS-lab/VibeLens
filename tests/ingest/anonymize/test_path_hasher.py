@@ -100,6 +100,37 @@ class TestPathHasher:
         print(f"  short in path: {result2} (count={count2})")
         assert "bob" not in result2
 
+    def test_windows_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Windows paths like C:\\Users\\alice\\ are anonymized."""
+        monkeypatch.setenv("USER", "alice")
+        hasher = PathHasher()
+        result, count = hasher.anonymize_text(r"C:\Users\alice\Documents\project\main.py")
+        print(f"  Windows path: {result} (count={count})")
+        assert "alice" not in result
+        assert count >= 1
+
+    def test_wsl_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """WSL paths like /mnt/c/Users/alice/ are anonymized."""
+        monkeypatch.setenv("USER", "alice")
+        hasher = PathHasher()
+        result, count = hasher.anonymize_text("/mnt/c/Users/alice/project/main.py")
+        print(f"  WSL path: {result} (count={count})")
+        assert "alice" not in result
+        assert count >= 1
+
+    def test_windows_path_consistent_with_unix(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Same username in Windows and Unix paths maps to the same hash."""
+        monkeypatch.setenv("USER", "alice")
+        hasher = PathHasher()
+        expected_hash = hash_username("alice")
+        win_result, _ = hasher.anonymize_text(r"C:\Users\alice\code\app.py")
+        unix_result, _ = hasher.anonymize_text("/Users/alice/code/app.py")
+        print(f"  cross-platform hash: win={win_result}, unix={unix_result}")
+        assert expected_hash in win_result
+        assert expected_hash in unix_result
+
     def test_consistent_across_calls(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("USER", "testuser")
         hasher = PathHasher()

@@ -1,6 +1,8 @@
 """Dependency injection singletons for VibeLens."""
 
+import json
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from vibelens.config import (
@@ -16,10 +18,14 @@ from vibelens.models.enums import AppMode
 from vibelens.storage.conversation.base import TrajectoryStore
 from vibelens.storage.conversation.disk import DiskStore
 from vibelens.storage.conversation.local import LocalStore
+from vibelens.utils.log import get_logger
 
 _MISSING = object()
 _NOT_CHECKED = object()
 _registry: dict[str, Any] = {}
+_upload_registry: dict[str, list[DiskStore]] = {}
+
+logger = get_logger(__name__)
 
 
 def _get_or_create(key: str, factory: Callable[[], Any]) -> Any:
@@ -32,8 +38,9 @@ def _get_or_create(key: str, factory: Callable[[], Any]) -> Any:
 
 
 def reset_singletons() -> None:
-    """Clear all cached singletons for test isolation."""
+    """Clear all cached singletons and upload registry for test isolation."""
     _registry.clear()
+    _upload_registry.clear()
 
 
 def get_settings() -> Settings:
@@ -149,10 +156,105 @@ def set_inference_backend(backend: InferenceBackend | None) -> None:
     _registry["inference_backend"] = backend
 
 
+def get_upload_stores(session_token: str | None) -> list[DiskStore]:
+    """Return upload stores for a given session_token.
+
+    Args:
+        session_token: Browser tab UUID identifying the user.
+
+    Returns:
+        List of DiskStore instances belonging to this token, or empty list.
+    """
+    if not session_token:
+        return []
+    return _upload_registry.get(session_token, [])
+
+
+def register_upload_store(session_token: str, store: DiskStore) -> None:
+    """Register an upload store for a session_token.
+
+    Args:
+        session_token: Browser tab UUID that owns this upload.
+        store: DiskStore instance for the upload directory.
+    """
+    _upload_registry.setdefault(session_token, []).append(store)
+    logger.info(
+        "Registered upload store for token=%s root=%s (total=%d)",
+        session_token[:8],
+        store.root,
+        len(_upload_registry[session_token]),
+    )
+
+
+def reconstruct_upload_registry() -> None:
+    """Rebuild the per-user upload registry from metadata.jsonl on startup.
+
+    Reads the global metadata.jsonl (one record per upload), creates a
+    DiskStore for each upload_id, and registers it under its session_token.
+    Uploads without a session_token are skipped (no owner to register under).
+    """
+    settings = get_settings()
+    metadata_path = settings.upload_dir / "metadata.jsonl"
+    if not metadata_path.exists():
+        logger.info("No metadata.jsonl found, skipping upload registry reconstruction")
+        return
+
+    _upload_registry.clear()
+    registered = 0
+
+    for line in _iter_metadata_lines(metadata_path):
+        token = line.get("session_token")
+        upload_id = line.get("upload_id")
+        if not token or not upload_id:
+            continue
+
+        store_root = settings.upload_dir / upload_id
+        if not store_root.exists():
+            continue
+
+        tags = {"_upload_id": upload_id, "_session_token": token}
+        store = DiskStore(root=store_root, default_tags=tags)
+        store.initialize()
+        _upload_registry.setdefault(token, []).append(store)
+        registered += 1
+
+    logger.info(
+        "Reconstructed upload registry: %d uploads across %d tokens",
+        registered,
+        len(_upload_registry),
+    )
+
+
+def _iter_metadata_lines(path: Path) -> list[dict]:
+    """Read a JSONL file and return parsed dicts, skipping invalid lines.
+
+    Args:
+        path: Path to the JSONL file.
+
+    Returns:
+        List of parsed JSON dicts.
+    """
+    results: list[dict] = []
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                try:
+                    results.append(json.loads(stripped))
+                except json.JSONDecodeError:
+                    logger.warning("Skipping invalid JSON line in %s", path.name)
+    except OSError as exc:
+        logger.warning("Cannot read metadata file %s: %s", path, exc)
+    return results
+
+
 def get_store() -> TrajectoryStore:
     """Return cached TrajectoryStore singleton.
 
-    In demo mode returns DiskStore(upload_dir); in self mode returns LocalStore.
+    In self-use mode returns LocalStore. In demo mode this is unused
+    (store_resolver uses get_upload_stores + get_example_store instead).
     """
 
     def _create_store() -> TrajectoryStore:

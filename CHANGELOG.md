@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.9.15] - 2026-03-31
+
+### Changed
+- **Per-user upload stores**: Replaced single `DiskStore(upload_dir)` with per-user upload stores keyed by `session_token`. Visibility is now enforced at the storage level -- each user's stores only contain their uploads. Eliminates full rglob rebuild after every upload, cross-user cache invalidation, and runtime visibility filtering.
+- **Upload registry**: New `register_upload_store()` and `reconstruct_upload_registry()` in `deps.py`. Uploads register a per-upload DiskStore under the user's token instead of invalidating the global store index. Registry is rebuilt from `metadata.jsonl` on server restart.
+- **Store resolver**: `list_all_metadata()`, `load_from_stores()`, and `get_metadata_from_stores()` now accept `session_token` and iterate per-user stores in demo mode, falling back to the example store when a user has no uploads.
+- **Projects endpoint**: `/api/projects` now accepts `x-session-token` header for per-user project listing.
+- **Rule Anonymizer**: Expand path section with Windows/WSL modes
+
+### Removed
+- **visibility.py**: Deleted `filter_visible()` and `is_session_visible()` (11 call sites across 8 service files). Access control is now implicit via store-level isolation.
+- **`_all_metadata` field**: Removed from `TrajectoryStore` base class and `DiskStore`. No longer needed since duplicate session_ids across users don't coexist in a single store.
+- **`_require_disk_store()`**: Removed from `processor.py`. Demo mode check uses `is_demo_mode()` directly.
+- **`invalidate_index()` on refresh/upload**: Removed from `api/sessions.py` (refresh) and `processor.py` (post-upload). Per-user stores are self-contained.
+
 ## [0.9.14] - 2026-03-31
 
 ### Changed

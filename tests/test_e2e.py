@@ -879,122 +879,110 @@ class TestDiskStore:
         print("get_metadata() correctly returns metadata or None")
 
 
-class TestFilterVisible:
-    """Test stateless upload visibility filtering."""
+class TestPerUserUploadStores:
+    """Test per-user upload store registry and store-level isolation."""
 
-    def test_example_sessions_visible_without_token(self):
-        """Example sessions (no _upload_id) are visible when no token is provided."""
-        from vibelens.services.upload.visibility import filter_visible
+    def test_reconstruct_upload_registry(self, tmp_path):
+        """reconstruct_upload_registry rebuilds from metadata.jsonl on startup."""
+        import json
 
-        summaries = [{"session_id": "root-001"}, {"session_id": "root-002"}]
-        result = filter_visible(summaries, session_token=None)
-        assert len(result) == 2
-        print("Example sessions visible without token")
+        from vibelens.deps import (
+            _upload_registry,
+            get_upload_stores,
+            reconstruct_upload_registry,
+            reset_singletons,
+        )
+        from vibelens.storage.conversation.disk import DiskStore
 
-    def test_upload_sessions_hidden_without_token(self):
-        """Uploaded sessions are hidden when no token is provided."""
-        from vibelens.services.upload.visibility import filter_visible
+        reset_singletons()
+        _upload_registry.clear()
 
-        summaries = [
-            {"session_id": "root-001"},
-            {"session_id": "upload-001", "_upload_id": "u1", "_session_token": "tok-a"},
-        ]
-        result = filter_visible(summaries, session_token=None)
-        assert len(result) == 1
-        assert result[0]["session_id"] == "root-001"
-        print("Upload sessions hidden without token")
+        upload_dir = tmp_path / "uploads"
+        upload_dir.mkdir()
 
-    def test_own_uploads_visible_with_matching_token(self):
-        """Token sees only its own uploads when _session_token matches."""
-        from vibelens.services.upload.visibility import filter_visible
+        # Create two upload dirs owned by different tokens
+        for upload_id, _token in [("u1", "tok-alice"), ("u2", "tok-bob")]:
+            store_dir = upload_dir / upload_id
+            store = DiskStore(root=store_dir)
+            store.initialize()
+            store.save([_make_test_trajectory(f"{upload_id}-sess", f"Session from {upload_id}")])
 
-        summaries = [
-            {"session_id": "root-001"},
-            {"session_id": "upload-001", "_upload_id": "u1", "_session_token": "tok-a"},
-        ]
-        result = filter_visible(summaries, session_token="tok-a")
-        assert len(result) == 1
-        assert result[0]["session_id"] == "upload-001"
-        print("Own uploads visible, examples hidden when token has uploads")
+        # Write metadata.jsonl
+        meta_path = upload_dir / "metadata.jsonl"
+        with open(meta_path, "w") as f:
+            f.write(json.dumps({"upload_id": "u1", "session_token": "tok-alice"}) + "\n")
+            f.write(json.dumps({"upload_id": "u2", "session_token": "tok-bob"}) + "\n")
 
-    def test_multiple_uploads_all_visible(self):
-        """All uploads from the same token are visible."""
-        from vibelens.services.upload.visibility import filter_visible
+        # Patch settings to point to our tmp upload_dir
+        from unittest.mock import patch
 
-        summaries = [
-            {"session_id": "old-001", "_upload_id": "u_old", "_session_token": "tok-m"},
-            {"session_id": "new-001", "_upload_id": "u_new", "_session_token": "tok-m"},
-        ]
-        result = filter_visible(summaries, session_token="tok-m")
-        assert len(result) == 2
-        result_ids = {s["session_id"] for s in result}
-        assert result_ids == {"old-001", "new-001"}
-        print("All uploads from same token visible")
+        mock_settings = type("S", (), {"upload_dir": upload_dir})()
+        with patch("vibelens.deps.get_settings", return_value=mock_settings):
+            reconstruct_upload_registry()
 
-    def test_other_users_uploads_hidden(self):
-        """Token without uploads sees examples; other users' uploads are hidden."""
-        from vibelens.services.upload.visibility import filter_visible
+        assert len(get_upload_stores("tok-alice")) == 1
+        assert len(get_upload_stores("tok-bob")) == 1
+        assert len(get_upload_stores("tok-unknown")) == 0
+        print("reconstruct_upload_registry correctly rebuilds per-user stores")
 
-        summaries = [
-            {"session_id": "root-001"},
-            {"session_id": "upload-001", "_upload_id": "u1", "_session_token": "tok-other"},
-        ]
-        result = filter_visible(summaries, session_token="tok-mine")
-        assert len(result) == 1
-        assert result[0]["session_id"] == "root-001"
-        print("Other users' uploads hidden, examples shown")
+        _upload_registry.clear()
+        reset_singletons()
 
-    def test_mixed_visibility_isolation(self):
-        """Each token sees only its own uploads; neither sees the other's."""
-        from vibelens.services.upload.visibility import filter_visible
+    def test_register_upload_store(self):
+        """register_upload_store adds a store for a token."""
+        from vibelens.deps import _upload_registry, get_upload_stores, register_upload_store
+        from vibelens.storage.conversation.disk import DiskStore
 
-        summaries = [
-            {"session_id": "root-001"},
-            {"session_id": "alice-001", "_upload_id": "u_a", "_session_token": "tok-alice"},
-            {"session_id": "bob-001", "_upload_id": "u_b", "_session_token": "tok-bob"},
-        ]
+        _upload_registry.clear()
+        from pathlib import Path
 
-        alice_result = filter_visible(summaries, session_token="tok-alice")
-        assert len(alice_result) == 1
-        assert alice_result[0]["session_id"] == "alice-001"
+        store = DiskStore(root=Path("/tmp/fake"))
+        register_upload_store("tok-test", store)
 
-        bob_result = filter_visible(summaries, session_token="tok-bob")
-        assert len(bob_result) == 1
-        assert bob_result[0]["session_id"] == "bob-001"
-        print("Alice and Bob each see only their own uploads")
+        stores = get_upload_stores("tok-test")
+        assert len(stores) == 1
+        assert stores[0] is store
+        assert len(get_upload_stores(None)) == 0
+        print("register_upload_store correctly registers per-user stores")
 
-    def test_is_session_visible(self):
-        """is_session_visible() checks each visibility rule."""
-        from vibelens.services.upload.visibility import is_session_visible
+        _upload_registry.clear()
 
-        # No metadata -> not visible
-        assert is_session_visible(None, "token") is False
+    def test_store_level_isolation(self, tmp_path):
+        """Each user's stores only contain their sessions."""
+        from vibelens.deps import _upload_registry, get_upload_stores, register_upload_store
+        from vibelens.storage.conversation.disk import DiskStore
 
-        # Example session (no _upload_id) -> always visible
-        assert is_session_visible({"session_id": "root"}, None) is True
-        assert is_session_visible({"session_id": "root"}, "any-token") is True
+        _upload_registry.clear()
 
-        # Upload session without token -> not visible
-        assert is_session_visible(
-            {"session_id": "up", "_upload_id": "u1", "_session_token": "tok-a"}, None
-        ) is False
+        # Alice's upload store
+        alice_dir = tmp_path / "alice_upload"
+        alice_store = DiskStore(root=alice_dir)
+        alice_store.initialize()
+        alice_store.save([_make_test_trajectory("alice-001", "Alice session")])
+        register_upload_store("tok-alice", alice_store)
 
-        # Upload session with matching token -> visible
-        assert is_session_visible(
-            {"session_id": "up", "_upload_id": "u1", "_session_token": "tok-a"}, "tok-a"
-        ) is True
+        # Bob's upload store
+        bob_dir = tmp_path / "bob_upload"
+        bob_store = DiskStore(root=bob_dir)
+        bob_store.initialize()
+        bob_store.save([_make_test_trajectory("bob-001", "Bob session")])
+        register_upload_store("tok-bob", bob_store)
 
-        # Upload session with wrong token -> not visible
-        assert is_session_visible(
-            {"session_id": "up", "_upload_id": "u1", "_session_token": "tok-a"}, "tok-b"
-        ) is False
+        # Alice sees only her sessions
+        alice_stores = get_upload_stores("tok-alice")
+        alice_ids = {m["session_id"] for s in alice_stores for m in s.list_metadata()}
+        assert alice_ids == {"alice-001"}
 
-        # Upload without _session_token (legacy) + any token -> not visible
-        assert is_session_visible(
-            {"session_id": "up", "_upload_id": "u1"}, "tok-a"
-        ) is False
+        # Bob sees only his sessions
+        bob_stores = get_upload_stores("tok-bob")
+        bob_ids = {m["session_id"] for s in bob_stores for m in s.list_metadata()}
+        assert bob_ids == {"bob-001"}
 
-        print("is_session_visible() correctly checks all visibility rules")
+        # Unknown token sees nothing
+        assert len(get_upload_stores("tok-unknown")) == 0
+        print("Store-level isolation: each token only sees its own sessions")
+
+        _upload_registry.clear()
 
 
 class TestDualStore:

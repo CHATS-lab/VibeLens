@@ -12,7 +12,6 @@ from vibelens.models.enums import StepSource
 from vibelens.models.trajectories import Trajectory
 from vibelens.models.trajectories.content import ContentPart
 from vibelens.services.session.store_resolver import list_all_metadata, load_from_stores
-from vibelens.services.upload.visibility import filter_visible
 from vibelens.utils import get_logger
 
 logger = get_logger(__name__)
@@ -98,8 +97,7 @@ def _build_index(session_token: str | None) -> None:
     """Iterate all sessions and extract searchable text into the index."""
     _search_index.clear()
 
-    summaries = list_all_metadata()
-    summaries = filter_visible(summaries, session_token)
+    summaries = list_all_metadata(session_token)
     logger.info("Building search index for %d sessions", len(summaries))
 
     for summary in summaries:
@@ -107,7 +105,7 @@ def _build_index(session_token: str | None) -> None:
         if not session_id:
             continue
 
-        trajectories = load_from_stores(session_id)
+        trajectories = load_from_stores(session_id, session_token)
         if not trajectories:
             continue
 

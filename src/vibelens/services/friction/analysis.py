@@ -19,7 +19,6 @@ from pydantic import BaseModel, ValidationError
 from vibelens.deps import (
     get_friction_store,
     get_inference_backend,
-    is_demo_mode,
 )
 from vibelens.llm.backend import InferenceBackend, InferenceError
 from vibelens.llm.cost_estimator import CostEstimate, estimate_friction_cost
@@ -50,7 +49,6 @@ from vibelens.services.context_extraction import (
 from vibelens.services.friction.digest import format_batch_digest
 from vibelens.services.session.store_resolver import get_metadata_from_stores, load_from_stores
 from vibelens.services.session_batcher import SessionBatch, build_batches
-from vibelens.services.upload.visibility import is_session_visible
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -217,17 +215,16 @@ def _extract_all_contexts(
     Returns:
         Tuple of (session_contexts, loaded_ids, skipped_ids).
     """
-    demo = is_demo_mode()
     contexts: list[SessionContext] = []
     loaded_ids: list[str] = []
     skipped_ids: list[str] = []
 
     for sid in session_ids:
-        if demo and not is_session_visible(get_metadata_from_stores(sid), session_token):
+        if get_metadata_from_stores(sid, session_token) is None:
             skipped_ids.append(sid)
             continue
         try:
-            trajectories = load_from_stores(sid)
+            trajectories = load_from_stores(sid, session_token)
         except Exception as exc:
             logger.warning("Failed to load session %s, skipping: %s", sid, exc)
             skipped_ids.append(sid)

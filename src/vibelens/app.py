@@ -20,6 +20,7 @@ from vibelens.deps import (
     get_skill_analysis_store,
     get_skill_store,
     get_store,
+    reconstruct_upload_registry,
 )
 from vibelens.models.enums import AppMode
 from vibelens.services.dashboard.loader import warm_cache
@@ -54,6 +55,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         loaded = load_demo_examples(settings, example_store)
         if loaded:
             logger.info("Loaded %d trajectory groups for demo mode", loaded)
+        reconstruct_upload_registry()
 
     # Lightweight startup tasks in a thread (no heavy I/O)
     loop = asyncio.get_event_loop()

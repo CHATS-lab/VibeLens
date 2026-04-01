@@ -7,7 +7,6 @@ import zipfile
 from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from vibelens.deps import get_store
 from vibelens.schemas.session import DownloadRequest
 from vibelens.services.session.crud import get_session, list_projects, list_sessions
 from vibelens.services.session.flow import get_session_flow
@@ -36,8 +35,6 @@ async def list_sessions_endpoint(
     Returns:
         List of trajectory summary dicts.
     """
-    if refresh:
-        get_store().invalidate_index()
     return list_sessions(project_name, limit, offset, session_token=x_session_token)
 
 
@@ -153,10 +150,13 @@ async def download_sessions(
 
 
 @router.get("/projects")
-async def list_projects_endpoint() -> list[str]:
+async def list_projects_endpoint(x_session_token: str | None = Header(None)) -> list[str]:
     """List all known project paths.
+
+    Args:
+        x_session_token: Browser tab token for per-user isolation.
 
     Returns:
         Sorted list of project path strings.
     """
-    return list_projects()
+    return list_projects(session_token=x_session_token)

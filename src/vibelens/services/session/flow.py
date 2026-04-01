@@ -4,7 +4,6 @@ from vibelens.models.trajectories import Trajectory
 from vibelens.services.session.phase import detect_phases
 from vibelens.services.session.store_resolver import get_metadata_from_stores, load_from_stores
 from vibelens.services.session.tool_graph import build_tool_graph
-from vibelens.services.upload.visibility import is_session_visible
 
 
 def compute_flow_from_trajectories(
@@ -40,6 +39,9 @@ def get_session_flow(
 ) -> dict[str, str | list[dict] | dict] | None:
     """Compute tool dependency graph and phase segments for a single session.
 
+    Access is gated by store_resolver: if the session is not in any store
+    accessible to this token, get_metadata_from_stores returns None.
+
     Args:
         session_id: Main session identifier.
         session_token: Browser tab token for upload scoping.
@@ -47,9 +49,9 @@ def get_session_flow(
     Returns:
         Dict with session_id, tool_graph, and phase_segments, or None if not found.
     """
-    if not is_session_visible(get_metadata_from_stores(session_id), session_token):
+    if get_metadata_from_stores(session_id, session_token) is None:
         return None
-    group = load_from_stores(session_id)
+    group = load_from_stores(session_id, session_token)
     if not group:
         return None
     return compute_flow_from_trajectories(group, session_id)

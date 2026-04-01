@@ -25,7 +25,7 @@ _VARIANT_SEPARATORS = (" ", "_", "-")
 # "JohnDoe" → ["John", "Doe"]
 # "HTTPServer" → ["HTTP", "Server"]
 _CAMEL_SPLIT_RE = re.compile(
-    r"(?<=[a-z])(?=[A-Z])"    # lowercase followed by uppercase
+    r"(?<=[a-z])(?=[A-Z])"  # lowercase followed by uppercase
     r"|(?<=[A-Z])(?=[A-Z][a-z])"  # uppercase followed by uppercase+lowercase
 )
 
@@ -138,30 +138,27 @@ class PathHasher:
         if not self._username_to_hash:
             self._path_pattern: re.Pattern[str] | None = None
             self._encoded_pattern: re.Pattern[str] | None = None
+            self._win_path_pattern: re.Pattern[str] | None = None
+            self._wsl_path_pattern: re.Pattern[str] | None = None
             self._bare_pattern: re.Pattern[str] | None = None
             self._variant_pattern: re.Pattern[str] | None = None
             return
 
         # Escape and sort longest-first to avoid partial matches
-        escaped = sorted(
-            (re.escape(u) for u in self._username_to_hash),
-            key=len, reverse=True,
-        )
+        escaped = sorted((re.escape(u) for u in self._username_to_hash), key=len, reverse=True)
         names_alt = "|".join(escaped)
 
         # /Users/<name>/ or /home/<name>/ (macOS / Linux)
-        self._path_pattern = re.compile(
-            rf"(/(?:Users|home)/)({names_alt})(/)",
-        )
+        self._path_pattern = re.compile(rf"(/(?:Users|home)/)({names_alt})(/)")
         # Encoded path form: -Users-<name>- (used in Claude Code project dirs)
-        self._encoded_pattern = re.compile(
-            rf"(-(?:Users|home)-)({names_alt})(-)",
-        )
+        self._encoded_pattern = re.compile(rf"(-(?:Users|home)-)({names_alt})(-)")
+        # C:\Users\<name>\ (Windows)
+        self._win_path_pattern = re.compile(rf"([A-Za-z]:\\Users\\)({names_alt})(\\)")
+        # /mnt/<drive>/Users/<name>/ (WSL)
+        self._wsl_path_pattern = re.compile(rf"(/mnt/[a-z]/Users/)({names_alt})(/)")
         # Bare username references (only if username >= MIN_BARE_USERNAME_LENGTH)
         bare_names = [
-            re.escape(u)
-            for u in self._username_to_hash
-            if len(u) >= MIN_BARE_USERNAME_LENGTH
+            re.escape(u) for u in self._username_to_hash if len(u) >= MIN_BARE_USERNAME_LENGTH
         ]
         if bare_names:
             bare_alt = "|".join(sorted(bare_names, key=len, reverse=True))
@@ -173,13 +170,10 @@ class PathHasher:
         # boundaries so they match inside filenames like "HW1_John_Doe.md"
         if self._variant_to_hash:
             variant_escaped = sorted(
-                (re.escape(v) for v in self._variant_to_hash),
-                key=len, reverse=True,
+                (re.escape(v) for v in self._variant_to_hash), key=len, reverse=True
             )
             variant_alt = "|".join(variant_escaped)
-            self._variant_pattern = re.compile(
-                rf"({variant_alt})", re.IGNORECASE,
-            )
+            self._variant_pattern = re.compile(rf"({variant_alt})", re.IGNORECASE)
         else:
             self._variant_pattern = None
 
@@ -214,6 +208,10 @@ class PathHasher:
         count = 0
 
         # Discover usernames from path structure before applying patterns
+        for match in re.finditer(r"[A-Za-z]:\\Users\\([^\\]+)\\", path):
+            self._register_username(match.group(1))
+        for match in re.finditer(r"/mnt/[a-z]/Users/([^/]+)/", path):
+            self._register_username(match.group(1))
         for match in re.finditer(r"/(?:Users|home)/([^/]+)/", path):
             self._register_username(match.group(1))
         for match in re.finditer(r"-(?:Users|home)-([^-]+)-", path):
@@ -221,24 +219,28 @@ class PathHasher:
 
         if self._path_pattern:
             new_path, n = self._path_pattern.subn(
-                lambda m: (
-                    f"{m.group(1)}"
-                    f"{self._username_to_hash[m.group(2)]}"
-                    f"{m.group(3)}"
-                ),
-                path,
+                lambda m: f"{m.group(1)}{self._username_to_hash[m.group(2)]}{m.group(3)}", path
             )
             path = new_path
             count += n
 
         if self._encoded_pattern:
             new_path, n = self._encoded_pattern.subn(
-                lambda m: (
-                    f"{m.group(1)}"
-                    f"{self._username_to_hash[m.group(2)]}"
-                    f"{m.group(3)}"
-                ),
-                path,
+                lambda m: f"{m.group(1)}{self._username_to_hash[m.group(2)]}{m.group(3)}", path
+            )
+            path = new_path
+            count += n
+
+        if self._win_path_pattern:
+            new_path, n = self._win_path_pattern.subn(
+                lambda m: f"{m.group(1)}{self._username_to_hash[m.group(2)]}{m.group(3)}", path
+            )
+            path = new_path
+            count += n
+
+        if self._wsl_path_pattern:
+            new_path, n = self._wsl_path_pattern.subn(
+                lambda m: f"{m.group(1)}{self._username_to_hash[m.group(2)]}{m.group(3)}", path
             )
             path = new_path
             count += n
@@ -258,8 +260,7 @@ class PathHasher:
         if matched_text in self._variant_to_hash:
             return self._variant_to_hash[matched_text]
         return self._variant_to_hash.get(
-            matched_text.lower(),
-            self._variant_to_hash.get(matched_text.upper(), "[ANON]"),
+            matched_text.lower(), self._variant_to_hash.get(matched_text.upper(), "[ANON]")
         )
 
     def anonymize_text(self, text: str) -> tuple[str, int]:
@@ -277,7 +278,7 @@ class PathHasher:
         # Phase 2: bare username references (word-boundary match)
         if self._bare_pattern:
             new_text, n = self._bare_pattern.subn(
-                lambda m: self._username_to_hash[m.group(1)], text,
+                lambda m: self._username_to_hash[m.group(1)], text
             )
             text = new_text
             count += n
@@ -285,7 +286,7 @@ class PathHasher:
         # Phase 3: name variants (case-insensitive literal match)
         if self._variant_pattern:
             new_text, n = self._variant_pattern.subn(
-                lambda m: self._resolve_variant_hash(m.group(1)), text,
+                lambda m: self._resolve_variant_hash(m.group(1)), text
             )
             text = new_text
             count += n
