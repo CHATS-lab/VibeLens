@@ -205,8 +205,8 @@ class BaseParser(ABC):
         """
         try:
             content = file_path.read_text(encoding="utf-8")
-        except OSError:
-            logger.debug("Cannot read file: %s", file_path)
+        except OSError as exc:
+            logger.warning("Cannot read file %s: %s", file_path, exc)
             return []
         return self.parse(content, source_path=str(file_path))
 

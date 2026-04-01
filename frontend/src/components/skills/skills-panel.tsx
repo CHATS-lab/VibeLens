@@ -1,8 +1,8 @@
-import { History, Search, Sparkles, TrendingUp } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { History, PanelRightClose, PanelRightOpen, Search, Sparkles, TrendingUp } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppContext } from "../../app";
 import type { LLMStatus, SkillAnalysisResult, SkillMode } from "../../types";
-import { SIDEBAR_DEFAULT_WIDTH } from "../../styles";
+import { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "../../styles";
 import { AnalysisWelcomePage } from "../analysis-welcome";
 import { ExploreSkillsTab } from "./explore-skills-tab";
 import { LocalSkillsTab } from "./local-skills-tab";
@@ -61,6 +61,37 @@ export function SkillsPanel({ checkedIds }: SkillsPanelProps) {
   const [showHistory, setShowHistory] = useState(true);
   const [historyRefresh, setHistoryRefresh] = useState(0);
   const [llmStatus, setLlmStatus] = useState<LLMStatus | null>(null);
+  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
+  const draggingRef = useRef(false);
+
+  const handleDragStart = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      draggingRef.current = true;
+      const startX = e.clientX;
+      const startWidth = sidebarWidth;
+
+      const onMouseMove = (ev: MouseEvent) => {
+        if (!draggingRef.current) return;
+        const delta = startX - ev.clientX;
+        const newWidth = Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, startWidth + delta));
+        setSidebarWidth(newWidth);
+      };
+      const onMouseUp = () => {
+        draggingRef.current = false;
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      };
+
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+    },
+    [sidebarWidth],
+  );
 
   const refreshLlmStatus = useCallback(async () => {
     try {
@@ -142,19 +173,6 @@ export function SkillsPanel({ checkedIds }: SkillsPanelProps) {
             {tab.label}
           </button>
         ))}
-        {isAnalysisTab && (
-          <button
-            onClick={() => setShowHistory(!showHistory)}
-            className={`ml-auto p-1.5 rounded transition ${
-              showHistory
-                ? "text-zinc-300 bg-zinc-800"
-                : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
-            }`}
-            title="Toggle history sidebar"
-          >
-            <History className="w-4 h-4" />
-          </button>
-        )}
       </div>
 
       {/* Content area */}
@@ -191,8 +209,43 @@ export function SkillsPanel({ checkedIds }: SkillsPanelProps) {
         </div>
 
         {isAnalysisTab && showHistory && (
-          <div style={{ width: SIDEBAR_DEFAULT_WIDTH }} className="shrink-0 bg-zinc-900/50 overflow-y-auto">
-            <SkillsHistory onSelect={handleHistorySelect} refreshTrigger={historyRefresh} filterMode={currentMode} />
+          <>
+            <div
+              onMouseDown={handleDragStart}
+              className="w-1 shrink-0 cursor-col-resize bg-zinc-800 hover:bg-zinc-600 transition-colors"
+            />
+            <div
+              className="shrink-0 border-l border-zinc-800 bg-zinc-900/50 flex flex-col"
+              style={{ width: sidebarWidth }}
+            >
+              <div className="shrink-0 flex items-center justify-between px-3 pt-3 pb-1">
+                <div className="flex items-center gap-1.5">
+                  <History className="w-3.5 h-3.5 text-zinc-500" />
+                  <span className="text-xs font-medium text-zinc-400">History</span>
+                </div>
+                <button
+                  onClick={() => setShowHistory(false)}
+                  className="p-0.5 text-zinc-500 hover:text-zinc-300 transition"
+                  title="Hide history"
+                >
+                  <PanelRightClose className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-3 pt-1">
+                <SkillsHistory onSelect={handleHistorySelect} refreshTrigger={historyRefresh} filterMode={currentMode} />
+              </div>
+            </div>
+          </>
+        )}
+        {isAnalysisTab && !showHistory && (
+          <div className="shrink-0 border-l border-zinc-800 bg-zinc-900/50 flex flex-col items-center pt-3 px-1">
+            <button
+              onClick={() => setShowHistory(true)}
+              className="p-1 text-zinc-500 hover:text-zinc-300 transition"
+              title="Show history"
+            >
+              <PanelRightOpen className="w-4 h-4" />
+            </button>
           </div>
         )}
       </div>

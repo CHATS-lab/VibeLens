@@ -57,8 +57,16 @@ def _filter_donatable_ids(session_ids: list[str], session_token: str | None) -> 
     for session_id in session_ids:
         meta = get_metadata_from_stores(session_id, session_token)
         if not meta:
+            logger.warning(
+                "Donation filter: session %s not found in any store (token=%s)",
+                session_id,
+                session_token[:8] if session_token else "none",
+            )
             result.errors.append({"session_id": session_id, "error": "Session not found"})
         elif demo and not meta.get("_upload_id"):
+            logger.warning(
+                "Donation filter: session %s is an example, skipping", session_id
+            )
             result.errors.append(
                 {"session_id": session_id, "error": "Example sessions cannot be donated"}
             )

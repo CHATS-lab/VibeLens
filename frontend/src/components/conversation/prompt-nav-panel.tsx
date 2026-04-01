@@ -5,7 +5,7 @@ import { ResizeHandle } from "../resize-handle";
 import type { Step, Trajectory } from "../../types";
 import type { FlowPhaseGroup, FlowSection } from "./flow-layout";
 import {
-  PHASE_STYLE, CATEGORY_LABELS, SESSION_ID_MEDIUM, PREVIEW_MEDIUM, PREVIEW_LONG,
+  PHASE_STYLE, CATEGORY_LABELS, PREVIEW_MEDIUM, PREVIEW_LONG,
 } from "../../styles";
 
 const MIN_PROMPTS_FOR_NAV = 1;
@@ -255,7 +255,7 @@ export function PromptNavPanel({
               }`}
             >
               <Bot className="w-3 h-3" />
-              Sub-Agents ({subAgents.length})
+              Agents ({subAgents.length})
             </button>
           </div>
         </div>
@@ -338,7 +338,7 @@ export function PromptNavPanel({
 
         {/* Sub-Agents view */}
         {navMode === "sub-agents" && hasSubAgents && (
-          <div className="space-y-1">
+          <div className="divide-y divide-zinc-800/60">
             {subAgents.map((sub, idx) => {
               const stepCount = sub.steps?.length ?? 0;
               const toolCount = sub.final_metrics?.tool_call_count ?? 0;
@@ -350,28 +350,33 @@ export function PromptNavPanel({
                     setActiveSubAgentId(sub.session_id);
                     handleSubAgentNavigate(sub.session_id);
                   }}
-                  className={`w-full text-left px-2.5 py-2 rounded-lg transition-colors group ${
-                    isActive
-                      ? "bg-violet-500/15 border border-violet-500/30"
-                      : "bg-violet-950/20 hover:bg-violet-900/20 border border-violet-800/15 hover:border-violet-700/25"
+                  className={`w-full text-left px-2.5 py-2.5 transition-colors text-sm group ${
+                    isActive ? "bg-zinc-800/50" : "hover:bg-zinc-800/40"
                   }`}
                 >
                   <div className="flex items-center gap-1.5 mb-0.5">
-                    <Bot className={`w-3 h-3 shrink-0 ${isActive ? "text-violet-400" : "text-violet-500/70 group-hover:text-violet-400"}`} />
-                    <span className={`font-mono font-semibold text-xs ${isActive ? "text-violet-300" : "text-violet-400"}`}>
-                      #{idx + 1}
+                    <Bot
+                      className={`w-3.5 h-3.5 shrink-0 ${
+                        isActive ? "text-violet-400" : "text-violet-500/70 group-hover:text-violet-400"
+                      }`}
+                    />
+                    <span
+                      className={`font-mono font-semibold text-xs shrink-0 ${
+                        isActive ? "text-violet-300" : "text-violet-400/70 group-hover:text-violet-300"
+                      }`}
+                    >
+                      Agent #{idx + 1}
                     </span>
-                    <span className={`text-xs truncate ${isActive ? "text-violet-200/70" : "text-zinc-500"}`}>
-                      {sub.session_id.slice(0, SESSION_ID_MEDIUM)}
+                    <span className={`text-[11px] ${isActive ? "text-zinc-400" : "text-zinc-500"}`}>
+                      {stepCount} steps · {toolCount} tools
                     </span>
-                  </div>
-                  <div className={`flex items-center gap-2 text-[11px] pl-[18px] ${isActive ? "text-violet-300/60" : "text-zinc-500"}`}>
-                    <span>{stepCount} steps</span>
-                    <span className={isActive ? "text-violet-400/40" : "text-zinc-600"}>·</span>
-                    <span>{toolCount} tools</span>
                   </div>
                   {sub.first_message && (
-                    <p className={`text-xs truncate pl-[18px] mt-0.5 ${isActive ? "text-violet-200/60" : "text-zinc-500 group-hover:text-zinc-400"}`}>
+                    <p
+                      className={`line-clamp-2 leading-snug ${
+                        isActive ? "text-zinc-200" : "text-zinc-300 group-hover:text-zinc-200"
+                      }`}
+                    >
                       {truncate(sub.first_message, PREVIEW_MEDIUM)}
                     </p>
                   )}
@@ -386,10 +391,10 @@ export function PromptNavPanel({
           <div>
             <div className="flex items-center gap-1.5 text-sm text-zinc-300 mb-3">
               <Bot className="w-3.5 h-3.5" />
-              <span className="font-medium">Sub-Agents</span>
+              <span className="font-medium">Agents</span>
               <span className="text-zinc-500">({subAgents.length})</span>
             </div>
-            <div className="space-y-1">
+            <div className="divide-y divide-zinc-800/60">
               {subAgents.map((sub, idx) => {
                 const stepCount = sub.steps?.length ?? 0;
                 const toolCount = sub.final_metrics?.tool_call_count ?? 0;
@@ -401,28 +406,33 @@ export function PromptNavPanel({
                       setActiveSubAgentId(sub.session_id);
                       handleSubAgentNavigate(sub.session_id);
                     }}
-                    className={`w-full text-left px-2.5 py-2 rounded-lg transition-colors group ${
-                      isActive
-                        ? "bg-violet-500/15 border border-violet-500/30"
-                        : "bg-violet-950/20 hover:bg-violet-900/20 border border-violet-800/15 hover:border-violet-700/25"
+                    className={`w-full text-left px-2.5 py-2.5 transition-colors text-sm group ${
+                      isActive ? "bg-zinc-800/50" : "hover:bg-zinc-800/40"
                     }`}
                   >
                     <div className="flex items-center gap-1.5 mb-0.5">
-                      <Bot className={`w-3 h-3 shrink-0 ${isActive ? "text-violet-400" : "text-violet-500/70 group-hover:text-violet-400"}`} />
-                      <span className={`font-mono font-semibold text-xs ${isActive ? "text-violet-300" : "text-violet-400"}`}>
-                        #{idx + 1}
+                      <Bot
+                        className={`w-3.5 h-3.5 shrink-0 ${
+                          isActive ? "text-violet-400" : "text-violet-500/70 group-hover:text-violet-400"
+                        }`}
+                      />
+                      <span
+                        className={`font-mono font-semibold text-xs shrink-0 ${
+                          isActive ? "text-violet-300" : "text-violet-400/70 group-hover:text-violet-300"
+                        }`}
+                      >
+                        Agent #{idx + 1}
                       </span>
-                      <span className={`text-xs truncate ${isActive ? "text-violet-200/70" : "text-zinc-500"}`}>
-                        {sub.session_id.slice(0, SESSION_ID_MEDIUM)}
+                      <span className={`text-[11px] ${isActive ? "text-zinc-400" : "text-zinc-500"}`}>
+                        {stepCount} steps · {toolCount} tools
                       </span>
-                    </div>
-                    <div className={`flex items-center gap-2 text-[11px] pl-[18px] ${isActive ? "text-violet-300/60" : "text-zinc-500"}`}>
-                      <span>{stepCount} steps</span>
-                      <span className={isActive ? "text-violet-400/40" : "text-zinc-600"}>·</span>
-                      <span>{toolCount} tools</span>
                     </div>
                     {sub.first_message && (
-                      <p className={`text-xs truncate pl-[18px] mt-0.5 ${isActive ? "text-violet-200/60" : "text-zinc-500 group-hover:text-zinc-400"}`}>
+                      <p
+                        className={`line-clamp-2 leading-snug ${
+                          isActive ? "text-zinc-200" : "text-zinc-300 group-hover:text-zinc-200"
+                        }`}
+                      >
                         {truncate(sub.first_message, PREVIEW_MEDIUM)}
                       </p>
                     )}

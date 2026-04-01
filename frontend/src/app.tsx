@@ -398,11 +398,11 @@ export function App() {
               availableAgents={availableAgents}
               onUpload={appMode === "demo" ? () => setShowUploadDialog(true) : undefined}
               onDonate={handleDonateClick}
-              donateDisabled={checkedIds.size === 0 || !sessions.some(s => checkedIds.has(s.session_id) && s._upload_id)}
+              donateDisabled={checkedIds.size === 0 || (appMode === "demo" && !sessions.some(s => checkedIds.has(s.session_id) && s._upload_id))}
               donateTooltip={
                 checkedIds.size === 0
                   ? "Select sessions first to donate"
-                  : !sessions.some(s => checkedIds.has(s.session_id) && s._upload_id)
+                  : appMode === "demo" && !sessions.some(s => checkedIds.has(s.session_id) && s._upload_id)
                     ? "Example sessions cannot be donated"
                     : undefined
               }
@@ -410,6 +410,7 @@ export function App() {
               downloadDisabled={checkedIds.size === 0}
               checkedCount={checkedIds.size}
               loading={sessionsLoading}
+              isDemo={appMode === "demo"}
             />
           </aside>
         )}

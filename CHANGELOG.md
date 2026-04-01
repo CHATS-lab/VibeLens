@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.9.17] - 2026-04-01
+
+### Fixed
+- **Donation: upload store resolution**: Donation sender now includes per-user upload stores when searching for sessions, fixing "Source file not found" errors when donating uploaded sessions in demo mode.
+
+### Changed
+- **Donation error logging**: All error paths in the donation pipeline now emit `WARNING`-level log messages with diagnostic context (store names, file paths, parser types, tracebacks). Previously errors were only returned to the frontend with no server-side logging.
+- **Parser file read errors**: `BaseParser.parse_file` OSError logging upgraded from `DEBUG` to `WARNING` with exception detail.
+- **Store load failures**: `TrajectoryStore.load` now logs a warning when a parser returns no trajectories for an indexed session.
+
 ## [0.9.16] - 2026-04-01
 
 ### Added

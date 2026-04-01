@@ -48,15 +48,15 @@ async def send_donation(session_ids: list[str], session_token: str | None = None
 
     Args:
         session_ids: Pre-validated session IDs to donate.
-        session_token: Browser tab token (unused here, kept for interface symmetry).
+        session_token: Browser tab token for upload store resolution.
 
     Returns:
         DonateResult with counts and per-session errors.
     """
     settings = get_settings()
-    stores = _active_stores()
+    stores = _active_stores(session_token)
 
-    sessions_data = _collect_sessions(stores, session_ids)
+    sessions_data = _collect_sessions(stores, session_ids, session_token)
     if not sessions_data.valid_sessions:
         return DonateResult(total=len(session_ids), donated=0, errors=sessions_data.errors)
 
@@ -133,12 +133,23 @@ class _RepoBundle:
     session_ids: list[str] = field(default_factory=list)
 
 
-def _active_stores() -> list[TrajectoryStore]:
-    """Return all active trajectory stores (primary + example in demo mode)."""
-    from vibelens.deps import get_example_store, is_demo_mode
+def _active_stores(session_token: str | None = None) -> list[TrajectoryStore]:
+    """Return all active trajectory stores visible to the given token.
+
+    In demo mode, includes per-user upload stores so that newly uploaded
+    sessions are discoverable for donation.
+
+    Args:
+        session_token: Browser tab UUID for per-user isolation.
+
+    Returns:
+        Ordered list of stores to search.
+    """
+    from vibelens.deps import get_example_store, get_upload_stores, is_demo_mode
 
     stores: list[TrajectoryStore] = [get_store()]
     if is_demo_mode():
+        stores.extend(get_upload_stores(session_token))
         stores.append(get_example_store())
     return stores
 
@@ -163,13 +174,16 @@ def _find_session_in_stores(
 
 
 def _collect_sessions(
-    stores: list[TrajectoryStore], session_ids: list[str]
+    stores: list[TrajectoryStore],
+    session_ids: list[str],
+    session_token: str | None = None,
 ) -> _SessionCollectionResult:
     """Gather raw files and parsed data for each session.
 
     Args:
         stores: Active trajectory stores to search across.
         session_ids: Session IDs to collect (already visibility-checked).
+        session_token: Browser tab token for upload store resolution.
 
     Returns:
         Collection result with valid sessions and any errors.
@@ -177,52 +191,103 @@ def _collect_sessions(
     result = _SessionCollectionResult()
 
     for session_id in session_ids:
-        found = _find_session_in_stores(stores, session_id)
-        if not found:
-            result.errors.append({"session_id": session_id, "error": "Source file not found"})
-            continue
-
-        store, source = found
-        filepath, parser = source
-
-        # Check if this session came from an upload (DiskStore with _upload_id tag)
-        meta = store.get_metadata(session_id)
-        source_upload_id = meta.get("_upload_id") if meta else None
-
-        raw_files = _resolve_raw_files(store, filepath, parser, source_upload_id)
-
-        trajectories = load_from_stores(session_id)
-        if not trajectories:
-            result.errors.append({"session_id": session_id, "error": "Failed to load session"})
-            continue
-
-        parsed_json = json.dumps(
-            [t.model_dump(mode="json") for t in trajectories],
-            indent=2,
-            default=str,
-            ensure_ascii=False,
-        )
-        step_count = sum(len(t.steps) for t in trajectories)
-
-        main_trajectory = _find_main_trajectory(trajectories)
-        project_path = main_trajectory.project_path if main_trajectory else None
-        git_branch = _extract_git_branch(main_trajectory) if main_trajectory else None
-
-        result.valid_sessions.append(
-            _SessionData(
-                session_id=session_id,
-                agent_type=parser.AGENT_TYPE.value,
-                raw_files=raw_files,
-                parsed_json=parsed_json,
-                trajectory_count=len(trajectories),
-                step_count=step_count,
-                source_upload_id=source_upload_id,
-                project_path=project_path,
-                git_branch=git_branch,
+        try:
+            _collect_single_session(
+                stores, session_id, session_token, result
             )
-        )
+        except Exception as exc:
+            logger.warning(
+                "Donation: unexpected error collecting session %s: %s",
+                session_id,
+                exc,
+                exc_info=True,
+            )
+            result.errors.append(
+                {"session_id": session_id, "error": f"Collection error: {exc}"}
+            )
 
     return result
+
+
+def _collect_single_session(
+    stores: list[TrajectoryStore],
+    session_id: str,
+    session_token: str | None,
+    result: _SessionCollectionResult,
+) -> None:
+    """Collect data for a single session, appending to *result*.
+
+    Raises on unexpected errors so the caller can catch per-session.
+
+    Args:
+        stores: Stores to search.
+        session_id: Session to collect.
+        session_token: Browser tab token for upload store resolution.
+        result: Mutable accumulator for valid sessions and errors.
+    """
+    found = _find_session_in_stores(stores, session_id)
+    if not found:
+        store_names = [type(s).__name__ for s in stores]
+        logger.warning(
+            "Donation: source file not found for %s (searched %d stores: %s)",
+            session_id,
+            len(stores),
+            store_names,
+        )
+        result.errors.append({"session_id": session_id, "error": "Source file not found"})
+        return
+
+    store, source = found
+    filepath, parser = source
+
+    # Check if this session came from an upload (DiskStore with _upload_id tag)
+    meta = store.get_metadata(session_id)
+    source_upload_id = meta.get("_upload_id") if meta else None
+
+    raw_files = _resolve_raw_files(store, filepath, parser, source_upload_id)
+
+    trajectories = load_from_stores(session_id, session_token)
+    if not trajectories:
+        logger.warning(
+            "Donation: failed to load session %s (store=%s, file=%s, parser=%s)",
+            session_id,
+            type(store).__name__,
+            filepath,
+            type(parser).__name__,
+        )
+        result.errors.append({"session_id": session_id, "error": "Failed to load session"})
+        return
+
+    parsed_json = json.dumps(
+        [t.model_dump(mode="json") for t in trajectories],
+        indent=2,
+        default=str,
+        ensure_ascii=False,
+    )
+    step_count = sum(len(t.steps) for t in trajectories)
+
+    main_trajectory = _find_main_trajectory(trajectories)
+    project_path = main_trajectory.project_path if main_trajectory else None
+    git_branch = _extract_git_branch(main_trajectory) if main_trajectory else None
+
+    # For uploaded sessions (DiskStore), parser is ParsedTrajectoryParser
+    # with generic "parsed" type — get the real agent type from metadata
+    meta_agent = meta.get("agent", {}).get("name") if meta else None
+    agent_type = meta_agent or parser.AGENT_TYPE.value
+
+    result.valid_sessions.append(
+        _SessionData(
+            session_id=session_id,
+            agent_type=agent_type,
+            raw_files=raw_files,
+            parsed_json=parsed_json,
+            trajectory_count=len(trajectories),
+            step_count=step_count,
+            source_upload_id=source_upload_id,
+            project_path=project_path,
+            git_branch=git_branch,
+        )
+    )
 
 
 def _resolve_raw_files(

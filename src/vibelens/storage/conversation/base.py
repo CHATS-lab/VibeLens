@@ -90,6 +90,12 @@ class TrajectoryStore(ABC):
         path, parser = entry
         trajectories = parser.parse_file(path)
         if not trajectories:
+            logger.warning(
+                "Parser %s returned no trajectories for session %s from %s",
+                type(parser).__name__,
+                session_id,
+                path,
+            )
             return None
 
         self._enrich_refs_from_index(session_id, trajectories)

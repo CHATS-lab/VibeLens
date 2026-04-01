@@ -743,26 +743,20 @@ function MetaPill({
   bg?: string;
   tooltip?: string;
 }) {
-  const [show, setShow] = useState(false);
-  const ref = useRef<HTMLSpanElement>(null);
   const bgClass = bg ?? "bg-zinc-800 border border-zinc-700/50";
 
-  return (
+  const pill = (
     <span
-      ref={ref}
-      className={`relative inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] hover:brightness-125 transition-colors ${bgClass} ${color}`}
-      onMouseEnter={() => setShow(true)}
-      onMouseLeave={() => setShow(false)}
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] hover:brightness-125 transition-colors ${bgClass} ${color}`}
     >
       {icon}
       <span>{label}</span>
-      {tooltip && show && (
-        <span className="absolute left-0 top-full mt-1.5 z-[100] px-2.5 py-1.5 rounded-md bg-zinc-950 border border-zinc-700 text-[11px] text-zinc-300 whitespace-nowrap shadow-lg pointer-events-none">
-          {tooltip}
-        </span>
-      )}
     </span>
   );
+
+  if (!tooltip) return pill;
+
+  return <Tooltip text={tooltip}>{pill}</Tooltip>;
 }
 
 function TokenStat({

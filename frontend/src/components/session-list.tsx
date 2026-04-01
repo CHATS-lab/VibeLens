@@ -48,6 +48,7 @@ interface SessionListProps {
   downloadDisabled?: boolean;
   checkedCount?: number;
   loading?: boolean;
+  isDemo?: boolean;
 }
 
 export function SessionList({
@@ -69,6 +70,7 @@ export function SessionList({
   downloadDisabled,
   checkedCount = 0,
   loading,
+  isDemo = false,
 }: SessionListProps) {
   const { fetchWithToken } = useAppContext();
   const [search, setSearch] = useState("");
@@ -327,6 +329,7 @@ export function SessionList({
               onSelect={onSelect}
               onToggle={handleToggleOne}
               showProject
+              isDemo={isDemo}
             />
           ))
         ) : (
@@ -393,6 +396,7 @@ export function SessionList({
                       onSelect={onSelect}
                       onToggle={handleToggleOne}
                       showProject={false}
+                      isDemo={isDemo}
                     />
                   ))}
               </div>
@@ -450,6 +454,7 @@ function SessionRow({
   onSelect,
   onToggle,
   showProject,
+  isDemo,
 }: {
   session: Trajectory;
   selectedId: string | null;
@@ -457,6 +462,7 @@ function SessionRow({
   onSelect: (id: string) => void;
   onToggle: (id: string) => void;
   showProject: boolean;
+  isDemo: boolean;
 }) {
   return (
     <div
@@ -494,7 +500,7 @@ function SessionRow({
               {baseProjectName(session.project_path || "")}
             </span>
             <div className="flex items-center gap-1 shrink-0 ml-2">
-              {!session._upload_id && (
+              {isDemo && !session._upload_id && (
                 <span className="px-1 py-0.5 text-[9px] font-medium bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded" title="Example session (not donatable)">Example</span>
               )}
               {!!session.extra?._anonymized && (
@@ -514,7 +520,7 @@ function SessionRow({
             {truncate(session.first_message || "", 120) || "Empty session"}
           </p>
           <div className="flex items-center gap-1 shrink-0">
-            {!showProject && !session._upload_id && (
+            {!showProject && isDemo && !session._upload_id && (
               <span className="px-1 py-0.5 text-[9px] font-medium bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded" title="Example session (not donatable)">Example</span>
             )}
             {!showProject && !!session.extra?._anonymized && (

@@ -1,4 +1,4 @@
-import { Clock, Loader2, Trash2, Workflow } from "lucide-react";
+import { Calendar, Clock, Coins, Layers, Loader2, Trash2, Workflow } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAppContext } from "../../app";
 import type { SkillAnalysisMeta, SkillAnalysisResult, SkillMode } from "../../types";
@@ -10,9 +10,9 @@ const MODE_LABELS: Record<SkillMode, string> = {
 };
 
 const MODE_COLORS: Record<SkillMode, string> = {
-  retrieval: "bg-teal-900/30 text-teal-400",
-  creation: "bg-emerald-900/30 text-emerald-400",
-  evolution: "bg-amber-900/30 text-amber-400",
+  retrieval: "bg-teal-900/30 border-teal-700/30 text-teal-400",
+  creation: "bg-emerald-900/30 border-emerald-700/30 text-emerald-400",
+  evolution: "bg-amber-900/30 border-amber-700/30 text-amber-400",
 };
 
 function HistoryCard({
@@ -27,7 +27,7 @@ function HistoryCard({
   const [deleting, setDeleting] = useState(false);
 
   const handleDelete = useCallback(
-    async (e: React.MouseEvent) => {
+    (e: React.MouseEvent) => {
       e.stopPropagation();
       setDeleting(true);
       onDelete();
@@ -36,10 +36,7 @@ function HistoryCard({
   );
 
   const date = new Date(meta.created_at);
-  const dateStr = date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
+  const dateStr = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   const timeStr = date.toLocaleTimeString("en-US", {
     hour: "numeric",
     minute: "2-digit",
@@ -47,31 +44,49 @@ function HistoryCard({
   });
 
   return (
-    <button
+    <div
       onClick={onSelect}
-      className="group w-full text-left px-3 py-2.5 rounded-md border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/50 transition"
+      className="group relative px-3 py-2.5 rounded-lg bg-zinc-800/40 hover:bg-zinc-800/80 border border-zinc-700/40 hover:border-zinc-600/50 cursor-pointer transition"
     >
-      <div className="flex items-center justify-between mb-1.5">
-        <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${MODE_COLORS[meta.mode]}`}>
-          {MODE_LABELS[meta.mode]}
-        </span>
-        <span className="text-[10px] text-zinc-600">
-          {dateStr} {timeStr}
-        </span>
-      </div>
-      <p className="text-xs text-zinc-400 line-clamp-2 mb-1.5">
-        {meta.summary_preview || "No summary"}
-      </p>
-      <div className="flex items-center justify-between text-[10px] text-zinc-600">
-        <div className="flex items-center gap-2">
-          <span>{meta.pattern_count} pattern{meta.pattern_count !== 1 ? "s" : ""}</span>
-          <span>{meta.session_ids.length} session{meta.session_ids.length !== 1 ? "s" : ""}</span>
-          {meta.cost_usd != null && <span>${meta.cost_usd.toFixed(3)}</span>}
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0 space-y-1.5">
+          <p className="text-xs text-zinc-200 font-semibold truncate">
+            {meta.summary_preview || "No summary"}
+          </p>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-medium ${MODE_COLORS[meta.mode]}`}>
+              {MODE_LABELS[meta.mode]}
+            </span>
+            <span className="text-[10px] text-zinc-400">
+              {meta.pattern_count} pattern{meta.pattern_count !== 1 ? "s" : ""}
+            </span>
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-violet-900/30 border border-violet-700/30 text-[10px] font-medium text-violet-300">
+              <Layers className="w-2.5 h-2.5" />
+              {meta.session_ids.length} session{meta.session_ids.length !== 1 ? "s" : ""}
+            </span>
+            {meta.cost_usd != null && (
+              <span className="inline-flex items-center gap-1 text-[10px] text-zinc-300">
+                <Coins className="w-2.5 h-2.5 text-amber-400" />
+                ${meta.cost_usd.toFixed(3)}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 text-[10px] text-zinc-400">
+            <span className="inline-flex items-center gap-1">
+              <Calendar className="w-2.5 h-2.5" />
+              {dateStr}
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <Clock className="w-2.5 h-2.5" />
+              {timeStr}
+            </span>
+          </div>
         </div>
         <button
           onClick={handleDelete}
           disabled={deleting}
-          className="opacity-0 group-hover:opacity-100 p-1 text-zinc-600 hover:text-red-400 transition"
+          className="opacity-0 group-hover:opacity-100 p-1 text-zinc-500 hover:text-rose-400 rounded transition"
+          title="Delete analysis"
         >
           {deleting ? (
             <Loader2 className="w-3 h-3 animate-spin" />
@@ -80,7 +95,7 @@ function HistoryCard({
           )}
         </button>
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -152,40 +167,35 @@ export function SkillsHistory({
 
   const modeLabel = filterMode ? MODE_LABELS[filterMode] : null;
 
+  if (loading && analyses.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-6">
+        <Loader2 className="w-4 h-4 text-zinc-500 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!loading && filteredAnalyses.length === 0) {
+    return (
+      <div className="px-3 py-4 text-center">
+        <Workflow className="w-5 h-5 mx-auto mb-2 text-zinc-600" />
+        <p className="text-xs text-zinc-500">
+          {modeLabel ? `No ${modeLabel.toLowerCase()} analyses yet` : "No analyses yet"}
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-col h-full border-l border-zinc-800">
-      <div className="flex items-center gap-2 px-3 py-3 border-b border-zinc-800 shrink-0">
-        <Clock className="w-3.5 h-3.5 text-zinc-500" />
-        <span className="text-xs font-semibold text-zinc-400">
-          {modeLabel ? `${modeLabel} History` : "History"}
-        </span>
-      </div>
-
-      <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-1.5">
-        {loading && analyses.length === 0 && (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="w-4 h-4 text-zinc-600 animate-spin" />
-          </div>
-        )}
-
-        {!loading && filteredAnalyses.length === 0 && (
-          <div className="text-center py-8 px-2">
-            <Workflow className="w-6 h-6 text-zinc-700 mx-auto mb-2" />
-            <p className="text-[10px] text-zinc-600">
-              {modeLabel ? `No ${modeLabel.toLowerCase()} analyses yet` : "No analyses yet"}
-            </p>
-          </div>
-        )}
-
-        {filteredAnalyses.map((meta) => (
-          <HistoryCard
-            key={meta.analysis_id}
-            meta={meta}
-            onSelect={() => handleSelect(meta)}
-            onDelete={() => handleDelete(meta.analysis_id)}
-          />
-        ))}
-      </div>
+    <div className="space-y-1.5">
+      {filteredAnalyses.map((meta) => (
+        <HistoryCard
+          key={meta.analysis_id}
+          meta={meta}
+          onSelect={() => handleSelect(meta)}
+          onDelete={() => handleDelete(meta.analysis_id)}
+        />
+      ))}
     </div>
   );
 }
