@@ -192,6 +192,7 @@ export interface DashboardStats {
   hourly_distribution: Record<number, number>;
   weekday_hour_heatmap: Record<string, number>;
   timezone: string;
+  cached_at: string | null;
 }
 
 export interface ToolEdge {

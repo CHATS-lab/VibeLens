@@ -13,6 +13,7 @@ Run: python -m pytest tests/skill/test_skill_cli.py -s -v
 
 import asyncio
 import json
+import shutil
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -373,11 +374,8 @@ def test_skill_proposals_litellm():
 
 
 @pytest.mark.skipif(not EXAMPLES_DIR.exists(), reason="Example data not found")
+@pytest.mark.skipif(shutil.which("codex") is None, reason="codex CLI not in PATH")
 def test_skill_proposals_codex_cli():
     """Skill proposal + deep creation via Codex CLI backend."""
-    import shutil
-
-    if not shutil.which("codex"):
-        pytest.skip("Codex CLI not installed")
     backend = CodexCliBackend(timeout=PROPOSAL_TIMEOUT_SECONDS)
     _run_proposal_test(backend, "codex_proposals", session_count=2)

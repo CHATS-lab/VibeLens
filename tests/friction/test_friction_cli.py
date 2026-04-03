@@ -8,6 +8,7 @@ Run: python -m pytest tests/friction/test_friction_cli.py -s -v
 
 import asyncio
 import json
+import shutil
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -299,13 +300,23 @@ def _run_cli_friction_test(label: str, session_count: int | None = None) -> None
     assert len(all_batch_outputs) > 0, "No batch produced valid output"
 
 
-@pytest.mark.skipif(not EXAMPLES_DIR.exists(), reason="Example data not found")
+SKIP_NO_EXAMPLES = pytest.mark.skipif(
+    not EXAMPLES_DIR.exists(), reason="Example data not found"
+)
+SKIP_NO_CLAUDE_CLI = pytest.mark.skipif(
+    shutil.which("claude") is None, reason="claude CLI not in PATH"
+)
+
+
+@SKIP_NO_EXAMPLES
+@SKIP_NO_CLAUDE_CLI
 def test_friction_cli_2_sessions():
     """Friction analysis via Claude CLI with 2 sessions."""
     _run_cli_friction_test("2_sessions", session_count=2)
 
 
-@pytest.mark.skipif(not EXAMPLES_DIR.exists(), reason="Example data not found")
+@SKIP_NO_EXAMPLES
+@SKIP_NO_CLAUDE_CLI
 def test_friction_cli_all_sessions():
     """Friction analysis via Claude CLI with all sessions."""
     _run_cli_friction_test("all_sessions")

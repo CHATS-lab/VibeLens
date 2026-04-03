@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Bot, Compass, MessageSquare, ScrollText, User, PanelRightClose, PanelRightOpen } from "lucide-react";
+import { Bot, Compass, MessageSquare, ScrollText, User, PanelRightClose, PanelRightOpen, Wrench } from "lucide-react";
+import { Tooltip } from "../tooltip";
 import { extractMessageText, extractUserText, truncate } from "../../utils";
 import { ResizeHandle } from "../resize-handle";
 import type { Step, Trajectory } from "../../types";
@@ -12,7 +13,7 @@ const MIN_PROMPTS_FOR_NAV = 1;
 const COLLAPSED_WIDTH = 40;
 const NAV_BG = "bg-zinc-900";
 
-type NavMode = "prompts" | "sub-agents";
+export type NavMode = "prompts" | "sub-agents";
 
 interface PromptEntry {
   turnNumber: number;
@@ -35,6 +36,8 @@ interface PromptNavPanelProps {
   onPhaseNavigate?: (phaseIdx: number) => void;
   collapsed: boolean;
   onCollapsedChange: (collapsed: boolean) => void;
+  navMode: NavMode;
+  onNavModeChange: (mode: NavMode) => void;
 }
 
 function buildPromptEntries(steps: Step[]): PromptEntry[] {
@@ -88,13 +91,13 @@ export function PromptNavPanel({
   onPhaseNavigate,
   collapsed,
   onCollapsedChange,
+  navMode,
+  onNavModeChange,
 }: PromptNavPanelProps) {
   const entries = buildPromptEntries(steps);
   const hasPrompts = entries.length >= MIN_PROMPTS_FOR_NAV;
   const hasSubAgents = subAgents.length > 0;
   const hasFlowPhases = viewMode === "flow" && flowPhases && flowPhases.length > 0;
-
-  const [navMode, setNavMode] = useState<NavMode>("prompts");
   const [activeSubAgentId, setActiveSubAgentId] = useState<string | null>(null);
 
   if (!hasPrompts && !hasSubAgents && !hasFlowPhases) return null;
@@ -235,28 +238,30 @@ export function PromptNavPanel({
       {hasPrompts && hasSubAgents && (
         <div className="shrink-0 px-3 pb-2">
           <div className="flex gap-1 bg-cyan-950/30 rounded-md p-1">
-            <button
-              onClick={() => setNavMode("prompts")}
-              className={`flex-1 flex items-center justify-center gap-1.5 text-xs py-1.5 rounded transition ${
-                navMode === "prompts"
-                  ? "bg-cyan-600/25 text-cyan-200 font-semibold"
-                  : "text-zinc-500 hover:text-zinc-300"
-              }`}
-            >
-              <MessageSquare className="w-3 h-3" />
-              User ({entries.length})
-            </button>
-            <button
-              onClick={() => setNavMode("sub-agents")}
-              className={`flex-1 flex items-center justify-center gap-1.5 text-xs py-1.5 rounded transition ${
-                navMode === "sub-agents"
-                  ? "bg-cyan-600/25 text-cyan-200 font-semibold"
-                  : "text-zinc-500 hover:text-zinc-300"
-              }`}
-            >
-              <Bot className="w-3 h-3" />
-              Agents ({subAgents.length})
-            </button>
+            <Tooltip text="Navigate user prompts and plan entries" className="flex-1 min-w-0">
+              <button
+                onClick={() => onNavModeChange("prompts")}
+                className={`w-full flex items-center justify-center text-xs py-1.5 rounded transition ${
+                  navMode === "prompts"
+                    ? "bg-cyan-600/25 text-cyan-200 font-semibold"
+                    : "text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                User ({entries.length})
+              </button>
+            </Tooltip>
+            <Tooltip text="Navigate sub-agent trajectories spawned by this session" className="flex-1 min-w-0">
+              <button
+                onClick={() => onNavModeChange("sub-agents")}
+                className={`w-full flex items-center justify-center text-xs py-1.5 rounded transition ${
+                  navMode === "sub-agents"
+                    ? "bg-cyan-600/25 text-cyan-200 font-semibold"
+                    : "text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                Sub-Agents ({subAgents.length})
+              </button>
+            </Tooltip>
           </div>
         </div>
       )}
@@ -365,10 +370,17 @@ export function PromptNavPanel({
                         isActive ? "text-violet-300" : "text-violet-400/70 group-hover:text-violet-300"
                       }`}
                     >
-                      Agent #{idx + 1}
+                      Sub-Agent #{idx + 1}
                     </span>
-                    <span className={`text-[11px] ${isActive ? "text-zinc-400" : "text-zinc-500"}`}>
-                      {stepCount} steps · {toolCount} tools
+                  </div>
+                  <div className={`flex items-center gap-2 text-[11px] ${isActive ? "text-zinc-300" : "text-zinc-400"}`}>
+                    <span className="inline-flex items-center gap-0.5">
+                      <MessageSquare className="w-3 h-3" />
+                      {stepCount} steps
+                    </span>
+                    <span className="inline-flex items-center gap-0.5">
+                      <Wrench className="w-3 h-3" />
+                      {toolCount} tools
                     </span>
                   </div>
                   {sub.first_message && (
@@ -421,7 +433,7 @@ export function PromptNavPanel({
                           isActive ? "text-violet-300" : "text-violet-400/70 group-hover:text-violet-300"
                         }`}
                       >
-                        Agent #{idx + 1}
+                        Sub-Agent #{idx + 1}
                       </span>
                       <span className={`text-[11px] ${isActive ? "text-zinc-400" : "text-zinc-500"}`}>
                         {stepCount} steps · {toolCount} tools

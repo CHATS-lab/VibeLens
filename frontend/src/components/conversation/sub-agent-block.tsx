@@ -42,7 +42,7 @@ export function SubAgentBlock({ trajectory, allTrajectories, concise }: SubAgent
       preview={preview}
       className="bg-violet-500/10 border-violet-500/30 text-violet-300"
     >
-      <div className="border-l-2 border-violet-500/30 ml-3 pl-3 py-2 space-y-2">
+      <div className="ml-3 pl-3 py-2 space-y-2">
         <div className="flex items-center gap-3 text-[10px] text-violet-400 px-1 pb-1">
           <span className="flex items-center gap-1">
             <MessageSquare className="w-3 h-3" />
@@ -62,8 +62,11 @@ export function SubAgentBlock({ trajectory, allTrajectories, concise }: SubAgent
             }
             return true;
           })
-          .map((step) => (
-            <StepBlock key={step.step_id} step={step} concise={concise} />
+          .map((step, i) => (
+            <div key={step.step_id}>
+              {i > 0 && <hr className="border-zinc-600/50 my-2" />}
+              <StepBlock step={step} concise={concise} />
+            </div>
           ))}
         {childSubAgents.map((child) => (
           <SubAgentBlock

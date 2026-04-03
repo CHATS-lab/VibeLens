@@ -27,9 +27,9 @@ from vibelens.utils.timestamps import parse_metadata_timestamp
 logger = get_logger(__name__)
 
 # Cache TTL balances freshness with cost of full trajectory loading.
-# 5 minutes is long enough to survive repeated dashboard refreshes
-# but short enough to pick up newly uploaded sessions promptly.
-CACHE_TTL_SECONDS = 300
+# 1 hour avoids redundant recomputation during normal browsing
+# while still reflecting newly uploaded sessions within a reasonable window.
+CACHE_TTL_SECONDS = 3600
 
 # Number of sessions to load per batch during cache warming.
 # After each batch, the thread sleeps briefly to release the GIL
@@ -118,6 +118,7 @@ def get_dashboard_stats(
         result = compute_dashboard_stats(trajectories)
         _reconcile_session_counts(result, trajectories, filtered)
 
+    result.cached_at = datetime.now().astimezone().isoformat()
     _dashboard_cache[cache_key] = (time.monotonic(), result)
     return result
 

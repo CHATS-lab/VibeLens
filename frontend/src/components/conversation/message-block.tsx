@@ -281,7 +281,7 @@ function ConcurrentToolsBlock({
       </button>
       {open && (
         <div className="border-t border-cyan-500/20">
-          <div className="border-l-2 border-cyan-500/30 ml-3 pl-3 py-2 space-y-1">
+          <div className="ml-3 pl-3 py-2 space-y-1">
             {toolCalls.map((tc, i) => {
               const result = obsMap.get(tc.tool_call_id);
               return (

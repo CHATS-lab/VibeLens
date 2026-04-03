@@ -8,6 +8,7 @@ import {
   FolderOpen,
   Bot,
   Cpu,
+  RefreshCw,
   Wrench,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -181,7 +182,20 @@ export function DashboardView({ cache }: DashboardViewProps) {
               </h2>
             )}
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-3">
+            {stats.cached_at && (
+              <span
+                className="flex items-center gap-1.5 text-xs text-zinc-500"
+                onMouseEnter={(e) =>
+                  show(e, "Stats are cached for 1 hour. Data reflects sessions available at this time.")
+                }
+                onMouseMove={move}
+                onMouseLeave={hide}
+              >
+                <RefreshCw className="w-3 h-3" />
+                Updated {new Date(stats.cached_at).toLocaleTimeString()}
+              </span>
+            )}
             <button
               onClick={() => handleExport("csv")}
               disabled={exporting !== null}

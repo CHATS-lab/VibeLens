@@ -172,6 +172,9 @@ class DashboardStats(BaseModel):
         description="Session count keyed by agent name (e.g. claude-code, codex, gemini).",
     )
     timezone: str = Field(default="UTC", description="IANA timezone name used for time groupings.")
+    cached_at: str | None = Field(
+        default=None, description="ISO timestamp when these stats were last computed and cached."
+    )
 
 
 class SessionAnalytics(BaseModel):

@@ -15,6 +15,7 @@ import {
   Plus,
   RefreshCw,
   Repeat,
+  RotateCcw,
   Search,
   Shield,
   Sparkles,
@@ -37,14 +38,16 @@ import { DemoBanner } from "../demo-banner";
 import { Tooltip } from "../tooltip";
 import { WarningsBanner } from "../warnings-banner";
 import { InstallTargetDialog } from "./install-target-dialog";
+import { applySkillEdits } from "./skill-edit-utils";
 import { EvolutionDiffView } from "./skill-evolution-diff";
+import { SkillUpdateDialog } from "./skill-update-dialog";
 
 export type SkillTab = "local" | "explore" | "retrieve" | "create" | "evolve";
 
 const CONFIDENCE_THRESHOLDS = { HIGH: 0.75, MEDIUM: 0.5 } as const;
 
 const MODE_SUBLABELS: Record<SkillMode, string> = {
-  retrieval: "Finding skills that match your coding patterns",
+  retrieval: "Discovering skills that match your coding patterns",
   creation: "Generating custom skills from your workflow",
   evolution: "Checking installed skills against your usage",
 };
@@ -120,7 +123,11 @@ export function AnalysisResultView({
 
       {/* Evolution Suggestions (Evolve) */}
       {activeTab === "evolve" && result.evolution_suggestions.length > 0 && (
-        <EvolutionSection suggestions={result.evolution_suggestions} />
+        <EvolutionSection
+          suggestions={result.evolution_suggestions}
+          fetchWithToken={fetchWithToken}
+          agentSources={agentSources}
+        />
       )}
 
       {/* Workflow Patterns — shown at the bottom */}
@@ -354,7 +361,7 @@ function RecommendationSection({ recommendations }: { recommendations: SkillReco
     <section>
       <SectionHeader
         icon={<Search className="w-5 h-5" />}
-        title="Recommended Skills"
+        title="Discovered Skills"
         tooltip="Pre-built skills from the catalog that match your workflow patterns"
       />
       <div className="space-y-3">
@@ -412,7 +419,7 @@ function CreationSection({
     <section>
       <SectionHeader
         icon={<Sparkles className="w-5 h-5" />}
-        title="Generated Skills"
+        title="Custom Skills"
         tooltip="New SKILL.md files generated from your workflow patterns"
         accentColor="text-emerald-400"
       />
@@ -442,6 +449,9 @@ function CreatedSkillCard({
   const [expanded, setExpanded] = useState(false);
   const [showInstallDialog, setShowInstallDialog] = useState(false);
   const [installed, setInstalled] = useState(false);
+  const [editedContent, setEditedContent] = useState<string | null>(null);
+
+  const activeContent = editedContent ?? skill.skill_md_content;
 
   const handleInstall = useCallback(
     async (targets: string[]) => {
@@ -449,11 +459,10 @@ function CreatedSkillCard({
         const res = await fetchWithToken("/api/skills/install", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: skill.name, content: skill.skill_md_content }),
+          body: JSON.stringify({ name: skill.name, content: activeContent }),
         });
         if (!res.ok) return;
 
-        // Sync to selected agent interfaces
         if (targets.length > 0) {
           await fetchWithToken(`/api/skills/sync/${skill.name}`, {
             method: "POST",
@@ -467,7 +476,7 @@ function CreatedSkillCard({
       }
       setShowInstallDialog(false);
     },
-    [fetchWithToken, skill],
+    [fetchWithToken, skill, activeContent],
   );
 
   return (
@@ -508,10 +517,21 @@ function CreatedSkillCard({
         </div>
       </div>
       {expanded && (
-        <div className="border-t border-emerald-800/20 px-5 py-4 bg-zinc-900/30">
-          <pre className="text-xs text-zinc-300 font-mono bg-zinc-900/80 rounded-lg p-4 overflow-x-auto max-h-72 overflow-y-auto whitespace-pre-wrap leading-relaxed border border-zinc-800/50">
-            {skill.skill_md_content}
-          </pre>
+        <div className="border-t border-emerald-800/20 px-5 py-4 bg-zinc-900/30 space-y-2">
+          <textarea
+            value={activeContent}
+            onChange={(e) => setEditedContent(e.target.value)}
+            className="w-full min-h-[200px] max-h-72 bg-zinc-900/80 text-zinc-300 text-xs font-mono rounded-lg p-4 border border-zinc-800/50 focus:border-emerald-600/50 focus:outline-none resize-y whitespace-pre-wrap leading-relaxed"
+            spellCheck={false}
+          />
+          {editedContent !== null && (
+            <button
+              onClick={() => setEditedContent(null)}
+              className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300 transition px-2 py-1 rounded-md hover:bg-zinc-800 border border-zinc-700/30"
+            >
+              <RotateCcw className="w-3 h-3" /> Reset
+            </button>
+          )}
         </div>
       )}
       {showInstallDialog && (
@@ -528,7 +548,15 @@ function CreatedSkillCard({
 
 /* ── Evolution Suggestions (Evolve) ── */
 
-function EvolutionSection({ suggestions }: { suggestions: SkillEvolutionSuggestion[] }) {
+function EvolutionSection({
+  suggestions,
+  fetchWithToken,
+  agentSources,
+}: {
+  suggestions: SkillEvolutionSuggestion[];
+  fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
+  agentSources: SkillSourceInfo[];
+}) {
   return (
     <section>
       <SectionHeader
@@ -538,14 +566,86 @@ function EvolutionSection({ suggestions }: { suggestions: SkillEvolutionSuggesti
         accentColor="text-amber-400"
       />
       <div className="space-y-3">
-        {suggestions.map((sug) => <EvolutionCard key={sug.skill_name} suggestion={sug} />)}
+        {suggestions.map((sug) => (
+          <EvolutionCard
+            key={sug.skill_name}
+            suggestion={sug}
+            fetchWithToken={fetchWithToken}
+            agentSources={agentSources}
+          />
+        ))}
       </div>
     </section>
   );
 }
 
-function EvolutionCard({ suggestion }: { suggestion: SkillEvolutionSuggestion }) {
+function EvolutionCard({
+  suggestion,
+  fetchWithToken,
+  agentSources,
+}: {
+  suggestion: SkillEvolutionSuggestion;
+  fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
+  agentSources: SkillSourceInfo[];
+}) {
   const [expanded, setExpanded] = useState(false);
+  const [showUpdateDialog, setShowUpdateDialog] = useState(false);
+  const [mergedContent, setMergedContent] = useState<string | null>(null);
+  const [loadingOriginal, setLoadingOriginal] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [updating, setUpdating] = useState(false);
+  const [updated, setUpdated] = useState(false);
+
+  const handleApplyAndEdit = useCallback(async () => {
+    setLoadingOriginal(true);
+    setFetchError(null);
+    try {
+      const res = await fetchWithToken(`/api/skills/local/${suggestion.skill_name}`);
+      if (res.status === 404) {
+        setFetchError("Skill not found in central store");
+        return;
+      }
+      if (!res.ok) {
+        setFetchError("Failed to fetch skill content");
+        return;
+      }
+      const data = await res.json();
+      const merged = applySkillEdits(data.content, suggestion.edits);
+      setMergedContent(merged);
+      setShowUpdateDialog(true);
+    } catch {
+      setFetchError("Network error fetching skill");
+    } finally {
+      setLoadingOriginal(false);
+    }
+  }, [fetchWithToken, suggestion]);
+
+  const handleUpdate = useCallback(async (content: string, targets: string[]) => {
+    setUpdating(true);
+    try {
+      const res = await fetchWithToken(`/api/skills/local/${suggestion.skill_name}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: suggestion.skill_name, content }),
+      });
+      if (!res.ok) return;
+
+      if (targets.length > 0) {
+        await fetchWithToken(`/api/skills/sync/${suggestion.skill_name}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ targets }),
+        });
+      }
+      setUpdated(true);
+    } catch {
+      /* ignore */
+    } finally {
+      setUpdating(false);
+      setShowUpdateDialog(false);
+    }
+  }, [fetchWithToken, suggestion.skill_name]);
+
   return (
     <div className="border border-amber-700/30 rounded-xl bg-amber-950/15 overflow-hidden">
       <button onClick={() => setExpanded(!expanded)} className="w-full text-left px-5 py-4">
@@ -568,9 +668,42 @@ function EvolutionCard({ suggestion }: { suggestion: SkillEvolutionSuggestion })
         <p className="text-sm text-zinc-100 leading-relaxed pl-[2.375rem]">{suggestion.rationale}</p>
       </button>
       {expanded && suggestion.edits.length > 0 && (
-        <div className="border-t border-amber-800/20 px-5 py-4 bg-zinc-900/20">
+        <div className="border-t border-amber-800/20 px-5 py-4 bg-zinc-900/20 space-y-4">
+          {/* Apply & Edit action row */}
+          <div className="flex items-center gap-2">
+            {updated ? (
+              <span className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-300 bg-amber-900/30 rounded-lg border border-amber-700/20">
+                <Check className="w-3.5 h-3.5" /> Updated
+              </span>
+            ) : (
+              <button
+                onClick={(e) => { e.stopPropagation(); handleApplyAndEdit(); }}
+                disabled={loadingOriginal}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-500 rounded-lg transition disabled:opacity-50"
+              >
+                {loadingOriginal
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <Pencil className="w-3.5 h-3.5" />}
+                Apply &amp; Edit
+              </button>
+            )}
+            {fetchError && (
+              <span className="text-xs text-red-400">{fetchError}</span>
+            )}
+          </div>
+
           <EvolutionDiffView skillName={suggestion.skill_name} edits={suggestion.edits} />
         </div>
+      )}
+      {showUpdateDialog && mergedContent !== null && (
+        <SkillUpdateDialog
+          skillName={suggestion.skill_name}
+          initialContent={mergedContent}
+          agentSources={agentSources}
+          onUpdate={handleUpdate}
+          onCancel={() => setShowUpdateDialog(false)}
+          updating={updating}
+        />
       )}
     </div>
   );

@@ -16,8 +16,8 @@ import { SkillsHistory } from "./skills-history";
 const TAB_CONFIG: { id: SkillTab; label: string }[] = [
   { id: "local", label: "Local Skills" },
   { id: "explore", label: "Explore" },
-  { id: "retrieve", label: "Recommend" },
-  { id: "create", label: "Create" },
+  { id: "retrieve", label: "Discover" },
+  { id: "create", label: "Customize" },
   { id: "evolve", label: "Evolve" },
 ];
 
@@ -32,12 +32,12 @@ const MODE_MAP: Record<string, SkillMode> = {
 
 const MODE_DESCRIPTIONS: Record<SkillMode, { title: string; desc: string; icon: React.ReactNode }> = {
   retrieval: {
-    title: "Skill Retrieval",
-    desc: "Detect workflow patterns and recommend existing skills that match your coding style.",
+    title: "Skill Discovery",
+    desc: "Detect workflow patterns and discover existing skills that match your coding style.",
     icon: <Search className="w-10 h-10 text-teal-400/50" />,
   },
   creation: {
-    title: "Skill Creation",
+    title: "Skill Customization",
     desc: "Generate new SKILL.md files from detected automation opportunities in your sessions.",
     icon: <Sparkles className="w-10 h-10 text-emerald-400/50" />,
   },

@@ -33,7 +33,7 @@ import type { Step, Trajectory, FlowData } from "../../types";
 import { StepBlock } from "./message-block";
 import { SubAgentBlock } from "./sub-agent-block";
 import { StepTimeline } from "./step-timeline";
-import { PromptNavPanel } from "./prompt-nav-panel";
+import { PromptNavPanel, type NavMode } from "./prompt-nav-panel";
 import { FlowDiagram } from "./flow-diagram";
 import { computeFlow } from "./flow-layout";
 import { formatTokens, formatDuration, formatCost, extractUserText, baseProjectName } from "../../utils";
@@ -66,6 +66,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
   const [sessionCost, setSessionCost] = useState<number | null>(null);
   const [shareStatus, setShareStatus] = useState<"idle" | "sharing" | "copied">("idle");
   const [viewMode, setViewMode] = useState<"timeline" | "concise" | "flow">("concise");
+  const [navMode, setNavMode] = useState<NavMode>("prompts");
   const [flowData, setFlowData] = useState<FlowData | null>(null);
   const [flowLoading, setFlowLoading] = useState(false);
   const [headerExpanded, setHeaderExpanded] = useState(false);
@@ -83,7 +84,6 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
     setActiveStepId(null);
     setSessionCost(null);
     setFlowData(null);
-    setViewMode("concise");
 
     // When rendering shared data, skip the API fetch
     if (sharedTrajectories) {
@@ -442,6 +442,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
                   Workflow
                 </button>
               </div>
+              <div className="w-px h-6 bg-zinc-600/50 mx-1" />
               {!isSharedView && (
                 <div className="relative flex items-center">
                   <button
@@ -724,6 +725,8 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
           onPhaseNavigate={handlePhaseNavigate}
           collapsed={navCollapsed}
           onCollapsedChange={setNavCollapsed}
+          navMode={navMode}
+          onNavModeChange={setNavMode}
         />
       </div>
     </div>

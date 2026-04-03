@@ -4,8 +4,8 @@ import { useAppContext } from "../../app";
 import type { SkillAnalysisMeta, SkillAnalysisResult, SkillMode } from "../../types";
 
 const MODE_LABELS: Record<SkillMode, string> = {
-  retrieval: "Recommend",
-  creation: "Create",
+  retrieval: "Discover",
+  creation: "Customize",
   evolution: "Evolve",
 };
 
