@@ -1,6 +1,9 @@
 """Kimi CLI backend.
 
-Invokes ``kimi --print`` as a subprocess. Prompt is piped via stdin.
+Invokes ``kimi --print --final-message-only`` as a subprocess.
+``--print`` enables non-interactive mode with auto-approval, and
+``--final-message-only`` skips intermediate tool output for clean results.
+
 Does not support native JSON output — uses prompt-level schema augmentation.
 """
 
@@ -23,9 +26,12 @@ class KimiCliBackend(CliBackend):
         """Build kimi CLI command.
 
         Args:
-            request: Inference request (unused beyond base class).
+            request: Inference request for model settings.
 
         Returns:
             Command as a list of strings.
         """
-        return [self._cli_path or self.cli_executable, "--print"]
+        cmd = [self._cli_path or self.cli_executable, "--print", "--final-message-only"]
+        if self._model:
+            cmd.extend(["--model", self._model])
+        return cmd

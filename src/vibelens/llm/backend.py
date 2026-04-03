@@ -78,3 +78,12 @@ class InferenceBackend(ABC):
     @abstractmethod
     def backend_id(self) -> BackendType:
         """Unique identifier for this backend type."""
+
+    @property
+    def model(self) -> str:
+        """Human-readable model name for this backend.
+
+        Subclasses should override to return the configured model.
+        Defaults to ``"unknown"`` for backends that don't track a model.
+        """
+        return "unknown"

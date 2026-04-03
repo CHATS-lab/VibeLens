@@ -2,6 +2,7 @@
 
 import json
 import time
+from datetime import UTC, datetime
 
 from vibelens.deps import get_central_skill_store, get_skill_analysis_store
 from vibelens.llm.prompts.skill_evolution import SKILL_EVOLUTION_PROMPT
@@ -11,6 +12,7 @@ from vibelens.models.skill.skills import SkillAnalysisResult, SkillMode
 from vibelens.services.friction.signals import build_step_signals
 from vibelens.services.skill.digest import digest_step_signals_for_skills
 from vibelens.services.skill.retrieval import (
+    SKILL_LOG_DIR,
     _build_result,
     _cache,
     _get_cached,
@@ -19,6 +21,7 @@ from vibelens.services.skill.retrieval import (
     _log_response,
     _parse_llm_output,
     _require_backend,
+    _save_skill_log,
     _skill_cache_key,
     _validate_patterns,
 )
@@ -54,8 +57,14 @@ async def analyze_evolvement(
     )
     _log_prompt(system_prompt, user_prompt, loaded_ids, SkillMode.EVOLUTION)
 
+    run_timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+    log_dir = SKILL_LOG_DIR / run_timestamp
+    _save_skill_log(log_dir, "evolvement_system.txt", system_prompt)
+    _save_skill_log(log_dir, "evolvement_user.txt", user_prompt)
+
     result = await backend.generate(request)
     _log_response(result.text, loaded_ids, SkillMode.EVOLUTION)
+    _save_skill_log(log_dir, "evolvement_output.txt", result.text)
 
     llm_output = _parse_llm_output(result.text)
     validated_patterns = _validate_patterns(llm_output.workflow_patterns, loaded_trajectories)

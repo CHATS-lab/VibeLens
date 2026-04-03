@@ -1,7 +1,8 @@
 """OpenCode CLI backend.
 
-Invokes ``opencode -p -`` as a subprocess. Prompt is piped via stdin.
-Does not support native JSON output — uses prompt-level schema augmentation.
+Invokes ``opencode -p - -q -f json`` as a subprocess. Prompt is piped via
+stdin. ``-q`` suppresses the interactive spinner for scripted usage, and
+``-f json`` returns structured JSON output.
 """
 
 from vibelens.llm.backends.cli_base import CliBackend
@@ -19,6 +20,10 @@ class OpenCodeCliBackend(CliBackend):
     def backend_id(self) -> BackendType:
         return BackendType.OPENCODE_CLI
 
+    @property
+    def supports_native_json(self) -> bool:
+        return True
+
     def _build_command(self, request: InferenceRequest) -> list[str]:
         """Build opencode CLI command.
 
@@ -28,4 +33,4 @@ class OpenCodeCliBackend(CliBackend):
         Returns:
             Command as a list of strings.
         """
-        return [self._cli_path or self.cli_executable, "-p", "-"]
+        return [self._cli_path or self.cli_executable, "-p", "-", "-q", "-f", "json"]

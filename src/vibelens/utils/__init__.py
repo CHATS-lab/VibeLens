@@ -14,6 +14,7 @@ from vibelens.utils.log import get_logger
 from vibelens.utils.paths import encode_project_path, ensure_dir, extract_project_name
 from vibelens.utils.timestamps import (
     format_isoformat,
+    monotonic_ms,
     normalize_timestamp,
     parse_iso_timestamp,
     parse_ms_timestamp,
@@ -32,6 +33,7 @@ __all__ = [
     "format_isoformat",
     "get_logger",
     "load_json_file",
+    "monotonic_ms",
     "normalize_timestamp",
     "parse_iso_timestamp",
     "parse_ms_timestamp",

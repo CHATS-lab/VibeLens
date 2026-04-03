@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.9.19] - 2026-04-03
+
+### Fixed
+- **CLI tempfile concurrency**: `generate()` now isolates temp files per call via save/restore, preventing concurrent coroutines from deleting each other's files.
+- **Amp NDJSON parsing**: `AmpCliBackend` no longer sets `supports_native_json = True` (which skipped schema instructions). Overrides `_parse_output` to extract the last valid JSON line from the NDJSON stream.
+- **Overly broad exception in LiteLLM cost extraction**: Narrowed `except Exception` to `except (ValueError, litellm.exceptions.NotFoundError)` in `_extract_cost()` so unexpected errors surface instead of being silently swallowed.
+
+### Changed
+- **`model` property on `InferenceBackend` ABC**: Added a concrete `model` property (default `"unknown"`) to the base class, overridden in `CliBackend` and `LiteLLMBackend`. Removed the duplicated `_get_backend_model()` helper from 4 service files.
+- **Shared `monotonic_ms()`**: Deduplicated identical `_now_ms()` functions from `cli_base.py` and `litellm_backend.py` into `utils/timestamps.monotonic_ms()`.
+- **Top-level `import importlib`**: Moved from inside `_create_cli_backend()` to the module's stdlib import group in `backends/__init__.py`.
+
 ## [0.9.18] - 2026-04-02
 
 ### Added

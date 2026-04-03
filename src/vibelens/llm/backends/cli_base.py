@@ -1,8 +1,8 @@
 """Base class for CLI subprocess inference backends.
 
 Shared infrastructure for all CLI-based backends: subprocess lifecycle
-(spawn → stdin pipe → timeout → kill → parse), prompt augmentation
-with JSON schema instructions, and temp schema file management.
+(spawn -> stdin pipe -> timeout -> kill -> parse), prompt augmentation
+with JSON schema instructions, and temp file management.
 """
 
 import asyncio
@@ -11,7 +11,6 @@ import json
 import os
 import shutil
 import tempfile
-import time
 from abc import abstractmethod
 from pathlib import Path
 
@@ -23,6 +22,7 @@ from vibelens.models.inference import (
     TokenUsage,
 )
 from vibelens.utils.log import get_logger
+from vibelens.utils.timestamps import monotonic_ms
 
 logger = get_logger(__name__)
 
@@ -53,7 +53,7 @@ class CliBackend(InferenceBackend):
         self._model = model
         self._timeout = timeout
         self._cli_path = shutil.which(self.cli_executable)
-        self._schema_tempfile: Path | None = None
+        self._tempfiles: list[Path] = []
 
     @property
     @abstractmethod
@@ -66,13 +66,13 @@ class CliBackend(InferenceBackend):
         """Unique BackendType enum value for this backend."""
 
     @property
-    def supports_native_json(self) -> bool:
-        """Whether the CLI natively supports JSON output mode."""
-        return False
+    def model(self) -> str:
+        """Return configured model name, falling back to CLI executable name."""
+        return self._model or self.cli_executable
 
     @property
-    def supports_schema_file(self) -> bool:
-        """Whether the CLI accepts an --output-schema file argument."""
+    def supports_native_json(self) -> bool:
+        """Whether the CLI natively supports JSON output mode."""
         return False
 
     @abstractmethod
@@ -105,17 +105,17 @@ class CliBackend(InferenceBackend):
         if not self._cli_path:
             raise InferenceError(f"{self.cli_executable} CLI not found in PATH")
 
-        # Write temp schema file if the CLI supports it
-        if request.json_schema and self.supports_schema_file:
-            self._write_schema_file(request.json_schema)
-
+        # Isolate temp files per generate() call so concurrent coroutines
+        # don't interfere with each other's cleanup.
+        saved_tempfiles = self._tempfiles
+        self._tempfiles = []
         try:
             cmd = self._build_command(request)
             prompt_text = self._build_prompt(request)
             prompt_bytes = prompt_text.encode("utf-8")
             env = self._build_env()
 
-            start_ms = _now_ms()
+            start_ms = monotonic_ms()
             try:
                 proc = await asyncio.create_subprocess_exec(
                     *cmd,
@@ -136,7 +136,7 @@ class CliBackend(InferenceBackend):
             except OSError as exc:
                 raise InferenceError(f"Failed to start {self.cli_executable}: {exc}") from exc
 
-            duration_ms = _now_ms() - start_ms
+            duration_ms = monotonic_ms() - start_ms
 
             if proc.returncode != 0:
                 stderr_text = stderr.decode("utf-8", errors="replace").strip()
@@ -145,9 +145,17 @@ class CliBackend(InferenceBackend):
                 )
 
             output = stdout.decode("utf-8", errors="replace").strip()
-            return self._parse_output(output, duration_ms)
+            result = self._parse_output(output, duration_ms)
+            logger.info(
+                "CLI inference complete: backend=%s duration_ms=%d output_len=%d",
+                self.backend_id,
+                duration_ms,
+                len(output),
+            )
+            return result
         finally:
-            self._cleanup_schema_file()
+            _cleanup_tempfiles(self._tempfiles)
+            self._tempfiles = saved_tempfiles
 
     async def is_available(self) -> bool:
         """Check if the CLI executable exists in PATH."""
@@ -195,35 +203,38 @@ class CliBackend(InferenceBackend):
         schema_str = json.dumps(json_schema, indent=2)
         return prompt + SCHEMA_INSTRUCTION_TEMPLATE.format(schema=schema_str)
 
-    def _write_schema_file(self, json_schema: dict) -> None:
-        """Write JSON schema to a temp file for CLIs that accept --output-schema.
+    def _create_tempfile(
+        self, content: str, suffix: str = ".txt", prefix: str = "vibelens_"
+    ) -> Path:
+        """Write content to a temp file and register it for cleanup.
 
         Args:
-            json_schema: Schema dict to serialize.
+            content: Text content to write.
+            suffix: File extension for the temp file.
+            prefix: Filename prefix for the temp file.
+
+        Returns:
+            Path to the created temp file.
+
+        Raises:
+            InferenceError: If the temp file cannot be written.
         """
-        fd, path = tempfile.mkstemp(suffix=".json", prefix="vibelens_schema_")
+        fd, path = tempfile.mkstemp(suffix=suffix, prefix=prefix)
         try:
             with open(fd, "w", encoding="utf-8") as f:
-                json.dump(json_schema, f, indent=2)
-            self._schema_tempfile = Path(path)
-        except OSError:
-            logger.warning("Failed to write schema temp file at %s", path)
-            self._schema_tempfile = None
-
-    def _cleanup_schema_file(self) -> None:
-        """Remove the temp schema file if it exists."""
-        if self._schema_tempfile and self._schema_tempfile.exists():
-            with contextlib.suppress(OSError):
-                self._schema_tempfile.unlink()
-            self._schema_tempfile = None
+                f.write(content)
+        except OSError as exc:
+            raise InferenceError(f"Failed to write temp file at {path}") from exc
+        temp_path = Path(path)
+        self._tempfiles.append(temp_path)
+        return temp_path
 
     def _parse_output(self, output: str, duration_ms: int) -> InferenceResult:
         """Parse CLI output into InferenceResult.
 
-        Handles two JSON envelope formats:
-        - Claude Code: ``{"type":"result","result":"...",
-          "usage":{...},"modelUsage":{...},"total_cost_usd":...}``
-        - Codex: ``{"result":"...","usage":{...},"model":"..."}``
+        Handles JSON envelope formats from various CLIs (Claude Code,
+        Codex, Gemini, Cursor, etc.) with keys like ``result``,
+        ``content``, ``text``, or ``response``.
 
         Falls back to treating the entire output as plain text if not JSON.
 
@@ -242,7 +253,9 @@ class CliBackend(InferenceBackend):
         try:
             data = json.loads(output)
             if isinstance(data, dict):
-                text = data.get("result", data.get("content", data.get("text", output)))
+                text = data.get(
+                    "result", data.get("content", data.get("text", data.get("response", output)))
+                )
                 if "usage" in data:
                     usage_data = data["usage"]
                     usage = TokenUsage(
@@ -279,6 +292,13 @@ async def _kill_process(proc: asyncio.subprocess.Process) -> None:
         pass
 
 
-def _now_ms() -> int:
-    """Return current time in milliseconds."""
-    return int(time.monotonic() * 1000)
+def _cleanup_tempfiles(paths: list[Path]) -> None:
+    """Remove all temp files from the given list.
+
+    Args:
+        paths: Temp file paths to delete.
+    """
+    for path in paths:
+        if path.exists():
+            with contextlib.suppress(OSError):
+                path.unlink()

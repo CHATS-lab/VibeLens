@@ -5,6 +5,8 @@ instantiates the configured backend, or returns None if inference is disabled.
 CLI backends are registered in _CLI_BACKEND_REGISTRY and lazy-imported.
 """
 
+import importlib
+
 from vibelens.config.llm_config import LLMConfig
 from vibelens.llm.backend import InferenceBackend
 from vibelens.models.inference import BackendType
@@ -50,10 +52,14 @@ def create_backend_from_llm_config(config: LLMConfig) -> InferenceBackend | None
         return None
 
     if backend_id == BackendType.LITELLM:
-        return _create_litellm_backend(config.model, config)
+        backend = _create_litellm_backend(config.model, config)
+        logger.info("LLM backend created: type=litellm model=%s", config.model)
+        return backend
 
     if backend_id in _CLI_BACKEND_REGISTRY:
-        return _create_cli_backend(backend_id, config)
+        backend = _create_cli_backend(backend_id, config)
+        logger.info("LLM backend created: type=%s", backend_id)
+        return backend
 
     return None
 
@@ -85,8 +91,6 @@ def _create_cli_backend(backend_id: BackendType, config: LLMConfig) -> Inference
     Returns:
         Configured CliBackend subclass instance.
     """
-    import importlib
-
     module_path, class_name = _CLI_BACKEND_REGISTRY[backend_id]
     module = importlib.import_module(module_path)
     backend_cls = getattr(module, class_name)

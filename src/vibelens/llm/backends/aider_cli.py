@@ -1,7 +1,9 @@
 """Aider CLI backend.
 
-Invokes ``aider --message - --no-auto-commits`` as a subprocess.
-Prompt is piped via stdin. Supports model override via ``--model``.
+Invokes ``aider --message - --no-auto-commits --yes --no-stream`` as a
+subprocess. Prompt is piped via stdin. ``--yes`` auto-approves all actions
+to prevent hanging, and ``--no-stream`` produces clean non-streaming output.
+
 Does not support native JSON output — uses prompt-level schema augmentation.
 """
 
@@ -29,7 +31,14 @@ class AiderCliBackend(CliBackend):
         Returns:
             Command as a list of strings.
         """
-        cmd = [self._cli_path or self.cli_executable, "--message", "-", "--no-auto-commits"]
+        cmd = [
+            self._cli_path or self.cli_executable,
+            "--message",
+            "-",
+            "--no-auto-commits",
+            "--yes",
+            "--no-stream",
+        ]
         if self._model:
             cmd.extend(["--model", self._model])
         return cmd

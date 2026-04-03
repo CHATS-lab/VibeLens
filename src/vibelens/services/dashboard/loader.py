@@ -238,6 +238,7 @@ def _load_trajectories_yielding(metadata: list[dict]) -> list[Trajectory]:
 
         # Release the GIL between batches so the event loop can run
         if (i + 1) % WARM_BATCH_SIZE == 0:
+            logger.info("Cache warming progress: %d/%d sessions loaded", i + 1, len(metadata))
             time.sleep(WARM_YIELD_SECONDS)
 
     return trajectories

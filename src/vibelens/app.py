@@ -17,6 +17,7 @@ from vibelens.deps import (
     get_central_skill_store,
     get_codex_skill_store,
     get_example_store,
+    get_llm_config,
     get_skill_analysis_store,
     get_skill_store,
     get_store,
@@ -50,6 +51,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Initialize the trajectory store (local or disk)
     store = get_store()
     store.initialize()
+    _log_startup_summary(settings, store)
 
     if settings.app_mode == AppMode.DEMO:
         example_store = get_example_store()
@@ -184,6 +186,21 @@ def _seed_mock_skill_history() -> None:
             logger.info("Seeded mock skill analysis history: mode=%s", mode)
         except Exception:
             logger.warning("Failed to seed mock skill analysis for mode=%s", mode, exc_info=True)
+
+
+def _log_startup_summary(settings, store) -> None:
+    """Log a single-line startup summary with key configuration details."""
+    llm_config = get_llm_config()
+    store_type = type(store).__name__
+    logger.info(
+        "VibeLens v%s started: mode=%s store=%s llm_backend=%s host=%s:%d",
+        __version__,
+        settings.app_mode.value,
+        store_type,
+        llm_config.backend.value,
+        settings.host,
+        settings.port,
+    )
 
 
 def create_app() -> FastAPI:

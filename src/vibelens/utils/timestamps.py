@@ -1,6 +1,7 @@
 """Timestamp parsing and formatting utilities."""
 
 import math
+import time
 from datetime import UTC, datetime
 
 # Numeric values above this threshold are treated as millisecond-epoch;
@@ -161,6 +162,18 @@ def safe_int(value: int | float | str | None, default: int = 0) -> int:
         return int(numeric)
     except (ValueError, TypeError):
         return default
+
+
+def monotonic_ms() -> int:
+    """Return current monotonic time in milliseconds.
+
+    Uses time.monotonic() for duration measurements that are immune
+    to wall-clock adjustments.
+
+    Returns:
+        Monotonic time in integer milliseconds.
+    """
+    return int(time.monotonic() * 1000)
 
 
 def format_isoformat(dt: datetime | None) -> str | None:

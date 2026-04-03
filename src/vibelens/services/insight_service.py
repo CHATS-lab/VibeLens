@@ -21,7 +21,10 @@ from vibelens.models.analysis.insights import InsightReport
 from vibelens.models.inference import BackendType, InferenceRequest
 from vibelens.models.prompts import AnalysisPrompt
 from vibelens.models.trajectories import Trajectory
-from vibelens.services.session.store_resolver import get_metadata_from_stores, load_from_stores
+from vibelens.services.session.store_resolver import (
+    get_metadata_from_stores,
+    load_from_stores,
+)
 from vibelens.utils.json_extract import extract_json as _extract_json
 from vibelens.utils.log import get_logger
 
@@ -49,7 +52,7 @@ def get_backend_status() -> dict:
     return {
         "available": True,
         "backend_id": backend.backend_id,
-        "model": _get_backend_model(backend),
+        "model": backend.model,
     }
 
 
@@ -123,7 +126,7 @@ async def get_session_report(session_id: str, session_token: str | None = None) 
         highlights=highlights,
         friction=friction,
         backend_id=backend.backend_id,
-        model=_get_backend_model(backend),
+        model=backend.model,
         cost_usd=total_cost,
         created_at=datetime.now(UTC).isoformat(),
     )
@@ -155,7 +158,7 @@ async def estimate_cost(session_id: str, session_token: str | None = None) -> fl
 
     from vibelens.llm.pricing import TOKENS_PER_MTOK, lookup_pricing
 
-    model = _get_backend_model(backend)
+    model = backend.model
     pricing = lookup_pricing(model)
     if not pricing:
         return None
@@ -230,10 +233,3 @@ def _get_cached(cache_key: str) -> BaseModel | None:
         del _cache[cache_key]
         return None
     return result
-
-
-def _get_backend_model(backend: InferenceBackend) -> str:
-    """Extract model name from a backend instance."""
-    if hasattr(backend, "_model"):
-        return backend._model or "unknown"
-    return "unknown"

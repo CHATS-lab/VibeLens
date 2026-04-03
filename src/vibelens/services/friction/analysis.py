@@ -94,7 +94,7 @@ def estimate_friction(session_ids: list[str], session_token: str | None = None) 
     return estimate_friction_cost(
         batch_token_counts=batch_token_counts,
         system_prompt=system_prompt,
-        model=_get_backend_model(backend),
+        model=backend.model,
         max_output_tokens=FRICTION_OUTPUT_TOKENS,
         synthesis_output_tokens=SYNTHESIS_OUTPUT_TOKENS,
     )
@@ -196,7 +196,7 @@ async def analyze_friction(
         warnings=batch_warnings,
         batch_count=len(batches),
         backend_id=backend.backend_id,
-        model=_get_backend_model(backend),
+        model=backend.model,
         cost_usd=total_cost if total_cost > 0 else None,
         created_at=datetime.now(UTC).isoformat(),
     )
@@ -809,13 +809,6 @@ def _require_backend() -> InferenceBackend:
     return backend
 
 
-def _get_backend_model(backend: InferenceBackend) -> str:
-    """Extract model name from a backend instance."""
-    if hasattr(backend, "_model"):
-        return backend._model or "unknown"
-    return "unknown"
-
-
 def _get_cached(cache_key: str) -> BaseModel | None:
     """Return cached result if still valid, or None."""
     entry = _cache.get(cache_key)
@@ -907,7 +900,7 @@ def _log_analysis_summary(
         len(skipped_ids),
         len(batches),
         total_tokens,
-        _get_backend_model(backend),
+        backend.model,
         backend.backend_id,
     )
     for batch in batches:

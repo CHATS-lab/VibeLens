@@ -30,7 +30,10 @@ from vibelens.models.skill.skills import (
 )
 from vibelens.models.trajectories import Trajectory
 from vibelens.services.friction.signals import build_step_signals
-from vibelens.services.session.store_resolver import get_metadata_from_stores, load_from_stores
+from vibelens.services.session.store_resolver import (
+    get_metadata_from_stores,
+    load_from_stores,
+)
 from vibelens.services.skill.digest import digest_step_signals_for_skills
 from vibelens.utils.json_extract import extract_json as _extract_json
 from vibelens.utils.log import get_logger
@@ -41,6 +44,7 @@ CACHE_TTL_SECONDS = 3600
 FEATURED_SKILLS_PATH = Path(__file__).resolve().parents[4] / "featured-skills.json"
 CANDIDATE_PREFILTER_THRESHOLD = 200
 PREFILTER_TOP_K = 100
+SKILL_LOG_DIR = Path("logs/skill")
 
 _cache: dict[str, tuple[float, BaseModel]] = {}
 
@@ -69,14 +73,18 @@ async def analyze_retrieval(
 
     system_prompt = prompt.render_system()
     request = InferenceRequest(
-        system=system_prompt,
-        user=user_prompt,
-        json_schema=prompt.output_model.model_json_schema(),
+        system=system_prompt, user=user_prompt, json_schema=prompt.output_model.model_json_schema()
     )
     _log_prompt(system_prompt, user_prompt, loaded_ids, SkillMode.RETRIEVAL)
 
+    run_timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+    log_dir = SKILL_LOG_DIR / run_timestamp
+    _save_skill_log(log_dir, "retrieval_system.txt", system_prompt)
+    _save_skill_log(log_dir, "retrieval_user.txt", user_prompt)
+
     result = await backend.generate(request)
     _log_response(result.text, loaded_ids, SkillMode.RETRIEVAL)
+    _save_skill_log(log_dir, "retrieval_output.txt", result.text)
 
     llm_output = _parse_llm_output(result.text)
     validated_patterns = _validate_patterns(llm_output.workflow_patterns, loaded_trajectories)
@@ -157,11 +165,13 @@ def _prefilter_candidates(candidates: list[dict], digest: str) -> list[dict]:
 
     scored: list[tuple[int, dict]] = []
     for candidate in candidates:
-        searchable = " ".join([
-            candidate.get("name", ""),
-            candidate.get("summary", ""),
-            " ".join(candidate.get("tags", [])),
-        ]).lower()
+        searchable = " ".join(
+            [
+                candidate.get("name", ""),
+                candidate.get("summary", ""),
+                " ".join(candidate.get("tags", [])),
+            ]
+        ).lower()
         score = sum(1 for kw in keywords if kw in searchable)
         scored.append((score, candidate))
 
@@ -202,8 +212,6 @@ def _extract_digest_keywords(digest: str) -> set[str]:
 
 
 # Shared infrastructure used by all modes
-
-
 def _skill_cache_key(session_ids: list[str], mode: SkillMode) -> str:
     sorted_ids = ",".join(sorted(session_ids))
     raw = f"skill:{mode}:{sorted_ids}"
@@ -215,13 +223,6 @@ def _require_backend() -> InferenceBackend:
     if not backend:
         raise ValueError("No inference backend configured. Set llm.backend in config.")
     return backend
-
-
-def _get_backend_model(backend: InferenceBackend) -> str:
-    """Extract model name from a backend instance."""
-    if hasattr(backend, "_model"):
-        return backend._model or "unknown"
-    return "unknown"
 
 
 def _load_sessions(
@@ -318,7 +319,7 @@ def _build_result(
         session_ids=loaded_ids,
         sessions_skipped=skipped_ids,
         backend_id=backend.backend_id,
-        model=_get_backend_model(backend),
+        model=backend.model,
         cost_usd=cost_usd,
         created_at=datetime.now(UTC).isoformat(),
     )
@@ -336,6 +337,21 @@ def _log_prompt(system: str, user: str, session_ids: list[str], mode: SkillMode)
 
 def _log_response(text: str, session_ids: list[str], mode: SkillMode) -> None:
     logger.debug("Skill analysis response mode=%s sessions=%s text=%r", mode, session_ids, text)
+
+
+def _save_skill_log(log_dir: Path, filename: str, content: str) -> None:
+    """Save skill analysis log to a timestamped directory.
+
+    Args:
+        log_dir: Target directory.
+        filename: File name within the directory.
+        content: Text content to write.
+    """
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+        (log_dir / filename).write_text(content, encoding="utf-8")
+    except OSError as exc:
+        logger.warning("Failed to save skill log %s/%s: %s", log_dir, filename, exc)
 
 
 def _get_cached(cache_key: str) -> SkillAnalysisResult | None:

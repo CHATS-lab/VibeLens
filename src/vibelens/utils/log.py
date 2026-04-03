@@ -10,16 +10,20 @@ Category log files:
   - ``parsers.log`` — all parser modules under ``vibelens.ingest.parsers.*``
   - ``analysis-friction.log`` — friction analysis and friction store
   - ``analysis-skill.log`` — skill analysis and skill analysis store
+  - ``donation.log`` — donation send/receive endpoints and service
 """
 
 import logging
 import os
 import sys
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 LOG_FORMAT = "%(asctime)s | %(name)s:%(lineno)d | %(levelname)s | %(message)s"
 LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 DEFAULT_LOG_DIR = Path(__file__).resolve().parents[3] / "logs"
+LOG_MAX_BYTES = 10 * 1024 * 1024
+LOG_BACKUP_COUNT = 3
 
 # Maps logger name prefix → log filename. Order matters: first match wins.
 # Prefix matching allows grouping related modules into one log file.
@@ -30,10 +34,13 @@ CATEGORY_LOG_FILES: dict[str, str] = {
     "vibelens.services.upload.": "upload.log",
     "vibelens.api.upload": "upload.log",
     "vibelens.storage.conversation.disk": "upload.log",
+    "vibelens.services.donation.": "donation.log",
+    "vibelens.api.donation": "donation.log",
+    "vibelens.services.session.donation": "donation.log",
 }
 
 _root_configured = False
-_category_handlers: dict[str, logging.FileHandler] = {}
+_category_handlers: dict[str, logging.Handler] = {}
 
 
 def _get_log_level() -> int:
@@ -72,7 +79,9 @@ def _ensure_root_logger(log_dir: Path) -> None:
     console.setFormatter(formatter)
     root.addHandler(console)
 
-    overall_file = logging.FileHandler(log_dir / "vibelens.log", mode="a")
+    overall_file = RotatingFileHandler(
+        log_dir / "vibelens.log", maxBytes=LOG_MAX_BYTES, backupCount=LOG_BACKUP_COUNT
+    )
     overall_file.setLevel(log_level)
     overall_file.setFormatter(formatter)
     root.addHandler(overall_file)
@@ -88,24 +97,26 @@ def _resolve_category_log(name: str) -> str | None:
     return None
 
 
-def _get_category_handler(log_dir: Path, filename: str) -> logging.FileHandler:
-    """Get or create a shared file handler for a category log file.
+def _get_category_handler(log_dir: Path, filename: str) -> logging.Handler:
+    """Get or create a shared rotating file handler for a category log file.
 
     Multiple modules sharing the same category (e.g. all parsers → parsers.log)
-    reuse a single FileHandler to avoid duplicate writes.
+    reuse a single handler to avoid duplicate writes.
 
     Args:
         log_dir: Directory for log files.
         filename: Category log filename (e.g. "parsers.log").
 
     Returns:
-        Shared FileHandler for the category.
+        Shared RotatingFileHandler for the category.
     """
     if filename in _category_handlers:
         return _category_handlers[filename]
 
     log_dir.mkdir(parents=True, exist_ok=True)
-    handler = logging.FileHandler(log_dir / filename, mode="a")
+    handler = RotatingFileHandler(
+        log_dir / filename, maxBytes=LOG_MAX_BYTES, backupCount=LOG_BACKUP_COUNT
+    )
     handler.setLevel(_get_log_level())
     handler.setFormatter(_build_formatter())
     _category_handlers[filename] = handler

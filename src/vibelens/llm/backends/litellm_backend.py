@@ -7,7 +7,6 @@ any provider litellm can route to.
 File named litellm_backend.py (not litellm.py) to avoid shadowing the package.
 """
 
-import time
 from collections.abc import AsyncIterator
 
 import litellm
@@ -19,8 +18,14 @@ from vibelens.llm.backend import (
     InferenceRateLimitError,
     InferenceTimeoutError,
 )
-from vibelens.models.inference import BackendType, InferenceRequest, InferenceResult, TokenUsage
+from vibelens.models.inference import (
+    BackendType,
+    InferenceRequest,
+    InferenceResult,
+    TokenUsage,
+)
 from vibelens.utils.log import get_logger
+from vibelens.utils.timestamps import monotonic_ms
 
 logger = get_logger(__name__)
 
@@ -46,6 +51,11 @@ class LiteLLMBackend(InferenceBackend):
         self._model = model_override or config.model
         self._base_url = resolve_base_url(config)
 
+    @property
+    def model(self) -> str:
+        """Return configured LiteLLM model name."""
+        return self._model or "unknown"
+
     async def generate(self, request: InferenceRequest) -> InferenceResult:
         """Send a non-streaming completion request via litellm.
 
@@ -63,7 +73,7 @@ class LiteLLMBackend(InferenceBackend):
         messages = _build_messages(request)
         kwargs = self._build_kwargs(request)
 
-        start_ms = _now_ms()
+        start_ms = monotonic_ms()
         try:
             response = await litellm.acompletion(messages=messages, **kwargs)
         except litellm.exceptions.Timeout as exc:
@@ -74,11 +84,21 @@ class LiteLLMBackend(InferenceBackend):
             raise InferenceRateLimitError(f"Rate limited: {exc}") from exc
         except litellm.exceptions.APIError as exc:
             raise InferenceError(f"LiteLLM API error: {exc}") from exc
-        duration_ms = _now_ms() - start_ms
+        duration_ms = monotonic_ms() - start_ms
 
         text = response.choices[0].message.content or ""
         usage = _parse_usage(response)
         cost = _extract_cost(response)
+
+        input_tokens = usage.input_tokens if usage else 0
+        output_tokens = usage.output_tokens if usage else 0
+        logger.info(
+            "LiteLLM inference complete: model=%s duration_ms=%d in_tokens=%d out_tokens=%d",
+            response.model or self._model,
+            duration_ms,
+            input_tokens,
+            output_tokens,
+        )
 
         return InferenceResult(
             text=text,
@@ -165,10 +185,5 @@ def _extract_cost(response) -> float | None:
     try:
         cost = litellm.completion_cost(completion_response=response)
         return round(cost, 6) if cost else None
-    except Exception:
+    except (ValueError, litellm.exceptions.NotFoundError):
         return None
-
-
-def _now_ms() -> int:
-    """Return current time in milliseconds."""
-    return int(time.monotonic() * 1000)

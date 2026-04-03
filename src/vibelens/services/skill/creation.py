@@ -39,10 +39,12 @@ from vibelens.services.session.store_resolver import (
 )
 from vibelens.services.session_batcher import SessionBatch, build_batches
 from vibelens.services.skill.retrieval import (
+    SKILL_LOG_DIR,
     _cache,
     _gather_installed_skills,
     _get_cached,
     _require_backend,
+    _save_skill_log,
     _skill_cache_key,
     _validate_patterns,
 )
@@ -58,7 +60,6 @@ PROPOSAL_SYNTHESIS_TIMEOUT_SECONDS = 120
 PROPOSAL_CACHE_TTL_SECONDS = 3600
 DEEP_CREATION_OUTPUT_TOKENS = 4096
 DEEP_CREATION_TIMEOUT_SECONDS = 120
-SKILL_LOG_DIR = Path("logs/skill")
 
 # Proposal pipeline internals
 _proposal_cache: dict[str, tuple[float, SkillProposalResult]] = {}
@@ -197,7 +198,7 @@ async def analyze_proposals(
         sessions_skipped=skipped_ids,
         warnings=batch_warnings,
         backend_id=backend.backend_id,
-        model=_get_backend_model(backend),
+        model=backend.model,
         cost_usd=total_cost if total_cost > 0 else None,
         batch_count=len(batches),
         created_at=datetime.now(UTC).isoformat(),
@@ -567,23 +568,3 @@ def _parse_deep_creation_output(text: str) -> SkillDeepCreationOutput:
         ) from exc
 
 
-def _get_backend_model(backend: InferenceBackend) -> str:
-    """Extract model name from a backend instance."""
-    if hasattr(backend, "_model"):
-        return backend._model or "unknown"
-    return "unknown"
-
-
-def _save_skill_log(log_dir: Path, filename: str, content: str) -> None:
-    """Save skill analysis log to a timestamped directory.
-
-    Args:
-        log_dir: Target directory.
-        filename: File name within the directory.
-        content: Text content to write.
-    """
-    try:
-        log_dir.mkdir(parents=True, exist_ok=True)
-        (log_dir / filename).write_text(content, encoding="utf-8")
-    except OSError as exc:
-        logger.warning("Failed to save skill log %s/%s: %s", log_dir, filename, exc)

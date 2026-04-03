@@ -1,6 +1,9 @@
 """OpenClaw CLI backend.
 
 Invokes ``openclaw --message -`` as a subprocess. Prompt is piped via stdin.
+Uses the ACP protocol for communication. Supports model override via
+``--model``.
+
 Does not support native JSON output — uses prompt-level schema augmentation.
 """
 
@@ -23,9 +26,12 @@ class OpenClawCliBackend(CliBackend):
         """Build openclaw CLI command.
 
         Args:
-            request: Inference request (unused beyond base class).
+            request: Inference request for model settings.
 
         Returns:
             Command as a list of strings.
         """
-        return [self._cli_path or self.cli_executable, "--message", "-"]
+        cmd = [self._cli_path or self.cli_executable, "--message", "-"]
+        if self._model:
+            cmd.extend(["--model", self._model])
+        return cmd

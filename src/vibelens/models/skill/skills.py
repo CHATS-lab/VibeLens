@@ -153,9 +153,7 @@ class SkillProposalOutput(BaseModel):
     workflow_patterns: list[WorkflowPattern] = Field(
         default_factory=list, description="Detected workflow patterns from trajectory analysis."
     )
-    proposals: list[SkillProposal] = Field(
-        default_factory=list, description="Proposed skills (1-8)."
-    )
+    proposals: list[SkillProposal] = Field(default_factory=list, description="Proposed skills.")
     summary: str = Field(description="Overall analysis summary across all sessions.")
     user_profile: str = Field(
         default="", description="Brief description of the detected user workflow style."
@@ -190,9 +188,7 @@ class SkillProposalResult(BaseModel):
     workflow_patterns: list[WorkflowPattern] = Field(
         default_factory=list, description="Detected workflow patterns."
     )
-    proposals: list[SkillProposal] = Field(
-        default_factory=list, description="Proposed skills."
-    )
+    proposals: list[SkillProposal] = Field(default_factory=list, description="Proposed skills.")
     summary: str = Field(description="Overall analysis summary.")
     user_profile: str = Field(default="", description="Detected user workflow style.")
     sessions_skipped: list[str] = Field(
