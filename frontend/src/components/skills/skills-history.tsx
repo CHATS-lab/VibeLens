@@ -1,13 +1,19 @@
-import { Calendar, Clock, Coins, Layers, Loader2, Trash2, Workflow } from "lucide-react";
+import { Calendar, Clock, Coins, Layers, Loader2, Timer, Trash2, Workflow } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAppContext } from "../../app";
 import type { SkillAnalysisMeta, SkillAnalysisResult, SkillMode } from "../../types";
+import { ConfirmDialog } from "../confirm-dialog";
 
 const MODE_LABELS: Record<SkillMode, string> = {
   retrieval: "Discover",
   creation: "Customize",
   evolution: "Evolve",
 };
+
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
+}
 
 
 function HistoryCard({
@@ -20,15 +26,21 @@ function HistoryCard({
   onDelete: () => void;
 }) {
   const [deleting, setDeleting] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
-  const handleDelete = useCallback(
+  const handleDeleteClick = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      setDeleting(true);
-      onDelete();
+      setShowConfirm(true);
     },
-    [onDelete],
+    [],
   );
+
+  const handleConfirmDelete = useCallback(() => {
+    setShowConfirm(false);
+    setDeleting(true);
+    onDelete();
+  }, [onDelete]);
 
   const date = new Date(meta.created_at);
   const dateStr = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -46,7 +58,7 @@ function HistoryCard({
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0 space-y-1.5">
           <p className="text-xs text-zinc-200 font-semibold truncate">
-            {meta.summary_preview || "No summary"}
+            {meta.title || "Untitled"}
           </p>
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-medium bg-teal-900/30 border-teal-700/30 text-teal-400">
@@ -57,6 +69,12 @@ function HistoryCard({
               <span className="inline-flex items-center gap-1 text-[10px] text-zinc-300">
                 <Coins className="w-2.5 h-2.5 text-amber-400" />
                 ${meta.cost_usd.toFixed(3)}
+              </span>
+            )}
+            {meta.duration_seconds != null && (
+              <span className="inline-flex items-center gap-1 text-[10px] text-zinc-400">
+                <Timer className="w-2.5 h-2.5" />
+                {formatDuration(meta.duration_seconds)}
               </span>
             )}
           </div>
@@ -72,7 +90,7 @@ function HistoryCard({
           </div>
         </div>
         <button
-          onClick={handleDelete}
+          onClick={handleDeleteClick}
           disabled={deleting}
           className="opacity-0 group-hover:opacity-100 p-1 text-zinc-500 hover:text-rose-400 rounded transition"
           title="Delete analysis"
@@ -84,6 +102,15 @@ function HistoryCard({
           )}
         </button>
       </div>
+      {showConfirm && (
+        <ConfirmDialog
+          title="Delete Analysis"
+          message="This analysis result will be permanently deleted."
+          confirmLabel="Delete"
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setShowConfirm(false)}
+        />
+      )}
     </div>
   );
 }

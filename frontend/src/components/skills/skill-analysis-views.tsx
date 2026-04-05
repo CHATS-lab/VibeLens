@@ -12,11 +12,11 @@ import {
   Loader2,
   Pencil,
   Plus,
-  RefreshCw,
   Repeat,
   Search,
   Sparkles,
   Target,
+  Timer,
   TrendingUp,
   User,
   Zap,
@@ -25,7 +25,7 @@ import { useCallback, useEffect, useState } from "react";
 import type {
   SkillAnalysisResult,
   SkillCreation,
-  SkillEvolutionSuggestion,
+  SkillEvolution,
   SkillMode,
   SkillRecommendation,
   SkillSourceInfo,
@@ -42,6 +42,12 @@ import { SkillPreviewDialog } from "./skill-preview-dialog";
 export type SkillTab = "local" | "explore" | "retrieve" | "create" | "evolve";
 
 const CONFIDENCE_THRESHOLDS = { HIGH: 0.75, MEDIUM: 0.5 } as const;
+
+const MODE_TITLES: Record<SkillMode, string> = {
+  retrieval: "Skill Recommendation Analysis",
+  creation: "Custom Skill Generation",
+  evolution: "Installed Skill Evolution",
+};
 
 const MODE_SUBLABELS: Record<SkillMode, string> = {
   retrieval: "Discovering skills that match your coding patterns",
@@ -69,13 +75,11 @@ export function AnalysisLoadingState({ mode, sessionCount }: { mode: SkillMode; 
 export function AnalysisResultView({
   result,
   activeTab,
-  onRerun,
   onNew,
   fetchWithToken,
 }: {
   result: SkillAnalysisResult;
   activeTab: SkillTab;
-  onRerun: () => void;
   onNew: () => void;
   fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
 }) {
@@ -96,7 +100,7 @@ export function AnalysisResultView({
     <div className="max-w-4xl mx-auto px-6 py-6 space-y-8">
       {result.backend_id === "mock" && <DemoBanner />}
       {/* Header */}
-      <ResultHeader result={result} onRerun={onRerun} onNew={onNew} />
+      <ResultHeader result={result} onNew={onNew} mode={result.mode} />
       {result.warnings && result.warnings.length > 0 && (
         <WarningsBanner warnings={result.warnings} />
       )}
@@ -114,18 +118,18 @@ export function AnalysisResultView({
       )}
 
       {/* Generated Skills (Create) */}
-      {activeTab === "create" && result.generated_skills.length > 0 && (
+      {activeTab === "create" && result.creations.length > 0 && (
         <CreationSection
-          skills={result.generated_skills}
+          skills={result.creations}
           fetchWithToken={fetchWithToken}
           agentSources={agentSources}
         />
       )}
 
       {/* Evolution Suggestions (Evolve) */}
-      {activeTab === "evolve" && result.evolution_suggestions.length > 0 && (
+      {activeTab === "evolve" && result.evolutions.length > 0 && (
         <EvolutionSection
-          suggestions={result.evolution_suggestions}
+          suggestions={result.evolutions}
           fetchWithToken={fetchWithToken}
           agentSources={agentSources}
         />
@@ -144,44 +148,39 @@ export function AnalysisResultView({
 
 function ResultHeader({
   result,
-  onRerun,
   onNew,
+  mode,
 }: {
   result: SkillAnalysisResult;
-  onRerun: () => void;
   onNew: () => void;
+  mode: SkillMode;
 }) {
   return (
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-3">
-        <BarChart3 className="w-6 h-6 text-teal-400" />
-        <div>
-          <h2 className="text-xl font-bold text-zinc-100">
-            {result.workflow_patterns.length} pattern{result.workflow_patterns.length !== 1 ? "s" : ""} detected
-          </h2>
-          <p className="text-sm text-zinc-400">
-            {result.session_ids.length} session{result.session_ids.length !== 1 ? "s" : ""} analyzed
-            {result.sessions_skipped.length > 0 && (
-              <span className="text-zinc-500">
-                {" "}&middot; {result.sessions_skipped.length} skipped
-              </span>
-            )}
-          </p>
-        </div>
-      </div>
-      <div className="flex items-center gap-2">
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h1 className="text-lg font-bold text-zinc-100">{result.title || MODE_TITLES[mode]}</h1>
         <button
           onClick={onNew}
           className="inline-flex items-center gap-1 px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 border border-zinc-700 rounded-md transition"
         >
           <Plus className="w-3 h-3" /> New
         </button>
-        <button
-          onClick={onRerun}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-white bg-teal-600 hover:bg-teal-500 rounded-md transition"
-        >
-          <RefreshCw className="w-3.5 h-3.5" /> Re-run
-        </button>
+      </div>
+      <div className="flex items-center gap-3">
+        <BarChart3 className="w-6 h-6 text-teal-400" />
+        <div>
+          <h2 className="text-base font-semibold text-zinc-200">
+            {result.workflow_patterns.length} pattern{result.workflow_patterns.length !== 1 ? "s" : ""} detected
+          </h2>
+          <p className="text-sm text-zinc-400">
+            {result.session_ids.length} session{result.session_ids.length !== 1 ? "s" : ""} analyzed
+            {result.skipped_session_ids.length > 0 && (
+              <span className="text-zinc-500">
+                {" "}&middot; {result.skipped_session_ids.length} skipped
+              </span>
+            )}
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -229,6 +228,11 @@ function SectionHeader({
   );
 }
 
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
+}
+
 function MetadataFooter({ result }: { result: SkillAnalysisResult }) {
   const computedDate = new Date(result.created_at);
   const dateStr = isNaN(computedDate.getTime()) ? result.created_at : computedDate.toLocaleDateString();
@@ -239,9 +243,15 @@ function MetadataFooter({ result }: { result: SkillAnalysisResult }) {
       <div className="border-t border-zinc-800 pt-4 text-xs text-zinc-500 flex items-center justify-between gap-4 w-full cursor-help">
         <div className="flex items-center gap-2 flex-wrap">
           <span>{result.backend_id}/{result.model}</span>
-          {result.cost_usd != null && (
+          {result.metrics.cost_usd != null && (
             <span className="border-l border-zinc-700 pl-2">
-              ${result.cost_usd.toFixed(4)}
+              ${result.metrics.cost_usd.toFixed(4)}
+            </span>
+          )}
+          {result.duration_seconds != null && (
+            <span className="inline-flex items-center gap-1 border-l border-zinc-700 pl-2">
+              <Timer className="w-3 h-3" />
+              {formatDuration(result.duration_seconds)}
             </span>
           )}
         </div>
@@ -467,19 +477,24 @@ function RecommendationCard({
                 <span className={`text-xs font-semibold ${textColor} tabular-nums`}>{confidencePct}%</span>
               </div>
             </Tooltip>
-            <Tooltip text={installed ? "Already installed" : "Preview skill content"}>
-              <button
-                onClick={handlePreview}
-                disabled={installed}
-                className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300 transition px-2.5 py-1 rounded-md hover:bg-zinc-800 border border-zinc-700/30 disabled:opacity-50"
-              >
-                {installed ? <Check className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                {installed ? "Installed" : "Preview"}
-              </button>
-            </Tooltip>
+            {installed ? (
+              <span className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-teal-300 bg-teal-900/30 rounded-lg border border-teal-700/20">
+                <Check className="w-3.5 h-3.5" /> Installed
+              </span>
+            ) : (
+              <Tooltip text="Preview and install skill">
+                <button
+                  onClick={handlePreview}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-teal-600 hover:bg-teal-500 rounded-lg transition"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  Preview &amp; Install
+                </button>
+              </Tooltip>
+            )}
           </div>
         </div>
-        <p className="text-sm text-zinc-400 leading-relaxed pl-[2.375rem]">{rec.match_reason}</p>
+        <p className="text-sm text-zinc-400 leading-relaxed pl-[2.375rem]">{rec.rationale}</p>
       </div>
       {showPreview && (
         <SkillPreviewDialog
@@ -603,16 +618,21 @@ function CreatedSkillCard({
             {skill.confidence > 0 && <ConfidenceBar confidence={skill.confidence} />}
           </div>
           <div className="flex items-center gap-2">
-            <Tooltip text="Preview and install skill">
-              <button
-                onClick={() => setShowPreview(true)}
-                disabled={installed}
-                className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300 transition px-2.5 py-1 rounded-md hover:bg-zinc-800 border border-zinc-700/30 disabled:opacity-50"
-              >
-                {installed ? <Check className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                {installed ? "Installed" : "Preview"}
-              </button>
-            </Tooltip>
+            {installed ? (
+              <span className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-300 bg-emerald-900/30 rounded-lg border border-emerald-700/20">
+                <Check className="w-3.5 h-3.5" /> Installed
+              </span>
+            ) : (
+              <Tooltip text="Preview and install skill">
+                <button
+                  onClick={() => setShowPreview(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg transition"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  Preview &amp; Install
+                </button>
+              </Tooltip>
+            )}
           </div>
         </div>
         <p className="text-sm text-zinc-300 leading-relaxed pl-[2.375rem]">{skill.description}</p>
@@ -645,7 +665,7 @@ function EvolutionSection({
   fetchWithToken,
   agentSources,
 }: {
-  suggestions: SkillEvolutionSuggestion[];
+  suggestions: SkillEvolution[];
   fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
   agentSources: SkillSourceInfo[];
 }) {
@@ -676,7 +696,7 @@ function EvolutionCard({
   fetchWithToken,
   agentSources,
 }: {
-  suggestion: SkillEvolutionSuggestion;
+  suggestion: SkillEvolution;
   fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
   agentSources: SkillSourceInfo[];
 }) {
@@ -754,53 +774,54 @@ function EvolutionCard({
 
   return (
     <div className="border border-amber-700/30 rounded-xl bg-amber-950/15 overflow-hidden">
-      <button onClick={handleExpand} className="w-full text-left px-5 py-4">
-        <div className="flex items-center gap-2.5 mb-2">
-          <div className="p-1.5 rounded-lg bg-amber-600/15">
-            <TrendingUp className="w-4 h-4 text-amber-400" />
+      <div className="flex items-start px-5 py-4">
+        <button onClick={handleExpand} className="flex-1 min-w-0 text-left">
+          <div className="flex items-center gap-2.5 mb-2">
+            <div className="p-1.5 rounded-lg bg-amber-600/15">
+              <TrendingUp className="w-4 h-4 text-amber-400" />
+            </div>
+            <span className="font-mono text-sm font-bold text-zinc-100">{suggestion.skill_name}</span>
+            <Tooltip text={`${suggestion.edits.length} edit${suggestion.edits.length !== 1 ? "s" : ""} suggested`}>
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-900/30 text-amber-300 border border-amber-700/20 cursor-help">
+                <Pencil className="w-2.5 h-2.5" />
+                {suggestion.edits.length} edit{suggestion.edits.length !== 1 ? "s" : ""}
+              </span>
+            </Tooltip>
+            {suggestion.confidence > 0 && <ConfidenceBar confidence={suggestion.confidence} accentColor="amber" />}
           </div>
-          <span className="font-mono text-sm font-bold text-zinc-100">{suggestion.skill_name}</span>
-          <Tooltip text={`${suggestion.edits.length} edit${suggestion.edits.length !== 1 ? "s" : ""} suggested`}>
-            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-900/30 text-amber-300 border border-amber-700/20 cursor-help">
-              <Pencil className="w-2.5 h-2.5" />
-              {suggestion.edits.length} edit{suggestion.edits.length !== 1 ? "s" : ""}
+          <p className="text-sm text-zinc-100 leading-relaxed pl-[2.375rem]">{suggestion.rationale}</p>
+        </button>
+        <div className="flex items-center gap-2 shrink-0 ml-3">
+          {updated ? (
+            <span className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-300 bg-amber-900/30 rounded-lg border border-amber-700/20">
+              <Check className="w-3.5 h-3.5" /> Updated
             </span>
-          </Tooltip>
-          <div className="flex-1" />
-          {expanded
-            ? <ChevronDown className="w-4 h-4 text-zinc-500" />
-            : <ChevronRight className="w-4 h-4 text-zinc-500" />}
+          ) : (
+            <Tooltip text="Preview merged result">
+              <button
+                onClick={handlePreview}
+                disabled={loadingOriginal}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-500 rounded-lg transition disabled:opacity-50"
+              >
+                {loadingOriginal
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <Eye className="w-3.5 h-3.5" />}
+                Preview &amp; Update
+              </button>
+            </Tooltip>
+          )}
+          {fetchError && (
+            <span className="text-xs text-red-400">{fetchError}</span>
+          )}
+          <button onClick={handleExpand} className="p-1 text-zinc-500 hover:text-zinc-300 transition">
+            {expanded
+              ? <ChevronDown className="w-4 h-4" />
+              : <ChevronRight className="w-4 h-4" />}
+          </button>
         </div>
-        <p className="text-sm text-zinc-100 leading-relaxed pl-[2.375rem]">{suggestion.rationale}</p>
-      </button>
+      </div>
       {expanded && suggestion.edits.length > 0 && (
         <div className="border-t border-amber-800/20 px-5 py-4 bg-zinc-900/20 space-y-4">
-          <div className="flex items-center gap-2">
-            {updated ? (
-              <span className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-300 bg-amber-900/30 rounded-lg border border-amber-700/20">
-                <Check className="w-3.5 h-3.5" /> Updated
-              </span>
-            ) : (
-              <>
-                <Tooltip text="Preview merged result">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handlePreview(); }}
-                    disabled={loadingOriginal}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-500 rounded-lg transition disabled:opacity-50"
-                  >
-                    {loadingOriginal
-                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      : <Eye className="w-3.5 h-3.5" />}
-                    Preview &amp; Update
-                  </button>
-                </Tooltip>
-              </>
-            )}
-            {fetchError && (
-              <span className="text-xs text-red-400">{fetchError}</span>
-            )}
-          </div>
-
           <EvolutionDiffView
             skillName={suggestion.skill_name}
             edits={suggestion.edits}

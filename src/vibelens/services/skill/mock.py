@@ -1,6 +1,6 @@
 """Mock skill analysis data for demo/test mode.
 
-Builds realistic SkillAnalysisResult, SkillProposalResult, and SkillCreation
+Builds realistic SkillAnalysisResult, SkillCreationProposalResult, and SkillCreation
 instances using real step IDs from loaded trajectories.
 """
 
@@ -12,14 +12,16 @@ from vibelens.models.inference import BackendType
 from vibelens.models.skill import (
     SkillAnalysisResult,
     SkillCreation,
+    SkillCreationProposal,
+    SkillCreationProposalOutput,
+    SkillCreationProposalResult,
     SkillEdit,
-    SkillEvolutionSuggestion,
+    SkillEvolution,
     SkillMode,
-    SkillProposal,
-    SkillProposalResult,
     SkillRecommendation,
     WorkflowPattern,
 )
+from vibelens.models.trajectories.metrics import Metrics
 from vibelens.services.session.store_resolver import load_from_stores
 
 
@@ -40,22 +42,22 @@ def build_mock_skill_result(session_ids: list[str], mode: SkillMode) -> SkillAna
     patterns = _build_mock_patterns(step_pool)
 
     recommendations: list[SkillRecommendation] = []
-    generated_skills: list[SkillCreation] = []
-    evolution_suggestions: list[SkillEvolutionSuggestion] = []
+    creations: list[SkillCreation] = []
+    evolutions: list[SkillEvolution] = []
 
     if mode == SkillMode.RETRIEVAL:
         recommendations = _build_mock_recommendations()
     elif mode == SkillMode.CREATION:
-        generated_skills = _build_mock_creations()
+        creations = _build_mock_creations()
     elif mode == SkillMode.EVOLUTION:
-        evolution_suggestions = _build_mock_evolutions()
+        evolutions = _build_mock_evolutions()
 
     return SkillAnalysisResult(
         mode=mode,
         workflow_patterns=patterns,
         recommendations=recommendations,
-        generated_skills=generated_skills,
-        evolution_suggestions=evolution_suggestions,
+        creations=creations,
+        evolutions=evolutions,
         summary=(
             f"Analyzed {len(loaded_ids)} sessions and detected {len(patterns)} "
             f"recurring workflow patterns. The most frequent pattern involves "
@@ -69,22 +71,22 @@ def build_mock_skill_result(session_ids: list[str], mode: SkillMode) -> SkillAna
             "Prefers iterative development with test-driven verification."
         ),
         session_ids=loaded_ids,
-        sessions_skipped=skipped,
+        skipped_session_ids=skipped,
         backend_id=BackendType.MOCK,
         model="mock/test-model",
-        cost_usd=0.035,
+        metrics=Metrics(cost_usd=0.035),
         created_at=datetime.now(UTC).isoformat(),
     )
 
 
-def build_mock_proposal_result(session_ids: list[str]) -> SkillProposalResult:
-    """Build a mock SkillProposalResult for demo/test mode.
+def build_mock_proposal_result(session_ids: list[str]) -> SkillCreationProposalResult:
+    """Build a mock SkillCreationProposalResult for demo/test mode.
 
     Args:
         session_ids: Session IDs from the request.
 
     Returns:
-        Mock SkillProposalResult with sample proposals.
+        Mock SkillCreationProposalResult with sample proposals.
     """
     step_pool = _collect_step_ids(session_ids)
     loaded_ids = list(step_pool.keys())
@@ -92,8 +94,8 @@ def build_mock_proposal_result(session_ids: list[str]) -> SkillProposalResult:
     patterns = _build_mock_patterns(step_pool)
 
     proposals = [
-        SkillProposal(
-            name="search-and-replace",
+        SkillCreationProposal(
+            skill_name="search-and-replace",
             description="Intelligent multi-file search and replace with context-aware matching.",
             rationale=(
                 "Your search-read-edit cycle is the most frequent pattern. "
@@ -101,8 +103,8 @@ def build_mock_proposal_result(session_ids: list[str]) -> SkillProposalResult:
             ),
             addressed_patterns=["Search-Read-Edit Cycle"],
         ),
-        SkillProposal(
-            name="test-fix-loop",
+        SkillCreationProposal(
+            skill_name="test-fix-loop",
             description="Automated test-driven debugging: run, diagnose, fix, verify.",
             rationale=(
                 "Test-fix loops consumed significant context in multiple sessions. "
@@ -110,8 +112,8 @@ def build_mock_proposal_result(session_ids: list[str]) -> SkillProposalResult:
             ),
             addressed_patterns=["Test-Fix Loop"],
         ),
-        SkillProposal(
-            name="project-scaffold",
+        SkillCreationProposal(
+            skill_name="project-scaffold",
             description="Generate project file scaffolding with standard boilerplate and imports.",
             rationale=(
                 "Detected repeated file creation with identical boilerplate structure "
@@ -119,8 +121,8 @@ def build_mock_proposal_result(session_ids: list[str]) -> SkillProposalResult:
             ),
             addressed_patterns=["New File Scaffolding"],
         ),
-        SkillProposal(
-            name="dep-upgrade",
+        SkillCreationProposal(
+            skill_name="dep-upgrade",
             description="Automate dependency version bumps with changelog analysis and testing.",
             rationale=(
                 "Each dependency upgrade requires 4-5 manual steps. "
@@ -130,8 +132,7 @@ def build_mock_proposal_result(session_ids: list[str]) -> SkillProposalResult:
         ),
     ]
 
-    return SkillProposalResult(
-        session_ids=loaded_ids,
+    proposal_output = SkillCreationProposalOutput(
         workflow_patterns=patterns,
         proposals=proposals,
         summary=(
@@ -143,12 +144,17 @@ def build_mock_proposal_result(session_ids: list[str]) -> SkillProposalResult:
             "Developer focused on Python/TypeScript full-stack projects. "
             "Frequently uses Grep → Read → Edit → Bash workflows for code modifications."
         ),
-        sessions_skipped=skipped,
+    )
+
+    return SkillCreationProposalResult(
+        session_ids=loaded_ids,
+        skipped_session_ids=skipped,
         backend_id=BackendType.MOCK,
         model="mock/test-model",
-        cost_usd=0.012,
+        metrics=Metrics(cost_usd=0.012),
         batch_count=1,
         created_at=datetime.now(UTC).isoformat(),
+        proposal_output=proposal_output,
     )
 
 
@@ -177,6 +183,7 @@ def build_mock_deep_creation(proposal_name: str) -> SkillCreation:
             f"4. Report completion\n"
         ),
         rationale=f"Mock rationale for {proposal_name} in demo/test mode.",
+        tools_used=[],
     )
 
 
@@ -287,34 +294,38 @@ def _build_mock_recommendations() -> list[SkillRecommendation]:
     return [
         SkillRecommendation(
             skill_name="smart-refactor",
-            match_reason=(
+            rationale=(
                 "Automates the search-read-edit pattern with intelligent code refactoring. "
                 "Matches your most frequent workflow pattern with high confidence."
             ),
+            addressed_patterns=["Search-Read-Edit Cycle"],
             confidence=0.92,
         ),
         SkillRecommendation(
             skill_name="test-driven-fix",
-            match_reason=(
+            rationale=(
                 "Automates the test-fix-verify loop with structured error analysis. "
                 "Reads test output, identifies root cause, and applies targeted fixes."
             ),
+            addressed_patterns=["Test-Fix Loop"],
             confidence=0.78,
         ),
         SkillRecommendation(
             skill_name="project-scaffold",
-            match_reason=(
+            rationale=(
                 "Generates standard project file scaffolding with imports and docstrings. "
                 "Partially matches your file creation patterns."
             ),
+            addressed_patterns=["New File Scaffolding"],
             confidence=0.61,
         ),
         SkillRecommendation(
             skill_name="dep-updater",
-            match_reason=(
+            rationale=(
                 "Automates dependency version bumps with changelog analysis. "
                 "Low match -- your upgrade pattern is infrequent."
             ),
+            addressed_patterns=["Dependency Upgrade Workflow"],
             confidence=0.35,
         ),
     ]
@@ -342,6 +353,7 @@ def _build_mock_creations() -> list[SkillCreation]:
                 "Detected repeated file creation with identical boilerplate structure "
                 "across 3 sessions. Automating this saves ~2 minutes per new file."
             ),
+            tools_used=[],
         ),
         SkillCreation(
             name="search-and-replace",
@@ -364,6 +376,7 @@ def _build_mock_creations() -> list[SkillCreation]:
                 "Your search-read-edit cycle is the most frequent pattern. "
                 "This skill packages it into a single, repeatable workflow."
             ),
+            tools_used=[],
         ),
         SkillCreation(
             name="test-fix-loop",
@@ -386,21 +399,22 @@ def _build_mock_creations() -> list[SkillCreation]:
                 "Test-fix loops consumed significant context in 2 sessions. "
                 "Automating the diagnosis step alone would save ~40% of iterations."
             ),
+            tools_used=[],
         ),
     ]
 
 
-def _build_mock_evolutions() -> list[SkillEvolutionSuggestion]:
+def _build_mock_evolutions() -> list[SkillEvolution]:
     """Build mock evolution suggestions using installed skills."""
     skill_store = get_central_skill_store()
     skills = skill_store.get_cached()
 
-    suggestions: list[SkillEvolutionSuggestion] = []
+    evolutions: list[SkillEvolution] = []
 
     if skills:
         first_skill = skills[0]
-        suggestions.append(
-            SkillEvolutionSuggestion(
+        evolutions.append(
+            SkillEvolution(
                 skill_name=first_skill.name,
                 edits=[
                     SkillEdit(
@@ -426,8 +440,8 @@ def _build_mock_evolutions() -> list[SkillEvolutionSuggestion]:
 
     if len(skills) > 1:
         second_skill = skills[1]
-        suggestions.append(
-            SkillEvolutionSuggestion(
+        evolutions.append(
+            SkillEvolution(
                 skill_name=second_skill.name,
                 edits=[
                     SkillEdit(
@@ -446,9 +460,9 @@ def _build_mock_evolutions() -> list[SkillEvolutionSuggestion]:
             )
         )
 
-    if not suggestions:
-        suggestions.append(
-            SkillEvolutionSuggestion(
+    if not evolutions:
+        evolutions.append(
+            SkillEvolution(
                 skill_name="example-skill",
                 edits=[
                     SkillEdit(
@@ -463,4 +477,4 @@ def _build_mock_evolutions() -> list[SkillEvolutionSuggestion]:
             )
         )
 
-    return suggestions
+    return evolutions

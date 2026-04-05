@@ -218,6 +218,9 @@ class FrictionAnalysisResult(BaseModel):
     cost_usd: float | None = Field(
         default=None, description="Total inference cost in USD across all batches."
     )
+    duration_seconds: float | None = Field(
+        default=None, description="Wall-clock analysis duration in seconds."
+    )
     events: list[FrictionEvent] = Field(
         default_factory=list, description="All friction events ordered by severity descending."
     )

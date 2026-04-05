@@ -25,13 +25,15 @@ Choose from these skills to recommend. Only recommend skills that genuinely matc
 {% endif %}
 
 For every workflow pattern, provide:
+- `title`: Short, readable pattern name.
 - `description`: What the pattern does and when it occurs.
 - `gap`: Why this is suboptimal or repetitive.
 - `example_refs`: StepRef objects with `session_id` and `start_step_id` pointing to real occurrences. Optionally include `end_step_id` for multi-step ranges.
 
 For every recommendation, provide:
 - `skill_name`: Name from the candidate list.
-- `match_reason`: Why this skill fits the detected patterns.
+- `rationale`: Why this skill fits the detected patterns.
+- `addressed_patterns`: List of pattern titles this recommendation addresses.
 - `confidence`: 0.0-1.0 match confidence.
 
 After patterns and recommendations, provide:

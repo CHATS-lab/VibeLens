@@ -21,7 +21,11 @@ from vibelens.services.job_tracker import (
     mark_failed,
     submit_job,
 )
-from vibelens.services.skill import analyze_proposals, analyze_skills, deep_create_skill
+from vibelens.services.skill import (
+    analyze_skill_creation_proposals,
+    analyze_skills,
+    infer_skill_creation,
+)
 from vibelens.services.skill.mock import (
     build_mock_deep_creation,
     build_mock_proposal_result,
@@ -52,7 +56,7 @@ async def _run_skill_analysis(
 async def _run_proposals(job_id: str, session_ids: list[str], token: str | None) -> None:
     """Background wrapper for skill proposal generation."""
     try:
-        result = await analyze_proposals(session_ids, session_token=token)
+        result = await analyze_skill_creation_proposals(session_ids, session_token=token)
         mark_completed(job_id, result.proposal_id or "")
     except asyncio.CancelledError:
         logger.info("Proposal job %s was cancelled", job_id)
@@ -73,7 +77,7 @@ async def _run_deep_create(
 ) -> None:
     """Background wrapper for deep skill creation."""
     try:
-        result = await deep_create_skill(
+        result = await infer_skill_creation(
             proposal_name=proposal_name,
             proposal_description=proposal_description,
             proposal_rationale=proposal_rationale,

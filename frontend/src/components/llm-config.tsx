@@ -110,7 +110,7 @@ function ModelCombobox({
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <ul className="absolute z-20 mt-1 w-full bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl overflow-hidden">
+          <ul className="absolute z-20 mt-1 w-full max-h-64 overflow-y-auto bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl">
             {MODEL_PRESETS.map((preset) => (
               <li key={preset}>
                 <button
@@ -185,7 +185,7 @@ function CliModelSelector({
           {open && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-              <ul className="absolute z-20 mt-1 w-full bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl overflow-hidden">
+              <ul className="absolute z-20 mt-1 w-full max-h-64 overflow-y-auto bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl">
                 {meta.models.map((m) => (
                   <li key={m.name}>
                     <button
@@ -227,7 +227,7 @@ function CliModelSelector({
         {open && (
           <>
             <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-            <ul className="absolute z-20 mt-1 w-full bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl overflow-hidden">
+            <ul className="absolute z-20 mt-1 w-full max-h-64 overflow-y-auto bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl">
               {meta.models.map((m) => (
                 <li key={m.name}>
                   <button
@@ -281,7 +281,7 @@ function BackendDropdown({
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <ul className="absolute z-20 mt-1 w-full bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl overflow-hidden">
+          <ul className="absolute z-20 mt-1 w-full max-h-64 overflow-y-auto bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl">
             {BACKEND_OPTIONS.map((opt) => (
               <li key={opt.value}>
                 <button

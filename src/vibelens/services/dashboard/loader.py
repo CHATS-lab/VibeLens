@@ -9,6 +9,7 @@ from vibelens.models.dashboard.dashboard import (
     ToolUsageStat,
 )
 from vibelens.models.trajectories import Trajectory
+from vibelens.services.analysis_shared import make_ttl_cache
 from vibelens.services.dashboard.analytics import compute_session_analytics
 from vibelens.services.dashboard.stats import (
     compute_dashboard_stats,
@@ -26,19 +27,14 @@ from vibelens.utils.timestamps import parse_metadata_timestamp
 
 logger = get_logger(__name__)
 
-# Cache TTL balances freshness with cost of full trajectory loading.
-# 1 hour avoids redundant recomputation during normal browsing
-# while still reflecting newly uploaded sessions within a reasonable window.
-CACHE_TTL_SECONDS = 3600
-
 # Number of sessions to load per batch during cache warming.
 # After each batch, the thread sleeps briefly to release the GIL
 # so the event loop can serve other requests (friction history, LLM status).
 WARM_BATCH_SIZE = 20
 WARM_YIELD_SECONDS = 0.01
 
-_dashboard_cache: dict[str, tuple[float, DashboardStats]] = {}
-_tool_usage_cache: dict[str, tuple[float, list[ToolUsageStat]]] = {}
+_dashboard_cache = make_ttl_cache()
+_tool_usage_cache = make_ttl_cache()
 
 
 def load_filtered_trajectories(
@@ -113,11 +109,8 @@ def get_dashboard_stats(
         f"dash:{project_path or 'all'}:{date_from}:{date_to}"
         f":{session_token}:{agent_name or 'all'}"
     )
-    cached = _dashboard_cache.get(cache_key)
-    if cached:
-        cached_time, cached_result = cached
-        if (time.monotonic() - cached_time) < CACHE_TTL_SECONDS:
-            return cached_result
+    if cache_key in _dashboard_cache:
+        return _dashboard_cache[cache_key]
 
     metadata = list_all_metadata(session_token)
     filtered = filter_metadata(metadata, project_path, date_from, date_to, agent_name)
@@ -132,7 +125,7 @@ def get_dashboard_stats(
         _reconcile_session_counts(result, trajectories, filtered)
 
     result.cached_at = datetime.now().astimezone().isoformat()
-    _dashboard_cache[cache_key] = (time.monotonic(), result)
+    _dashboard_cache[cache_key] = result
     return result
 
 
@@ -159,17 +152,14 @@ def get_tool_usage(
         f"tools:{project_path or 'all'}:{date_from}:{date_to}"
         f":{session_token}:{agent_name or 'all'}"
     )
-    cached = _tool_usage_cache.get(cache_key)
-    if cached:
-        cached_time, cached_result = cached
-        if (time.monotonic() - cached_time) < CACHE_TTL_SECONDS:
-            return cached_result
+    if cache_key in _tool_usage_cache:
+        return _tool_usage_cache[cache_key]
 
     trajectories, _meta = load_filtered_trajectories(
         project_path, date_from, date_to, session_token, agent_name
     )
     result = compute_tool_usage(trajectories)
-    _tool_usage_cache[cache_key] = (time.monotonic(), result)
+    _tool_usage_cache[cache_key] = result
     return result
 
 
@@ -217,12 +207,12 @@ def warm_cache() -> None:
         trajectories, _meta = load_filtered_trajectories(None, None, None, None)
         stats = compute_dashboard_stats(trajectories)
         _reconcile_session_counts(stats, trajectories, filtered)
-    _dashboard_cache[cache_key_dash] = (time.monotonic(), stats)
+    _dashboard_cache[cache_key_dash] = stats
 
     # Tool usage requires full trajectories — load in batches to yield GIL
     trajectories = _load_trajectories_yielding(filtered)
     usage = compute_tool_usage(trajectories)
-    _tool_usage_cache[cache_key_tools] = (time.monotonic(), usage)
+    _tool_usage_cache[cache_key_tools] = usage
 
     logger.info("Dashboard cache warmed")
 

@@ -23,7 +23,7 @@ Analyze the provided session transcripts to:
 - Every pattern MUST have a `gap` explaining why automation would help.
 - `example_refs` must reference real step IDs from the session data. Never fabricate.
 - Each `example_ref` needs `session_id` and `start_step_id` pointing to a real step. Optionally include `end_step_id` for multi-step ranges.
-- NEVER reference sessions by ID, index, or UUID in text fields (summary, match_reason, description, rationale, user_profile). Describe patterns in general terms that readers can understand without session context.
+- NEVER reference sessions by ID, index, or UUID in text fields (summary, description, rationale, user_profile). Describe patterns in general terms that readers can understand without session context.
 
 ## Recommendation Rules
 
@@ -31,6 +31,12 @@ Analyze the provided session transcripts to:
 - `confidence` ranges from 0.0 to 1.0: 0.8+ = strong match, 0.5-0.8 = moderate, below 0.5 = weak.
 - If no skill candidates match, return an empty recommendations list.
 - Prefer skills that address high-frequency or high-pain patterns.
+
+## Output Rules
+
+- Return ONLY valid JSON matching the provided schema.
+- Do NOT include commentary, explanations, or markdown code fences.
+- The response must start with `{` and end with `}`.
 
 ## Output Schema
 

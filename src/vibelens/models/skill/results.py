@@ -3,10 +3,11 @@
 from pydantic import BaseModel, Field
 
 from vibelens.models.inference import BackendType
-from vibelens.models.skill.create import SkillCreation
-from vibelens.models.skill.evolve import SkillEvolutionSuggestion
+from vibelens.models.skill.creation import SkillCreation
+from vibelens.models.skill.evolution import SkillEvolution
 from vibelens.models.skill.patterns import SkillMode, WorkflowPattern
-from vibelens.models.skill.retrieve import SkillRecommendation
+from vibelens.models.skill.retrieval import SkillRecommendation
+from vibelens.models.trajectories.metrics import Metrics
 
 
 class SkillAnalysisResult(BaseModel):
@@ -23,21 +24,22 @@ class SkillAnalysisResult(BaseModel):
     session_ids: list[str] = Field(
         description="Session IDs that were successfully loaded and analyzed."
     )
+    title: str = Field(default="", description="LLM-generated analysis title, 5-10 words.")
     workflow_patterns: list[WorkflowPattern] = Field(
         default_factory=list, description="Detected workflow patterns from trajectory analysis."
     )
     recommendations: list[SkillRecommendation] = Field(
         default_factory=list, description="Recommended skills (retrieval mode)."
     )
-    generated_skills: list[SkillCreation] = Field(
+    creations: list[SkillCreation] = Field(
         default_factory=list, description="Generated skills (creation mode)."
     )
-    evolution_suggestions: list[SkillEvolutionSuggestion] = Field(
+    evolutions: list[SkillEvolution] = Field(
         default_factory=list, description="Evolution suggestions (evolution mode)."
     )
     summary: str = Field(description="Overall analysis summary.")
     user_profile: str = Field(default="", description="Detected user workflow style.")
-    sessions_skipped: list[str] = Field(
+    skipped_session_ids: list[str] = Field(
         default_factory=list, description="Session IDs that could not be loaded."
     )
     warnings: list[str] = Field(
@@ -45,6 +47,11 @@ class SkillAnalysisResult(BaseModel):
     )
     backend_id: BackendType = Field(description="Inference backend used.")
     model: str = Field(description="Model identifier.")
-    cost_usd: float | None = Field(default=None, description="Inference cost in USD.")
+    metrics: Metrics = Field(
+        default_factory=Metrics, description="Token usage and cost from the inference step."
+    )
+    duration_seconds: float | None = Field(
+        default=None, description="Wall-clock analysis duration in seconds."
+    )
     batch_count: int = Field(default=1, description="Number of LLM batches used.")
     created_at: str = Field(description="ISO timestamp of analysis completion.")

@@ -1,7 +1,7 @@
-Merge proposals from {{ batch_count }} batches analyzing {{ session_count }} total sessions.
+Merge evolution proposals from {{ batch_count }} batches analyzing {{ session_count }} total sessions.
 
 {% for batch in batch_results %}
-## Batch {{ loop.index }}
+## Batch {{ loop.index }}: {{ batch.title }}
 
 ### Summary
 {{ batch.summary }}
@@ -16,9 +16,9 @@ Merge proposals from {{ batch_count }} batches analyzing {{ session_count }} tot
 
 ### Proposals
 {% for proposal in batch.proposals %}
-- **{{ proposal.name }}**: {{ proposal.description }}
-  - Rationale: {{ proposal.rationale }}
-  - Addresses: {{ proposal.addressed_patterns | join(", ") }}
+- **{{ proposal.skill_name }}**: {{ proposal.rationale }}
+  - Suggested changes: {{ proposal.suggested_changes }}
+  - Addressed patterns: {{ proposal.addressed_patterns | join(", ") }}
 {% endfor %}
 
 {% endfor %}

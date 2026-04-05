@@ -1,31 +1,22 @@
-Analyze {{ session_count }} coding agent session{{ "s" if session_count != 1 else "" }} to suggest improvements to existing skills.
+Generate precise edits for the following skill based on the approved proposal and session evidence.
+
+## Proposal
+
+- **Skill**: {{ skill_name }}
+- **Rationale**: {{ rationale }}
+- **Suggested Changes**: {{ suggested_changes }}
+
+## Current SKILL.md Content
+
+```
+{{ skill_content }}
+```
+
+## Session Evidence
 
 {{ session_digest }}
 
-## Installed Skills
-
-These are the user's installed skills. Suggest edits only for skills in this list:
-{% for skill in installed_skills %}
-
-### [id={{ loop.index0 }}] {{ skill.name }}
-- **Description**: {{ skill.description }}
-{% if skill.content %}
-```markdown
-{{ skill.content }}
-```
-{% endif %}
-{% endfor %}
-
-For every workflow pattern, provide:
-- `description`: What the pattern does and when it occurs.
-- `gap`: Why the current skill coverage is insufficient.
-- `example_refs`: StepRef objects with `session_id` and `start_step_id` pointing to real occurrences. Optionally include `end_step_id` for multi-step ranges.
-
-For every evolution suggestion, provide:
-- `skill_name`: Name of the existing skill to improve.
-- `edits`: Ordered list of edits, each with `old_string`, `new_string`, and `replace_all`.
-- `rationale`: Overall rationale for evolving this skill.
-
-After patterns and suggestions, provide:
-- `summary`: Narrative overview of skill gaps and improvement opportunities.
-- `user_profile`: Brief description of the user's working style and preferences.
+Provide:
+- `skill_name`: The skill being evolved ({{ skill_name }}).
+- `edits`: List of granular edits (old_string/new_string pairs).
+- `rationale`: Why these edits improve the skill.

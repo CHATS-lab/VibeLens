@@ -67,9 +67,11 @@ class SkillAnalysisMeta(BaseModel):
 
     analysis_id: str = Field(description="Unique ID for this analysis.")
     mode: SkillMode = Field(description="Analysis mode used.")
+    title: str = Field(default="", description="LLM-generated analysis title.")
     session_ids: list[str] = Field(description="Sessions that were analyzed.")
-    pattern_count: int = Field(description="Number of detected workflow patterns.")
-    summary_preview: str = Field(description="First ~120 chars of the summary.")
     created_at: str = Field(description="ISO timestamp of analysis.")
     model: str = Field(description="Model used for analysis.")
     cost_usd: float | None = Field(default=None, description="Inference cost.")
+    duration_seconds: float | None = Field(
+        default=None, description="Wall-clock analysis duration in seconds."
+    )

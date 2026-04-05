@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.9.21] - 2026-04-05
+
+### Changed
+- **Consistent skill field naming**: `SkillCreationProposal.name` → `skill_name`, `SkillRecommendation.match_reason` → `rationale`. All three skill modes now share `skill_name`, `rationale`, and `addressed_patterns` fields.
+- **Structured evolution proposal result**: `_infer_skill_evolution_proposals` returns `SkillEvolutionProposalResult` instead of a raw 6-tuple, matching the creation pipeline pattern.
+- **Session filtering for deep creation**: Proposals with `relevant_session_indices` now load only the referenced sessions instead of all sessions, reducing token cost.
+- **Skill template naming convention**: Renamed to `{mode}_{stage}_{role}.j2` -- `deep_creation_*` → `creation_*`, `deep_edit_*` → `evolution_*`, `proposal_*` → `creation_proposal_*`.
+- **Template prompt consistency**: Added missing `title` field to retrieval pattern instructions, `addressed_patterns` to evolution proposal rules, "Output Rules" section to retrieval system prompt, and batch titles to all synthesis user prompts.
+- **Diagnostic logging**: Token budget breakdown and truncation stats in `truncate_digest_to_fit`. Proposal and recommendation names logged after LLM generation in all three skill services.
+
 ## [0.9.20] - 2026-04-04
 
 ### Added

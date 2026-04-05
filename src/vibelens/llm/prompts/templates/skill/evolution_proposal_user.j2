@@ -1,0 +1,28 @@
+Analyze {{ session_count }} coding agent session{{ "s" if session_count != 1 else "" }} to detect workflow patterns and propose improvements to existing skills.
+
+{{ session_digest }}
+
+## Installed Skills
+
+These are the user's installed skills. Propose improvements only for skills in this list:
+{% for skill in installed_skills %}
+
+- [id={{ loop.index0 }}] **{{ skill.name }}**: {{ skill.description }}
+{% endfor %}
+
+For every workflow pattern, provide:
+- `title`: Short, readable pattern name.
+- `description`: What the pattern does and when it occurs.
+- `gap`: Why the current skill coverage is insufficient.
+- `example_refs`: StepRef objects with `session_id` and `start_step_id` pointing to real occurrences. Optionally include `end_step_id` for multi-step ranges.
+
+For every proposal, provide:
+- `skill_name`: Name of the existing skill to improve.
+- `rationale`: Why this skill should be evolved.
+- `suggested_changes`: High-level description of proposed changes.
+- `addressed_patterns`: List of pattern titles this proposal addresses.
+- `relevant_session_indices`: 0-indexed session indices with evidence.
+
+After patterns and proposals, provide:
+- `summary`: Narrative overview of skill gaps and improvement opportunities.
+- `user_profile`: Brief description of the user's working style and preferences.

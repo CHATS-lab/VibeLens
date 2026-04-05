@@ -3,16 +3,16 @@
 from vibelens.models.skill import (
     SkillAnalysisResult,
     SkillCreation,
+    SkillCreationProposalResult,
     SkillMode,
-    SkillProposalResult,
 )
 from vibelens.services.skill.store import SkillAnalysisStore
 
 __all__ = [
     "SkillAnalysisStore",
-    "analyze_proposals",
+    "analyze_skill_creation_proposals",
     "analyze_skills",
-    "deep_create_skill",
+    "infer_skill_creation",
 ]
 
 
@@ -21,29 +21,31 @@ async def analyze_skills(
 ) -> SkillAnalysisResult:
     """Dispatch skill analysis to the appropriate mode handler."""
     if mode == SkillMode.RETRIEVAL:
-        from vibelens.services.skill.retrieval import analyze_retrieval
+        from vibelens.services.skill.retrieval import analyze_skill_retrieval
 
-        return await analyze_retrieval(session_ids, session_token)
+        return await analyze_skill_retrieval(session_ids, session_token)
     elif mode == SkillMode.CREATION:
-        from vibelens.services.skill.creation import analyze_creation
+        from vibelens.services.skill.creation import analyze_skill_creation
 
-        return await analyze_creation(session_ids, session_token)
+        return await analyze_skill_creation(session_ids, session_token)
     else:
-        from vibelens.services.skill.evolvement import analyze_evolvement
+        from vibelens.services.skill.evolution import analyze_skill_evolution
 
-        return await analyze_evolvement(session_ids, session_token)
+        return await analyze_skill_evolution(session_ids, session_token)
 
 
-async def analyze_proposals(
+async def analyze_skill_creation_proposals(
     session_ids: list[str], session_token: str | None = None
-) -> SkillProposalResult:
+) -> SkillCreationProposalResult:
     """Generate lightweight skill proposals from session analysis."""
-    from vibelens.services.skill.creation import analyze_proposals as _analyze_proposals
+    from vibelens.services.skill.creation import (
+        _infer_skill_creation_proposals,
+    )
 
-    return await _analyze_proposals(session_ids, session_token)
+    return await _infer_skill_creation_proposals(session_ids, session_token)
 
 
-async def deep_create_skill(
+async def infer_skill_creation(
     proposal_name: str,
     proposal_description: str,
     proposal_rationale: str,
@@ -52,9 +54,11 @@ async def deep_create_skill(
     session_token: str | None = None,
 ) -> SkillCreation:
     """Generate full SKILL.md content for one approved proposal."""
-    from vibelens.services.skill.creation import deep_create_skill as _deep_create
+    from vibelens.services.skill.creation import (
+        _infer_skill_creation as _infer,
+    )
 
-    return await _deep_create(
+    return await _infer(
         proposal_name,
         proposal_description,
         proposal_rationale,

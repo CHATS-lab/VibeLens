@@ -33,7 +33,7 @@ const MODE_MAP: Record<string, SkillMode> = {
 
 const MODE_DESCRIPTIONS: Record<SkillMode, { title: string; desc: string; icon: React.ReactNode }> = {
   retrieval: {
-    title: "Skill Discovery",
+    title: "Skill Recommendation",
     desc: "Detect workflow patterns and discover existing skills that match your coding style.",
     icon: <Search className="w-10 h-10 text-teal-400/50" />,
   },
@@ -276,7 +276,6 @@ export function SkillsPanel({ checkedIds, activeJobId, onJobIdChange }: SkillsPa
             <AnalysisResultView
               result={analysisResult}
               activeTab={activeTab}
-              onRerun={() => handleRunAnalysis(currentMode)}
               onNew={handleNewAnalysis}
               fetchWithToken={fetchWithToken}
             />

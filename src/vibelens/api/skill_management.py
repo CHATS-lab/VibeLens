@@ -3,7 +3,6 @@
 import json
 import logging
 import re
-import time
 from pathlib import Path
 
 import httpx
@@ -21,6 +20,7 @@ from vibelens.schemas.skills import (
     SkillSyncRequest,
     SkillWriteRequest,
 )
+from vibelens.services.analysis_shared import make_ttl_cache
 from vibelens.utils.github import download_skill_from_github
 
 logger = logging.getLogger(__name__)
@@ -172,8 +172,7 @@ def install_featured_skill(req: FeaturedSkillInstallRequest) -> dict:
     }
 
 
-_featured_content_cache: dict[str, tuple[float, str]] = {}
-FEATURED_CONTENT_TTL_SECONDS = 3600
+_featured_content_cache = make_ttl_cache(maxsize=32)
 
 
 @router.get("/featured/{slug}/content")
@@ -188,12 +187,8 @@ def get_featured_skill_content(slug: str) -> dict:
     Returns:
         Dict with slug and SKILL.md content string.
     """
-    cached = _featured_content_cache.get(slug)
-    if cached:
-        cached_at, content = cached
-        if time.monotonic() - cached_at < FEATURED_CONTENT_TTL_SECONDS:
-            return {"slug": slug, "content": content}
-        del _featured_content_cache[slug]
+    if slug in _featured_content_cache:
+        return {"slug": slug, "content": _featured_content_cache[slug]}
 
     if not FEATURED_SKILLS_PATH.is_file():
         raise HTTPException(status_code=404, detail="Featured skills catalog not found")
@@ -221,7 +216,7 @@ def get_featured_skill_content(slug: str) -> dict:
         logger.warning("Failed to fetch SKILL.md for %s: %s", slug, exc)
         raise HTTPException(status_code=502, detail=f"Failed to fetch from GitHub: {exc}") from exc
 
-    _featured_content_cache[slug] = (time.monotonic(), content)
+    _featured_content_cache[slug] = content
     return {"slug": slug, "content": content}
 
 

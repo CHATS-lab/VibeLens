@@ -7,10 +7,10 @@ and log persistence.
 
 import asyncio
 import json
-import time
 from collections.abc import Coroutine
 from pathlib import Path
 
+from cachetools import TTLCache
 from pydantic import BaseModel
 
 from vibelens.deps import get_inference_backend
@@ -28,6 +28,7 @@ from vibelens.utils.log import get_logger
 logger = get_logger(__name__)
 
 CACHE_TTL_SECONDS = 3600
+CACHE_MAXSIZE = 64
 
 
 def require_backend() -> InferenceBackend:
@@ -83,27 +84,20 @@ def extract_all_contexts(
     return contexts, loaded_ids, skipped_ids
 
 
-def get_cached(
-    cache: dict[str, tuple[float, object]], cache_key: str, ttl_seconds: int = CACHE_TTL_SECONDS
-) -> object | None:
-    """Return cached result if still valid, or None.
+def make_ttl_cache(
+    maxsize: int = CACHE_MAXSIZE,
+    ttl: int = CACHE_TTL_SECONDS,
+) -> TTLCache:
+    """Create a TTLCache with project defaults.
 
     Args:
-        cache: Module-level cache dict mapping key → (timestamp, result).
-        cache_key: Cache key to look up.
-        ttl_seconds: Time-to-live in seconds.
+        maxsize: Maximum number of entries before LRU eviction.
+        ttl: Time-to-live in seconds.
 
     Returns:
-        Cached result if within TTL, otherwise None.
+        Configured TTLCache instance.
     """
-    entry = cache.get(cache_key)
-    if not entry:
-        return None
-    cached_at, result = entry
-    if time.monotonic() - cached_at > ttl_seconds:
-        del cache[cache_key]
-        return None
-    return result
+    return TTLCache(maxsize=maxsize, ttl=ttl)
 
 
 def build_digest_from_contexts(contexts: list[SessionContext]) -> str:
@@ -162,9 +156,7 @@ def build_schema_json(output_model: type[BaseModel]) -> str:
     return json.dumps(output_model.model_json_schema(), indent=2)
 
 
-def build_system_kwargs(
-    output_model: type[BaseModel], backend: InferenceBackend
-) -> dict[str, str]:
+def build_system_kwargs(output_model: type[BaseModel], backend: InferenceBackend) -> dict[str, str]:
     """Build common kwargs for render_system(): output_schema + backend_rules.
 
     Args:
@@ -202,11 +194,15 @@ def truncate_digest_to_fit(
         Possibly truncated digest string.
     """
     overhead_tokens = count_tokens(system_prompt) + count_tokens(other_user_content)
+    digest_tokens = count_tokens(digest)
     available = budget_tokens - overhead_tokens
+    logger.info(
+        "Token budget: overhead=%d, digest=%d, available=%d, budget=%d",
+        overhead_tokens, digest_tokens, available, budget_tokens,
+    )
     if available <= 0:
         return "[digest truncated -- no token budget remaining]"
 
-    digest_tokens = count_tokens(digest)
     if digest_tokens <= available:
         return digest
 
@@ -218,6 +214,10 @@ def truncate_digest_to_fit(
     head = digest[:head_chars]
     tail = digest[-tail_chars:] if tail_chars > 0 else ""
     truncated_count = digest_tokens - available
+    logger.info(
+        "Digest truncated: %d → %d tokens (%d removed)",
+        digest_tokens, available, truncated_count,
+    )
     return f"{head}\n\n[... {truncated_count} tokens truncated ...]\n\n{tail}"
 
 

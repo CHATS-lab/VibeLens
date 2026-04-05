@@ -1,20 +1,13 @@
-"""Skill retrieval mode — recommend existing skills from the featured catalog.
+"""Skill retrieval mode — recommend existing skills from the featured catalog."""
 
-Contains shared infrastructure (caching, session loading, parsing, validation)
-used by all three skill analysis modes.
-"""
-
-import hashlib
 import json
 import re
 import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from pydantic import BaseModel, ValidationError
-
-from vibelens.deps import get_central_skill_store, get_skill_analysis_store
-from vibelens.llm.backend import InferenceBackend, InferenceError
+from vibelens.deps import get_skill_analysis_store
+from vibelens.llm.backend import InferenceBackend
 from vibelens.llm.prompts.skill_retrieval import (
     SKILL_RETRIEVAL_PROMPT,
     SKILL_RETRIEVAL_SYNTHESIS_PROMPT,
@@ -27,10 +20,10 @@ from vibelens.models.skill import (
     WorkflowPattern,
 )
 from vibelens.models.trajectories import Trajectory
+from vibelens.models.trajectories.metrics import Metrics
 from vibelens.services.analysis_shared import (
     build_system_kwargs,
     extract_all_contexts,
-    get_cached,
     require_backend,
     run_batches_concurrent,
     save_analysis_log,
@@ -39,7 +32,14 @@ from vibelens.services.analysis_shared import (
 from vibelens.services.context_params import PRESET_CONCISE
 from vibelens.services.friction.digest import format_batch_digest
 from vibelens.services.session_batcher import SessionBatch, build_batches
-from vibelens.utils.json_extract import extract_json as _extract_json
+from vibelens.services.skill.shared import (
+    SKILL_LOG_DIR,
+    _cache,
+    gather_installed_skills,
+    parse_llm_output,
+    skill_cache_key,
+    validate_patterns,
+)
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -47,23 +47,21 @@ logger = get_logger(__name__)
 FEATURED_SKILLS_PATH = Path(__file__).resolve().parents[4] / "featured-skills.json"
 CANDIDATE_PREFILTER_THRESHOLD = 200
 PREFILTER_TOP_K = 100
-SKILL_LOG_DIR = Path("logs/skill")
-RETRIEVAL_OUTPUT_TOKENS = 8192
-RETRIEVAL_SYNTHESIS_OUTPUT_TOKENS = 8192
-RETRIEVAL_TIMEOUT_SECONDS = 300
-
-_cache: dict[str, tuple[float, BaseModel]] = {}
+SKILL_RETRIEVAL_OUTPUT_TOKENS = 8192
+SKILL_RETRIEVAL_SYNTHESIS_OUTPUT_TOKENS = 8192
+SKILL_RETRIEVAL_TIMEOUT_SECONDS = 300
 
 
-async def analyze_retrieval(
+async def analyze_skill_retrieval(
     session_ids: list[str], session_token: str | None = None
 ) -> SkillAnalysisResult:
     """Run retrieval-mode skill analysis: recommend existing skills from catalog."""
-    cache_key = _skill_cache_key(session_ids, SkillMode.RETRIEVAL)
-    cached = get_cached(_cache, cache_key)
-    if cached:
-        return cached
+    cache_key = skill_cache_key(session_ids, SkillMode.RETRIEVAL)
+    if cache_key in _cache:
+        return _cache[cache_key]
 
+    # Build session contexts
+    start_time = time.monotonic()
     backend = require_backend()
     contexts, loaded_ids, skipped_ids = extract_all_contexts(
         session_ids, session_token, PRESET_CONCISE
@@ -72,13 +70,8 @@ async def analyze_retrieval(
     if not contexts:
         raise ValueError(f"No sessions could be loaded from: {session_ids}")
 
-    # Collect all trajectories for pattern validation
-    all_trajectories: list[Trajectory] = []
-    for ctx in contexts:
-        all_trajectories.extend(ctx.trajectory_group)
-
-    installed_skills = _gather_installed_skills()
-    skill_candidates = _load_skill_candidates()
+    installed_skills = gather_installed_skills()
+    skill_candidates = _load_skill_retrieval_candidates()
 
     batches = build_batches(contexts)
     logger.info("Skill retrieval: %d sessions → %d batch(es)", len(loaded_ids), len(batches))
@@ -87,7 +80,9 @@ async def analyze_retrieval(
     log_dir = SKILL_LOG_DIR / run_timestamp
 
     tasks = [
-        _infer_retrieval_batch(backend, batch, installed_skills, skill_candidates, log_dir, idx)
+        _infer_skill_retrieval_batch(
+            backend, batch, installed_skills, skill_candidates, log_dir, idx
+        )
         for idx, batch in enumerate(batches)
     ]
     batch_results, batch_warnings = await run_batches_concurrent(tasks, "retrieval")
@@ -98,14 +93,23 @@ async def analyze_retrieval(
     if len(batch_results) == 1:
         llm_output = batch_results[0][0]
     else:
-        llm_output, syn_cost = await _synthesize_retrieval(
+        llm_output, syn_cost = await _synthesize_skill_retrieval(
             backend, batch_results, len(loaded_ids), log_dir
         )
         total_cost += syn_cost
 
-    validated_patterns = _validate_patterns(llm_output.workflow_patterns, all_trajectories)
+    rec_names = [r.skill_name for r in llm_output.recommendations]
+    logger.info("Retrieval recommendations: %s", rec_names)
 
-    skill_result = _build_retrieval_result(
+    # Collect all trajectories for pattern validation
+    all_trajectories: list[Trajectory] = []
+    for ctx in contexts:
+        all_trajectories.extend(ctx.trajectory_group)
+
+    validated_patterns = validate_patterns(llm_output.workflow_patterns, all_trajectories)
+
+    duration = round(time.monotonic() - start_time, 2)
+    skill_result = _build_skill_retrieval_result(
         validated_patterns,
         llm_output,
         loaded_ids,
@@ -114,14 +118,15 @@ async def analyze_retrieval(
         total_cost if total_cost > 0 else None,
         batch_count=len(batches),
         warnings=batch_warnings,
+        duration_seconds=duration,
     )
     get_skill_analysis_store().save(skill_result)
 
-    _cache[cache_key] = (time.monotonic(), skill_result)
+    _cache[cache_key] = skill_result
     return skill_result
 
 
-async def _infer_retrieval_batch(
+async def _infer_skill_retrieval_batch(
     backend: InferenceBackend,
     batch: SessionBatch,
     installed_skills: list[dict],
@@ -148,7 +153,7 @@ async def _infer_retrieval_batch(
     # Pre-filter candidates per batch using batch-specific keywords
     candidates = skill_candidates
     if len(candidates) > CANDIDATE_PREFILTER_THRESHOLD:
-        candidates = _prefilter_candidates(candidates, digest)
+        candidates = _prefilter_skill_retrieval_candidates(candidates, digest)
 
     prompt = SKILL_RETRIEVAL_PROMPT
     system_kwargs = build_system_kwargs(prompt.output_model, backend)
@@ -173,8 +178,8 @@ async def _infer_retrieval_batch(
     request = InferenceRequest(
         system=system_prompt,
         user=user_prompt,
-        max_tokens=RETRIEVAL_OUTPUT_TOKENS,
-        timeout=RETRIEVAL_TIMEOUT_SECONDS,
+        max_tokens=SKILL_RETRIEVAL_OUTPUT_TOKENS,
+        timeout=SKILL_RETRIEVAL_TIMEOUT_SECONDS,
         json_schema=prompt.output_model.model_json_schema(),
     )
 
@@ -185,12 +190,12 @@ async def _infer_retrieval_batch(
     result = await backend.generate(request)
     save_analysis_log(log_dir, f"retrieval_output_{batch_index}.txt", result.text)
 
-    retrieval_output = _parse_retrieval_output(result.text)
+    retrieval_output = parse_llm_output(result.text, SkillRetrievalOutput, "retrieval")
     cost = result.cost_usd or 0.0
     return retrieval_output, cost
 
 
-async def _synthesize_retrieval(
+async def _synthesize_skill_retrieval(
     backend: InferenceBackend,
     batch_results: list[tuple[SkillRetrievalOutput, float]],
     session_count: int,
@@ -209,16 +214,23 @@ async def _synthesize_retrieval(
     """
     batch_data = [
         {
+            "title": output.title,
             "summary": output.summary,
             "user_profile": output.user_profile,
             "workflow_patterns": [
-                {"title": p.title, "description": p.description, "gap": p.gap}
+                {
+                    "title": p.title,
+                    "description": p.description,
+                    "gap": p.gap,
+                    "example_refs": [ref.model_dump(exclude_none=True) for ref in p.example_refs],
+                }
                 for p in output.workflow_patterns
             ],
             "recommendations": [
                 {
                     "skill_name": r.skill_name,
-                    "match_reason": r.match_reason,
+                    "rationale": r.rationale,
+                    "addressed_patterns": r.addressed_patterns,
                     "confidence": r.confidence,
                 }
                 for r in output.recommendations
@@ -231,16 +243,14 @@ async def _synthesize_retrieval(
     system_kwargs = build_system_kwargs(prompt.output_model, backend)
     system_prompt = prompt.render_system(**system_kwargs)
     user_prompt = prompt.render_user(
-        batch_count=len(batch_results),
-        session_count=session_count,
-        batch_results=batch_data,
+        batch_count=len(batch_results), session_count=session_count, batch_results=batch_data
     )
 
     request = InferenceRequest(
         system=system_prompt,
         user=user_prompt,
-        max_tokens=RETRIEVAL_SYNTHESIS_OUTPUT_TOKENS,
-        timeout=RETRIEVAL_TIMEOUT_SECONDS,
+        max_tokens=SKILL_RETRIEVAL_SYNTHESIS_OUTPUT_TOKENS,
+        timeout=SKILL_RETRIEVAL_TIMEOUT_SECONDS,
         json_schema=prompt.output_model.model_json_schema(),
     )
 
@@ -250,12 +260,12 @@ async def _synthesize_retrieval(
     result = await backend.generate(request)
     save_analysis_log(log_dir, "retrieval_synthesis_output.txt", result.text)
 
-    synthesis_output = _parse_retrieval_output(result.text)
+    synthesis_output = parse_llm_output(result.text, SkillRetrievalOutput, "retrieval synthesis")
     cost = result.cost_usd or 0.0
     return synthesis_output, cost
 
 
-def _load_skill_candidates() -> list[dict]:
+def _load_skill_retrieval_candidates() -> list[dict]:
     """Load skill candidates from the featured skills catalog.
 
     Returns a list of dicts with name, summary, and tags for each candidate.
@@ -280,7 +290,7 @@ def _load_skill_candidates() -> list[dict]:
         return []
 
 
-def _prefilter_candidates(candidates: list[dict], digest: str) -> list[dict]:
+def _prefilter_skill_retrieval_candidates(candidates: list[dict], digest: str) -> list[dict]:
     """Keyword-based pre-filtering for large skill catalogs.
 
     Extracts keywords from the digest (tool names, user topics, alpha tokens)
@@ -293,7 +303,7 @@ def _prefilter_candidates(candidates: list[dict], digest: str) -> list[dict]:
     Returns:
         Top PREFILTER_TOP_K candidates sorted by relevance score.
     """
-    keywords = _extract_digest_keywords(digest)
+    keywords = _extract_skill_retrieval_keywords(digest)
     if not keywords:
         return candidates[:PREFILTER_TOP_K]
 
@@ -313,7 +323,7 @@ def _prefilter_candidates(candidates: list[dict], digest: str) -> list[dict]:
     return [candidate for _, candidate in scored[:PREFILTER_TOP_K]]
 
 
-def _extract_digest_keywords(digest: str) -> set[str]:
+def _extract_skill_retrieval_keywords(digest: str) -> set[str]:
     """Extract keywords from a session digest for candidate matching.
 
     Pulls tool names from "TOOL FREQUENCY:" blocks, user topics,
@@ -345,59 +355,7 @@ def _extract_digest_keywords(digest: str) -> set[str]:
     return keywords
 
 
-def _skill_cache_key(session_ids: list[str], mode: SkillMode) -> str:
-    """Generate a cache key from sorted session IDs and mode."""
-    sorted_ids = ",".join(sorted(session_ids))
-    raw = f"skill:{mode}:{sorted_ids}"
-    return f"skill:{hashlib.sha256(raw.encode()).hexdigest()[:16]}"
-
-
-def _gather_installed_skills() -> list[dict]:
-    """Collect installed skill metadata from the central store."""
-    managed_store = get_central_skill_store()
-    skills = managed_store.get_cached()
-    return [{"name": s.name, "description": s.description} for s in skills]
-
-
-def _parse_retrieval_output(text: str) -> SkillRetrievalOutput:
-    """Parse LLM output into SkillRetrievalOutput."""
-    if not text or not text.strip():
-        raise InferenceError(
-            "LLM returned empty response. Check logs for the prompt that was sent."
-        )
-
-    json_str = _extract_json(text)
-    try:
-        data = json.loads(json_str)
-        return SkillRetrievalOutput.model_validate(data)
-    except json.JSONDecodeError as exc:
-        preview = json_str[:500] if len(json_str) > 500 else json_str
-        raise InferenceError(
-            f"LLM output is not valid JSON. Preview: {preview!r}. Error: {exc}"
-        ) from exc
-    except ValidationError as exc:
-        raise InferenceError(f"LLM JSON does not match SkillRetrievalOutput schema: {exc}") from exc
-
-
-def _validate_patterns(
-    patterns: list[WorkflowPattern], trajectories: list[Trajectory]
-) -> list[WorkflowPattern]:
-    """Validate workflow pattern step references against loaded trajectories."""
-    valid_step_ids = {step.step_id for t in trajectories for step in t.steps}
-    validated: list[WorkflowPattern] = []
-    for pattern in patterns:
-        filtered_refs = [
-            ref
-            for ref in pattern.example_refs
-            if ref.start_step_id in valid_step_ids
-            and (ref.end_step_id is None or ref.end_step_id in valid_step_ids)
-        ]
-        pattern.example_refs = filtered_refs
-        validated.append(pattern)
-    return validated
-
-
-def _build_retrieval_result(
+def _build_skill_retrieval_result(
     validated_patterns: list[WorkflowPattern],
     llm_output: SkillRetrievalOutput,
     loaded_ids: list[str],
@@ -406,20 +364,23 @@ def _build_retrieval_result(
     cost_usd: float | None,
     batch_count: int = 1,
     warnings: list[str] | None = None,
+    duration_seconds: float | None = None,
 ) -> SkillAnalysisResult:
     """Build a SkillAnalysisResult for retrieval mode."""
     return SkillAnalysisResult(
         mode=SkillMode.RETRIEVAL,
+        title=llm_output.title,
         workflow_patterns=validated_patterns,
         recommendations=llm_output.recommendations,
         summary=llm_output.summary,
         user_profile=llm_output.user_profile,
         session_ids=loaded_ids,
-        sessions_skipped=skipped_ids,
+        skipped_session_ids=skipped_ids,
         warnings=warnings or [],
         backend_id=backend.backend_id,
         model=backend.model,
-        cost_usd=cost_usd,
+        metrics=Metrics(cost_usd=cost_usd),
+        duration_seconds=duration_seconds,
         batch_count=batch_count,
         created_at=datetime.now(UTC).isoformat(),
     )

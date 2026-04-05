@@ -1,8 +1,14 @@
-import { AlertTriangle, Calendar, Clock, Coins, History, Layers, Loader2, Trash2, Zap } from "lucide-react";
+import { Calendar, Clock, Coins, History, Layers, Loader2, Timer, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useAppContext } from "../../app";
 import type { FrictionAnalysisResult, FrictionMeta } from "../../types";
 import { formatCost } from "../../utils";
+import { ConfirmDialog } from "../confirm-dialog";
+
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
+}
 
 interface FrictionHistoryProps {
   onSelect: (result: FrictionAnalysisResult) => void;
@@ -106,6 +112,7 @@ function HistoryCard({
   onSelect: () => void;
   onDelete: () => void;
 }) {
+  const [showConfirm, setShowConfirm] = useState(false);
   const date = new Date(item.created_at);
   const dateStr = isNaN(date.getTime())
     ? item.created_at
@@ -113,8 +120,6 @@ function HistoryCard({
   const timeStr = isNaN(date.getTime())
     ? ""
     : date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-
-  const hasFriction = item.event_count > 0;
 
   return (
     <div
@@ -128,18 +133,7 @@ function HistoryCard({
           </p>
 
           <div className="flex items-center gap-1.5 flex-wrap">
-            {hasFriction ? (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-900/30 border border-amber-700/30 text-[10px] font-medium text-amber-300">
-                <AlertTriangle className="w-2.5 h-2.5" />
-                {item.event_count}
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-900/30 border border-emerald-700/30 text-[10px] font-medium text-emerald-300">
-                <Zap className="w-2.5 h-2.5" />
-                Clean
-              </span>
-            )}
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-violet-900/30 border border-violet-700/30 text-[10px] font-medium text-violet-300">
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-medium bg-amber-900/30 border-amber-700/30 text-amber-400">
               <Layers className="w-2.5 h-2.5" />
               {item.session_ids.length} session{item.session_ids.length !== 1 ? "s" : ""}
             </span>
@@ -147,6 +141,12 @@ function HistoryCard({
               <span className="inline-flex items-center gap-1 text-[10px] text-zinc-300">
                 <Coins className="w-2.5 h-2.5 text-amber-400" />
                 {formatCost(item.cost_usd)}
+              </span>
+            )}
+            {item.duration_seconds != null && (
+              <span className="inline-flex items-center gap-1 text-[10px] text-zinc-400">
+                <Timer className="w-2.5 h-2.5" />
+                {formatDuration(item.duration_seconds)}
               </span>
             )}
           </div>
@@ -167,7 +167,7 @@ function HistoryCard({
         <button
           onClick={(e) => {
             e.stopPropagation();
-            onDelete();
+            setShowConfirm(true);
           }}
           disabled={deleting}
           className="opacity-0 group-hover:opacity-100 p-1 text-zinc-500 hover:text-rose-400 rounded transition"
@@ -180,6 +180,18 @@ function HistoryCard({
           )}
         </button>
       </div>
+      {showConfirm && (
+        <ConfirmDialog
+          title="Delete Analysis"
+          message="This analysis result will be permanently deleted."
+          confirmLabel="Delete"
+          onConfirm={() => {
+            setShowConfirm(false);
+            onDelete();
+          }}
+          onCancel={() => setShowConfirm(false)}
+        />
+      )}
     </div>
   );
 }

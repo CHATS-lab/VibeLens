@@ -5,7 +5,10 @@ Two-phase pipeline:
 2. FRICTION_SYNTHESIS_PROMPT: Post-batch synthesis (title + cohesive summary + type descriptions).
 """
 
-from vibelens.models.analysis.friction import FrictionLLMBatchOutput, FrictionSynthesisOutput
+from vibelens.models.analysis.friction import (
+    FrictionLLMBatchOutput,
+    FrictionSynthesisOutput,
+)
 from vibelens.models.prompts import AnalysisPrompt, load_template
 
 FRICTION_ANALYSIS_PROMPT = AnalysisPrompt(

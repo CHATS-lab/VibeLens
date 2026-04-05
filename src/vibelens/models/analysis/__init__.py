@@ -12,13 +12,6 @@ from vibelens.models.analysis.friction import (
     StepSignal,
     TypeSummary,
 )
-from vibelens.models.analysis.insights import (
-    FrictionReport,
-    InsightCategory,
-    InsightItem,
-    InsightReport,
-    SessionHighlights,
-)
 from vibelens.models.analysis.phase import PhaseSegment
 from vibelens.models.analysis.step_ref import StepRef
 from vibelens.models.analysis.tool_graph import ToolDependencyGraph, ToolEdge
@@ -47,16 +40,11 @@ __all__ = [
     "FrictionEvent",
     "FrictionLLMBatchOutput",
     "FrictionLLMEvent",
-    "FrictionReport",
-    "InsightCategory",
-    "InsightItem",
-    "InsightReport",
     "Mitigation",
     "ModelPricing",
     "PhaseSegment",
     "PeriodStats",
     "SessionAnalytics",
-    "SessionHighlights",
     "StepRef",
     "StepSignal",
     "TimePattern",

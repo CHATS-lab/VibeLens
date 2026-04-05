@@ -1,41 +1,38 @@
-"""Skill creation mode — two-step pipeline: proposals then deep creation.
+"""Skill creation mode — two-step pipeline: proposals then generation.
 
 Pipeline:
-1. analyze_proposals: load sessions → extract contexts → batch → concurrent
-   LLM proposal calls → optional synthesis → SkillProposalResult
-2. deep_create_skill: single LLM call per approved proposal → SkillCreation
-3. analyze_creation: backward-compat wrapper calling both steps
+1. _infer_skill_creation_proposals: batch → concurrent LLM proposal calls
+   → optional synthesis → SkillCreationProposalResult
+2. _infer_skill_creation: single LLM call per approved proposal → SkillCreation
+3. analyze_skill_creation: orchestrator calling both steps
 """
 
 import asyncio
-import json
 import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from pydantic import ValidationError
-
 from vibelens.deps import get_skill_analysis_store
-from vibelens.llm.backend import InferenceBackend, InferenceError
-from vibelens.llm.prompts.skill_deep_creation import SKILL_DEEP_CREATION_PROMPT
-from vibelens.llm.prompts.skill_proposal import (
-    SKILL_PROPOSAL_PROMPT,
-    SKILL_PROPOSAL_SYNTHESIS_PROMPT,
+from vibelens.llm.backend import InferenceBackend
+from vibelens.llm.prompts.skill_creation import (
+    SKILL_CREATION_GENERATE_PROMPT,
+    SKILL_CREATION_PROPOSAL_PROMPT,
+    SKILL_CREATION_PROPOSAL_SYNTHESIS_PROMPT,
 )
 from vibelens.models.inference import InferenceRequest
 from vibelens.models.skill import (
     SkillAnalysisResult,
     SkillCreation,
-    SkillDeepCreationOutput,
+    SkillCreationProposalOutput,
+    SkillCreationProposalResult,
     SkillMode,
-    SkillProposalOutput,
-    SkillProposalResult,
 )
+from vibelens.models.trajectories.metrics import Metrics
 from vibelens.services.analysis_shared import (
     build_digest_from_contexts,
     build_system_kwargs,
     extract_all_contexts,
-    get_cached,
+    make_ttl_cache,
     require_backend,
     run_batches_concurrent,
     save_analysis_log,
@@ -44,31 +41,29 @@ from vibelens.services.analysis_shared import (
 from vibelens.services.context_params import PRESET_MEDIUM
 from vibelens.services.friction.digest import format_batch_digest
 from vibelens.services.session_batcher import SessionBatch, build_batches
-from vibelens.services.skill.retrieval import (
+from vibelens.services.skill.shared import (
     SKILL_LOG_DIR,
     _cache,
-    _gather_installed_skills,
-    _skill_cache_key,
-    _validate_patterns,
+    gather_installed_skills,
+    parse_llm_output,
+    skill_cache_key,
+    validate_patterns,
 )
-from vibelens.utils.json_extract import extract_json as _extract_json
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
 
-PROPOSAL_OUTPUT_TOKENS = 4096
-PROPOSAL_TIMEOUT_SECONDS = 300
-PROPOSAL_SYNTHESIS_OUTPUT_TOKENS = 8192
-PROPOSAL_SYNTHESIS_TIMEOUT_SECONDS = 300
-PROPOSAL_CACHE_TTL_SECONDS = 3600
-DEEP_CREATION_OUTPUT_TOKENS = 4096
-DEEP_CREATION_TIMEOUT_SECONDS = 300
+SKILL_CREATION_PROPOSAL_OUTPUT_TOKENS = 4096
+SKILL_CREATION_PROPOSAL_TIMEOUT_SECONDS = 300
+SKILL_CREATION_SYNTHESIS_OUTPUT_TOKENS = 8192
+SKILL_CREATION_SYNTHESIS_TIMEOUT_SECONDS = 300
+SKILL_CREATION_GENERATE_OUTPUT_TOKENS = 4096
+SKILL_CREATION_GENERATE_TIMEOUT_SECONDS = 300
 
-# Proposal pipeline internals
-_proposal_cache: dict[str, tuple[float, SkillProposalResult]] = {}
+_proposal_cache = make_ttl_cache(maxsize=32)
 
 
-async def analyze_creation(
+async def analyze_skill_creation(
     session_ids: list[str], session_token: str | None = None
 ) -> SkillAnalysisResult:
     """Backward-compatible creation: proposals then deep creation for each.
@@ -80,73 +75,91 @@ async def analyze_creation(
         session_token: Browser tab token for upload scoping.
 
     Returns:
-        SkillAnalysisResult with generated_skills populated.
+        SkillAnalysisResult with creations populated.
     """
-    cache_key = _skill_cache_key(session_ids, SkillMode.CREATION)
-    cached = get_cached(_cache, cache_key)
-    if cached:
-        return cached
+    cache_key = skill_cache_key(session_ids, SkillMode.CREATION)
+    if cache_key in _cache:
+        return _cache[cache_key]
+
+    start_time = time.monotonic()
 
     # Shared log directory for the entire creation pipeline
     run_timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     log_dir = SKILL_LOG_DIR / run_timestamp
 
     # Step 1: Generate proposals
-    proposal_result = await analyze_proposals(session_ids, session_token, log_dir=log_dir)
+    proposal_result = await _infer_skill_creation_proposals(
+        session_ids, session_token, log_dir=log_dir
+    )
+
+    proposal_names = [p.skill_name for p in proposal_result.proposal_output.proposals]
+    logger.info("Creation proposals: %s", proposal_names)
 
     # Step 2: Deep create each proposal concurrently
-    creation_tasks = [
-        deep_create_skill(
-            proposal_name=p.name,
-            proposal_description=p.description,
-            proposal_rationale=p.rationale,
-            addressed_patterns=p.addressed_patterns,
-            session_ids=session_ids,
-            session_token=session_token,
-            proposal_confidence=p.confidence,
-            log_dir=log_dir,
-            proposal_index=idx,
+    creation_tasks = []
+    for idx, p in enumerate(proposal_result.proposal_output.proposals):
+        # Filter to only relevant sessions when indices are specified
+        if p.relevant_session_indices:
+            relevant_ids = [
+                proposal_result.session_ids[i]
+                for i in p.relevant_session_indices
+                if i < len(proposal_result.session_ids)
+            ]
+        else:
+            relevant_ids = session_ids
+        creation_tasks.append(
+            _infer_skill_creation(
+                proposal_name=p.skill_name,
+                proposal_description=p.description,
+                proposal_rationale=p.rationale,
+                addressed_patterns=p.addressed_patterns,
+                session_ids=relevant_ids,
+                session_token=session_token,
+                proposal_confidence=p.confidence,
+                log_dir=log_dir,
+                proposal_index=idx,
+            )
         )
-        for idx, p in enumerate(proposal_result.proposals)
-    ]
 
-    generated_skills: list[SkillCreation] = []
+    creations: list[SkillCreation] = []
     creation_warnings: list[str] = list(proposal_result.warnings)
     if creation_tasks:
         results = await asyncio.gather(*creation_tasks, return_exceptions=True)
         for idx, result in enumerate(results):
             if isinstance(result, SkillCreation):
-                generated_skills.append(result)
+                creations.append(result)
             else:
-                name = proposal_result.proposals[idx].name
-                creation_warnings.append(f"Deep creation failed for '{name}': {result}")
-                logger.warning("Deep creation failed for proposal '%s': %s", name, result)
+                skill_name = proposal_result.proposal_output.proposals[idx].skill_name
+                creation_warnings.append(f"Deep creation failed for '{skill_name}': {result}")
+                logger.warning("Deep creation failed for proposal '%s': %s", skill_name, result)
 
+    duration = round(time.monotonic() - start_time, 2)
+    proposal_output = proposal_result.proposal_output
     skill_result = SkillAnalysisResult(
         mode=SkillMode.CREATION,
-        workflow_patterns=proposal_result.workflow_patterns,
-        generated_skills=generated_skills,
-        summary=proposal_result.summary,
-        user_profile=proposal_result.user_profile,
+        title=proposal_output.title,
+        workflow_patterns=proposal_output.workflow_patterns,
+        creations=creations,
+        summary=proposal_output.summary,
+        user_profile=proposal_output.user_profile,
         session_ids=proposal_result.session_ids,
-        sessions_skipped=proposal_result.sessions_skipped,
+        skipped_session_ids=proposal_result.skipped_session_ids,
         warnings=creation_warnings,
         backend_id=proposal_result.backend_id,
         model=proposal_result.model,
-        cost_usd=proposal_result.cost_usd,
+        metrics=proposal_result.metrics,
+        duration_seconds=duration,
         created_at=datetime.now(UTC).isoformat(),
     )
     get_skill_analysis_store().save(skill_result)
 
-    _cache[cache_key] = (time.monotonic(), skill_result)
+    _cache[cache_key] = skill_result
     return skill_result
 
 
-async def analyze_proposals(
-    session_ids: list[str],
-    session_token: str | None = None,
-    log_dir: Path | None = None,
-) -> SkillProposalResult:
+async def _infer_skill_creation_proposals(
+    session_ids: list[str], session_token: str | None = None, log_dir: Path | None = None
+) -> SkillCreationProposalResult:
     """Run the proposal step: detect patterns and generate lightweight proposals.
 
     Args:
@@ -155,16 +168,15 @@ async def analyze_proposals(
         log_dir: Shared log directory. Created if None.
 
     Returns:
-        SkillProposalResult with proposals and metadata.
+        SkillCreationProposalResult with nested proposal_output and metadata.
 
     Raises:
         ValueError: If no sessions could be loaded or no backend configured.
         InferenceError: If LLM backend fails.
     """
-    cache_key = _skill_cache_key(session_ids, SkillMode.CREATION) + ":proposals"
-    cached = _get_cached_proposals(cache_key)
-    if cached:
-        return cached
+    cache_key = skill_cache_key(session_ids, SkillMode.CREATION) + ":proposals"
+    if cache_key in _proposal_cache:
+        return _proposal_cache[cache_key]
 
     backend = require_backend()
     contexts, loaded_ids, skipped_ids = extract_all_contexts(
@@ -181,10 +193,10 @@ async def analyze_proposals(
         run_timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         log_dir = SKILL_LOG_DIR / run_timestamp
 
-    installed_skills = _gather_installed_skills()
+    installed_skills = gather_installed_skills()
 
     tasks = [
-        _infer_proposal_batch(backend, batch, installed_skills, log_dir, idx)
+        _infer_skill_creation_proposal_batch(backend, batch, installed_skills, log_dir, idx)
         for idx, batch in enumerate(batches)
     ]
     batch_results, batch_warnings = await run_batches_concurrent(tasks, "proposal")
@@ -195,7 +207,7 @@ async def analyze_proposals(
     if len(batch_results) == 1:
         proposal_output = batch_results[0][0]
     else:
-        proposal_output, syn_cost = await _synthesize_proposals(
+        proposal_output, syn_cost = await _synthesize_skill_creation_proposals(
             backend, batch_results, len(loaded_ids), log_dir
         )
         total_cost += syn_cost
@@ -205,28 +217,33 @@ async def analyze_proposals(
     for ctx in contexts:
         all_trajectories.extend(ctx.trajectory_group)
 
-    validated_patterns = _validate_patterns(proposal_output.workflow_patterns, all_trajectories)
+    validated_patterns = validate_patterns(proposal_output.workflow_patterns, all_trajectories)
 
-    result = SkillProposalResult(
-        session_ids=loaded_ids,
-        workflow_patterns=validated_patterns,
-        proposals=proposal_output.proposals,
-        summary=proposal_output.summary,
+    final_output = SkillCreationProposalOutput(
+        title=proposal_output.title,
         user_profile=proposal_output.user_profile,
-        sessions_skipped=skipped_ids,
+        workflow_patterns=validated_patterns,
+        summary=proposal_output.summary,
+        proposals=proposal_output.proposals,
+    )
+
+    result = SkillCreationProposalResult(
+        session_ids=loaded_ids,
+        skipped_session_ids=skipped_ids,
         warnings=batch_warnings,
         backend_id=backend.backend_id,
         model=backend.model,
-        cost_usd=total_cost if total_cost > 0 else None,
+        metrics=Metrics(cost_usd=total_cost if total_cost > 0 else None),
         batch_count=len(batches),
         created_at=datetime.now(UTC).isoformat(),
+        proposal_output=final_output,
     )
 
-    _proposal_cache[cache_key] = (time.monotonic(), result)
+    _proposal_cache[cache_key] = result
     return result
 
 
-async def deep_create_skill(
+async def _infer_skill_creation(
     proposal_name: str,
     proposal_description: str,
     proposal_rationale: str,
@@ -248,7 +265,7 @@ async def deep_create_skill(
         session_token: Browser tab token for upload scoping.
         proposal_confidence: Confidence from proposal step (0.0-1.0).
         log_dir: Shared log directory. Created if None.
-        proposal_index: Index for log file naming when called from analyze_creation.
+        proposal_index: Index for log file naming when called from analyze_skill_creation.
 
     Returns:
         SkillCreation with full SKILL.md content.
@@ -267,13 +284,13 @@ async def deep_create_skill(
 
     # Build digest from all contexts (no batching needed for single-skill creation)
     digest = build_digest_from_contexts(contexts)
-    installed_skills = _gather_installed_skills()
+    installed_skills = gather_installed_skills()
 
-    system_kwargs = build_system_kwargs(SKILL_DEEP_CREATION_PROMPT.output_model, backend)
-    system_prompt = SKILL_DEEP_CREATION_PROMPT.render_system(**system_kwargs)
+    system_kwargs = build_system_kwargs(SKILL_CREATION_GENERATE_PROMPT.output_model, backend)
+    system_prompt = SKILL_CREATION_GENERATE_PROMPT.render_system(**system_kwargs)
 
     # Truncate digest to fit context budget
-    non_digest_overhead = SKILL_DEEP_CREATION_PROMPT.render_user(
+    non_digest_overhead = SKILL_CREATION_GENERATE_PROMPT.render_user(
         proposal_name=proposal_name,
         proposal_description=proposal_description,
         proposal_rationale=proposal_rationale,
@@ -283,7 +300,7 @@ async def deep_create_skill(
     )
     digest = truncate_digest_to_fit(digest, system_prompt, non_digest_overhead)
 
-    user_prompt = SKILL_DEEP_CREATION_PROMPT.render_user(
+    user_prompt = SKILL_CREATION_GENERATE_PROMPT.render_user(
         proposal_name=proposal_name,
         proposal_description=proposal_description,
         proposal_rationale=proposal_rationale,
@@ -295,9 +312,9 @@ async def deep_create_skill(
     request = InferenceRequest(
         system=system_prompt,
         user=user_prompt,
-        max_tokens=DEEP_CREATION_OUTPUT_TOKENS,
-        timeout=DEEP_CREATION_TIMEOUT_SECONDS,
-        json_schema=SKILL_DEEP_CREATION_PROMPT.output_model.model_json_schema(),
+        max_tokens=SKILL_CREATION_GENERATE_OUTPUT_TOKENS,
+        timeout=SKILL_CREATION_GENERATE_TIMEOUT_SECONDS,
+        json_schema=SKILL_CREATION_GENERATE_PROMPT.output_model.model_json_schema(),
     )
 
     if log_dir is None:
@@ -311,36 +328,18 @@ async def deep_create_skill(
     result = await backend.generate(request)
     save_analysis_log(log_dir, f"deep_creation{suffix}_output.txt", result.text)
 
-    deep_output = _parse_deep_creation_output(result.text)
-
-    return SkillCreation(
-        name=deep_output.name,
-        description=deep_output.description,
-        skill_md_content=deep_output.skill_md_content,
-        rationale=deep_output.rationale,
-        confidence=proposal_confidence,
-    )
+    creation = parse_llm_output(result.text, SkillCreation, "deep creation")
+    creation.confidence = proposal_confidence
+    return creation
 
 
-def _get_cached_proposals(cache_key: str) -> SkillProposalResult | None:
-    """Return cached proposal result if still valid."""
-    entry = _proposal_cache.get(cache_key)
-    if not entry:
-        return None
-    cached_at, result = entry
-    if time.monotonic() - cached_at > PROPOSAL_CACHE_TTL_SECONDS:
-        del _proposal_cache[cache_key]
-        return None
-    return result
-
-
-async def _infer_proposal_batch(
+async def _infer_skill_creation_proposal_batch(
     backend: InferenceBackend,
     batch: SessionBatch,
     installed_skills: list[dict],
     log_dir: Path,
     batch_index: int,
-) -> tuple[SkillProposalOutput, float]:
+) -> tuple[SkillCreationProposalOutput, float]:
     """Run LLM inference for one proposal batch.
 
     Args:
@@ -356,18 +355,18 @@ async def _infer_proposal_batch(
     digest = format_batch_digest(batch)
     session_count = len(batch.session_contexts)
 
-    system_kwargs = build_system_kwargs(SKILL_PROPOSAL_PROMPT.output_model, backend)
-    system_prompt = SKILL_PROPOSAL_PROMPT.render_system(**system_kwargs)
+    system_kwargs = build_system_kwargs(SKILL_CREATION_PROPOSAL_PROMPT.output_model, backend)
+    system_prompt = SKILL_CREATION_PROPOSAL_PROMPT.render_system(**system_kwargs)
 
     # Truncate digest to fit context budget
-    non_digest_overhead = SKILL_PROPOSAL_PROMPT.render_user(
+    non_digest_overhead = SKILL_CREATION_PROPOSAL_PROMPT.render_user(
         session_count=session_count,
         session_digest="",
         installed_skills=installed_skills if installed_skills else None,
     )
     digest = truncate_digest_to_fit(digest, system_prompt, non_digest_overhead)
 
-    user_prompt = SKILL_PROPOSAL_PROMPT.render_user(
+    user_prompt = SKILL_CREATION_PROPOSAL_PROMPT.render_user(
         session_count=session_count,
         session_digest=digest,
         installed_skills=installed_skills if installed_skills else None,
@@ -376,9 +375,9 @@ async def _infer_proposal_batch(
     request = InferenceRequest(
         system=system_prompt,
         user=user_prompt,
-        max_tokens=PROPOSAL_OUTPUT_TOKENS,
-        timeout=PROPOSAL_TIMEOUT_SECONDS,
-        json_schema=SKILL_PROPOSAL_PROMPT.output_model.model_json_schema(),
+        max_tokens=SKILL_CREATION_PROPOSAL_OUTPUT_TOKENS,
+        timeout=SKILL_CREATION_PROPOSAL_TIMEOUT_SECONDS,
+        json_schema=SKILL_CREATION_PROPOSAL_PROMPT.output_model.model_json_schema(),
     )
 
     if batch_index == 0:
@@ -388,17 +387,17 @@ async def _infer_proposal_batch(
     result = await backend.generate(request)
     save_analysis_log(log_dir, f"proposal_output_{batch_index}.txt", result.text)
 
-    proposal_output = _parse_proposal_output(result.text)
+    proposal_output = parse_llm_output(result.text, SkillCreationProposalOutput, "proposal")
     cost = result.cost_usd or 0.0
     return proposal_output, cost
 
 
-async def _synthesize_proposals(
+async def _synthesize_skill_creation_proposals(
     backend: InferenceBackend,
-    batch_results: list[tuple[SkillProposalOutput, float]],
+    batch_results: list[tuple[SkillCreationProposalOutput, float]],
     session_count: int,
     log_dir: Path,
-) -> tuple[SkillProposalOutput, float]:
+) -> tuple[SkillCreationProposalOutput, float]:
     """Merge proposals from multiple batches via LLM synthesis.
 
     Args:
@@ -408,19 +407,25 @@ async def _synthesize_proposals(
         log_dir: Timestamped directory for saving prompts and outputs.
 
     Returns:
-        Tuple of (merged SkillProposalOutput, synthesis cost in USD).
+        Tuple of (merged SkillCreationProposalOutput, synthesis cost in USD).
     """
     batch_data = [
         {
+            "title": output.title,
             "summary": output.summary,
             "user_profile": output.user_profile,
             "workflow_patterns": [
-                {"title": p.title, "description": p.description, "gap": p.gap}
+                {
+                    "title": p.title,
+                    "description": p.description,
+                    "gap": p.gap,
+                    "example_refs": [ref.model_dump(exclude_none=True) for ref in p.example_refs],
+                }
                 for p in output.workflow_patterns
             ],
             "proposals": [
                 {
-                    "name": p.name,
+                    "skill_name": p.skill_name,
                     "description": p.description,
                     "rationale": p.rationale,
                     "addressed_patterns": p.addressed_patterns,
@@ -431,20 +436,19 @@ async def _synthesize_proposals(
         for output, _ in batch_results
     ]
 
-    system_kwargs = build_system_kwargs(SKILL_PROPOSAL_SYNTHESIS_PROMPT.output_model, backend)
-    system_prompt = SKILL_PROPOSAL_SYNTHESIS_PROMPT.render_system(**system_kwargs)
-    user_prompt = SKILL_PROPOSAL_SYNTHESIS_PROMPT.render_user(
-        batch_count=len(batch_results),
-        session_count=session_count,
-        batch_results=batch_data,
+    synthesis_prompt = SKILL_CREATION_PROPOSAL_SYNTHESIS_PROMPT
+    system_kwargs = build_system_kwargs(synthesis_prompt.output_model, backend)
+    system_prompt = synthesis_prompt.render_system(**system_kwargs)
+    user_prompt = synthesis_prompt.render_user(
+        batch_count=len(batch_results), session_count=session_count, batch_results=batch_data
     )
 
     request = InferenceRequest(
         system=system_prompt,
         user=user_prompt,
-        max_tokens=PROPOSAL_SYNTHESIS_OUTPUT_TOKENS,
-        timeout=PROPOSAL_SYNTHESIS_TIMEOUT_SECONDS,
-        json_schema=SKILL_PROPOSAL_SYNTHESIS_PROMPT.output_model.model_json_schema(),
+        max_tokens=SKILL_CREATION_SYNTHESIS_OUTPUT_TOKENS,
+        timeout=SKILL_CREATION_SYNTHESIS_TIMEOUT_SECONDS,
+        json_schema=synthesis_prompt.output_model.model_json_schema(),
     )
 
     save_analysis_log(log_dir, "proposal_synthesis_system.txt", system_prompt)
@@ -453,66 +457,8 @@ async def _synthesize_proposals(
     result = await backend.generate(request)
     save_analysis_log(log_dir, "proposal_synthesis_output.txt", result.text)
 
-    synthesis_output = _parse_proposal_output(result.text)
+    synthesis_output = parse_llm_output(
+        result.text, SkillCreationProposalOutput, "proposal synthesis"
+    )
     cost = result.cost_usd or 0.0
     return synthesis_output, cost
-
-
-def _parse_proposal_output(text: str) -> SkillProposalOutput:
-    """Parse LLM output text into SkillProposalOutput.
-
-    Args:
-        text: Raw LLM output text.
-
-    Returns:
-        Validated SkillProposalOutput instance.
-
-    Raises:
-        InferenceError: If parsing or validation fails.
-    """
-    if not text or not text.strip():
-        raise InferenceError("LLM returned empty response for skill proposals.")
-
-    json_str = _extract_json(text)
-    try:
-        data = json.loads(json_str)
-        return SkillProposalOutput.model_validate(data)
-    except json.JSONDecodeError as exc:
-        preview = json_str[:500] if len(json_str) > 500 else json_str
-        raise InferenceError(
-            f"Proposal output is not valid JSON. Preview: {preview!r}. Error: {exc}"
-        ) from exc
-    except ValidationError as exc:
-        raise InferenceError(
-            f"Proposal JSON does not match SkillProposalOutput schema: {exc}"
-        ) from exc
-
-
-def _parse_deep_creation_output(text: str) -> SkillDeepCreationOutput:
-    """Parse LLM output text into SkillDeepCreationOutput.
-
-    Args:
-        text: Raw LLM output text.
-
-    Returns:
-        Validated SkillDeepCreationOutput instance.
-
-    Raises:
-        InferenceError: If parsing or validation fails.
-    """
-    if not text or not text.strip():
-        raise InferenceError("LLM returned empty response for deep skill creation.")
-
-    json_str = _extract_json(text)
-    try:
-        data = json.loads(json_str)
-        return SkillDeepCreationOutput.model_validate(data)
-    except json.JSONDecodeError as exc:
-        preview = json_str[:500] if len(json_str) > 500 else json_str
-        raise InferenceError(
-            f"Deep creation output is not valid JSON. Preview: {preview!r}. Error: {exc}"
-        ) from exc
-    except ValidationError as exc:
-        raise InferenceError(
-            f"Deep creation JSON does not match SkillDeepCreationOutput schema: {exc}"
-        ) from exc

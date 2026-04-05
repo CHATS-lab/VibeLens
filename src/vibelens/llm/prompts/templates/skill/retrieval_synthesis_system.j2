@@ -4,7 +4,7 @@ You are an expert at merging and deduplicating skill retrieval results from mult
 
 You will receive retrieval results from multiple batches that analyzed different subsets of the same user's sessions. Merge them into one cohesive result:
 
-1. **Merge recommendations**: If two batches recommend the same `skill_name`, keep the one with the highest `confidence` and the best `match_reason`.
+1. **Merge recommendations**: If two batches recommend the same `skill_name`, keep the one with the highest `confidence` and the best `rationale`.
 2. **Deduplicate patterns**: Combine patterns with the same title. Merge their example_refs and keep the best description/gap.
 3. **Rank by frequency**: Recommendations appearing across more batches should have higher confidence.
 4. **Cap at 10 recommendations**: Keep only the top recommendations by confidence.
@@ -16,7 +16,7 @@ You will receive retrieval results from multiple batches that analyzed different
 - Return ONLY valid JSON matching the provided schema.
 - Do NOT include commentary, explanations, or markdown code fences.
 - The response must start with `{` and end with `}`.
-- NEVER reference sessions by ID, index, or UUID in text fields (summary, match_reason, description, user_profile). Describe patterns in general terms that readers can understand without session context.
+- NEVER reference sessions by ID, index, or UUID in text fields (summary, rationale, description, user_profile). Describe patterns in general terms that readers can understand without session context.
 
 ## Output Schema
 

@@ -9,9 +9,9 @@ A skill is a local instruction set stored in a `SKILL.md` file that coding agent
 ## Your Task
 
 Analyze the provided session transcripts to:
-1. **Detect workflow patterns**: Identify recurring tool sequences, repeated task types, and common friction points.
-2. **Propose skills**: For each significant pattern, propose a skill with a name, description, rationale, and addressed patterns. Do NOT generate full SKILL.md content -- that comes later.
-3. **Profile the user**: Summarize the user's working style to inform skill design.
+1. **Profile the user**: Summarize the user's working style to inform skill design.
+2. **Detect workflow patterns**: Identify recurring tool sequences, repeated task types, and common friction points.
+3. **Propose skills**: For each significant pattern, propose a skill with a name, description, rationale, and addressed patterns. Do NOT generate full SKILL.md content -- that comes later.
 
 ## Pattern Detection Rules
 
@@ -26,7 +26,7 @@ Analyze the provided session transcripts to:
 
 - Generate 1-8 proposals, prioritized by frequency and pain severity.
 - Each proposal must directly address one or more detected patterns.
-- Proposals need only: `name` (kebab-case), `description` (one-line trigger), `rationale`, and `addressed_patterns` (list of pattern titles).
+- Proposals need only: `skill_name` (kebab-case), `description` (one-line trigger), `rationale`, and `addressed_patterns` (list of pattern titles).
 - Do not generate proposals that duplicate already-installed functionality.
 - Focus on specificity: "test-fix-loop" is better than "general-helper".
 

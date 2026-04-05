@@ -13,7 +13,7 @@ from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
 
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
 from vibelens.deps import get_friction_store
 from vibelens.llm.backend import InferenceBackend, InferenceError
@@ -39,7 +39,7 @@ from vibelens.models.trajectories import Trajectory
 from vibelens.services.analysis_shared import (
     build_system_kwargs,
     extract_all_contexts,
-    get_cached,
+    make_ttl_cache,
     require_backend,
     run_batches_concurrent,
     save_analysis_log,
@@ -66,7 +66,7 @@ SYNTHESIS_TIMEOUT_SECONDS = 120
 FRICTION_LOG_DIR = Path("logs/friction")
 MAX_EVENTS_FOR_SYNTHESIS = 7
 
-_cache: dict[str, tuple[float, BaseModel]] = {}
+_cache = make_ttl_cache()
 
 
 def estimate_friction(session_ids: list[str], session_token: str | None = None) -> CostEstimate:
@@ -119,10 +119,10 @@ async def analyze_friction(
         InferenceError: If LLM backend fails.
     """
     cache_key = _friction_cache_key(session_ids)
-    cached = get_cached(_cache, cache_key)
-    if cached:
-        return cached
+    if cache_key in _cache:
+        return _cache[cache_key]
 
+    start_time = time.monotonic()
     backend = require_backend()
     contexts, loaded_ids, skipped_ids = extract_all_contexts(session_ids, session_token)
 
@@ -187,6 +187,7 @@ async def analyze_friction(
         except Exception:
             logger.warning("Synthesis failed, using raw batch summaries", exc_info=True)
 
+    duration = round(time.monotonic() - start_time, 2)
     friction_result = FrictionAnalysisResult(
         events=events,
         title=title,
@@ -201,11 +202,12 @@ async def analyze_friction(
         backend_id=backend.backend_id,
         model=backend.model,
         cost_usd=total_cost if total_cost > 0 else None,
+        duration_seconds=duration,
         created_at=datetime.now(UTC).isoformat(),
     )
 
     get_friction_store().save(friction_result)
-    _cache[cache_key] = (time.monotonic(), friction_result)
+    _cache[cache_key] = friction_result
     return friction_result
 
 

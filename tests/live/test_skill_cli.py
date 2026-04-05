@@ -3,9 +3,9 @@
 Exercises the full proposal + deep-creation pipeline:
   1. Load example sessions -> extract contexts -> build batches
   2. Run proposal inference via backend
-  3. Parse SkillProposalOutput
+  3. Parse SkillCreationProposalOutput
   4. Run deep creation for the first proposal
-  5. Parse SkillDeepCreationOutput
+  5. Parse SkillCreation
   6. Log everything to logs/skill/
 
 Run: python -m pytest tests/live/test_skill_cli.py -s -v
@@ -22,24 +22,24 @@ import pytest
 from vibelens.config.llm_config import load_llm_config
 from vibelens.llm.backends import create_backend_from_llm_config
 from vibelens.llm.backends.codex_cli import CodexCliBackend
-from vibelens.llm.prompts.skill_deep_creation import SKILL_DEEP_CREATION_PROMPT
-from vibelens.llm.prompts.skill_proposal import (
-    SKILL_PROPOSAL_PROMPT,
-    SKILL_PROPOSAL_SYNTHESIS_PROMPT,
+from vibelens.llm.prompts.skill_creation import (
+    SKILL_CREATION_GENERATE_PROMPT,
+    SKILL_CREATION_PROPOSAL_PROMPT,
+    SKILL_CREATION_PROPOSAL_SYNTHESIS_PROMPT,
 )
 from vibelens.llm.tokenizer import count_tokens
 from vibelens.models.inference import InferenceRequest
-from vibelens.models.skill import SkillDeepCreationOutput, SkillProposalOutput
+from vibelens.models.skill import SkillCreation, SkillCreationProposalOutput
 from vibelens.services.context_extraction import extract_session_context
 from vibelens.services.friction.digest import format_batch_digest
 from vibelens.services.session_batcher import build_batches
 from vibelens.services.skill.creation import (
-    DEEP_CREATION_OUTPUT_TOKENS,
-    DEEP_CREATION_TIMEOUT_SECONDS,
-    PROPOSAL_OUTPUT_TOKENS,
-    PROPOSAL_TIMEOUT_SECONDS,
+    SKILL_CREATION_GENERATE_OUTPUT_TOKENS,
+    SKILL_CREATION_GENERATE_TIMEOUT_SECONDS,
+    SKILL_CREATION_PROPOSAL_OUTPUT_TOKENS,
+    SKILL_CREATION_PROPOSAL_TIMEOUT_SECONDS,
 )
-from vibelens.services.skill.retrieval import _gather_installed_skills
+from vibelens.services.skill.shared import gather_installed_skills
 from vibelens.utils.json_extract import extract_json as _extract_json
 
 from .conftest import EXAMPLES_DIR, LOGS_DIR, load_trajectory_groups, save_log
@@ -47,18 +47,18 @@ from .conftest import EXAMPLES_DIR, LOGS_DIR, load_trajectory_groups, save_log
 SKILL_LOGS_DIR = LOGS_DIR / "skill"
 
 
-def _parse_proposal_output(raw_text: str) -> SkillProposalOutput:
-    """Parse and validate raw LLM text as SkillProposalOutput."""
+def _parse_proposal_output(raw_text: str) -> SkillCreationProposalOutput:
+    """Parse and validate raw LLM text as SkillCreationProposalOutput."""
     json_str = _extract_json(raw_text)
     data = json.loads(json_str)
-    return SkillProposalOutput.model_validate(data)
+    return SkillCreationProposalOutput.model_validate(data)
 
 
-def _parse_deep_creation_output(raw_text: str) -> SkillDeepCreationOutput:
-    """Parse and validate raw LLM text as SkillDeepCreationOutput."""
+def _parse_deep_creation_output(raw_text: str) -> SkillCreation:
+    """Parse and validate raw LLM text as SkillCreation."""
     json_str = _extract_json(raw_text)
     data = json.loads(json_str)
-    return SkillDeepCreationOutput.model_validate(data)
+    return SkillCreation.model_validate(data)
 
 
 def _run_proposal_test(backend, label: str, session_count: int = 2) -> None:
@@ -79,22 +79,22 @@ def _run_proposal_test(backend, label: str, session_count: int = 2) -> None:
     timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     log_dir = SKILL_LOGS_DIR / f"{timestamp}_{label}"
 
-    installed_skills = _gather_installed_skills()
+    installed_skills = gather_installed_skills()
 
     print(f"\n{'=' * 70}")
     print(f"  SKILL PROPOSAL TEST: {label}")
     print(f"  Sessions: {len(groups)}, Batches: {len(batches)}")
     print(f"{'=' * 70}")
 
-    all_proposal_outputs: list[SkillProposalOutput] = []
+    all_proposal_outputs: list[SkillCreationProposalOutput] = []
 
     for idx, batch in enumerate(batches):
         digest = format_batch_digest(batch)
         output_schema = json.dumps(
-            SKILL_PROPOSAL_PROMPT.output_model.model_json_schema(), indent=2
+            SKILL_CREATION_PROPOSAL_PROMPT.output_model.model_json_schema(), indent=2
         )
-        system_prompt = SKILL_PROPOSAL_PROMPT.render_system()
-        user_prompt = SKILL_PROPOSAL_PROMPT.render_user(
+        system_prompt = SKILL_CREATION_PROPOSAL_PROMPT.render_system()
+        user_prompt = SKILL_CREATION_PROPOSAL_PROMPT.render_user(
             session_count=len(batch.session_contexts),
             session_digest=digest,
             output_schema=output_schema,
@@ -113,9 +113,9 @@ def _run_proposal_test(backend, label: str, session_count: int = 2) -> None:
         request = InferenceRequest(
             system=system_prompt,
             user=user_prompt,
-            max_tokens=PROPOSAL_OUTPUT_TOKENS,
-            timeout=PROPOSAL_TIMEOUT_SECONDS,
-            json_schema=SKILL_PROPOSAL_PROMPT.output_model.model_json_schema(),
+            max_tokens=SKILL_CREATION_PROPOSAL_OUTPUT_TOKENS,
+            timeout=SKILL_CREATION_PROPOSAL_TIMEOUT_SECONDS,
+            json_schema=SKILL_CREATION_PROPOSAL_PROMPT.output_model.model_json_schema(),
         )
 
         start = time.monotonic()
@@ -176,7 +176,7 @@ def _run_proposal_test(backend, label: str, session_count: int = 2) -> None:
                 )
             for proposal in proposal_output.proposals:
                 print(
-                    f"    PROPOSAL: {proposal.name}"
+                    f"    PROPOSAL: {proposal.skill_name}"
                     f" | {proposal.description[:60]}"
                     f" | addresses={proposal.addressed_patterns}"
                 )
@@ -201,7 +201,7 @@ def _run_proposal_test(backend, label: str, session_count: int = 2) -> None:
                 ],
                 "proposals": [
                     {
-                        "name": p.name,
+                        "skill_name": p.skill_name,
                         "description": p.description,
                         "rationale": p.rationale,
                         "addressed_patterns": p.addressed_patterns,
@@ -213,10 +213,10 @@ def _run_proposal_test(backend, label: str, session_count: int = 2) -> None:
         ]
 
         output_schema = json.dumps(
-            SKILL_PROPOSAL_SYNTHESIS_PROMPT.output_model.model_json_schema(), indent=2
+            SKILL_CREATION_PROPOSAL_SYNTHESIS_PROMPT.output_model.model_json_schema(), indent=2
         )
-        system_prompt = SKILL_PROPOSAL_SYNTHESIS_PROMPT.render_system()
-        user_prompt = SKILL_PROPOSAL_SYNTHESIS_PROMPT.render_user(
+        system_prompt = SKILL_CREATION_PROPOSAL_SYNTHESIS_PROMPT.render_system()
+        user_prompt = SKILL_CREATION_PROPOSAL_SYNTHESIS_PROMPT.render_user(
             batch_count=len(batches),
             session_count=len(groups),
             batch_results=batch_data,
@@ -229,9 +229,9 @@ def _run_proposal_test(backend, label: str, session_count: int = 2) -> None:
         syn_request = InferenceRequest(
             system=system_prompt,
             user=user_prompt,
-            max_tokens=PROPOSAL_OUTPUT_TOKENS,
-            timeout=PROPOSAL_TIMEOUT_SECONDS,
-            json_schema=SKILL_PROPOSAL_SYNTHESIS_PROMPT.output_model.model_json_schema(),
+            max_tokens=SKILL_CREATION_PROPOSAL_OUTPUT_TOKENS,
+            timeout=SKILL_CREATION_PROPOSAL_TIMEOUT_SECONDS,
+            json_schema=SKILL_CREATION_PROPOSAL_SYNTHESIS_PROMPT.output_model.model_json_schema(),
         )
 
         start = time.monotonic()
@@ -259,17 +259,17 @@ def _run_proposal_test(backend, label: str, session_count: int = 2) -> None:
     total_proposals = sum(len(o.proposals) for o in all_proposal_outputs)
     if total_proposals > 0:
         first_proposal = all_proposal_outputs[0].proposals[0]
-        print(f"\n  --- Deep Creation: {first_proposal.name} ---")
+        print(f"\n  --- Deep Creation: {first_proposal.skill_name} ---")
 
         # Use first batch digest as session evidence
         first_batch = batches[0]
         digest = format_batch_digest(first_batch)
         output_schema = json.dumps(
-            SKILL_DEEP_CREATION_PROMPT.output_model.model_json_schema(), indent=2
+            SKILL_CREATION_GENERATE_PROMPT.output_model.model_json_schema(), indent=2
         )
-        system_prompt = SKILL_DEEP_CREATION_PROMPT.render_system()
-        user_prompt = SKILL_DEEP_CREATION_PROMPT.render_user(
-            proposal_name=first_proposal.name,
+        system_prompt = SKILL_CREATION_GENERATE_PROMPT.render_system()
+        user_prompt = SKILL_CREATION_GENERATE_PROMPT.render_user(
+            proposal_name=first_proposal.skill_name,
             proposal_description=first_proposal.description,
             proposal_rationale=first_proposal.rationale,
             addressed_patterns=first_proposal.addressed_patterns,
@@ -284,9 +284,9 @@ def _run_proposal_test(backend, label: str, session_count: int = 2) -> None:
         dc_request = InferenceRequest(
             system=system_prompt,
             user=user_prompt,
-            max_tokens=DEEP_CREATION_OUTPUT_TOKENS,
-            timeout=DEEP_CREATION_TIMEOUT_SECONDS,
-            json_schema=SKILL_DEEP_CREATION_PROMPT.output_model.model_json_schema(),
+            max_tokens=SKILL_CREATION_GENERATE_OUTPUT_TOKENS,
+            timeout=SKILL_CREATION_GENERATE_TIMEOUT_SECONDS,
+            json_schema=SKILL_CREATION_GENERATE_PROMPT.output_model.model_json_schema(),
         )
 
         start = time.monotonic()
@@ -353,5 +353,5 @@ def test_skill_proposals_litellm():
 @pytest.mark.skipif(shutil.which("codex") is None, reason="codex CLI not in PATH")
 def test_skill_proposals_codex_cli():
     """Skill proposal + deep creation via Codex CLI backend."""
-    backend = CodexCliBackend(timeout=PROPOSAL_TIMEOUT_SECONDS)
+    backend = CodexCliBackend(timeout=SKILL_CREATION_PROPOSAL_TIMEOUT_SECONDS)
     _run_proposal_test(backend, "codex_proposals", session_count=2)

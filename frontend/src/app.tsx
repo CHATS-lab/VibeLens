@@ -1,6 +1,7 @@
 import {
   Menu,
   PanelLeftClose,
+  RefreshCw,
   Settings,
   Share2,
 } from "lucide-react";
@@ -157,7 +158,7 @@ export function App() {
 
   useEffect(() => {
     setSessionsLoading(true);
-    fetchWithToken(`/api/sessions`)
+    fetchWithToken(`/api/sessions?refresh=true`)
       .then((r) => r.json())
       .then((data: Trajectory[]) => {
         setSessions(data);
@@ -380,13 +381,22 @@ export function App() {
                 <img src="/icon.png" alt="VibeLens" className="w-12 h-12" />
                 <h1 className="text-2xl font-bold text-cyan-400">VibeLens</h1>
               </div>
-              <button
-                onClick={() => setSidebarOpen(false)}
-                className="text-zinc-500 hover:text-zinc-300 transition"
-                title="Collapse sidebar"
-              >
-                <PanelLeftClose className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setRefreshKey((k) => k + 1)}
+                  className="text-zinc-500 hover:text-zinc-300 transition"
+                  title="Refresh sessions"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setSidebarOpen(false)}
+                  className="text-zinc-500 hover:text-zinc-300 transition"
+                  title="Collapse sidebar"
+                >
+                  <PanelLeftClose className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             <SessionList
@@ -458,19 +468,6 @@ export function App() {
                   Dashboard
                 </button>
               </Tooltip>
-              <Tooltip text="Spot wasted effort and get improvement tips. Requires LLM call.">
-                <button
-                  data-tour="productivity-tips-tab"
-                  onClick={() => setMainView("friction")}
-                  className={`min-w-[100px] text-center px-4 py-1.5 text-sm font-semibold rounded-md transition ${
-                    mainView === "friction"
-                      ? "bg-amber-600/30 text-amber-200 border border-amber-400/40 shadow-sm shadow-amber-900/40"
-                      : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
-                  }`}
-                >
-                  Productivity Tips
-                </button>
-              </Tooltip>
               <Tooltip text="Create reusable skills from your coding patterns. Requires LLM call.">
                 <button
                   data-tour="personalization-tab"
@@ -482,6 +479,19 @@ export function App() {
                   }`}
                 >
                   Personalization
+                </button>
+              </Tooltip>
+              <Tooltip text="Spot wasted effort and get improvement tips. Requires LLM call.">
+                <button
+                  data-tour="productivity-tips-tab"
+                  onClick={() => setMainView("friction")}
+                  className={`min-w-[100px] text-center px-4 py-1.5 text-sm font-semibold rounded-md transition ${
+                    mainView === "friction"
+                      ? "bg-amber-600/30 text-amber-200 border border-amber-400/40 shadow-sm shadow-amber-900/40"
+                      : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+                  }`}
+                >
+                  Productivity Tips
                 </button>
               </Tooltip>
             </div>

@@ -279,6 +279,7 @@ export interface FrictionAnalysisResult {
   backend_id: string;
   model: string;
   cost_usd: number | null;
+  duration_seconds: number | null;
   created_at: string;
 }
 
@@ -286,12 +287,11 @@ export interface FrictionMeta {
   analysis_id: string;
   title?: string | null;
   session_ids: string[];
-  event_count: number;
-  summary_preview: string;
   created_at: string;
   model: string;
   cost_usd: number | null;
   batch_count: number;
+  duration_seconds: number | null;
 }
 
 export interface FrictionEstimate {
@@ -381,7 +381,8 @@ export interface WorkflowPattern {
 
 export interface SkillRecommendation {
   skill_name: string;
-  match_reason: string;
+  rationale: string;
+  addressed_patterns: string[];
   confidence: number;
 }
 
@@ -390,6 +391,7 @@ export interface SkillCreation {
   description: string;
   skill_md_content: string;
   rationale: string;
+  tools_used: string[];
   confidence: number;
 }
 
@@ -399,61 +401,71 @@ export interface SkillEdit {
   replace_all: boolean;
 }
 
-export interface SkillEvolutionSuggestion {
+export interface SkillEvolution {
   skill_name: string;
   edits: SkillEdit[];
   rationale: string;
+  confidence: number;
 }
 
 export interface SkillAnalysisResult {
   analysis_id: string | null;
   mode: SkillMode;
+  title: string;
   workflow_patterns: WorkflowPattern[];
   recommendations: SkillRecommendation[];
-  generated_skills: SkillCreation[];
-  evolution_suggestions: SkillEvolutionSuggestion[];
+  creations: SkillCreation[];
+  evolutions: SkillEvolution[];
   summary: string;
   user_profile: string;
   session_ids: string[];
-  sessions_skipped: string[];
+  skipped_session_ids: string[];
   warnings?: string[];
   backend_id: string;
   model: string;
-  cost_usd: number | null;
+  metrics: { cost_usd: number | null };
+  duration_seconds: number | null;
   created_at: string;
 }
 
-export interface SkillProposal {
-  name: string;
+export interface SkillCreationProposal {
+  skill_name: string;
   description: string;
   rationale: string;
   addressed_patterns: string[];
 }
 
-export interface SkillProposalResult {
+export interface SkillCreationProposalOutput {
+  title: string;
+  user_profile: string;
+  workflow_patterns: WorkflowPattern[];
+  summary: string;
+  proposals: SkillCreationProposal[];
+}
+
+export interface SkillCreationProposalResult {
   proposal_id: string | null;
   session_ids: string[];
-  workflow_patterns: WorkflowPattern[];
-  proposals: SkillProposal[];
-  summary: string;
-  user_profile: string;
-  sessions_skipped: string[];
+  skipped_session_ids: string[];
   backend_id: string;
-  model: string;
-  cost_usd: number | null;
-  batch_count: number;
   created_at: string;
+  model: string;
+  metrics: { cost_usd: number | null };
+  duration_seconds: number | null;
+  batch_count: number;
+  warnings: string[];
+  proposal_output: SkillCreationProposalOutput;
 }
 
 export interface SkillAnalysisMeta {
   analysis_id: string;
   mode: SkillMode;
+  title: string;
   session_ids: string[];
-  pattern_count: number;
-  summary_preview: string;
   created_at: string;
   model: string;
   cost_usd: number | null;
+  duration_seconds: number | null;
 }
 
 export interface AnalysisJobResponse {
