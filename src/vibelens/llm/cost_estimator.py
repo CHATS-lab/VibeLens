@@ -19,7 +19,7 @@ from dataclasses import dataclass
 
 from vibelens.llm.pricing import TOKENS_PER_MTOK, lookup_pricing
 from vibelens.llm.tokenizer import count_tokens
-from vibelens.models.pricing import ModelPricing
+from vibelens.models.llm.pricing import ModelPricing
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -64,14 +64,19 @@ class CostEstimate:
         return f"{value:.2f}"
 
 
-def estimate_friction_cost(
+def estimate_analysis_cost(
     batch_token_counts: list[int],
     system_prompt: str,
     model: str,
     max_output_tokens: int,
     synthesis_output_tokens: int,
+    synthesis_threshold: int = 1,
+    extra_calls: list[tuple[int, int]] | None = None,
 ) -> CostEstimate:
-    """Estimate cost for a friction analysis run.
+    """Estimate cost for an LLM analysis pipeline.
+
+    Covers batch inference, optional synthesis, and optional extra calls
+    (e.g. deep generation/edit steps in multi-phase pipelines).
 
     Args:
         batch_token_counts: Token count of user prompt content per batch.
@@ -79,9 +84,14 @@ def estimate_friction_cost(
         model: Model name (e.g. "anthropic/claude-haiku-4-5").
         max_output_tokens: Max output tokens per batch call.
         synthesis_output_tokens: Max output tokens for synthesis call.
+        synthesis_threshold: Synthesis added when batch_count > this value.
+            Friction uses 0 (always synthesize), skill modes use 1.
+        extra_calls: Additional LLM calls beyond batch+synthesis, as
+            (input_tokens, output_budget) tuples. Used for deep generation
+            or edit steps whose count is estimated upfront.
 
     Returns:
-        CostEstimate with projected cost.
+        CostEstimate with projected cost range.
     """
     pricing = lookup_pricing(model)
     system_tokens = count_tokens(system_prompt)
@@ -94,11 +104,13 @@ def estimate_friction_cost(
         total_input += system_tokens + user_tokens
         total_output_budget += max_output_tokens
 
-    # Add synthesis call estimate if multiple batches
-    has_synthesis = batch_count > 0
-    if has_synthesis:
+    if batch_count > synthesis_threshold:
         total_input += system_tokens + SYNTHESIS_INPUT_TOKENS_ESTIMATE
         total_output_budget += synthesis_output_tokens
+
+    for extra_input, extra_output in extra_calls or []:
+        total_input += extra_input
+        total_output_budget += extra_output
 
     cost_min = _compute_cost(pricing, total_input, total_output_budget, OUTPUT_RATIO_MIN)
     cost_max = _compute_cost(pricing, total_input, total_output_budget, OUTPUT_RATIO_MAX)
@@ -121,6 +133,7 @@ def estimate_friction_cost(
         estimate.formatted_cost,
     )
     return estimate
+
 
 
 def _compute_cost(

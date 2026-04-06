@@ -11,11 +11,11 @@ Reusable by friction analysis, skill analysis, and other LLM-powered modules.
 """
 
 import os
-import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import PurePosixPath
 
+from vibelens.models.context import SessionContext
 from vibelens.models.enums import StepSource
 from vibelens.models.trajectories import Trajectory
 from vibelens.models.trajectories.step import Step
@@ -57,51 +57,8 @@ class _IndexTracker:
         return idx
 
 
-@dataclass
-class IdMapping:
-    """Maps 0-indexed synthetic IDs back to real UUIDs."""
-
-    session_index_to_id: dict[int, str] = field(default_factory=dict)
-    step_index_to_id: dict[int, dict[int, str]] = field(default_factory=dict)
-
-    def resolve_session_id(self, synthetic: str) -> str | None:
-        """Convert a synthetic session index string (e.g. "0") to real UUID."""
-        try:
-            idx = int(synthetic)
-        except (ValueError, TypeError):
-            return None
-        return self.session_index_to_id.get(idx)
-
-    def resolve_step_id(self, session_index: int, synthetic: str) -> str | None:
-        """Convert a synthetic step index string (e.g. "5") to real UUID."""
-        try:
-            step_idx = int(synthetic)
-        except (ValueError, TypeError):
-            return None
-        step_map = self.step_index_to_id.get(session_index)
-        if step_map is None:
-            return None
-        return step_map.get(step_idx)
-
-
-@dataclass
-class SessionContext:
-    """Compressed context for one session, ready for LLM consumption."""
-
-    session_id: str
-    project_path: str | None
-    context_text: str
-    char_count: int
-    trajectory_group: list[Trajectory] = field(repr=False)
-    last_trajectory_ref_id: str | None = None
-    continued_trajectory_ref_id: str | None = None
-    timestamp: datetime | None = None
-    step_index_map: dict[int, str] = field(default_factory=dict)
-
-
 def extract_session_context(
-    trajectory_group: list[Trajectory],
-    params: ContextParams = PRESET_DETAIL,
+    trajectory_group: list[Trajectory], params: ContextParams = PRESET_DETAIL
 ) -> SessionContext:
     """Extract compressed context from a session's trajectory group.
 
@@ -110,7 +67,7 @@ def extract_session_context(
     - Without compactions: all steps with user messages, tool calls, and errors
 
     Steps use 0-indexed IDs via _IndexTracker for compact LLM prompts.
-    The mapping from index → real UUID is stored in step_index_map.
+    The mapping from index → real UUID is stored in step_index2id.
 
     Args:
         trajectory_group: All trajectories for one session (main + sub-agents).
@@ -135,16 +92,15 @@ def extract_session_context(
         session_id=main.session_id,
         project_path=main.project_path,
         context_text=full_text,
-        char_count=len(full_text),
         trajectory_group=trajectory_group,
-        last_trajectory_ref_id=(
-            main.last_trajectory_ref.session_id if main.last_trajectory_ref else None
+        prev_trajectory_ref_id=(
+            main.prev_trajectory_ref.session_id if main.prev_trajectory_ref else None
         ),
-        continued_trajectory_ref_id=(
-            main.continued_trajectory_ref.session_id if main.continued_trajectory_ref else None
+        next_trajectory_ref_id=(
+            main.next_trajectory_ref.session_id if main.next_trajectory_ref else None
         ),
         timestamp=main.timestamp,
-        step_index_map=tracker.index_to_real_id,
+        step_index2id=tracker.index_to_real_id,
     )
 
 
@@ -275,25 +231,13 @@ def _build_compaction_boundaries(
     return boundaries
 
 
-def _truncate_user_prompt(message: str, params: ContextParams) -> str:
-    """Truncate long user prompts to save tokens.
-
-    Keeps the first head_chars and last tail_chars with a truncation marker.
-    """
-    if len(message) <= params.user_prompt_max_chars:
-        return message
-    head = message[: params.user_prompt_head_chars]
-    tail = message[-params.user_prompt_tail_chars :]
-    return f"{head}\n[...truncated...]\n{tail}"
-
-
 def _format_step(step: Step, tracker: _IndexTracker, params: ContextParams) -> str:
     """Format a step with 0-indexed IDs, truncated user prompts, and tool info.
 
     Filtering logic:
     - USER steps: truncate long messages, assign 0-indexed step ID
-    - AGENT steps: include only if they have tool calls or observations.
-      Agent-only text responses (no tools, no errors) are skipped to reduce noise.
+    - AGENT steps: include text message (truncated), tool calls, and observations.
+      Included if they have any content (message, tool calls, or observations).
     - SYSTEM steps: skipped entirely (internal prompts, not useful for analysis)
 
     Observations: errors are always included (truncated by error_truncate_chars).
@@ -311,6 +255,14 @@ def _format_step(step: Step, tracker: _IndexTracker, params: ContextParams) -> s
     elif step.source == StepSource.AGENT:
         idx = tracker.assign(step.step_id)
         agent_lines = [f"[step_id={idx}] AGENT:"]
+
+        # Agent's text message (reasoning, explanations, decisions)
+        if params.agent_message_max_chars > 0:
+            message = extract_text(step.message)
+            if message.strip():
+                truncated = _truncate_agent_message(message.strip(), params)
+                agent_lines.append(f"  MSG: {truncated}")
+
         for tc in step.tool_calls:
             tool_summary = _summarize_tool_args(tc.function_name, tc.arguments, params)
             agent_lines.append(f"  TOOL: fn={tc.function_name} {tool_summary}")
@@ -327,11 +279,35 @@ def _format_step(step: Step, tracker: _IndexTracker, params: ContextParams) -> s
                     if obs_text.strip():
                         agent_lines.append(f"  OUT: {obs_text}")
 
-        # Only include agent step if it has tool calls or observations
+        # Include agent step if it has any content beyond the header
         if len(agent_lines) > 1:
             lines.extend(agent_lines)
 
     return "\n".join(lines)
+
+
+def _truncate_user_prompt(message: str, params: ContextParams) -> str:
+    """Truncate long user prompts to save tokens.
+
+    Keeps the first head_chars and last tail_chars with a truncation marker.
+    """
+    if len(message) <= params.user_prompt_max_chars:
+        return message
+    head = message[: params.user_prompt_head_chars]
+    tail = message[-params.user_prompt_tail_chars :]
+    return f"{head}\n[...truncated...]\n{tail}"
+
+
+def _truncate_agent_message(message: str, params: ContextParams) -> str:
+    """Truncate long agent text messages to save tokens.
+
+    Keeps the first head_chars and last tail_chars with a truncation marker.
+    """
+    if len(message) <= params.agent_message_max_chars:
+        return message
+    head = message[: params.agent_message_head_chars]
+    tail = message[-params.agent_message_tail_chars :]
+    return f"{head}\n[...truncated...]\n{tail}"
 
 
 def _summarize_tool_args(function_name: str, arguments: object, params: ContextParams) -> str:
@@ -395,31 +371,3 @@ def _shorten_path(path_str: str, params: ContextParams) -> str:
             path_str = str(PurePosixPath(*parts[-params.path_max_segments :]))
 
     return path_str
-
-
-def remap_session_ids(contexts: list[SessionContext]) -> IdMapping:
-    """Assign 0-based session indices and replace session_id in context_text.
-
-    Mutates each context's context_text, replacing the real session UUID
-    in the header with a 0-based index. Returns the combined mapping for
-    resolving synthetic IDs back to real UUIDs after LLM inference.
-
-    Args:
-        contexts: Session contexts to remap (mutated in place).
-
-    Returns:
-        IdMapping with session and step index→UUID mappings.
-    """
-    mapping = IdMapping()
-    for idx, ctx in enumerate(contexts):
-        mapping.session_index_to_id[idx] = ctx.session_id
-        mapping.step_index_to_id[idx] = dict(ctx.step_index_map)
-
-        ctx.context_text = re.sub(
-            rf"=== SESSION: {re.escape(ctx.session_id)} ===",
-            f"=== SESSION: {idx} ===",
-            ctx.context_text,
-            count=1,
-        )
-        ctx.char_count = len(ctx.context_text)
-    return mapping

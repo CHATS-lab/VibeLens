@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 
 import httpx
+from cachetools import TTLCache
 from fastapi import APIRouter, HTTPException
 
 from vibelens.deps import (
@@ -20,7 +21,7 @@ from vibelens.schemas.skills import (
     SkillSyncRequest,
     SkillWriteRequest,
 )
-from vibelens.services.analysis_shared import make_ttl_cache
+from vibelens.services.analysis_shared import CACHE_TTL_SECONDS
 from vibelens.utils.github import download_skill_from_github
 
 logger = logging.getLogger(__name__)
@@ -172,7 +173,7 @@ def install_featured_skill(req: FeaturedSkillInstallRequest) -> dict:
     }
 
 
-_featured_content_cache = make_ttl_cache(maxsize=32)
+_featured_content_cache: TTLCache = TTLCache(maxsize=32, ttl=CACHE_TTL_SECONDS)
 
 
 @router.get("/featured/{slug}/content")

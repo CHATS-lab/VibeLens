@@ -24,7 +24,7 @@ Merge evolution proposals from {{ batch_count }} batches analyzing {{ session_co
 {% endfor %}
 
 Produce a single merged result with:
-- `workflow_patterns`: Deduplicated patterns with merged example_refs.
+- `workflow_patterns`: At most 5 deduplicated patterns with merged example_refs.
 - `proposals`: Top 1-8 proposals ranked by frequency and quality.
 - `summary`: Unified narrative overview.
 - `user_profile`: Merged user profile.

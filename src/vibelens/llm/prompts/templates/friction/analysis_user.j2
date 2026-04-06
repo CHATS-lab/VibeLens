@@ -6,17 +6,17 @@ Analyze {{ session_count }} coding agent session{{ "s" if session_count != 1 els
 
 You MUST stay within the output token limit. Be concise.
 
+- `title`: Max 10 words. Capture the dominant friction theme.
+- `user_profile`: Max 50 words. Describe the user's working style and project focus.
 - Report **at most 5** friction events, strictly prioritized by severity AND recurrence. Prefer recurring patterns (same friction type across sessions) over one-off events.
 - **Minimum severity 2** — Do NOT report severity-1 events unless they recur 3+ times.
 - Merge events that share the same friction_type and root cause into a single event with the most representative span_ref.
-- `friction_type`: Kebab-case label from the taxonomy.
-- `span_ref`: session_id + start_step_id + end_step_id referencing where friction occurs. These MUST be the 0-indexed IDs from the session transcript.
-- `severity`: 1-5 using the user-impact severity scale.
-- `user_intention`: Max 15 words. What the user wanted (plain language, NO step IDs).
-- `friction_detail`: Max 20 words. Why the agent failed (or empty string).
-- `claude_helpfulness`: 1-5 helpfulness rating for the task context.
-- `mitigations`: Each with `action` (human-readable label, e.g. "Update CLAUDE.md code style section") and `content` (max 30 words, exact text to add/change). Every event SHOULD have at least one actionable mitigation.
-- `summary`: Max 50 words covering total friction impact.
-- `top_mitigation`: Single highest-impact structured mitigation, or null if no friction.
+- `friction_events[].friction_type`: Kebab-case label from the taxonomy.
+- `friction_events[].span_ref`: session_id + start_step_id + end_step_id referencing where friction occurs. These MUST be the 0-indexed IDs from the session transcript.
+- `friction_events[].severity`: 1-5 using the user-impact severity scale.
+- `friction_events[].user_intention`: Max 15 words. What the user wanted (plain language, NO step IDs).
+- `friction_events[].description`: Max 20 words. Why the agent failed (or empty string).
+- `summary`: Max 80 words covering total friction impact.
+- `mitigations`: 0-5 actionable recommendations. Each with `action` (max 30 words, specific and actionable) and `confidence` (0.0-1.0). Every friction event SHOULD have a corresponding mitigation.
 
 **Respond with raw JSON only. No markdown fences, no prose.**

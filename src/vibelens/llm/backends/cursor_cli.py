@@ -15,7 +15,7 @@ References:
 """
 
 from vibelens.llm.backends.cli_base import CliBackend
-from vibelens.models.inference import BackendType, InferenceRequest
+from vibelens.models.llm.inference import BackendType, InferenceRequest
 
 CURSOR_CLI_MODELS = [
     "claude-sonnet-4-6",

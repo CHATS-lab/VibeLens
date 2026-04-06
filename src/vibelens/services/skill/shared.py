@@ -9,13 +9,14 @@ import json
 from enum import Enum
 from pathlib import Path
 
+from cachetools import TTLCache
 from pydantic import BaseModel, ValidationError
 
 from vibelens.deps import get_central_skill_store
 from vibelens.llm.backend import InferenceError
+from vibelens.models.context import SessionContextBatch
 from vibelens.models.skill import SkillMode, WorkflowPattern
-from vibelens.models.trajectories import Trajectory
-from vibelens.services.analysis_shared import make_ttl_cache
+from vibelens.services.analysis_shared import CACHE_MAXSIZE, CACHE_TTL_SECONDS
 from vibelens.utils.json_extract import extract_json
 from vibelens.utils.log import get_logger
 
@@ -23,7 +24,7 @@ logger = get_logger(__name__)
 
 SKILL_LOG_DIR = Path("logs/skill")
 
-_cache = make_ttl_cache()
+_cache: TTLCache = TTLCache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL_SECONDS)
 
 
 class SkillDetailLevel(Enum):
@@ -69,21 +70,74 @@ def gather_installed_skills(
 
 
 def validate_patterns(
-    patterns: list[WorkflowPattern], trajectories: list[Trajectory]
+    patterns: list[WorkflowPattern], context_set: SessionContextBatch
 ) -> list[WorkflowPattern]:
-    """Validate workflow pattern step references against loaded trajectories."""
-    valid_step_ids = {step.step_id for t in trajectories for step in t.steps}
+    """Resolve and validate workflow pattern step references against trajectories.
+
+    Resolves 0-indexed step indices from LLM output to real UUIDs, then
+    validates each ref against known trajectory steps.
+
+    Args:
+        patterns: Workflow patterns from LLM output.
+        context_set: SessionContextBatch with step index maps and trajectory data.
+
+    Returns:
+        Patterns with resolved and validated example_refs.
+    """
     validated: list[WorkflowPattern] = []
     for pattern in patterns:
-        filtered_refs = [
-            ref
-            for ref in pattern.example_refs
-            if ref.start_step_id in valid_step_ids
-            and (ref.end_step_id is None or ref.end_step_id in valid_step_ids)
+        resolved_refs = [
+            r
+            for r in (context_set.resolve_step_ref(ref) for ref in pattern.example_refs)
+            if r is not None
         ]
-        pattern.example_refs = filtered_refs
+        pattern.example_refs = resolved_refs
         validated.append(pattern)
     return validated
+
+
+def merge_batch_refs(
+    synthesis_patterns: list[WorkflowPattern],
+    batch_patterns_list: list[list[WorkflowPattern]],
+) -> None:
+    """Recover example_refs the synthesis LLM dropped.
+
+    The synthesis LLM merges workflow patterns from multiple batches but
+    typically returns empty example_refs. This function propagates refs
+    from the original batch outputs into the synthesis patterns by matching
+    on normalized title.
+
+    Mutates synthesis_patterns in place. Only fills patterns whose
+    example_refs are empty (preserves any refs the LLM did produce).
+
+    Args:
+        synthesis_patterns: Workflow patterns from synthesis output.
+        batch_patterns_list: Per-batch workflow pattern lists with refs intact.
+    """
+    refs_by_title: dict[str, list] = {}
+    for batch_patterns in batch_patterns_list:
+        for pattern in batch_patterns:
+            if not pattern.example_refs:
+                continue
+            key = pattern.title.strip().lower()
+            refs_by_title.setdefault(key, []).extend(pattern.example_refs)
+
+    merged_count = 0
+    for pattern in synthesis_patterns:
+        if pattern.example_refs:
+            continue
+        key = pattern.title.strip().lower()
+        refs = refs_by_title.get(key)
+        if refs:
+            pattern.example_refs = list(refs)
+            merged_count += 1
+
+    if merged_count:
+        logger.info(
+            "Merged example_refs into %d/%d synthesis patterns",
+            merged_count,
+            len(synthesis_patterns),
+        )
 
 
 def parse_llm_output[ModelT: BaseModel](text: str, model_class: type[ModelT], label: str) -> ModelT:

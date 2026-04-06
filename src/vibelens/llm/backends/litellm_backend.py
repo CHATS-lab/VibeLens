@@ -18,7 +18,7 @@ from vibelens.llm.backend import (
     InferenceRateLimitError,
     InferenceTimeoutError,
 )
-from vibelens.models.inference import (
+from vibelens.models.llm.inference import (
     BackendType,
     InferenceRequest,
     InferenceResult,

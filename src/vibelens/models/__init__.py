@@ -18,7 +18,7 @@ from vibelens.models.enums import (
     SessionPhase,
     StepSource,
 )
-from vibelens.models.prompts import AnalysisPrompt
+from vibelens.models.llm.prompts import AnalysisPrompt
 from vibelens.models.skill import SkillInfo
 from vibelens.models.trajectories import (
     Agent,

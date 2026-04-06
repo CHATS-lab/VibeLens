@@ -14,12 +14,15 @@ from pathlib import Path
 
 from vibelens.deps import get_skill_analysis_store
 from vibelens.llm.backend import InferenceBackend
+from vibelens.llm.cost_estimator import CostEstimate, estimate_analysis_cost
 from vibelens.llm.prompts.skill_evolution import (
     SKILL_EVOLUTION_EDIT_PROMPT,
     SKILL_EVOLUTION_PROPOSAL_PROMPT,
     SKILL_EVOLUTION_PROPOSAL_SYNTHESIS_PROMPT,
 )
-from vibelens.models.inference import InferenceRequest
+from vibelens.llm.tokenizer import count_tokens
+from vibelens.models.context import SessionContextBatch
+from vibelens.models.llm.inference import InferenceRequest
 from vibelens.models.skill import (
     SkillAnalysisResult,
     SkillEvolution,
@@ -32,24 +35,27 @@ from vibelens.services.analysis_shared import (
     build_digest_from_contexts,
     build_system_kwargs,
     extract_all_contexts,
+    format_batch_digest,
+    log_analysis_summary,
     require_backend,
     run_batches_concurrent,
     save_analysis_log,
     truncate_digest_to_fit,
 )
+from vibelens.services.analysis_store import generate_analysis_id
 from vibelens.services.context_params import PRESET_MEDIUM
-from vibelens.services.friction.digest import format_batch_digest
-from vibelens.services.session_batcher import SessionBatch, build_batches
+from vibelens.services.session_batcher import build_batches
 from vibelens.services.skill.shared import (
     SKILL_LOG_DIR,
     SkillDetailLevel,
     _cache,
     gather_installed_skills,
+    merge_batch_refs,
     parse_llm_output,
     skill_cache_key,
     validate_patterns,
 )
-from vibelens.utils.log import get_logger
+from vibelens.utils.log import clear_analysis_id, get_logger, set_analysis_id
 
 logger = get_logger(__name__)
 
@@ -59,6 +65,63 @@ SKILL_EVOLUTION_SYNTHESIS_OUTPUT_TOKENS = 8192
 SKILL_EVOLUTION_SYNTHESIS_TIMEOUT_SECONDS = 300
 SKILL_EVOLUTION_EDIT_OUTPUT_TOKENS = 8192
 SKILL_EVOLUTION_EDIT_TIMEOUT_SECONDS = 300
+EXPECTED_DEEP_CALLS = 3
+
+
+def estimate_skill_evolution(
+    session_ids: list[str], session_token: str | None = None
+) -> CostEstimate:
+    """Pre-flight cost estimate for skill evolution analysis.
+
+    Estimates the full pipeline: proposal batches + synthesis + deep edits
+    for an expected number of proposals.
+
+    Args:
+        session_ids: Sessions to analyze.
+        session_token: Browser tab token for upload scoping.
+
+    Returns:
+        CostEstimate with projected cost range.
+
+    Raises:
+        ValueError: If no sessions could be loaded or no installed skills.
+    """
+    backend = require_backend()
+    context_set = extract_all_contexts(session_ids, session_token, PRESET_MEDIUM)
+    if not context_set:
+        raise ValueError(f"No sessions could be loaded from: {session_ids}")
+
+    installed_skills = gather_installed_skills()
+    if not installed_skills:
+        raise ValueError("No installed skills found for evolution analysis.")
+
+    batches = build_batches(context_set.contexts)
+
+    # Proposal phase tokens
+    proposal_system = SKILL_EVOLUTION_PROPOSAL_PROMPT.render_system(
+        **build_system_kwargs(SKILL_EVOLUTION_PROPOSAL_PROMPT.output_model, backend)
+    )
+    batch_token_counts = [count_tokens(format_batch_digest(batch)) for batch in batches]
+
+    # Deep edit phase tokens (estimated per-call)
+    edit_system = SKILL_EVOLUTION_EDIT_PROMPT.render_system(
+        **build_system_kwargs(SKILL_EVOLUTION_EDIT_PROMPT.output_model, backend)
+    )
+    digest = build_digest_from_contexts(context_set)
+    deep_input_tokens = count_tokens(edit_system) + count_tokens(digest)
+    extra_calls = [
+        (deep_input_tokens, SKILL_EVOLUTION_EDIT_OUTPUT_TOKENS) for _ in range(EXPECTED_DEEP_CALLS)
+    ]
+
+    return estimate_analysis_cost(
+        batch_token_counts=batch_token_counts,
+        system_prompt=proposal_system,
+        model=backend.model,
+        max_output_tokens=SKILL_EVOLUTION_PROPOSAL_OUTPUT_TOKENS,
+        synthesis_output_tokens=SKILL_EVOLUTION_SYNTHESIS_OUTPUT_TOKENS,
+        synthesis_threshold=1,
+        extra_calls=extra_calls,
+    )
 
 
 async def analyze_skill_evolution(
@@ -82,6 +145,9 @@ async def analyze_skill_evolution(
         return _cache[cache_key]
 
     start_time = time.monotonic()
+    analysis_id = generate_analysis_id()
+    set_analysis_id(analysis_id)
+
     run_timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     log_dir = SKILL_LOG_DIR / run_timestamp
 
@@ -92,19 +158,29 @@ async def analyze_skill_evolution(
     logger.info("Evolution proposals: %s", proposal_names)
 
     # Step 2: Deep-edit each proposal concurrently
-    edit_tasks = [
-        _infer_skill_evolution(
-            skill_name=p.skill_name,
-            rationale=p.rationale,
-            suggested_changes=p.suggested_changes,
-            session_ids=session_ids,
-            session_token=session_token,
-            proposal_confidence=p.confidence,
-            log_dir=log_dir,
-            proposal_index=idx,
+    edit_tasks = []
+    for idx, p in enumerate(proposal_result.proposal_output.proposals):
+        # Filter to only relevant sessions when indices are specified
+        if p.relevant_session_indices:
+            relevant_ids = [
+                proposal_result.session_ids[i]
+                for i in p.relevant_session_indices
+                if i < len(proposal_result.session_ids)
+            ]
+        else:
+            relevant_ids = session_ids
+        edit_tasks.append(
+            _infer_skill_evolution(
+                skill_name=p.skill_name,
+                rationale=p.rationale,
+                suggested_changes=p.suggested_changes,
+                session_ids=relevant_ids,
+                session_token=session_token,
+                proposal_confidence=p.confidence,
+                log_dir=log_dir,
+                proposal_index=idx,
+            )
         )
-        for idx, p in enumerate(proposal_result.proposal_output.proposals)
-    ]
 
     evolutions: list[SkillEvolution] = []
     edit_warnings: list[str] = list(proposal_result.warnings)
@@ -141,7 +217,8 @@ async def analyze_skill_evolution(
         batch_count=proposal_result.batch_count,
         created_at=datetime.now(UTC).isoformat(),
     )
-    get_skill_analysis_store().save(skill_result)
+    get_skill_analysis_store().save(skill_result, analysis_id)
+    clear_analysis_id()
 
     _cache[cache_key] = skill_result
     return skill_result
@@ -165,19 +242,22 @@ async def _infer_skill_evolution_proposals(
         InferenceError: If LLM backend fails.
     """
     backend = require_backend()
-    contexts, loaded_ids, skipped_ids = extract_all_contexts(
-        session_ids, session_token, PRESET_MEDIUM
-    )
+    context_set = extract_all_contexts(session_ids, session_token, PRESET_MEDIUM)
 
-    if not contexts:
+    if not context_set:
         raise ValueError(f"No sessions could be loaded from: {session_ids}")
 
     installed_skills = gather_installed_skills()
     if not installed_skills:
         raise ValueError("No installed skills found for evolution analysis.")
 
-    batches = build_batches(contexts)
-    logger.info("Evolution proposals: %d sessions → %d batch(es)", len(loaded_ids), len(batches))
+    batches = build_batches(context_set.contexts)
+    logger.info(
+        "Evolution proposals: %d sessions → %d batch(es)",
+        len(context_set.session_ids),
+        len(batches),
+    )
+    log_analysis_summary(context_set, batches, backend)
 
     tasks = [
         _infer_skill_evolution_proposal_batch(backend, batch, installed_skills, log_dir, idx)
@@ -192,15 +272,16 @@ async def _infer_skill_evolution_proposals(
         proposal_output = batch_results[0][0]
     else:
         proposal_output, syn_cost = await _synthesize_skill_evolution_proposals(
-            backend, batch_results, len(loaded_ids), log_dir
+            backend, batch_results, len(context_set.session_ids), log_dir
         )
         total_cost += syn_cost
+        # Synthesis LLM drops example_refs; recover from batch outputs
+        merge_batch_refs(
+            proposal_output.workflow_patterns,
+            [output.workflow_patterns for output, _ in batch_results],
+        )
 
-    # Validate pattern refs against real step IDs
-    all_trajectories = []
-    for ctx in contexts:
-        all_trajectories.extend(ctx.trajectory_group)
-    validated_patterns = validate_patterns(proposal_output.workflow_patterns, all_trajectories)
+    validated_patterns = validate_patterns(proposal_output.workflow_patterns, context_set)
 
     final_output = SkillEvolutionProposalOutput(
         title=proposal_output.title,
@@ -211,8 +292,8 @@ async def _infer_skill_evolution_proposals(
     )
 
     return SkillEvolutionProposalResult(
-        session_ids=loaded_ids,
-        skipped_session_ids=skipped_ids,
+        session_ids=context_set.session_ids,
+        skipped_session_ids=context_set.skipped_session_ids,
         warnings=batch_warnings,
         backend_id=backend.backend_id,
         model=backend.model,
@@ -249,11 +330,9 @@ async def _infer_skill_evolution(
         Tuple of (SkillEvolution, cost in USD).
     """
     backend = require_backend()
-    contexts, loaded_ids, skipped_ids = extract_all_contexts(
-        session_ids, session_token, PRESET_MEDIUM
-    )
+    context_set = extract_all_contexts(session_ids, session_token, PRESET_MEDIUM)
 
-    if not contexts:
+    if not context_set:
         raise ValueError(f"No sessions could be loaded from: {session_ids}")
 
     # Load full SKILL.md content for the target skill
@@ -262,7 +341,7 @@ async def _infer_skill_evolution(
     if not target_skill:
         raise ValueError(f"Skill '{skill_name}' not found in installed skills.")
 
-    digest = build_digest_from_contexts(contexts)
+    digest = build_digest_from_contexts(context_set)
 
     system_kwargs = build_system_kwargs(SKILL_EVOLUTION_EDIT_PROMPT.output_model, backend)
     system_prompt = SKILL_EVOLUTION_EDIT_PROMPT.render_system(**system_kwargs)
@@ -298,11 +377,11 @@ async def _infer_skill_evolution(
         log_dir = SKILL_LOG_DIR / run_timestamp
 
     suffix = f"_{proposal_index}" if proposal_index is not None else ""
-    save_analysis_log(log_dir, f"deep_edit{suffix}_system.txt", system_prompt)
-    save_analysis_log(log_dir, f"deep_edit{suffix}_user.txt", user_prompt)
+    save_analysis_log(log_dir, f"evolution{suffix}_system.txt", system_prompt)
+    save_analysis_log(log_dir, f"evolution{suffix}_user.txt", user_prompt)
 
     result = await backend.generate(request)
-    save_analysis_log(log_dir, f"deep_edit{suffix}_output.txt", result.text)
+    save_analysis_log(log_dir, f"evolution{suffix}_output.txt", result.text)
 
     evolution = parse_llm_output(result.text, SkillEvolution, "deep edit")
     evolution.confidence = proposal_confidence
@@ -312,7 +391,7 @@ async def _infer_skill_evolution(
 
 async def _infer_skill_evolution_proposal_batch(
     backend: InferenceBackend,
-    batch: SessionBatch,
+    batch: SessionContextBatch,
     installed_skills: list[dict],
     log_dir: Path,
     batch_index: int,
@@ -330,7 +409,7 @@ async def _infer_skill_evolution_proposal_batch(
         Tuple of (parsed proposal output, cost in USD).
     """
     digest = format_batch_digest(batch)
-    session_count = len(batch.session_contexts)
+    session_count = len(batch.contexts)
 
     prompt = SKILL_EVOLUTION_PROPOSAL_PROMPT
     system_kwargs = build_system_kwargs(prompt.output_model, backend)
@@ -420,9 +499,7 @@ async def _synthesize_skill_evolution_proposals(
     system_kwargs = build_system_kwargs(prompt.output_model, backend)
     system_prompt = prompt.render_system(**system_kwargs)
     user_prompt = prompt.render_user(
-        batch_count=len(batch_results),
-        session_count=session_count,
-        batch_results=batch_data,
+        batch_count=len(batch_results), session_count=session_count, batch_results=batch_data
     )
 
     request = InferenceRequest(

@@ -1,18 +1,13 @@
 """Skill-related services — analysis, persistence, and digest formatting."""
 
-from vibelens.models.skill import (
-    SkillAnalysisResult,
-    SkillCreation,
-    SkillCreationProposalResult,
-    SkillMode,
-)
+from vibelens.llm.cost_estimator import CostEstimate
+from vibelens.models.skill import SkillAnalysisResult, SkillMode
 from vibelens.services.skill.store import SkillAnalysisStore
 
 __all__ = [
     "SkillAnalysisStore",
-    "analyze_skill_creation_proposals",
     "analyze_skills",
-    "infer_skill_creation",
+    "estimate_skill_analysis",
 ]
 
 
@@ -34,35 +29,19 @@ async def analyze_skills(
         return await analyze_skill_evolution(session_ids, session_token)
 
 
-async def analyze_skill_creation_proposals(
-    session_ids: list[str], session_token: str | None = None
-) -> SkillCreationProposalResult:
-    """Generate lightweight skill proposals from session analysis."""
-    from vibelens.services.skill.creation import (
-        _infer_skill_creation_proposals,
-    )
+def estimate_skill_analysis(
+    session_ids: list[str], mode: SkillMode, session_token: str | None = None
+) -> CostEstimate:
+    """Pre-flight cost estimate dispatched to the appropriate mode handler."""
+    if mode == SkillMode.RETRIEVAL:
+        from vibelens.services.skill.retrieval import estimate_skill_retrieval
 
-    return await _infer_skill_creation_proposals(session_ids, session_token)
+        return estimate_skill_retrieval(session_ids, session_token)
+    elif mode == SkillMode.CREATION:
+        from vibelens.services.skill.creation import estimate_skill_creation
 
+        return estimate_skill_creation(session_ids, session_token)
+    else:
+        from vibelens.services.skill.evolution import estimate_skill_evolution
 
-async def infer_skill_creation(
-    proposal_name: str,
-    proposal_description: str,
-    proposal_rationale: str,
-    addressed_patterns: list[str],
-    session_ids: list[str],
-    session_token: str | None = None,
-) -> SkillCreation:
-    """Generate full SKILL.md content for one approved proposal."""
-    from vibelens.services.skill.creation import (
-        _infer_skill_creation as _infer,
-    )
-
-    return await _infer(
-        proposal_name,
-        proposal_description,
-        proposal_rationale,
-        addressed_patterns,
-        session_ids,
-        session_token,
-    )
+        return estimate_skill_evolution(session_ids, session_token)

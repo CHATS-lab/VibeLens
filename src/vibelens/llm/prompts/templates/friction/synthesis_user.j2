@@ -1,21 +1,28 @@
-Synthesize friction analysis results from {{ session_count }} session{{ "s" if session_count != 1 else "" }}.
+Synthesize friction analysis results from {{ session_count }} session{{ "s" if session_count != 1 else "" }} across {{ batch_count }} batches.
 
-## Analysis Summaries
+## Batch Results
 
-{% for summary in batch_summaries %}
-{{ summary }}
+{% for batch in batch_results %}
+### Batch {{ loop.index }}
+
+**Title:** {{ batch.title }}
+**User Profile:** {{ batch.user_profile }}
+**Summary:** {{ batch.summary }}
+
+{% if batch.friction_events %}
+**Friction Events:**
+{% for event in batch.friction_events %}
+- [severity={{ event.severity }}] {{ event.friction_type }}: "{{ event.user_intention }}" — {{ event.description }} (session={{ event.span_ref.session_id }}, steps={{ event.span_ref.start_step_id }}{% if event.span_ref.end_step_id %}..{{ event.span_ref.end_step_id }}{% endif %})
 {% endfor %}
+{% endif %}
 
-## Friction Type Statistics
-
-{% for stat in type_stats %}
-- **{{ stat.friction_type }}**: {{ stat.count }} event{{ "s" if stat.count != 1 else "" }}, {{ stat.affected_sessions }} session{{ "s" if stat.affected_sessions != 1 else "" }}, avg severity {{ stat.avg_severity }}
+{% if batch.mitigations %}
+**Mitigations:**
+{% for m in batch.mitigations %}
+- [confidence={{ m.confidence }}] {{ m.action }}
 {% endfor %}
+{% endif %}
 
-## Top Friction Events (by severity)
-
-{% for event in top_events %}
-- [severity={{ event.severity }}] {{ event.friction_type }}: "{{ event.user_intention }}" — {{ event.friction_detail }}
 {% endfor %}
 
 **Respond with raw JSON only — start with `{`, end with `}`. No ```json fences, no prose.**

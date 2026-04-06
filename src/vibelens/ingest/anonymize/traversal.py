@@ -48,7 +48,7 @@ def traverse_trajectory(trajectory: Trajectory, transform: Callable[[str], str])
     data["extra"] = _transform_extra(data.get("extra"), transform)
 
     # Trajectory refs
-    for ref_key in ("last_trajectory_ref", "parent_trajectory_ref", "continued_trajectory_ref"):
+    for ref_key in ("prev_trajectory_ref", "parent_trajectory_ref", "next_trajectory_ref"):
         data[ref_key] = _transform_ref(data.get(ref_key), transform)
 
     # Steps

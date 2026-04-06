@@ -1,72 +1,61 @@
 """Friction service — user-centric multi-session LLM-powered friction analysis.
 
-Pipeline: load sessions → extract context per session → build batches →
-concurrent LLM inference → compute costs from step spans → merge batch
-results → validate step_id refs → compute type_summary → synthesize
-final report via LLM → persist → cache.
+Pipeline: load sessions → extract context → build batches →
+concurrent LLM inference → optional synthesis → validate span_refs →
+compute friction_cost per event → persist → cache.
 """
 
 import hashlib
-import json
 import time
-from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
 
-from pydantic import ValidationError
+from cachetools import TTLCache
 
 from vibelens.deps import get_friction_store
-from vibelens.llm.backend import InferenceBackend, InferenceError
-from vibelens.llm.cost_estimator import CostEstimate, estimate_friction_cost
+from vibelens.llm.backend import InferenceBackend
+from vibelens.llm.cost_estimator import CostEstimate, estimate_analysis_cost
 from vibelens.llm.prompts.friction_analysis import (
     FRICTION_ANALYSIS_PROMPT,
     FRICTION_SYNTHESIS_PROMPT,
 )
 from vibelens.llm.tokenizer import count_tokens
 from vibelens.models.analysis.friction import (
+    FrictionAnalysisOutput,
     FrictionAnalysisResult,
     FrictionCost,
     FrictionEvent,
-    FrictionLLMBatchOutput,
-    FrictionLLMEvent,
-    FrictionSynthesisOutput,
-    Mitigation,
-    TypeSummary,
 )
-from vibelens.models.analysis.step_ref import StepRef
-from vibelens.models.inference import InferenceRequest
+from vibelens.models.context import SessionContextBatch
+from vibelens.models.llm.inference import InferenceRequest
 from vibelens.models.trajectories import Trajectory
+from vibelens.models.trajectories.metrics import Metrics
 from vibelens.services.analysis_shared import (
+    CACHE_MAXSIZE,
+    CACHE_TTL_SECONDS,
     build_system_kwargs,
     extract_all_contexts,
-    make_ttl_cache,
+    format_batch_digest,
+    log_analysis_summary,
     require_backend,
     run_batches_concurrent,
     save_analysis_log,
     truncate_digest_to_fit,
 )
-from vibelens.services.context_extraction import (
-    IdMapping,
-    SessionContext,
-    remap_session_ids,
-)
-from vibelens.services.friction.digest import format_batch_digest
-from vibelens.services.session_batcher import SessionBatch, build_batches
-from vibelens.utils.json_extract import extract_json as _extract_json
-from vibelens.utils.json_extract import repair_truncated_json as _repair_truncated_json
-from vibelens.utils.log import get_logger
+from vibelens.services.analysis_store import generate_analysis_id
+from vibelens.services.session_batcher import build_batches
+from vibelens.services.skill.shared import parse_llm_output
+from vibelens.utils.log import clear_analysis_id, get_logger, set_analysis_id
 
 logger = get_logger(__name__)
 
 FRICTION_OUTPUT_TOKENS = 8192
 FRICTION_TIMEOUT_SECONDS = 300
-MAX_TOP_MITIGATIONS = 3
 SYNTHESIS_OUTPUT_TOKENS = 20000
 SYNTHESIS_TIMEOUT_SECONDS = 120
 FRICTION_LOG_DIR = Path("logs/friction")
-MAX_EVENTS_FOR_SYNTHESIS = 7
 
-_cache = make_ttl_cache()
+_cache: TTLCache = TTLCache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL_SECONDS)
 
 
 def estimate_friction(session_ids: list[str], session_token: str | None = None) -> CostEstimate:
@@ -83,22 +72,23 @@ def estimate_friction(session_ids: list[str], session_token: str | None = None) 
         ValueError: If no sessions could be loaded.
     """
     backend = require_backend()
-    contexts, loaded_ids, skipped_ids = extract_all_contexts(session_ids, session_token)
+    context_set = extract_all_contexts(session_ids, session_token)
 
-    if not contexts:
+    if not context_set:
         raise ValueError(f"No sessions could be loaded from: {session_ids}")
 
-    batches = build_batches(contexts)
+    batches = build_batches(context_set.contexts)
     system_prompt = FRICTION_ANALYSIS_PROMPT.render_system()
 
     batch_token_counts = [count_tokens(format_batch_digest(batch)) for batch in batches]
 
-    return estimate_friction_cost(
+    return estimate_analysis_cost(
         batch_token_counts=batch_token_counts,
         system_prompt=system_prompt,
         model=backend.model,
         max_output_tokens=FRICTION_OUTPUT_TOKENS,
         synthesis_output_tokens=SYNTHESIS_OUTPUT_TOKENS,
+        synthesis_threshold=0,
     )
 
 
@@ -123,97 +113,75 @@ async def analyze_friction(
         return _cache[cache_key]
 
     start_time = time.monotonic()
-    backend = require_backend()
-    contexts, loaded_ids, skipped_ids = extract_all_contexts(session_ids, session_token)
+    analysis_id = generate_analysis_id()
+    set_analysis_id(analysis_id)
 
-    if not contexts:
+    backend = require_backend()
+    context_set = extract_all_contexts(session_ids, session_token)
+
+    if not context_set:
+        clear_analysis_id()
         raise ValueError(f"No sessions could be loaded from: {session_ids}")
 
-    # Remap real UUIDs to 0-indexed integers for compact LLM prompts
-    id_mapping = remap_session_ids(contexts)
+    batches = build_batches(context_set.contexts)
+    logger.info(
+        "Friction analysis: %d sessions → %d batch(es)",
+        len(context_set.session_ids),
+        len(batches),
+    )
 
-    batches = build_batches(contexts)
-    logger.info("Friction analysis: %d sessions → %d batch(es)", len(loaded_ids), len(batches))
-
-    # Create timestamped log directory for this run
     run_timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     log_dir = FRICTION_LOG_DIR / run_timestamp
-    _log_analysis_summary(loaded_ids, skipped_ids, batches, backend)
+    log_analysis_summary(context_set, batches, backend)
 
-    # Collect all trajectories for cost computation and validation
-    all_trajectories = []
-    for ctx in contexts:
-        all_trajectories.extend(ctx.trajectory_group)
-
-    # Build session_id → project_path lookup for enriching events
-    project_by_session = _build_project_lookup(contexts)
-
-    # Pipeline: concurrent LLM inference → resolve IDs → merge → type summary → synthesize
-    tasks = [_infer_batch(backend, batch, log_dir, idx) for idx, batch in enumerate(batches)]
+    # Step 1: Concurrent LLM inference per batch
+    tasks = [
+        _infer_friction_analysis_batch(backend, batch, log_dir, idx)
+        for idx, batch in enumerate(batches)
+    ]
     batch_results, batch_warnings = await run_batches_concurrent(tasks, "friction")
 
-    # Resolve synthetic 0-indexed IDs back to real UUIDs before merging
-    for batch_output, _ in batch_results:
-        _resolve_synthetic_ids(batch_output, id_mapping)
+    total_cost = sum(cost for _, cost in batch_results)
 
-    events, raw_summary, top_mitigations, total_cost = _merge_batch_results(
-        batch_results, all_trajectories, project_by_session
-    )
-    type_summary = _compute_type_summary(events)
+    # Step 2: Single batch → use directly; multiple → synthesize
+    if len(batch_results) == 1:
+        analysis_output = batch_results[0][0]
+    else:
+        analysis_output, syn_cost = await _synthesize_friction_analysis(
+            backend, batch_results, len(context_set.session_ids), log_dir
+        )
+        total_cost += syn_cost
 
-    # Post-batch synthesis: produce title, cohesive summary, type descriptions
-    title, summary, cross_batch_patterns = None, raw_summary, []
-    if events:
-        batch_summaries = [br[0].summary for br in batch_results if br[0].summary]
-        try:
-            synthesis, syn_cost = await _synthesize_results(
-                backend=backend,
-                batch_summaries=batch_summaries,
-                type_summary=type_summary,
-                events=events,
-                batch_count=len(batches),
-                session_count=len(loaded_ids),
-                log_dir=log_dir,
-            )
-            total_cost += syn_cost
-            title = synthesis.title
-            summary = synthesis.summary or raw_summary
-            cross_batch_patterns = synthesis.cross_session_patterns
-            if synthesis.mitigations:
-                top_mitigations = synthesis.mitigations[:MAX_TOP_MITIGATIONS]
-            desc_map = {td.friction_type: td.description for td in synthesis.type_descriptions}
-            for ts in type_summary:
-                ts.description = desc_map.get(ts.friction_type)
-        except Exception:
-            logger.warning("Synthesis failed, using raw batch summaries", exc_info=True)
+    # Step 3: Resolve synthetic step indices, validate span_refs, compute friction_cost
+    validated_events = _validate_and_enrich(analysis_output.friction_events, context_set)
 
     duration = round(time.monotonic() - start_time, 2)
     friction_result = FrictionAnalysisResult(
-        events=events,
-        title=title,
-        summary=summary,
-        top_mitigations=top_mitigations,
-        type_summary=type_summary,
-        cross_batch_patterns=cross_batch_patterns,
-        session_ids=loaded_ids,
-        sessions_skipped=skipped_ids,
+        title=analysis_output.title,
+        user_profile=analysis_output.user_profile,
+        summary=analysis_output.summary,
+        mitigations=analysis_output.mitigations,
+        friction_events=validated_events,
+        session_ids=context_set.session_ids,
+        skipped_session_ids=context_set.skipped_session_ids,
         warnings=batch_warnings,
         batch_count=len(batches),
         backend_id=backend.backend_id,
         model=backend.model,
-        cost_usd=total_cost if total_cost > 0 else None,
+        metrics=Metrics(cost_usd=total_cost if total_cost > 0 else None),
         duration_seconds=duration,
         created_at=datetime.now(UTC).isoformat(),
     )
+    get_friction_store().save(friction_result, analysis_id)
+    clear_analysis_id()
 
-    get_friction_store().save(friction_result)
     _cache[cache_key] = friction_result
     return friction_result
 
 
-async def _infer_batch(
-    backend: InferenceBackend, batch: SessionBatch, log_dir: Path, batch_index: int
-) -> tuple[FrictionLLMBatchOutput, float]:
+async def _infer_friction_analysis_batch(
+    backend: InferenceBackend, batch: SessionContextBatch, log_dir: Path, batch_index: int
+) -> tuple[FrictionAnalysisOutput, float]:
     """Run LLM inference for one batch.
 
     Args:
@@ -226,12 +194,11 @@ async def _infer_batch(
         Tuple of (parsed batch output, cost in USD).
     """
     digest = format_batch_digest(batch)
-    session_count = len(batch.session_contexts)
+    session_count = len(batch.contexts)
 
     system_kwargs = build_system_kwargs(FRICTION_ANALYSIS_PROMPT.output_model, backend)
     system_prompt = FRICTION_ANALYSIS_PROMPT.render_system(**system_kwargs)
 
-    # Safety net: truncate digest if it exceeds context budget
     non_digest_overhead = FRICTION_ANALYSIS_PROMPT.render_user(
         session_count=session_count, batch_digest=""
     )
@@ -249,7 +216,6 @@ async def _infer_batch(
         json_schema=FRICTION_ANALYSIS_PROMPT.output_model.model_json_schema(),
     )
 
-    # Save system prompt only once (shared across batches)
     if batch_index == 0:
         save_analysis_log(log_dir, "system_prompt.txt", system_prompt)
     save_analysis_log(log_dir, f"user_prompt_{batch_index}.txt", user_prompt)
@@ -257,71 +223,63 @@ async def _infer_batch(
     try:
         result = await backend.generate(request)
     except Exception:
-        error_file = f"error_{batch_index}.txt"
-        save_analysis_log(log_dir, error_file, "LLM inference failed.")
+        save_analysis_log(log_dir, f"error_{batch_index}.txt", "LLM inference failed.")
         raise
 
-    save_analysis_log(log_dir, f"raw_output_{batch_index}.txt", result.text)
+    save_analysis_log(log_dir, f"output_{batch_index}.txt", result.text)
 
-    batch_output = _parse_llm_output(result.text)
+    batch_output = parse_llm_output(result.text, FrictionAnalysisOutput, "friction analysis")
     cost = result.cost_usd or 0.0
     return batch_output, cost
 
 
-async def _synthesize_results(
+async def _synthesize_friction_analysis(
     backend: InferenceBackend,
-    batch_summaries: list[str],
-    type_summary: list[TypeSummary],
-    events: list[FrictionEvent],
-    batch_count: int,
+    batch_results: list[tuple[FrictionAnalysisOutput, float]],
     session_count: int,
     log_dir: Path,
-) -> tuple[FrictionSynthesisOutput, float]:
-    """Run a lightweight LLM call to synthesize batch results into a cohesive report.
-
-    Feeds batch summaries, type statistics, and top event summaries (no full
-    transcripts) to produce a title, cohesive summary, and type descriptions.
+) -> tuple[FrictionAnalysisOutput, float]:
+    """Merge results from multiple batches via LLM synthesis.
 
     Args:
         backend: Configured inference backend.
-        batch_summaries: Per-batch narrative summaries from the analysis phase.
-        type_summary: Aggregated per-type statistics.
-        events: All friction events (top N used for context).
-        batch_count: Number of batches in the analysis.
-        session_count: Number of sessions analyzed.
+        batch_results: Per-batch analysis outputs and costs.
+        session_count: Total number of sessions analyzed.
         log_dir: Timestamped directory for saving prompts and outputs.
 
     Returns:
-        Tuple of (synthesis output, cost in USD).
+        Tuple of (merged FrictionAnalysisOutput, synthesis cost in USD).
     """
-    type_stats = [
+    batch_data = [
         {
-            "friction_type": ts.friction_type,
-            "count": ts.count,
-            "affected_sessions": ts.affected_sessions,
-            "avg_severity": ts.avg_severity,
+            "title": output.title,
+            "user_profile": output.user_profile,
+            "summary": output.summary,
+            "friction_events": [
+                {
+                    "friction_type": e.friction_type,
+                    "severity": e.severity,
+                    "user_intention": e.user_intention,
+                    "description": e.description,
+                    "span_ref": {
+                        "session_id": e.span_ref.session_id,
+                        "start_step_id": e.span_ref.start_step_id,
+                        "end_step_id": e.span_ref.end_step_id,
+                    },
+                }
+                for e in output.friction_events
+            ],
+            "mitigations": [
+                {"action": m.action, "confidence": m.confidence} for m in output.mitigations
+            ],
         }
-        for ts in type_summary
-    ]
-
-    top_events = [
-        {
-            "friction_type": e.friction_type,
-            "severity": e.severity,
-            "user_intention": e.user_intention,
-            "friction_detail": e.friction_detail,
-        }
-        for e in events[:MAX_EVENTS_FOR_SYNTHESIS]
+        for output, _ in batch_results
     ]
 
     system_kwargs = build_system_kwargs(FRICTION_SYNTHESIS_PROMPT.output_model, backend)
     system_prompt = FRICTION_SYNTHESIS_PROMPT.render_system(**system_kwargs)
     user_prompt = FRICTION_SYNTHESIS_PROMPT.render_user(
-        batch_count=batch_count,
-        session_count=session_count,
-        batch_summaries=batch_summaries,
-        type_stats=type_stats,
-        top_events=top_events,
+        batch_count=len(batch_results), session_count=session_count, batch_results=batch_data
     )
 
     request = InferenceRequest(
@@ -338,222 +296,75 @@ async def _synthesize_results(
     result = await backend.generate(request)
     save_analysis_log(log_dir, "synthesis_raw_output.txt", result.text)
 
-    synthesis = _parse_synthesis_output(result.text)
+    synthesis = parse_llm_output(result.text, FrictionAnalysisOutput, "friction synthesis")
     cost = result.cost_usd or 0.0
-    logger.info(
-        "Synthesis complete: title=%r, %d type descriptions",
-        synthesis.title,
-        len(synthesis.type_descriptions),
-    )
+    logger.info("Synthesis complete: title=%r", synthesis.title)
     return synthesis, cost
 
 
-def _parse_synthesis_output(text: str) -> FrictionSynthesisOutput:
-    """Parse LLM output text into FrictionSynthesisOutput.
+def _validate_and_enrich(
+    events: list[FrictionEvent], context_set: SessionContextBatch
+) -> list[FrictionEvent]:
+    """Resolve synthetic step indices, validate span_refs, and enrich events.
+
+    Pipeline per event: resolve → validate → clamp severity → compute friction_cost.
 
     Args:
-        text: Raw LLM output text.
+        events: Friction events from LLM output (with synthetic step indices).
+        context_set: SessionContextBatch with trajectories and step index maps.
 
     Returns:
-        Validated FrictionSynthesisOutput instance.
-
-    Raises:
-        InferenceError: If parsing or validation fails.
+        List of validated and enriched FrictionEvents, sorted by severity descending.
     """
-    if not text or not text.strip():
-        raise InferenceError("Synthesis LLM returned empty response.")
-
-    json_str = _extract_json(text)
-    try:
-        data = json.loads(json_str)
-    except json.JSONDecodeError:
-        repaired = _repair_truncated_json(json_str)
-        try:
-            data = json.loads(repaired)
-            logger.warning("Repaired truncated synthesis JSON output")
-        except json.JSONDecodeError as exc:
-            raise InferenceError(f"Synthesis output is not valid JSON: {exc}") from exc
-
-    try:
-        return FrictionSynthesisOutput.model_validate(data)
-    except ValidationError as exc:
-        raise InferenceError(
-            f"Synthesis JSON does not match FrictionSynthesisOutput schema: {exc}"
-        ) from exc
-
-
-def _build_project_lookup(contexts: list[SessionContext]) -> dict[str, str | None]:
-    """Build session_id → project_path mapping from session contexts.
-
-    Args:
-        contexts: Extracted session contexts.
-
-    Returns:
-        Dict mapping session_id to its project_path (may be None).
-    """
-    lookup: dict[str, str | None] = {}
-    for ctx in contexts:
-        lookup[ctx.session_id] = ctx.project_path
-        for traj in ctx.trajectory_group:
-            lookup[traj.session_id] = ctx.project_path
-    return lookup
-
-
-def _resolve_synthetic_ids(batch_output: FrictionLLMBatchOutput, id_mapping: IdMapping) -> None:
-    """Convert 0-indexed synthetic IDs in LLM output back to real UUIDs.
-
-    Mutates span_ref fields on each event in place. Events with unresolvable
-    IDs are removed and logged as warnings.
-
-    Args:
-        batch_output: Parsed LLM batch output with synthetic IDs.
-        id_mapping: Mapping from synthetic indices to real UUIDs.
-    """
-    resolved_events: list[FrictionLLMEvent] = []
-    for event in batch_output.events:
-        ref = event.span_ref
-        real_session = id_mapping.resolve_session_id(ref.session_id)
-        if real_session is None:
-            logger.warning(
-                "Dropping event [%s]: unresolvable session_id %r",
-                event.friction_type,
-                ref.session_id,
-            )
+    validated: list[FrictionEvent] = []
+    for event in events:
+        valid_ref = context_set.resolve_step_ref(event.span_ref)
+        if valid_ref is None:
             continue
 
-        try:
-            session_idx = int(ref.session_id)
-        except (ValueError, TypeError):
+        event.span_ref = valid_ref
+
+        # Clamp severity to valid range
+        if event.severity < 1 or event.severity > 5:
+            clamped = max(1, min(5, event.severity))
             logger.warning(
-                "Dropping event [%s]: non-integer session_id %r",
+                "Clamping severity %d → %d on event [%s]",
+                event.severity,
+                clamped,
                 event.friction_type,
-                ref.session_id,
             )
-            continue
+            event.severity = clamped
 
-        real_start = id_mapping.resolve_step_id(session_idx, ref.start_step_id)
-        if real_start is None:
-            logger.warning(
-                "Dropping event [%s]: unresolvable start_step_id %r in session %d",
-                event.friction_type,
-                ref.start_step_id,
-                session_idx,
-            )
-            continue
+        event.friction_cost = _compute_event_cost(event, context_set.all_trajectories)
+        validated.append(event)
 
-        real_end = None
-        if ref.end_step_id:
-            real_end = id_mapping.resolve_step_id(session_idx, ref.end_step_id)
-            if real_end is None:
-                logger.warning(
-                    "Clearing unresolvable end_step_id %r on event [%s]",
-                    ref.end_step_id,
-                    event.friction_type,
-                )
-
-        event.span_ref = StepRef(
-            session_id=real_session, start_step_id=real_start, end_step_id=real_end
+    dropped_count = len(events) - len(validated)
+    if dropped_count > 0:
+        logger.info(
+            "Validation: %d/%d events passed, %d dropped",
+            len(validated),
+            len(events),
+            dropped_count,
         )
-        resolved_events.append(event)
 
-    batch_output.events = resolved_events
-
-
-def _merge_batch_results(
-    batch_results: list[tuple[FrictionLLMBatchOutput, float]],
-    trajectories: list[Trajectory],
-    project_by_session: dict[str, str | None],
-) -> tuple[list[FrictionEvent], str, list[Mitigation], float]:
-    """Merge results from all batches into a unified result.
-
-    Args:
-        batch_results: List of (batch_output, cost_usd) from each batch.
-        trajectories: All loaded trajectories for cost computation.
-        project_by_session: session_id → project_path mapping.
-
-    Returns:
-        Tuple of (events, summary, top_mitigations, total_cost_usd).
-    """
-    all_events: list[FrictionEvent] = []
-    summaries: list[str] = []
-    collected_mitigations: list[tuple[int, Mitigation]] = []
-    total_cost = 0.0
-
-    for batch_output, cost in batch_results:
-        total_cost += cost
-
-        # Enrich LLM events with computed costs and project paths
-        for llm_event in batch_output.events:
-            event_cost = _compute_event_cost(llm_event, trajectories)
-            project = project_by_session.get(llm_event.span_ref.session_id)
-            event = FrictionEvent(
-                **llm_event.model_dump(), estimated_cost=event_cost, project_path=project
-            )
-            all_events.append(event)
-
-        if batch_output.summary:
-            summaries.append(batch_output.summary)
-
-        # Collect batch-level mitigation with severity for ranking
-        batch_severity = max((e.severity for e in batch_output.events), default=0)
-        if batch_output.top_mitigation:
-            collected_mitigations.append((batch_severity, batch_output.top_mitigation))
-
-    # Validate step references
-    all_events = _validate_and_clean(all_events, trajectories)
-
-    # Sort by severity descending
-    all_events.sort(key=lambda e: e.severity, reverse=True)
-
-    # Pick top mitigations by batch severity, deduplicated by content
-    collected_mitigations.sort(key=lambda pair: pair[0], reverse=True)
-    top_mitigations = _dedupe_mitigations(collected_mitigations)
-
-    summary = "\n".join(summaries) if summaries else "No friction detected."
-    return all_events, summary, top_mitigations, total_cost
+    validated.sort(key=lambda e: e.severity, reverse=True)
+    return validated
 
 
-def _dedupe_mitigations(scored: list[tuple[int, Mitigation]]) -> list[Mitigation]:
-    """Deduplicate mitigations by content, keeping highest-severity first.
-
-    Args:
-        scored: List of (severity, mitigation) pairs sorted by severity descending.
-
-    Returns:
-        Up to MAX_TOP_MITIGATIONS unique mitigations.
-    """
-    seen_content: set[str] = set()
-    result: list[Mitigation] = []
-    for _, mit in scored:
-        key = mit.content.strip().lower()
-        if key in seen_content:
-            continue
-        seen_content.add(key)
-        result.append(mit)
-        if len(result) >= MAX_TOP_MITIGATIONS:
-            break
-    return result
-
-
-def _compute_event_cost(
-    llm_event: FrictionLLMEvent, trajectories: list[Trajectory]
-) -> FrictionCost:
+def _compute_event_cost(event: FrictionEvent, trajectories: list[Trajectory]) -> FrictionCost:
     """Compute cost from step span metrics.
 
     Finds steps between start_step_id and end_step_id in matching trajectory,
     then computes affected_steps, affected_tokens, and affected_time_seconds.
 
     Args:
-        llm_event: LLM-generated friction event.
+        event: Friction event with span_ref.
         trajectories: All loaded trajectories.
 
     Returns:
         Computed FrictionCost.
     """
-    # The LLM returns span_ref with session_id + start/end step_ids.
-    # We look up the actual trajectory and slice out the affected step range
-    # to compute cost metrics (steps, tokens, wall time).
-    span_ref = llm_event.span_ref
+    span_ref = event.span_ref
     target_sid = span_ref.session_id
 
     target_traj = None
@@ -565,8 +376,7 @@ def _compute_event_cost(
     if not target_traj:
         return FrictionCost(affected_steps=0)
 
-    # Walk all steps to find the start/end indices of the friction span.
-    # If no end_step_id is provided, the span is a single step (end = start).
+    # Walk all steps to find the start/end indices of the friction span
     start_idx = None
     end_idx = None
     for i, step in enumerate(target_traj.steps):
@@ -589,7 +399,6 @@ def _compute_event_cost(
     span_steps = target_traj.steps[start_idx : end_idx + 1]
     affected_steps = len(span_steps)
 
-    # Compute token cost from step metrics
     total_tokens = 0
     has_metrics = False
     for step in span_steps:
@@ -597,7 +406,6 @@ def _compute_event_cost(
             has_metrics = True
             total_tokens += step.metrics.prompt_tokens + step.metrics.completion_tokens
 
-    # Compute time cost from timestamps
     affected_time = None
     first_ts = span_steps[0].timestamp if span_steps else None
     last_ts = span_steps[-1].timestamp if span_steps else None
@@ -611,207 +419,9 @@ def _compute_event_cost(
     )
 
 
-def _validate_and_clean(
-    events: list[FrictionEvent], trajectories: list[Trajectory]
-) -> list[FrictionEvent]:
-    """Validate step_id references and drop events with invalid refs.
-
-    Checks that:
-    - session_id matches a loaded trajectory
-    - start_step_id exists within that specific session (not just globally)
-    - end_step_id exists within that session (cleared if invalid)
-    - severity is within valid range (clamped)
-
-    Args:
-        events: Friction events to validate.
-        trajectories: Loaded trajectories for reference validation.
-
-    Returns:
-        List of validated FrictionEvents.
-    """
-    # Build per-session step_id sets for strict validation
-    steps_by_session: dict[str, set[str]] = {}
-    for traj in trajectories:
-        session_steps = steps_by_session.setdefault(traj.session_id, set())
-        for step in traj.steps:
-            session_steps.add(step.step_id)
-
-    validated = []
-    for event in events:
-        ref = event.span_ref
-
-        # Validate session_id
-        if ref.session_id not in steps_by_session:
-            logger.warning(
-                "Dropping event [%s]: invalid session_id %s",
-                event.friction_type,
-                ref.session_id,
-            )
-            continue
-
-        session_steps = steps_by_session[ref.session_id]
-
-        # Validate start_step_id belongs to the referenced session
-        if ref.start_step_id not in session_steps:
-            logger.warning(
-                "Dropping event [%s]: start_step_id %s not in session %s",
-                event.friction_type,
-                ref.start_step_id,
-                ref.session_id,
-            )
-            continue
-
-        # Validate end_step_id belongs to the same session
-        if ref.end_step_id and ref.end_step_id not in session_steps:
-            logger.warning(
-                "Clearing invalid end_step_id %s on event [%s] (not in session %s)",
-                ref.end_step_id,
-                event.friction_type,
-                ref.session_id,
-            )
-            event.span_ref = StepRef(session_id=ref.session_id, start_step_id=ref.start_step_id)
-
-        # Clamp severity to valid range
-        if event.severity < 1 or event.severity > 5:
-            logger.warning(
-                "Clamping severity %d → %d on event [%s]",
-                event.severity,
-                max(1, min(5, event.severity)),
-                event.friction_type,
-            )
-            event.severity = max(1, min(5, event.severity))
-
-        validated.append(event)
-
-    dropped_count = len(events) - len(validated)
-    if dropped_count > 0:
-        logger.info(
-            "Validation: %d/%d events passed, %d dropped",
-            len(validated),
-            len(events),
-            dropped_count,
-        )
-
-    return validated
-
-
-def _compute_type_summary(events: list[FrictionEvent]) -> list[TypeSummary]:
-    """Compute aggregated statistics per friction_type.
-
-    Args:
-        events: Validated friction events.
-
-    Returns:
-        TypeSummary list sorted by count descending.
-    """
-    type_events: dict[str, list[FrictionEvent]] = defaultdict(list)
-    for event in events:
-        type_events[event.friction_type].append(event)
-
-    summaries = []
-    for friction_type, type_evts in type_events.items():
-        total_steps = sum(e.estimated_cost.affected_steps for e in type_evts)
-        total_time = sum(e.estimated_cost.affected_time_seconds or 0 for e in type_evts)
-        total_tokens = sum(e.estimated_cost.affected_tokens or 0 for e in type_evts)
-        avg_severity = sum(e.severity for e in type_evts) / len(type_evts)
-
-        summaries.append(
-            TypeSummary(
-                friction_type=friction_type,
-                count=len(type_evts),
-                affected_sessions=len({e.span_ref.session_id for e in type_evts}),
-                total_estimated_cost=FrictionCost(
-                    affected_steps=total_steps,
-                    affected_time_seconds=total_time or None,
-                    affected_tokens=total_tokens or None,
-                ),
-                avg_severity=round(avg_severity, 1),
-            )
-        )
-
-    summaries.sort(key=lambda s: s.avg_severity, reverse=True)
-    return summaries
-
-
 def _friction_cache_key(session_ids: list[str]) -> str:
     """Generate a cache key from sorted session IDs."""
     sorted_ids = ",".join(sorted(session_ids))
     return f"friction:{hashlib.sha256(sorted_ids.encode()).hexdigest()[:16]}"
 
 
-def _parse_llm_output(text: str) -> FrictionLLMBatchOutput:
-    """Parse LLM output text into FrictionLLMBatchOutput.
-
-    Args:
-        text: Raw LLM output text.
-
-    Returns:
-        Validated FrictionLLMBatchOutput instance.
-
-    Raises:
-        InferenceError: If parsing or validation fails.
-    """
-    if not text or not text.strip():
-        raise InferenceError(
-            "LLM returned empty response. Check logs/friction/ for the prompt that was sent. "
-            "The model may not support JSON output or the prompt may exceed context limits."
-        )
-
-    json_str = _extract_json(text)
-    try:
-        data = json.loads(json_str)
-    except json.JSONDecodeError:
-        repaired = _repair_truncated_json(json_str)
-        try:
-            data = json.loads(repaired)
-            logger.warning("Repaired truncated JSON output (max_tokens likely hit)")
-        except json.JSONDecodeError as exc:
-            preview = json_str[:500] if len(json_str) > 500 else json_str
-            raise InferenceError(
-                f"LLM output is not valid JSON. Preview: {preview!r}. Error: {exc}"
-            ) from exc
-
-    try:
-        return FrictionLLMBatchOutput.model_validate(data)
-    except ValidationError as exc:
-        raise InferenceError(
-            f"LLM JSON does not match FrictionLLMBatchOutput schema: {exc}"
-        ) from exc
-
-
-def _log_analysis_summary(
-    loaded_ids: list[str],
-    skipped_ids: list[str],
-    batches: list[SessionBatch],
-    backend: InferenceBackend,
-) -> None:
-    """Log a structured summary of the analysis run.
-
-    Uses the standard logger which writes to both vibelens.log
-    and analysis-friction.log via the category log system.
-
-    Args:
-        loaded_ids: Successfully loaded session IDs.
-        skipped_ids: Session IDs that were skipped.
-        batches: Built session batches.
-        backend: Inference backend in use.
-    """
-    total_tokens = sum(b.total_tokens for b in batches)
-    logger.info(
-        "Analysis run: %d loaded, %d skipped, %d batches, %d total tokens, model=%s, backend=%s",
-        len(loaded_ids),
-        len(skipped_ids),
-        len(batches),
-        total_tokens,
-        backend.model,
-        backend.backend_id,
-    )
-    for batch in batches:
-        sids = [ctx.session_id for ctx in batch.session_contexts]
-        logger.info(
-            "Batch %s: %d sessions, %d tokens, ids=%s",
-            batch.batch_id,
-            len(sids),
-            batch.total_tokens,
-            sids,
-        )

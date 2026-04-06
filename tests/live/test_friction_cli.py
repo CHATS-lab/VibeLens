@@ -20,22 +20,16 @@ from vibelens.llm.prompts.friction_analysis import (
     FRICTION_SYNTHESIS_PROMPT,
 )
 from vibelens.llm.tokenizer import count_tokens
-from vibelens.models.analysis.friction import (
-    FrictionLLMBatchOutput,
-    FrictionSynthesisOutput,
-)
-from vibelens.models.inference import InferenceRequest
-from vibelens.services.context_extraction import (
-    extract_session_context,
-    remap_session_ids,
-)
+from vibelens.models.analysis.friction import FrictionAnalysisOutput
+from vibelens.models.llm.inference import InferenceRequest
+from vibelens.services.analysis_shared import format_batch_digest
+from vibelens.services.context_extraction import extract_session_context
 from vibelens.services.friction.analysis import (
     FRICTION_OUTPUT_TOKENS,
     FRICTION_TIMEOUT_SECONDS,
     SYNTHESIS_OUTPUT_TOKENS,
     SYNTHESIS_TIMEOUT_SECONDS,
 )
-from vibelens.services.friction.digest import format_batch_digest
 from vibelens.services.session_batcher import build_batches
 from vibelens.utils.json_extract import extract_json as _extract_json
 from vibelens.utils.json_extract import repair_truncated_json as _repair_truncated_json
@@ -60,7 +54,6 @@ def _run_cli_friction_test(label: str, session_count: int | None = None) -> None
         ctx = extract_session_context(traj_group)
         contexts.append(ctx)
 
-    remap_session_ids(contexts)
     batches = build_batches(contexts)
 
     timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
@@ -74,7 +67,7 @@ def _run_cli_friction_test(label: str, session_count: int | None = None) -> None
     print(f"  Sessions: {len(groups)}, Batches: {len(batches)}")
     print(f"{'=' * 70}")
 
-    all_batch_outputs: list[FrictionLLMBatchOutput] = []
+    all_batch_outputs: list[FrictionAnalysisOutput] = []
 
     for idx, batch in enumerate(batches):
         digest = format_batch_digest(batch)
@@ -83,7 +76,7 @@ def _run_cli_friction_test(label: str, session_count: int | None = None) -> None
         )
         system_prompt = FRICTION_ANALYSIS_PROMPT.render_system()
         user_prompt = FRICTION_ANALYSIS_PROMPT.render_user(
-            session_count=len(batch.session_contexts),
+            session_count=len(batch.contexts),
             batch_digest=digest,
             output_schema=output_schema,
         )
@@ -146,14 +139,14 @@ def _run_cli_friction_test(label: str, session_count: int | None = None) -> None
         json_str = _extract_json(raw_text)
         try:
             data = json.loads(json_str)
-            batch_output = FrictionLLMBatchOutput.model_validate(data)
+            batch_output = FrictionAnalysisOutput.model_validate(data)
         except json.JSONDecodeError as exc:
             print(f"  JSON decode error: {exc}")
             # Attempt 2: repair truncated
             repaired = _repair_truncated_json(json_str)
             try:
                 data = json.loads(repaired)
-                batch_output = FrictionLLMBatchOutput.model_validate(data)
+                batch_output = FrictionAnalysisOutput.model_validate(data)
                 print("  (JSON repaired from truncated output)")
             except (json.JSONDecodeError, Exception) as exc2:
                 parse_error = f"Repair also failed: {exc2}"
@@ -167,68 +160,58 @@ def _run_cli_friction_test(label: str, session_count: int | None = None) -> None
                 f"parsed_output_{idx}.json",
                 json.dumps(batch_output.model_dump(), indent=2, default=str),
             )
-            print(f"  Events: {len(batch_output.events)}")
+            print(f"  Events: {len(batch_output.friction_events)}")
             print(f"  Summary: {batch_output.summary!r}")
-            if batch_output.top_mitigation:
-                print(f"  Top mitigation: {batch_output.top_mitigation.action}")
-            for event in batch_output.events:
+            for m in batch_output.mitigations:
+                print(f"  Mitigation: [{m.confidence:.0%}] {m.action}")
+            for event in batch_output.friction_events:
                 print(
                     f"    [{event.severity}] {event.friction_type}"
-                    f" | help={event.claude_helpfulness}"
                     f" | span=({event.span_ref.session_id}, {event.span_ref.start_step_id}"
                     f"→{event.span_ref.end_step_id})"
                     f" | {event.user_intention[:60]}"
                 )
-                for m in event.mitigations:
-                    print(f"        ↳ {m.action}: {m.content[:80]}")
         else:
             print(f"  PARSE ERROR: {parse_error}")
             save_log(log_dir, f"parse_error_{idx}.txt", parse_error or "unknown")
 
     # Synthesis test (if we have events)
-    total_events = sum(len(o.events) for o in all_batch_outputs)
+    total_events = sum(len(o.friction_events) for o in all_batch_outputs)
     if total_events > 0 and all_batch_outputs:
         print("\n  --- Synthesis ---")
-        batch_summaries = [o.summary for o in all_batch_outputs if o.summary]
 
-        # Quick type summary for synthesis
-        type_counts: dict[str, list] = {}
-        for o in all_batch_outputs:
-            for e in o.events:
-                type_counts.setdefault(e.friction_type, []).append(e)
-
-        type_stats = [
+        batch_data = [
             {
-                "friction_type": ft,
-                "count": len(evts),
-                "affected_sessions": len({e.span_ref.session_id for e in evts}),
-                "avg_severity": round(sum(e.severity for e in evts) / len(evts), 1),
+                "title": output.title,
+                "user_profile": output.user_profile,
+                "summary": output.summary,
+                "friction_events": [
+                    {
+                        "friction_type": e.friction_type,
+                        "severity": e.severity,
+                        "user_intention": e.user_intention,
+                        "description": e.description,
+                        "span_ref": {
+                            "session_id": e.span_ref.session_id,
+                            "start_step_id": e.span_ref.start_step_id,
+                            "end_step_id": e.span_ref.end_step_id,
+                        },
+                    }
+                    for e in output.friction_events
+                ],
+                "mitigations": [
+                    {"action": m.action, "confidence": m.confidence}
+                    for m in output.mitigations
+                ],
             }
-            for ft, evts in type_counts.items()
+            for output in all_batch_outputs
         ]
 
-        top_events = [
-            {
-                "friction_type": e.friction_type,
-                "severity": e.severity,
-                "user_intention": e.user_intention,
-                "friction_detail": e.friction_detail,
-            }
-            for o in all_batch_outputs
-            for e in sorted(o.events, key=lambda x: x.severity, reverse=True)
-        ][:7]
-
-        output_schema = json.dumps(
-            FRICTION_SYNTHESIS_PROMPT.output_model.model_json_schema(), indent=2
-        )
         system_prompt = FRICTION_SYNTHESIS_PROMPT.render_system()
         user_prompt = FRICTION_SYNTHESIS_PROMPT.render_user(
             batch_count=len(batches),
             session_count=len(groups),
-            batch_summaries=batch_summaries,
-            type_stats=type_stats,
-            top_events=top_events,
-            output_schema=output_schema,
+            batch_results=batch_data,
         )
 
         save_log(log_dir, "synthesis_system.txt", system_prompt)
@@ -255,7 +238,7 @@ def _run_cli_friction_test(label: str, session_count: int | None = None) -> None
         syn_json = _extract_json(syn_result.text.strip())
         try:
             syn_data = json.loads(syn_json)
-            synthesis = FrictionSynthesisOutput.model_validate(syn_data)
+            synthesis = FrictionAnalysisOutput.model_validate(syn_data)
             save_log(
                 log_dir,
                 "synthesis_parsed.json",
@@ -263,8 +246,7 @@ def _run_cli_friction_test(label: str, session_count: int | None = None) -> None
             )
             print(f"  Title: {synthesis.title!r}")
             print(f"  Summary: {synthesis.summary!r}")
-            print(f"  Type descriptions: {len(synthesis.type_descriptions)}")
-            print(f"  Cross-session patterns: {len(synthesis.cross_session_patterns)}")
+            print(f"  Events: {len(synthesis.friction_events)}")
             print(f"  Mitigations: {len(synthesis.mitigations)}")
         except Exception as exc:
             print(f"  SYNTHESIS PARSE ERROR: {exc}")

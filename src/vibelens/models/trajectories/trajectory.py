@@ -30,7 +30,7 @@ class Trajectory(BaseModel):
 
     Root-level container for a complete agent interaction session.
     VibeLens extends with project_path, first_message,
-    last_trajectory_ref (session continuation), and
+    prev_trajectory_ref (session continuation), and
     parent_trajectory_ref (sub-agent lineage).
     """
 
@@ -38,6 +38,7 @@ class Trajectory(BaseModel):
         default=DEFAULT_ATIF_VERSION, description="ATIF schema version string."
     )
     session_id: str = Field(description="Unique identifier for the entire agent run.")
+    agent: Agent = Field(description="Agent system configuration.")
     timestamp: datetime | None = Field(
         default=None, description="[VibeLens] Session start timestamp, derived from first step."
     )
@@ -47,14 +48,10 @@ class Trajectory(BaseModel):
     first_message: str | None = Field(
         default=None, description="[VibeLens] Truncated first user message for session preview."
     )
-    agent: Agent = Field(description="Agent system configuration.")
-    notes: str | None = Field(
-        default=None, description="Design notes or explanations for format discrepancies."
-    )
     final_metrics: FinalMetrics | None = Field(
         default=None, description="Summary metrics for the entire trajectory."
     )
-    last_trajectory_ref: TrajectoryRef | None = Field(
+    prev_trajectory_ref: TrajectoryRef | None = Field(
         default=None,
         description=(
             "[VibeLens] Reference to the previous session this one continues from. "
@@ -69,9 +66,12 @@ class Trajectory(BaseModel):
             "Only set on sub-agent trajectories."
         ),
     )
-    continued_trajectory_ref: TrajectoryRef | None = Field(
+    next_trajectory_ref: TrajectoryRef | None = Field(
         default=None,
         description="Reference to continuation trajectory for multi-segment sessions.",
+    )
+    notes: str | None = Field(
+        default=None, description="Design notes or explanations for format discrepancies."
     )
     extra: dict[str, Any] | None = Field(default=None, description="Custom root-level metadata.")
     steps: list[Step] = Field(

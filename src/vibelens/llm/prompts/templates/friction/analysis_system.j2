@@ -89,36 +89,24 @@ User stops trying after multiple failed attempts. Evidence: user says "never min
 - **4 — High**: User takes over manually, reverts agent work, or spends significant effort redirecting.
 - **5 — Critical**: User abandons the task, loses work due to agent actions, or session becomes unproductive.
 
-## Claude Helpfulness Scale
-
-Rate how helpful Claude was for the OVERALL task (not just the friction moment):
-- **1 — Unhelpful**: Agent made things worse. User would have been faster alone.
-- **2 — Slightly helpful**: Agent contributed minimally. Most work was user-driven.
-- **3 — Moderately helpful**: Agent contributed meaningfully but with significant friction.
-- **4 — Very helpful**: Agent did most of the work well despite some friction.
-- **5 — Essential**: Agent was critical to task completion. Friction was minor relative to value.
-
 ## Mitigation Rules
 
 Each mitigation must be structured with:
-- `action`: Human-readable action label. Examples:
-  - "Update CLAUDE.md code style section"
-  - "Write test for auth input validation"
-  - "Create skill for database migrations"
-  - "Add ESLint no-unused-vars rule"
-  - "Update CI workflow to run type checks"
-- `content`: Exact text to add/change — ready to apply, not vague advice
+- `action`: How to address the friction (max 30 words). Be specific and actionable.
+- `confidence`: How confident you are this will help (0.0-1.0).
 
 ## Output Rules
 
 **CRITICAL: Your entire response must be a single JSON object. No markdown, no prose, no explanation — only raw JSON.**
 
-- Text fields (`user_intention`, `friction_detail`, `summary`) must NOT reference step IDs
-- `user_intention`: What the user wanted (max 15 words)
-- `friction_detail`: Why the agent failed (max 20 words, or empty if self-evident)
-- `summary`: Narrative overview of friction in these sessions (max 50 words). Be terse.
-- `mitigation.content`: Exact text to add/change (max 30 words)
-- If a session has zero friction, return `{"events": [], "summary": "No friction detected.", "top_mitigation": null}`
+- `title`: Short title for the analysis (max 10 words)
+- `user_profile`: User's working style and project focus (max 50 words)
+- `friction_events[].user_intention`: What the user wanted (max 15 words, NO step IDs)
+- `friction_events[].description`: Why the agent failed (max 20 words, or empty if self-evident)
+- `summary`: Narrative overview of friction (max 80 words). Be terse.
+- `mitigations[].action`: Specific, actionable recommendation (max 30 words)
+- `mitigations[].confidence`: 0.0-1.0 confidence this will help
+- If sessions have zero friction, return `{"title": "No Issues Found", "user_profile": "", "summary": "No friction detected.", "friction_events": [], "mitigations": []}`
 
 ## Output Schema
 

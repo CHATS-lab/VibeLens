@@ -248,13 +248,13 @@ class ClaudeCodeParser(BaseParser):
                 extra = extra or {}
                 extra["sub_agent_count"] = len(sub_trajectories)
 
-        last_trajectory_ref = TrajectoryRef(session_id=last_session_id) if last_session_id else None
+        prev_trajectory_ref = TrajectoryRef(session_id=last_session_id) if last_session_id else None
         main_trajectory = self.assemble_trajectory(
             session_id=session_id,
             agent=agent,
             steps=steps,
             project_path=project_path,
-            last_trajectory_ref=last_trajectory_ref,
+            prev_trajectory_ref=prev_trajectory_ref,
             extra=extra,
         )
 

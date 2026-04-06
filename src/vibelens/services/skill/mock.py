@@ -1,20 +1,17 @@
 """Mock skill analysis data for demo/test mode.
 
-Builds realistic SkillAnalysisResult, SkillCreationProposalResult, and SkillCreation
-instances using real step IDs from loaded trajectories.
+Builds realistic SkillAnalysisResult instances using real step IDs
+from loaded trajectories.
 """
 
 from datetime import UTC, datetime
 
 from vibelens.deps import get_central_skill_store
 from vibelens.models.analysis.step_ref import StepRef
-from vibelens.models.inference import BackendType
+from vibelens.models.llm.inference import BackendType
 from vibelens.models.skill import (
     SkillAnalysisResult,
     SkillCreation,
-    SkillCreationProposal,
-    SkillCreationProposalOutput,
-    SkillCreationProposalResult,
     SkillEdit,
     SkillEvolution,
     SkillMode,
@@ -78,113 +75,6 @@ def build_mock_skill_result(session_ids: list[str], mode: SkillMode) -> SkillAna
         created_at=datetime.now(UTC).isoformat(),
     )
 
-
-def build_mock_proposal_result(session_ids: list[str]) -> SkillCreationProposalResult:
-    """Build a mock SkillCreationProposalResult for demo/test mode.
-
-    Args:
-        session_ids: Session IDs from the request.
-
-    Returns:
-        Mock SkillCreationProposalResult with sample proposals.
-    """
-    step_pool = _collect_step_ids(session_ids)
-    loaded_ids = list(step_pool.keys())
-    skipped = [sid for sid in session_ids if sid not in step_pool]
-    patterns = _build_mock_patterns(step_pool)
-
-    proposals = [
-        SkillCreationProposal(
-            skill_name="search-and-replace",
-            description="Intelligent multi-file search and replace with context-aware matching.",
-            rationale=(
-                "Your search-read-edit cycle is the most frequent pattern. "
-                "This skill packages it into a single, repeatable workflow."
-            ),
-            addressed_patterns=["Search-Read-Edit Cycle"],
-        ),
-        SkillCreationProposal(
-            skill_name="test-fix-loop",
-            description="Automated test-driven debugging: run, diagnose, fix, verify.",
-            rationale=(
-                "Test-fix loops consumed significant context in multiple sessions. "
-                "Automating the diagnosis step would save ~40% of iterations."
-            ),
-            addressed_patterns=["Test-Fix Loop"],
-        ),
-        SkillCreationProposal(
-            skill_name="project-scaffold",
-            description="Generate project file scaffolding with standard boilerplate and imports.",
-            rationale=(
-                "Detected repeated file creation with identical boilerplate structure "
-                "across 3 sessions. Automating this saves ~2 minutes per new file."
-            ),
-            addressed_patterns=["New File Scaffolding"],
-        ),
-        SkillCreationProposal(
-            skill_name="dep-upgrade",
-            description="Automate dependency version bumps with changelog analysis and testing.",
-            rationale=(
-                "Each dependency upgrade requires 4-5 manual steps. "
-                "A skill could batch-process multiple upgrades safely."
-            ),
-            addressed_patterns=["Dependency Upgrade Workflow"],
-        ),
-    ]
-
-    proposal_output = SkillCreationProposalOutput(
-        workflow_patterns=patterns,
-        proposals=proposals,
-        summary=(
-            f"Analyzed {len(loaded_ids)} sessions and detected {len(patterns)} "
-            f"recurring workflow patterns. Generated 4 skill proposals targeting "
-            f"the most impactful automation opportunities."
-        ),
-        user_profile=(
-            "Developer focused on Python/TypeScript full-stack projects. "
-            "Frequently uses Grep → Read → Edit → Bash workflows for code modifications."
-        ),
-    )
-
-    return SkillCreationProposalResult(
-        session_ids=loaded_ids,
-        skipped_session_ids=skipped,
-        backend_id=BackendType.MOCK,
-        model="mock/test-model",
-        metrics=Metrics(cost_usd=0.012),
-        batch_count=1,
-        created_at=datetime.now(UTC).isoformat(),
-        proposal_output=proposal_output,
-    )
-
-
-def build_mock_deep_creation(proposal_name: str) -> SkillCreation:
-    """Build a mock SkillCreation for demo/test mode.
-
-    Args:
-        proposal_name: Name of the proposal to create.
-
-    Returns:
-        Mock SkillCreation with full SKILL.md content.
-    """
-    return SkillCreation(
-        name=proposal_name,
-        description=f"Mock skill for {proposal_name} generated in demo mode.",
-        skill_md_content=(
-            f"---\n"
-            f"description: Mock skill for {proposal_name}\n"
-            f"tags: [mock, demo]\n"
-            f"allowed-tools: [Read, Edit, Bash]\n"
-            f"---\n\n"
-            f"# {proposal_name}\n\n"
-            f"1. Analyze the current context\n"
-            f"2. Apply the appropriate transformation\n"
-            f"3. Verify the result with tests\n"
-            f"4. Report completion\n"
-        ),
-        rationale=f"Mock rationale for {proposal_name} in demo/test mode.",
-        tools_used=[],
-    )
 
 
 MAX_MOCK_SESSIONS = 5

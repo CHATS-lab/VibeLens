@@ -14,16 +14,15 @@ class ShareRequest(BaseModel):
 class ShareResponse(BaseModel):
     """Response containing the shareable link details."""
 
-    token: str = Field(description="URL-safe share token.")
+    session_id: str = Field(description="Session ID used as the share token.")
     url: str = Field(description="Full shareable URL.")
     title: str = Field(description="Session title extracted from first message.")
     created_at: datetime = Field(description="When the share was created.")
 
 
 class ShareMeta(BaseModel):
-    """Metadata for a shared session snapshot."""
+    """Metadata for a shared session."""
 
-    token: str = Field(description="URL-safe share token.")
-    session_id: str = Field(description="Original session ID.")
+    session_id: str = Field(description="Session ID (also serves as share token).")
     title: str = Field(description="Session title from first message.")
     created_at: datetime = Field(description="When the share was created.")

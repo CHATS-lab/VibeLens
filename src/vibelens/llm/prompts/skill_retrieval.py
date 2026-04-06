@@ -5,7 +5,7 @@ existing skills from a pre-built candidate list. Synthesis merges
 batch-level results when multiple batches are used.
 """
 
-from vibelens.models.prompts import AnalysisPrompt, load_template
+from vibelens.models.llm.prompts import AnalysisPrompt, load_template
 from vibelens.models.skill import SkillRetrievalOutput
 
 SKILL_RETRIEVAL_PROMPT = AnalysisPrompt(

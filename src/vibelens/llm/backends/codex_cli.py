@@ -21,7 +21,7 @@ References:
 import json
 
 from vibelens.llm.backends.cli_base import CliBackend
-from vibelens.models.inference import BackendType, InferenceRequest
+from vibelens.models.llm.inference import BackendType, InferenceRequest
 
 CODEX_CLI_MODELS = [
     "gpt-4.1-nano",

@@ -361,14 +361,14 @@ def _extract_continuation_map(metadata_cache: dict[str, dict]) -> dict[str, str]
     """Extract continuation relationships from metadata for cache persistence.
 
     Args:
-        metadata_cache: session_id -> metadata dict with optional last_trajectory_ref.
+        metadata_cache: session_id -> metadata dict with optional prev_trajectory_ref.
 
     Returns:
         Dict mapping current_session_id -> previous_session_id.
     """
     result: dict[str, str] = {}
     for sid, meta in metadata_cache.items():
-        ref = meta.get("last_trajectory_ref")
+        ref = meta.get("prev_trajectory_ref")
         if ref and isinstance(ref, dict) and ref.get("session_id"):
             result[sid] = ref["session_id"]
     return result

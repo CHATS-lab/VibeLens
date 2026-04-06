@@ -9,7 +9,7 @@ import importlib
 
 from vibelens.config.llm_config import LLMConfig
 from vibelens.llm.backend import InferenceBackend
-from vibelens.models.inference import BackendType
+from vibelens.models.llm.inference import BackendType
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)

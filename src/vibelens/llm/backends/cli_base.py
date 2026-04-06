@@ -15,7 +15,7 @@ from abc import abstractmethod
 from pathlib import Path
 
 from vibelens.llm.backend import InferenceBackend, InferenceError, InferenceTimeoutError
-from vibelens.models.inference import (
+from vibelens.models.llm.inference import (
     BackendType,
     InferenceRequest,
     InferenceResult,

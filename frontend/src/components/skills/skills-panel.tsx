@@ -1,9 +1,10 @@
 import { History, PanelRightClose, PanelRightOpen, Search, Sparkles, Square, TrendingUp } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppContext } from "../../app";
-import type { AnalysisJobResponse, AnalysisJobStatus, LLMStatus, SkillAnalysisResult, SkillMode } from "../../types";
+import type { AnalysisJobResponse, AnalysisJobStatus, CostEstimate, LLMStatus, SkillAnalysisResult, SkillMode } from "../../types";
 import { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "../../styles";
 import { AnalysisWelcomePage } from "../analysis-welcome";
+import { CostEstimateDialog } from "../cost-estimate-dialog";
 import { Tooltip } from "../tooltip";
 import { ExploreSkillsTab } from "./explore-skills-tab";
 import { LocalSkillsTab } from "./local-skills-tab";
@@ -58,7 +59,7 @@ interface SkillsPanelProps {
 }
 
 export function SkillsPanel({ checkedIds, activeJobId, onJobIdChange }: SkillsPanelProps) {
-  const { fetchWithToken, appMode } = useAppContext();
+  const { fetchWithToken, appMode, maxAnalysisSessions } = useAppContext();
   const [activeTab, setActiveTab] = useState<SkillTab>("local");
   const [analysisResult, setAnalysisResult] = useState<SkillAnalysisResult | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
@@ -66,6 +67,8 @@ export function SkillsPanel({ checkedIds, activeJobId, onJobIdChange }: SkillsPa
   const [showHistory, setShowHistory] = useState(true);
   const [historyRefresh, setHistoryRefresh] = useState(0);
   const [llmStatus, setLlmStatus] = useState<LLMStatus | null>(null);
+  const [estimate, setEstimate] = useState<CostEstimate | null>(null);
+  const [estimating, setEstimating] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
   const draggingRef = useRef(false);
 
@@ -111,13 +114,16 @@ export function SkillsPanel({ checkedIds, activeJobId, onJobIdChange }: SkillsPa
     refreshLlmStatus();
   }, [refreshLlmStatus]);
 
-  const handleRunAnalysis = useCallback(
+  const pendingModeRef = useRef<SkillMode>("retrieval");
+
+  const handleRequestEstimate = useCallback(
     async (mode: SkillMode) => {
       if (checkedIds.size === 0) return;
-      setAnalysisLoading(true);
+      pendingModeRef.current = mode;
+      setEstimating(true);
       setAnalysisError(null);
       try {
-        const res = await fetchWithToken("/api/skills/analysis", {
+        const res = await fetchWithToken("/api/skills/analysis/estimate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ session_ids: [...checkedIds], mode }),
@@ -126,24 +132,47 @@ export function SkillsPanel({ checkedIds, activeJobId, onJobIdChange }: SkillsPa
           const body = await res.json().catch(() => null);
           throw new Error(body?.detail || `HTTP ${res.status}`);
         }
-        const data: AnalysisJobResponse = await res.json();
-        if (data.status === "completed" && data.analysis_id) {
-          const loadRes = await fetchWithToken(`/api/skills/analysis/${data.analysis_id}`);
-          if (loadRes.ok) {
-            setAnalysisResult(await loadRes.json());
-            setHistoryRefresh((n) => n + 1);
-          }
-          setAnalysisLoading(false);
-        } else {
-          onJobIdChange(data.job_id);
-        }
+        setEstimate(await res.json());
       } catch (err) {
         setAnalysisError(err instanceof Error ? err.message : String(err));
-        setAnalysisLoading(false);
+      } finally {
+        setEstimating(false);
       }
     },
-    [checkedIds, fetchWithToken, onJobIdChange],
+    [checkedIds, fetchWithToken],
   );
+
+  const handleConfirmAnalysis = useCallback(async () => {
+    const mode = pendingModeRef.current;
+    setEstimate(null);
+    setAnalysisLoading(true);
+    setAnalysisError(null);
+    try {
+      const res = await fetchWithToken("/api/skills/analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_ids: [...checkedIds], mode }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.detail || `HTTP ${res.status}`);
+      }
+      const data: AnalysisJobResponse = await res.json();
+      if (data.status === "completed" && data.analysis_id) {
+        const loadRes = await fetchWithToken(`/api/skills/analysis/${data.analysis_id}`);
+        if (loadRes.ok) {
+          setAnalysisResult(await loadRes.json());
+          setHistoryRefresh((n) => n + 1);
+        }
+        setAnalysisLoading(false);
+      } else {
+        onJobIdChange(data.job_id);
+      }
+    } catch (err) {
+      setAnalysisError(err instanceof Error ? err.message : String(err));
+      setAnalysisLoading(false);
+    }
+  }, [checkedIds, fetchWithToken, onJobIdChange]);
 
   const handleHistorySelect = useCallback((loaded: SkillAnalysisResult) => {
     setAnalysisResult(loaded);
@@ -238,7 +267,7 @@ export function SkillsPanel({ checkedIds, activeJobId, onJobIdChange }: SkillsPa
         <div className="flex-1 min-h-0 overflow-y-auto">
           {activeTab === "local" && <LocalSkillsTab />}
           {activeTab === "explore" && <ExploreSkillsTab onSwitchTab={setActiveTab} />}
-          {isAnalysisTab && analysisLoading && (
+          {isAnalysisTab && (analysisLoading || estimating) && (
             <div className="flex items-center justify-center h-full">
               <div className="flex flex-col items-center gap-5">
                 <AnalysisLoadingState mode={currentMode} sessionCount={checkedIds.size} />
@@ -257,7 +286,7 @@ export function SkillsPanel({ checkedIds, activeJobId, onJobIdChange }: SkillsPa
               </div>
             </div>
           )}
-          {isAnalysisTab && !analysisLoading && !analysisResult && (
+          {isAnalysisTab && !analysisLoading && !estimating && !analysisResult && (
             <AnalysisWelcomePage
               icon={MODE_DESCRIPTIONS[currentMode].icon}
               title={MODE_DESCRIPTIONS[currentMode].title}
@@ -267,8 +296,9 @@ export function SkillsPanel({ checkedIds, activeJobId, onJobIdChange }: SkillsPa
               fetchWithToken={fetchWithToken}
               onLlmConfigured={refreshLlmStatus}
               checkedCount={checkedIds.size}
+              maxSessions={maxAnalysisSessions}
               error={analysisError}
-              onRun={() => handleRunAnalysis(currentMode)}
+              onRun={() => handleRequestEstimate(currentMode)}
               isDemo={appMode === "demo"}
             />
           )}
@@ -323,6 +353,14 @@ export function SkillsPanel({ checkedIds, activeJobId, onJobIdChange }: SkillsPa
           </div>
         )}
       </div>
+      {estimate && (
+        <CostEstimateDialog
+          estimate={estimate}
+          sessionCount={checkedIds.size}
+          onConfirm={handleConfirmAnalysis}
+          onCancel={() => setEstimate(null)}
+        />
+      )}
     </div>
   );
 }

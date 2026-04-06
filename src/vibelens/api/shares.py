@@ -3,19 +3,20 @@
 from fastapi import APIRouter, Header, HTTPException, Request
 
 from vibelens.deps import get_settings, get_share_service
-from vibelens.models.trajectories import Trajectory
 from vibelens.schemas.share import ShareMeta, ShareRequest, ShareResponse
 from vibelens.services.session.crud import get_session
 from vibelens.services.session.flow import compute_flow_from_trajectories
+from vibelens.services.session.share import extract_title
 
 router = APIRouter(prefix="/shares", tags=["shares"])
 
-
+# Demo URL for share links when running in demo mode
 DEMO_PUBLIC_URL = "https://vibelens.chats-lab.org"
+# Local URL patterns that indicate the app is running on a developer's machine
 LOCAL_HOSTS = ("127.0.0.1", "0.0.0.0", "localhost")
 
 
-def _build_share_url(request: Request, token: str) -> str:
+def _build_share_url(request: Request, session_id: str) -> str:
     """Build the full shareable URL from the current request context."""
     settings = get_settings()
     if settings.public_url:
@@ -26,16 +27,14 @@ def _build_share_url(request: Request, token: str) -> str:
         base = f"http://localhost:{settings.port}"
     else:
         base = str(request.base_url).rstrip("/")
-    return f"{base}/?share={token}"
+    return f"{base}/?share={session_id}"
 
 
 @router.post("")
 async def create_share(
-    body: ShareRequest,
-    request: Request,
-    x_session_token: str | None = Header(None),
+    body: ShareRequest, request: Request, x_session_token: str | None = Header(None)
 ) -> ShareResponse:
-    """Create a shareable snapshot of a session.
+    """Mark a session as shared and return the shareable URL.
 
     Args:
         body: ShareRequest with session_id.
@@ -43,95 +42,103 @@ async def create_share(
         x_session_token: Browser tab token for upload scoping.
 
     Returns:
-        ShareResponse with token, URL, title, and created_at.
+        ShareResponse with session_id, URL, title, and created_at.
     """
     trajectories = get_session(body.session_id, session_token=x_session_token)
     if not trajectories:
         raise HTTPException(status_code=404, detail="Session not found")
 
+    title = extract_title(trajectories)
     share_service = get_share_service()
-    meta = share_service.create(body.session_id, trajectories)
-    url = _build_share_url(request, meta.token)
+    meta = share_service.share(body.session_id, title)
+    url = _build_share_url(request, meta.session_id)
 
     return ShareResponse(
-        token=meta.token,
-        url=url,
-        title=meta.title,
-        created_at=meta.created_at,
+        session_id=meta.session_id, url=url, title=meta.title, created_at=meta.created_at
     )
 
 
 @router.get("")
 async def list_shares() -> list[ShareMeta]:
-    """List all existing shares.
+    """List all shared sessions.
 
     Returns:
         List of ShareMeta sorted by creation time (newest first).
     """
-    return get_share_service().list_shares()
+    return get_share_service().list_shared()
 
 
-@router.get("/{token}")
-async def get_share(token: str) -> list[dict]:
-    """Get shared trajectory data by token (public, no auth).
+@router.get("/{session_id}")
+async def get_share(session_id: str) -> list[dict]:
+    """Get shared trajectory data by session ID (public, no auth).
+
+    Loads from the normal trajectory store, gated by the share registry.
 
     Args:
-        token: Share token.
+        session_id: Shared session identifier.
 
     Returns:
         JSON array of trajectory dicts.
     """
-    data = get_share_service().load(token)
-    if data is None:
+    share_service = get_share_service()
+    if not share_service.is_shared(session_id):
         raise HTTPException(status_code=404, detail="Share not found")
-    return data
+
+    trajectories = get_session(session_id)
+    if not trajectories:
+        raise HTTPException(status_code=404, detail="Session data not found")
+
+    return [t.model_dump(mode="json") for t in trajectories]
 
 
-@router.get("/{token}/meta")
-async def get_share_meta(token: str) -> ShareMeta:
-    """Get share metadata by token (public, no auth).
+@router.get("/{session_id}/meta")
+async def get_share_meta(session_id: str) -> ShareMeta:
+    """Get share metadata by session ID (public, no auth).
 
     Args:
-        token: Share token.
+        session_id: Shared session identifier.
 
     Returns:
-        ShareMeta with token, session_id, title, created_at.
+        ShareMeta with session_id, title, created_at.
     """
-    meta = get_share_service().load_meta(token)
+    meta = get_share_service().get_meta(session_id)
     if meta is None:
         raise HTTPException(status_code=404, detail="Share not found")
     return meta
 
 
-@router.get("/{token}/flow")
-async def share_flow(token: str) -> dict:
-    """Compute flow diagram data (tool graph + phases) from a shared session.
+@router.get("/{session_id}/flow")
+async def share_flow(session_id: str) -> dict:
+    """Compute flow diagram data from a shared session.
 
     Args:
-        token: Share token.
+        session_id: Shared session identifier.
 
     Returns:
         Dict with session_id, tool_graph, and phase_segments.
     """
-    raw = get_share_service().load(token)
-    if raw is None:
+    share_service = get_share_service()
+    if not share_service.is_shared(session_id):
         raise HTTPException(status_code=404, detail="Share not found")
 
-    trajectories = [Trajectory(**t) for t in raw]
-    return compute_flow_from_trajectories(trajectories, token)
+    trajectories = get_session(session_id)
+    if not trajectories:
+        raise HTTPException(status_code=404, detail="Session data not found")
+
+    return compute_flow_from_trajectories(trajectories, session_id)
 
 
-@router.delete("/{token}")
-async def delete_share(token: str) -> dict:
-    """Revoke a share by deleting its snapshot.
+@router.delete("/{session_id}")
+async def delete_share(session_id: str) -> dict:
+    """Revoke a share by removing it from the registry.
 
     Args:
-        token: Share token to revoke.
+        session_id: Session identifier to unshare.
 
     Returns:
         Status dict indicating success or not found.
     """
-    deleted = get_share_service().delete(token)
-    if not deleted:
+    removed = get_share_service().unshare(session_id)
+    if not removed:
         raise HTTPException(status_code=404, detail="Share not found")
-    return {"status": "deleted", "token": token}
+    return {"status": "deleted", "session_id": session_id}

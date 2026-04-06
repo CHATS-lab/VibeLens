@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.9.22] - 2026-04-06
+
+### Added
+- **Cost estimate dialog for skill analysis**: Pre-flight cost confirmation before running retrieval, creation, and evolution analyses, matching friction's existing flow. Shared `CostEstimateDialog` component used by both panels.
+- **`SessionContext` domain model**: New `models/context.py` consolidates session context, step-ref resolution, and trajectory aggregation into a single Pydantic model, replacing loose tuples and `IdMapping`/`remap_session_ids`.
+- **Agent message extraction**: Context extraction now includes truncated agent text messages alongside tool calls, controlled by new `ContextParams` fields.
+- **Analysis ID log correlation**: All log records during an analysis run are tagged with `[analysis_id]` via a `ContextVar`, making it easy to trace multi-batch runs in logs.
+- **`max_analysis_sessions` setting**: Configurable limit (default 30) on sessions per analysis request, exposed via `/api/settings` and enforced in the frontend with a warning banner.
+- **`user_profile` and `confidence` on friction results**: Friction analysis now returns a user working-style profile and per-mitigation confidence scores.
+
+### Changed
+- **Friction model overhaul**: Flattened `FrictionLLMEvent`/`FrictionLLMBatchOutput`/`FrictionSynthesisOutput` into a single `FrictionAnalysisOutput`. Renamed fields (`friction_detail` to `description`, `estimated_cost` to `friction_cost`, `events` to `friction_events`). Removed per-type aggregation (`TypeSummary`), `claude_helpfulness`, `friction_id`, `project_path`, and `cross_batch_patterns`.
+- **Friction panel UI**: Events grouped by friction type with collapsible sections. Severity descriptions reworded to second-person. Human-readable friction type labels.
+- **Trajectory field renames**: `last_trajectory_ref` to `prev_trajectory_ref`, `continued_trajectory_ref` to `next_trajectory_ref`.
+- **Session view modes**: `"timeline"` renamed to `"detail"`, `"flow"` to `"workflow"`.
+- **Share service rewritten**: Registry-based model (`shared.json`) instead of per-token snapshot files. Shares load from the normal trajectory store at read time.
+- **Session batcher restructured**: `SessionBatch` replaced by `SessionContextBatch`. Oversized session splitting happens before chaining. Clearer function naming throughout.
+- **Skill prompt caps tightened**: Per-batch proposals capped at 3 patterns and 3 proposals. Synthesis caps: 5 patterns, 5 creation proposals, 8 evolution proposals.
+- **Models reorganized**: `models/inference.py`, `models/pricing.py`, `models/prompts.py` moved to `models/llm/` subpackage.
+- **Friction and skill analysis share more infrastructure**: Extracted `log_analysis_summary()`, `format_batch_digest()`, and `merge_batch_refs()` as shared helpers.
+
+### Removed
+- **`services/friction/digest.py`**: Merged into `analysis_shared.format_batch_digest()`.
+- **`StepSignal` model and signal-based digest path**: All analysis uses `SessionContext` exclusively.
+- **Two-step proposal/create API**: Removed `/api/skills/analysis/proposals` and `/api/skills/analysis/create` endpoints; consolidated into single analysis flow.
+- **Share snapshot files**: Per-token `.json`/`.meta.json` files on disk no longer created.
+
 ## [0.9.21] - 2026-04-05
 
 ### Changed

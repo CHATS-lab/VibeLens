@@ -16,7 +16,7 @@ References:
 import json
 
 from vibelens.llm.backends.cli_base import CliBackend
-from vibelens.models.inference import BackendType, InferenceRequest, InferenceResult
+from vibelens.models.llm.inference import BackendType, InferenceRequest, InferenceResult
 
 
 class AmpCliBackend(CliBackend):

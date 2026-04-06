@@ -19,12 +19,12 @@ from vibelens.config.llm_config import load_llm_config
 from vibelens.llm.backends.litellm_backend import LiteLLMBackend
 from vibelens.llm.prompts.friction_analysis import FRICTION_ANALYSIS_PROMPT
 from vibelens.llm.tokenizer import count_tokens
-from vibelens.models.analysis.friction import FrictionLLMBatchOutput
-from vibelens.models.inference import InferenceRequest
+from vibelens.models.analysis.friction import FrictionAnalysisOutput
+from vibelens.models.llm.inference import InferenceRequest
 from vibelens.models.trajectories import Trajectory
+from vibelens.services.analysis_shared import format_batch_digest
 from vibelens.services.context_extraction import extract_session_context
 from vibelens.services.friction.analysis import FRICTION_OUTPUT_TOKENS
-from vibelens.services.friction.digest import format_batch_digest
 from vibelens.services.session_batcher import build_batches
 from vibelens.utils.json_extract import extract_json as _extract_json
 from vibelens.utils.json_extract import repair_truncated_json as _repair_truncated_json
@@ -75,7 +75,7 @@ def _run_friction_analysis(label: str, groups: dict[str, list[Trajectory]]) -> N
     print(f"  Sessions: {len(session_ids)}")
     print(f"  Batches: {len(batches)}")
     for batch in batches:
-        n = len(batch.session_contexts)
+        n = len(batch.contexts)
         print(f"    {batch.batch_id}: {n} sessions, {batch.total_tokens:,} tokens")
 
     # Load LLM config and create backend
@@ -83,15 +83,15 @@ def _run_friction_analysis(label: str, groups: dict[str, list[Trajectory]]) -> N
     backend = LiteLLMBackend(llm_config)
 
     # Process each batch
-    all_outputs: list[FrictionLLMBatchOutput] = []
+    all_outputs: list[FrictionAnalysisOutput] = []
     total_cost = 0.0
 
     for batch in batches:
         digest = format_batch_digest(batch)
-        output_schema = json.dumps(FrictionLLMBatchOutput.model_json_schema(), indent=2)
+        output_schema = json.dumps(FrictionAnalysisOutput.model_json_schema(), indent=2)
         system_prompt = FRICTION_ANALYSIS_PROMPT.render_system()
         user_prompt = FRICTION_ANALYSIS_PROMPT.render_user(
-            session_count=len(batch.session_contexts),
+            session_count=len(batch.contexts),
             batch_digest=digest,
             output_schema=output_schema,
         )
@@ -131,12 +131,12 @@ def _run_friction_analysis(label: str, groups: dict[str, list[Trajectory]]) -> N
         parse_error = None
         try:
             data = json.loads(json_str)
-            batch_output = FrictionLLMBatchOutput.model_validate(data)
+            batch_output = FrictionAnalysisOutput.model_validate(data)
         except json.JSONDecodeError:
             repaired = _repair_truncated_json(json_str)
             try:
                 data = json.loads(repaired)
-                batch_output = FrictionLLMBatchOutput.model_validate(data)
+                batch_output = FrictionAnalysisOutput.model_validate(data)
                 print("  (JSON repaired from truncated output)")
             except (json.JSONDecodeError, Exception) as exc:
                 parse_error = str(exc)
@@ -145,10 +145,10 @@ def _run_friction_analysis(label: str, groups: dict[str, list[Trajectory]]) -> N
 
         if batch_output:
             all_outputs.append(batch_output)
-            print(f"  Events: {len(batch_output.events)}")
+            print(f"  Events: {len(batch_output.friction_events)}")
             print(f"  Summary: {len(batch_output.summary)} chars")
-            if batch_output.events:
-                for event in batch_output.events:
+            if batch_output.friction_events:
+                for event in batch_output.friction_events:
                     print(
                         f"    [{event.severity}] {event.friction_type}"
                         f" — {event.user_intention[:80]}..."

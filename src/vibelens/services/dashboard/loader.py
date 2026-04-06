@@ -3,13 +3,15 @@
 import time
 from datetime import datetime, timedelta
 
+from cachetools import TTLCache
+
 from vibelens.models.dashboard.dashboard import (
     DashboardStats,
     SessionAnalytics,
     ToolUsageStat,
 )
 from vibelens.models.trajectories import Trajectory
-from vibelens.services.analysis_shared import make_ttl_cache
+from vibelens.services.analysis_shared import CACHE_MAXSIZE, CACHE_TTL_SECONDS
 from vibelens.services.dashboard.analytics import compute_session_analytics
 from vibelens.services.dashboard.stats import (
     compute_dashboard_stats,
@@ -33,8 +35,8 @@ logger = get_logger(__name__)
 WARM_BATCH_SIZE = 20
 WARM_YIELD_SECONDS = 0.01
 
-_dashboard_cache = make_ttl_cache()
-_tool_usage_cache = make_ttl_cache()
+_dashboard_cache: TTLCache = TTLCache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL_SECONDS)
+_tool_usage_cache: TTLCache = TTLCache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL_SECONDS)
 
 
 def load_filtered_trajectories(

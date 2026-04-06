@@ -1,5 +1,5 @@
 import { Check, Download, Loader2, Monitor, RotateCcw, Upload } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { SkillSourceInfo } from "../../types";
 import { Modal, ModalBody, ModalFooter, ModalHeader } from "../modal";
 import { SOURCE_LABELS } from "./skill-constants";
@@ -34,6 +34,11 @@ export function SkillPreviewDialog({
   const [localContent, setLocalContent] = useState(content);
   const [selectedTargets, setSelectedTargets] = useState<Set<string>>(new Set());
   const [installing, setInstalling] = useState(false);
+
+  // Sync local state when content prop updates (e.g. after async fetch)
+  useEffect(() => {
+    setLocalContent(content);
+  }, [content]);
   const isEditable = !!onContentChange;
   const isUpdate = variant === "update";
 

@@ -8,11 +8,10 @@ from fastapi import APIRouter, Header, HTTPException
 from vibelens.deps import get_skill_analysis_store, is_demo_mode, is_test_mode
 from vibelens.models.skill import SkillAnalysisResult
 from vibelens.schemas.analysis import AnalysisJobResponse, AnalysisJobStatus
+from vibelens.schemas.cost_estimate import CostEstimateResponse
 from vibelens.schemas.skills import (
     SkillAnalysisMeta,
     SkillAnalysisRequest,
-    SkillDeepCreateRequest,
-    SkillProposalRequest,
 )
 from vibelens.services.job_tracker import (
     cancel_job,
@@ -22,15 +21,10 @@ from vibelens.services.job_tracker import (
     submit_job,
 )
 from vibelens.services.skill import (
-    analyze_skill_creation_proposals,
     analyze_skills,
-    infer_skill_creation,
+    estimate_skill_analysis,
 )
-from vibelens.services.skill.mock import (
-    build_mock_deep_creation,
-    build_mock_proposal_result,
-    build_mock_skill_result,
-)
+from vibelens.services.skill.mock import build_mock_skill_result
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -53,45 +47,39 @@ async def _run_skill_analysis(
         logger.exception("Skill analysis job %s failed", job_id)
 
 
-async def _run_proposals(job_id: str, session_ids: list[str], token: str | None) -> None:
-    """Background wrapper for skill proposal generation."""
-    try:
-        result = await analyze_skill_creation_proposals(session_ids, session_token=token)
-        mark_completed(job_id, result.proposal_id or "")
-    except asyncio.CancelledError:
-        logger.info("Proposal job %s was cancelled", job_id)
-        raise
-    except Exception as exc:
-        mark_failed(job_id, f"{type(exc).__name__}: {exc}")
-        logger.exception("Proposal job %s failed", job_id)
 
+@router.post("/estimate")
+async def skill_estimate(
+    body: SkillAnalysisRequest, x_session_token: str | None = Header(None)
+) -> CostEstimateResponse:
+    """Pre-flight cost estimate for skill analysis.
 
-async def _run_deep_create(
-    job_id: str,
-    proposal_name: str,
-    proposal_description: str,
-    proposal_rationale: str,
-    addressed_patterns: list[str],
-    session_ids: list[str],
-    token: str | None,
-) -> None:
-    """Background wrapper for deep skill creation."""
+    Args:
+        body: Request with session IDs and analysis mode.
+        x_session_token: Browser tab token for upload scoping.
+
+    Returns:
+        Cost estimate with model info and projected cost range.
+    """
+    if not body.session_ids:
+        raise HTTPException(status_code=400, detail="session_ids must not be empty")
+
     try:
-        result = await infer_skill_creation(
-            proposal_name=proposal_name,
-            proposal_description=proposal_description,
-            proposal_rationale=proposal_rationale,
-            addressed_patterns=addressed_patterns,
-            session_ids=session_ids,
-            session_token=token,
-        )
-        mark_completed(job_id, result.name)
-    except asyncio.CancelledError:
-        logger.info("Deep create job %s was cancelled", job_id)
-        raise
-    except Exception as exc:
-        mark_failed(job_id, f"{type(exc).__name__}: {exc}")
-        logger.exception("Deep create job %s failed", job_id)
+        est = estimate_skill_analysis(body.session_ids, body.mode, session_token=x_session_token)
+    except ValueError as exc:
+        status = 503 if "inference backend" in str(exc) else 400
+        raise HTTPException(status_code=status, detail=str(exc)) from exc
+
+    return CostEstimateResponse(
+        model=est.model,
+        batch_count=est.batch_count,
+        total_input_tokens=est.total_input_tokens,
+        total_output_tokens_budget=est.total_output_tokens_budget,
+        cost_min_usd=est.cost_min_usd,
+        cost_max_usd=est.cost_max_usd,
+        pricing_found=est.pricing_found,
+        formatted_cost=est.formatted_cost,
+    )
 
 
 @router.post("")
@@ -127,78 +115,6 @@ async def skill_analysis(
 
     return AnalysisJobResponse(job_id=job_id, status="running")
 
-
-@router.post("/proposals")
-async def skill_proposals(
-    body: SkillProposalRequest, x_session_token: str | None = Header(None)
-) -> AnalysisJobResponse:
-    """Generate lightweight skill proposals from session analysis.
-
-    Args:
-        body: Request with session IDs.
-        x_session_token: Browser tab token for upload scoping.
-
-    Returns:
-        AnalysisJobResponse with job_id and status.
-    """
-    if not body.session_ids:
-        raise HTTPException(status_code=400, detail="session_ids must not be empty")
-
-    if is_test_mode() or is_demo_mode():
-        result = build_mock_proposal_result(body.session_ids)
-        return AnalysisJobResponse(
-            job_id="mock", status="completed", analysis_id=result.proposal_id
-        )
-
-    job_id = secrets.token_urlsafe(12)
-    try:
-        submit_job(job_id, _run_proposals(job_id, body.session_ids, x_session_token))
-    except ValueError as exc:
-        status = 503 if "inference backend" in str(exc) else 400
-        raise HTTPException(status_code=status, detail=str(exc)) from exc
-
-    return AnalysisJobResponse(job_id=job_id, status="running")
-
-
-@router.post("/create")
-async def skill_deep_create(
-    body: SkillDeepCreateRequest, x_session_token: str | None = Header(None)
-) -> AnalysisJobResponse:
-    """Generate full SKILL.md content for one approved proposal.
-
-    Args:
-        body: Request with proposal details and session IDs.
-        x_session_token: Browser tab token for upload scoping.
-
-    Returns:
-        AnalysisJobResponse with job_id and status.
-    """
-    if not body.session_ids:
-        raise HTTPException(status_code=400, detail="session_ids must not be empty")
-
-    if is_test_mode() or is_demo_mode():
-        result = build_mock_deep_creation(body.proposal_name)
-        return AnalysisJobResponse(job_id="mock", status="completed", analysis_id=result.name)
-
-    job_id = secrets.token_urlsafe(12)
-    try:
-        submit_job(
-            job_id,
-            _run_deep_create(
-                job_id,
-                body.proposal_name,
-                body.proposal_description,
-                body.proposal_rationale,
-                body.addressed_patterns,
-                body.session_ids,
-                x_session_token,
-            ),
-        )
-    except ValueError as exc:
-        status = 503 if "inference backend" in str(exc) else 400
-        raise HTTPException(status_code=status, detail=str(exc)) from exc
-
-    return AnalysisJobResponse(job_id=job_id, status="running")
 
 
 @router.get("/jobs/{job_id}")

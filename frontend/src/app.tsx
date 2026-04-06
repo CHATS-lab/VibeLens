@@ -36,15 +36,18 @@ interface AppContextValue {
   sessionToken: string;
   appMode: AppMode;
   maxZipBytes: number;
+  maxAnalysisSessions: number;
   fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
 }
 
 const DEFAULT_MAX_ZIP_BYTES = 500 * 1024 * 1024;
+const DEFAULT_MAX_ANALYSIS_SESSIONS = 30;
 
 const AppContext = createContext<AppContextValue>({
   sessionToken: "",
   appMode: "self",
   maxZipBytes: DEFAULT_MAX_ZIP_BYTES,
+  maxAnalysisSessions: DEFAULT_MAX_ANALYSIS_SESSIONS,
   fetchWithToken: (url, init) => fetch(url, init),
 });
 
@@ -69,6 +72,7 @@ export function App() {
   const [sidebarWidth, setSidebarWidth] = useState(280);
   const [appMode, setAppMode] = useState<AppMode>("self");
   const [maxZipBytes, setMaxZipBytes] = useState(DEFAULT_MAX_ZIP_BYTES);
+  const [maxAnalysisSessions, setMaxAnalysisSessions] = useState(DEFAULT_MAX_ANALYSIS_SESSIONS);
   const [agentFilter, setAgentFilter] = useState("all");
   const [visibleAgents, setVisibleAgents] = useState<string[]>(["all"]);
   const [mainView, setMainView] = useState<MainView>("browse");
@@ -117,6 +121,7 @@ export function App() {
     sessionToken,
     appMode,
     maxZipBytes,
+    maxAnalysisSessions,
     fetchWithToken,
   };
 
@@ -130,9 +135,10 @@ export function App() {
   useEffect(() => {
     fetchWithToken("/api/settings")
       .then((r) => r.json())
-      .then((data: { app_mode?: string; max_zip_bytes?: number; visible_agents?: string[] }) => {
+      .then((data: { app_mode?: string; max_zip_bytes?: number; max_analysis_sessions?: number; visible_agents?: string[] }) => {
         if (data.app_mode === "demo") setAppMode("demo");
         if (data.max_zip_bytes) setMaxZipBytes(data.max_zip_bytes);
+        if (data.max_analysis_sessions) setMaxAnalysisSessions(data.max_analysis_sessions);
         if (data.visible_agents) setVisibleAgents(data.visible_agents);
         setSettingsLoaded(true);
       })

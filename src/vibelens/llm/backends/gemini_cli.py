@@ -14,7 +14,7 @@ always included in the user prompt regardless of the JSON output envelope.
 from pathlib import Path
 
 from vibelens.llm.backends.cli_base import CliBackend
-from vibelens.models.inference import BackendType, InferenceRequest
+from vibelens.models.llm.inference import BackendType, InferenceRequest
 
 GEMINI_CLI_MODELS = [
     "gemini-2.0-flash",

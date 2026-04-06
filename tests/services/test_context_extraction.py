@@ -6,6 +6,8 @@ tool arg summarization, and non-compaction fallback.
 
 from datetime import UTC, datetime
 
+from vibelens.models.analysis.step_ref import StepRef
+from vibelens.models.context import SessionContextBatch
 from vibelens.models.trajectories.step import Step, ToolCall
 from vibelens.models.trajectories.trajectory import Trajectory
 from vibelens.models.trajectories.trajectory_ref import TrajectoryRef
@@ -14,7 +16,6 @@ from vibelens.services.context_extraction import (
     _find_main_trajectory,
     _summarize_tool_args,
     extract_session_context,
-    remap_session_ids,
 )
 from vibelens.services.context_params import PRESET_DETAIL
 
@@ -76,7 +77,6 @@ def test_extract_without_compaction():
     assert "Fix the login bug" in ctx.context_text
     assert "fn=Edit" in ctx.context_text
     assert "file_path=src/auth.py" in ctx.context_text
-    assert ctx.char_count > 0
     print(f"Context:\n{ctx.context_text}")
 
 
@@ -165,7 +165,7 @@ def test_extract_with_compaction():
 
     # Steps use 0-indexed IDs
     assert "[step_id=0]" in ctx.context_text
-    assert ctx.step_index_map is not None
+    assert ctx.step_index2id is not None
 
     print(f"Context:\n{ctx.context_text}")
 
@@ -253,15 +253,15 @@ def test_summarize_tool_args():
 
 
 def test_linked_session_refs():
-    """Context captures last_trajectory_ref and continued_trajectory_ref."""
+    """Context captures prev_trajectory_ref and next_trajectory_ref."""
     main = _make_trajectory("session-3", [_make_step("s1", "user", "hello")])
-    main.last_trajectory_ref = TrajectoryRef(session_id="session-2")
-    main.continued_trajectory_ref = TrajectoryRef(session_id="session-4")
+    main.prev_trajectory_ref = TrajectoryRef(session_id="session-2")
+    main.next_trajectory_ref = TrajectoryRef(session_id="session-4")
 
     ctx = extract_session_context([main])
 
-    assert ctx.last_trajectory_ref_id == "session-2"
-    assert ctx.continued_trajectory_ref_id == "session-4"
+    assert ctx.prev_trajectory_ref_id == "session-2"
+    assert ctx.next_trajectory_ref_id == "session-4"
 
 
 def test_system_only_trajectory():
@@ -277,9 +277,8 @@ def test_system_only_trajectory():
     assert ctx.session_id == "system-only-session"
     assert ctx.project_path == "/test/project"
     assert "=== SESSION: system-only-session ===" in ctx.context_text
-    assert ctx.char_count > 0
     # System steps are skipped, so no step IDs assigned
-    assert ctx.step_index_map == {}
+    assert ctx.step_index2id == {}
     print(f"System-only trajectory context:\n{ctx.context_text}")
 
 
@@ -319,33 +318,71 @@ def test_tool_calls_without_observations():
     print(f"No-observation context:\n{ctx.context_text}")
 
 
-def test_remap_session_ids():
-    """remap_session_ids replaces real UUIDs with 0-based indices."""
-    ctx_a = extract_session_context(
-        [_make_trajectory("uuid-aaa-111", [_make_step("s1", "user", "hello")])]
+def test_session_context_batch_properties():
+    """SessionContextBatch exposes all_trajectories and resolve_step_ref."""
+    traj_a = _make_trajectory(
+        "sess-a",
+        [_make_step("s1", "user", "hello"), _make_step("s2", "agent", "hi")],
     )
-    ctx_b = extract_session_context(
-        [_make_trajectory("uuid-bbb-222", [_make_step("s1", "user", "world")])]
+    traj_b = _make_trajectory("sess-b", [_make_step("s3", "user", "world")])
+
+    ctx_a = extract_session_context([traj_a])
+    ctx_b = extract_session_context([traj_b])
+
+    batch = SessionContextBatch(
+        contexts=[ctx_a, ctx_b], session_ids=["sess-a", "sess-b"], skipped_session_ids=["sess-c"]
     )
 
-    mapping = remap_session_ids([ctx_a, ctx_b])
+    assert len(batch.all_trajectories) == 2
+    assert batch.session_ids == ["sess-a", "sess-b"]
+    assert batch.skipped_session_ids == ["sess-c"]
+    print(f"all_trajectories: {len(batch.all_trajectories)}")
+    print(f"session_ids: {batch.session_ids}")
 
-    # Session IDs replaced in context text
-    assert "=== SESSION: 0 ===" in ctx_a.context_text
-    assert "=== SESSION: 1 ===" in ctx_b.context_text
-    assert "uuid-aaa-111" not in ctx_a.context_text
-    assert "uuid-bbb-222" not in ctx_b.context_text
 
-    # char_count updated after replacement
-    assert ctx_a.char_count == len(ctx_a.context_text)
-    assert ctx_b.char_count == len(ctx_b.context_text)
+def test_session_context_batch_resolve_step_ref():
+    """resolve_step_ref resolves 0-indexed refs to real UUIDs and validates."""
+    traj = _make_trajectory(
+        "sess-a",
+        [_make_step("real-uuid-1", "user", "hello"), _make_step("real-uuid-2", "agent", "hi")],
+    )
+    ctx = extract_session_context([traj])
+    batch = SessionContextBatch(contexts=[ctx], session_ids=["sess-a"], skipped_session_ids=[])
 
-    # Mapping resolves back to real UUIDs
-    assert mapping.resolve_session_id("0") == "uuid-aaa-111"
-    assert mapping.resolve_session_id("1") == "uuid-bbb-222"
-    assert mapping.resolve_session_id("999") is None
-    assert mapping.resolve_session_id("invalid") is None
+    # Synthetic index "0" should resolve to real-uuid-1
+    ref = StepRef(session_id="sess-a", start_step_id="0")
+    result = batch.resolve_step_ref(ref)
+    assert result is not None
+    assert result.start_step_id == "real-uuid-1"
 
-    print(f"Mapping: {mapping.session_index_to_id}")
-    print(f"Remapped A:\n{ctx_a.context_text}")
-    print(f"Remapped B:\n{ctx_b.context_text}")
+    # Invalid session should return None
+    bad_ref = StepRef(session_id="nonexistent", start_step_id="0")
+    assert batch.resolve_step_ref(bad_ref) is None
+
+    # Invalid step index should return None
+    bad_step_ref = StepRef(session_id="sess-a", start_step_id="999")
+    assert batch.resolve_step_ref(bad_step_ref) is None
+
+    print(f"Resolved ref: {result}")
+
+
+def test_session_context_batch_bool_and_len():
+    """Empty SessionContextBatch is falsy, non-empty is truthy."""
+    empty = SessionContextBatch(contexts=[], session_ids=[], skipped_session_ids=[])
+    assert not empty
+    assert len(empty) == 0
+
+    traj = _make_trajectory("sess-a", [_make_step("s1", "user", "hello")])
+    ctx = extract_session_context([traj])
+    non_empty = SessionContextBatch(
+        contexts=[ctx], session_ids=["sess-a"], skipped_session_ids=[]
+    )
+    assert non_empty
+    assert len(non_empty) == 1
+
+    # Iteration works
+    items = list(non_empty)
+    assert len(items) == 1
+    assert items[0].session_id == "sess-a"
+    print(f"Empty: bool={bool(empty)}, len={len(empty)}")
+    print(f"Non-empty: bool={bool(non_empty)}, len={len(non_empty)}")

@@ -28,6 +28,7 @@ interface AnalysisWelcomePageProps {
   fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
   onLlmConfigured: () => void;
   checkedCount: number;
+  maxSessions: number;
   error: string | null;
   onRun: () => void;
   isDemo?: boolean;
@@ -42,6 +43,7 @@ export function AnalysisWelcomePage({
   fetchWithToken,
   onLlmConfigured,
   checkedCount,
+  maxSessions,
   error,
   onRun,
   isDemo,
@@ -50,6 +52,7 @@ export function AnalysisWelcomePage({
 
   const isConnected = llmStatus?.available === true;
   const isMock = llmStatus?.backend_id === "mock";
+  const overLimit = checkedCount > maxSessions;
 
   if (view === "config") {
     return (
@@ -129,10 +132,16 @@ export function AnalysisWelcomePage({
           </div>
         )}
 
+        {overLimit && (
+          <div className="mb-4 px-4 py-2.5 bg-amber-900/20 border border-amber-800/50 rounded-lg text-xs text-amber-300 text-left">
+            Too many sessions selected ({checkedCount}). Maximum is {maxSessions}. Deselect some sessions to continue.
+          </div>
+        )}
+
         <Tooltip text={checkedCount === 0 ? "Use the checkboxes in the session list to select sessions for analysis." : ""}>
           <button
             onClick={onRun}
-            disabled={checkedCount === 0 || (!isConnected && !isMock)}
+            disabled={checkedCount === 0 || overLimit || (!isConnected && !isMock)}
             className={`inline-flex items-center gap-2 px-5 py-2.5 ${ACCENT_BUTTON[accentColor]} text-white text-sm font-medium rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed`}
           >
             <Play className="w-4 h-4" />

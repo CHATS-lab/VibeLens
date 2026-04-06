@@ -8,39 +8,44 @@ from pathlib import Path
 
 from vibelens.deps import get_skill_analysis_store
 from vibelens.llm.backend import InferenceBackend
+from vibelens.llm.cost_estimator import CostEstimate, estimate_analysis_cost
 from vibelens.llm.prompts.skill_retrieval import (
     SKILL_RETRIEVAL_PROMPT,
     SKILL_RETRIEVAL_SYNTHESIS_PROMPT,
 )
-from vibelens.models.inference import InferenceRequest
+from vibelens.llm.tokenizer import count_tokens
+from vibelens.models.context import SessionContextBatch
+from vibelens.models.llm.inference import InferenceRequest
 from vibelens.models.skill import (
     SkillAnalysisResult,
     SkillMode,
     SkillRetrievalOutput,
     WorkflowPattern,
 )
-from vibelens.models.trajectories import Trajectory
 from vibelens.models.trajectories.metrics import Metrics
 from vibelens.services.analysis_shared import (
     build_system_kwargs,
     extract_all_contexts,
+    format_batch_digest,
+    log_analysis_summary,
     require_backend,
     run_batches_concurrent,
     save_analysis_log,
     truncate_digest_to_fit,
 )
+from vibelens.services.analysis_store import generate_analysis_id
 from vibelens.services.context_params import PRESET_CONCISE
-from vibelens.services.friction.digest import format_batch_digest
-from vibelens.services.session_batcher import SessionBatch, build_batches
+from vibelens.services.session_batcher import build_batches
 from vibelens.services.skill.shared import (
     SKILL_LOG_DIR,
     _cache,
     gather_installed_skills,
+    merge_batch_refs,
     parse_llm_output,
     skill_cache_key,
     validate_patterns,
 )
-from vibelens.utils.log import get_logger
+from vibelens.utils.log import clear_analysis_id, get_logger, set_analysis_id
 
 logger = get_logger(__name__)
 
@@ -52,6 +57,42 @@ SKILL_RETRIEVAL_SYNTHESIS_OUTPUT_TOKENS = 8192
 SKILL_RETRIEVAL_TIMEOUT_SECONDS = 300
 
 
+def estimate_skill_retrieval(
+    session_ids: list[str], session_token: str | None = None
+) -> CostEstimate:
+    """Pre-flight cost estimate for skill retrieval analysis.
+
+    Args:
+        session_ids: Sessions to analyze.
+        session_token: Browser tab token for upload scoping.
+
+    Returns:
+        CostEstimate with projected cost range.
+
+    Raises:
+        ValueError: If no sessions could be loaded.
+    """
+    backend = require_backend()
+    context_set = extract_all_contexts(session_ids, session_token, PRESET_CONCISE)
+    if not context_set:
+        raise ValueError(f"No sessions could be loaded from: {session_ids}")
+
+    batches = build_batches(context_set.contexts)
+    system_prompt = SKILL_RETRIEVAL_PROMPT.render_system(
+        **build_system_kwargs(SKILL_RETRIEVAL_PROMPT.output_model, backend)
+    )
+    batch_token_counts = [count_tokens(format_batch_digest(batch)) for batch in batches]
+
+    return estimate_analysis_cost(
+        batch_token_counts=batch_token_counts,
+        system_prompt=system_prompt,
+        model=backend.model,
+        max_output_tokens=SKILL_RETRIEVAL_OUTPUT_TOKENS,
+        synthesis_output_tokens=SKILL_RETRIEVAL_SYNTHESIS_OUTPUT_TOKENS,
+        synthesis_threshold=1,
+    )
+
+
 async def analyze_skill_retrieval(
     session_ids: list[str], session_token: str | None = None
 ) -> SkillAnalysisResult:
@@ -60,21 +101,27 @@ async def analyze_skill_retrieval(
     if cache_key in _cache:
         return _cache[cache_key]
 
-    # Build session contexts
     start_time = time.monotonic()
-    backend = require_backend()
-    contexts, loaded_ids, skipped_ids = extract_all_contexts(
-        session_ids, session_token, PRESET_CONCISE
-    )
+    analysis_id = generate_analysis_id()
+    set_analysis_id(analysis_id)
 
-    if not contexts:
+    backend = require_backend()
+    context_set = extract_all_contexts(session_ids, session_token, PRESET_CONCISE)
+
+    if not context_set:
+        clear_analysis_id()
         raise ValueError(f"No sessions could be loaded from: {session_ids}")
 
     installed_skills = gather_installed_skills()
     skill_candidates = _load_skill_retrieval_candidates()
 
-    batches = build_batches(contexts)
-    logger.info("Skill retrieval: %d sessions → %d batch(es)", len(loaded_ids), len(batches))
+    batches = build_batches(context_set.contexts)
+    logger.info(
+        "Skill retrieval: %d sessions → %d batch(es)",
+        len(context_set.session_ids),
+        len(batches),
+    )
+    log_analysis_summary(context_set, batches, backend)
 
     run_timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     log_dir = SKILL_LOG_DIR / run_timestamp
@@ -94,33 +141,34 @@ async def analyze_skill_retrieval(
         llm_output = batch_results[0][0]
     else:
         llm_output, syn_cost = await _synthesize_skill_retrieval(
-            backend, batch_results, len(loaded_ids), log_dir
+            backend, batch_results, len(context_set.session_ids), log_dir
         )
         total_cost += syn_cost
+        # Synthesis LLM drops example_refs; recover from batch outputs
+        merge_batch_refs(
+            llm_output.workflow_patterns,
+            [output.workflow_patterns for output, _ in batch_results],
+        )
 
     rec_names = [r.skill_name for r in llm_output.recommendations]
     logger.info("Retrieval recommendations: %s", rec_names)
 
-    # Collect all trajectories for pattern validation
-    all_trajectories: list[Trajectory] = []
-    for ctx in contexts:
-        all_trajectories.extend(ctx.trajectory_group)
-
-    validated_patterns = validate_patterns(llm_output.workflow_patterns, all_trajectories)
+    validated_patterns = validate_patterns(llm_output.workflow_patterns, context_set)
 
     duration = round(time.monotonic() - start_time, 2)
     skill_result = _build_skill_retrieval_result(
         validated_patterns,
         llm_output,
-        loaded_ids,
-        skipped_ids,
+        context_set.session_ids,
+        context_set.skipped_session_ids,
         backend,
         total_cost if total_cost > 0 else None,
         batch_count=len(batches),
         warnings=batch_warnings,
         duration_seconds=duration,
     )
-    get_skill_analysis_store().save(skill_result)
+    get_skill_analysis_store().save(skill_result, analysis_id)
+    clear_analysis_id()
 
     _cache[cache_key] = skill_result
     return skill_result
@@ -128,7 +176,7 @@ async def analyze_skill_retrieval(
 
 async def _infer_skill_retrieval_batch(
     backend: InferenceBackend,
-    batch: SessionBatch,
+    batch: SessionContextBatch,
     installed_skills: list[dict],
     skill_candidates: list[dict],
     log_dir: Path,
@@ -148,7 +196,7 @@ async def _infer_skill_retrieval_batch(
         Tuple of (parsed retrieval output, cost in USD).
     """
     digest = format_batch_digest(batch)
-    session_count = len(batch.session_contexts)
+    session_count = len(batch.contexts)
 
     # Pre-filter candidates per batch using batch-specific keywords
     candidates = skill_candidates

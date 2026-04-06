@@ -18,7 +18,7 @@ References:
 """
 
 from vibelens.llm.backends.cli_base import CliBackend
-from vibelens.models.inference import BackendType, InferenceRequest
+from vibelens.models.llm.inference import BackendType, InferenceRequest
 
 KIMI_CLI_MODELS = ["kimi-k2.5", "kimi-k2"]
 KIMI_CLI_DEFAULT_MODEL = "kimi-k2.5"

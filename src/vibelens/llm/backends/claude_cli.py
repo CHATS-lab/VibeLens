@@ -10,7 +10,7 @@ Safety flags prevent agentic behavior during scripted inference:
 """
 
 from vibelens.llm.backends.cli_base import CliBackend
-from vibelens.models.inference import BackendType, InferenceRequest
+from vibelens.models.llm.inference import BackendType, InferenceRequest
 
 CLAUDE_CLI_MODELS = [
     "claude-haiku-4-5",

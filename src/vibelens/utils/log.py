@@ -16,8 +16,11 @@ Category log files:
 import logging
 import os
 import sys
+from contextvars import ContextVar
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+
+_analysis_id_var: ContextVar[str | None] = ContextVar("analysis_id", default=None)
 
 LOG_FORMAT = "%(asctime)s | %(name)s:%(lineno)d | %(levelname)s | %(message)s"
 LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -29,18 +32,42 @@ LOG_BACKUP_COUNT = 3
 # Prefix matching allows grouping related modules into one log file.
 CATEGORY_LOG_FILES: dict[str, str] = {
     "vibelens.ingest.parsers.": "parsers.log",
-    "vibelens.services.friction.": "analysis-friction.log",
     "vibelens.services.skill.": "analysis-skill.log",
-    "vibelens.services.upload.": "upload.log",
+    "vibelens.services.friction.": "analysis-friction.log",
     "vibelens.api.upload": "upload.log",
+    "vibelens.services.upload.": "upload.log",
     "vibelens.storage.conversation.disk": "upload.log",
-    "vibelens.services.donation.": "donation.log",
     "vibelens.api.donation": "donation.log",
+    "vibelens.services.donation.": "donation.log",
     "vibelens.services.session.donation": "donation.log",
 }
 
 _root_configured = False
 _category_handlers: dict[str, logging.Handler] = {}
+
+
+class _AnalysisIdFormatter(logging.Formatter):
+    """Formatter that prepends ``[analysis_id] `` when an analysis is running.
+
+    Reads the current analysis_id from a contextvar at format time,
+    so every log record is tagged regardless of which module emits it.
+    """
+
+    def format(self, record: logging.LogRecord) -> str:
+        aid = _analysis_id_var.get(None)
+        if aid:
+            record.msg = f"[{aid}] {record.msg}"
+        return super().format(record)
+
+
+def set_analysis_id(analysis_id: str) -> None:
+    """Set the current analysis_id for log correlation."""
+    _analysis_id_var.set(analysis_id)
+
+
+def clear_analysis_id() -> None:
+    """Clear the current analysis_id after an analysis run completes."""
+    _analysis_id_var.set(None)
 
 
 def _get_log_level() -> int:
@@ -50,8 +77,8 @@ def _get_log_level() -> int:
 
 
 def _build_formatter() -> logging.Formatter:
-    """Create the shared log formatter."""
-    return logging.Formatter(fmt=LOG_FORMAT, datefmt=LOG_DATE_FORMAT)
+    """Create the shared log formatter with analysis_id injection."""
+    return _AnalysisIdFormatter(fmt=LOG_FORMAT, datefmt=LOG_DATE_FORMAT)
 
 
 def _ensure_root_logger(log_dir: Path) -> None:

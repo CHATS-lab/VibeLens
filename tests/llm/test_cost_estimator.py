@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from vibelens.llm.cost_estimator import CostEstimate, estimate_friction_cost
+from vibelens.llm.cost_estimator import CostEstimate, estimate_analysis_cost
 from vibelens.llm.pricing import lookup_pricing
 from vibelens.llm.tokenizer import count_tokens
 
@@ -40,7 +40,7 @@ def _load_log_dir_data(log_dir: Path) -> tuple[str, list[int]]:
 
 def test_estimate_basic_structure() -> None:
     """CostEstimate has all required fields."""
-    estimate = estimate_friction_cost(
+    estimate = estimate_analysis_cost(
         batch_token_counts=[1000, 2000],
         system_prompt="You are a test assistant.",
         model="anthropic/claude-haiku-4-5",
@@ -63,7 +63,7 @@ def test_estimate_basic_structure() -> None:
 
 def test_estimate_unknown_model() -> None:
     """Unknown model returns pricing_found=False and zero cost."""
-    estimate = estimate_friction_cost(
+    estimate = estimate_analysis_cost(
         batch_token_counts=[1000],
         system_prompt="test",
         model="unknown/nonexistent-model",
@@ -78,7 +78,7 @@ def test_estimate_unknown_model() -> None:
 
 def test_estimate_empty_batches() -> None:
     """Zero batches produces zero cost."""
-    estimate = estimate_friction_cost(
+    estimate = estimate_analysis_cost(
         batch_token_counts=[],
         system_prompt="test",
         model="anthropic/claude-haiku-4-5",
@@ -91,14 +91,14 @@ def test_estimate_empty_batches() -> None:
 
 def test_estimate_scales_with_batches() -> None:
     """More batches produce higher estimates."""
-    small = estimate_friction_cost(
+    small = estimate_analysis_cost(
         batch_token_counts=[50000],
         system_prompt="You are a test assistant.",
         model="anthropic/claude-haiku-4-5",
         max_output_tokens=8192,
         synthesis_output_tokens=20000,
     )
-    large = estimate_friction_cost(
+    large = estimate_analysis_cost(
         batch_token_counts=[50000, 50000, 50000, 50000],
         system_prompt="You are a test assistant.",
         model="anthropic/claude-haiku-4-5",
@@ -130,7 +130,7 @@ def test_estimate_vs_real_4_batch() -> None:
     log_dir = next(d for d in log_dirs if len(list(d.glob("user_prompt_*.txt"))) == 4)
 
     system_prompt, batch_tokens = _load_log_dir_data(log_dir)
-    estimate = estimate_friction_cost(
+    estimate = estimate_analysis_cost(
         batch_token_counts=batch_tokens,
         system_prompt=system_prompt,
         model="anthropic/claude-haiku-4-5",
@@ -160,7 +160,7 @@ def test_estimate_vs_real_8_batch() -> None:
     batch_count = len(list(log_dir.glob("user_prompt_*.txt")))
 
     system_prompt, batch_tokens = _load_log_dir_data(log_dir)
-    estimate = estimate_friction_cost(
+    estimate = estimate_analysis_cost(
         batch_token_counts=batch_tokens,
         system_prompt=system_prompt,
         model="anthropic/claude-haiku-4-5",

@@ -4,7 +4,6 @@ Builds realistic FrictionAnalysisResult with user-centric friction events
 covering all severity levels, spread across available sessions.
 """
 
-from collections import defaultdict
 from datetime import UTC, datetime
 
 from vibelens.models.analysis.friction import (
@@ -12,10 +11,10 @@ from vibelens.models.analysis.friction import (
     FrictionCost,
     FrictionEvent,
     Mitigation,
-    TypeSummary,
 )
 from vibelens.models.analysis.step_ref import StepRef
-from vibelens.models.inference import BackendType
+from vibelens.models.llm.inference import BackendType
+from vibelens.models.trajectories.metrics import Metrics
 from vibelens.services.session.store_resolver import load_from_stores
 
 
@@ -33,34 +32,51 @@ def build_mock_friction_result(session_ids: list[str]) -> FrictionAnalysisResult
     """
     step_id_pool = _collect_step_ids(session_ids)
     events = _build_mock_events(step_id_pool)
-    type_summary = _build_mock_type_summary(events)
     skipped = [sid for sid in session_ids if sid not in step_id_pool]
     session_count = len(step_id_pool)
 
     return FrictionAnalysisResult(
-        events=events,
+        title="Scope Violations and Misunderstood Intent",
+        user_profile=(
+            "Full-stack developer working on auth, API, and frontend components. "
+            "Prefers incremental changes over rewrites."
+        ),
         summary=(
             f"Analysis of {session_count} session{'s' if session_count != 1 else ''} "
             f"found {len(events)} friction events where users expressed dissatisfaction. "
             "Most friction stemmed from the agent misunderstanding user intent and "
-            "producing code that didn't match requirements. The highest-impact issue "
-            "was repeated scope violations despite clear user instructions."
+            "producing code that didn't match requirements."
         ),
-        top_mitigation=Mitigation(
-            action_type="update_claude_md",
-            target="Task Execution",
-            content=(
-                "Before starting implementation, restate the user's requirement "
-                "in your own words and wait for confirmation."
+        mitigations=[
+            Mitigation(
+                action=(
+                    "Before starting implementation, restate the user's"
+                    " requirement and wait for confirmation."
+                ),
+                confidence=0.9,
             ),
-        ),
-        type_summary=type_summary,
+            Mitigation(
+                action=(
+                    "Only change what was explicitly requested."
+                    " Never refactor adjacent code."
+                ),
+                confidence=0.85,
+            ),
+            Mitigation(
+                action=(
+                    "When a test fails, read the full test file including"
+                    " fixtures before attempting a fix."
+                ),
+                confidence=0.7,
+            ),
+        ],
+        friction_events=events,
         session_ids=list(step_id_pool.keys()),
-        sessions_skipped=skipped,
+        skipped_session_ids=skipped,
         batch_count=1,
         backend_id=BackendType.MOCK,
         model="mock/test-model",
-        cost_usd=0.042,
+        metrics=Metrics(cost_usd=0.042),
         created_at=datetime.now(UTC).isoformat(),
     )
 
@@ -113,6 +129,23 @@ def _build_mock_events(pool: dict[str, list[str]]) -> list[FrictionEvent]:
 
     return [
         FrictionEvent(
+            friction_type="scope-violation",
+            span_ref=StepRef(
+                session_id=sid_3,
+                start_step_id=steps_3[0],
+                end_step_id=steps_3[-1] if len(steps_3) > 1 else None,
+            ),
+            severity=5,
+            user_intention="Fix the login button CSS alignment",
+            description=(
+                "Agent fixed CSS but also refactored the entire"
+                " component, breaking existing tests."
+            ),
+            friction_cost=FrictionCost(
+                affected_steps=4, affected_tokens=18000, affected_time_seconds=120
+            ),
+        ),
+        FrictionEvent(
             friction_type="misunderstood-intent",
             span_ref=StepRef(
                 session_id=sid_1,
@@ -120,23 +153,12 @@ def _build_mock_events(pool: dict[str, list[str]]) -> list[FrictionEvent]:
                 end_step_id=steps_1[-1] if len(steps_1) > 1 else None,
             ),
             severity=4,
-            user_intention="Refactor the auth module to use JWT tokens instead of session cookies",
-            friction_detail=(
-                "Agent rewrote the entire auth module from scratch instead of "
-                "migrating the existing session-based code to JWT."
+            user_intention="Refactor auth module to use JWT tokens instead of session cookies",
+            description=(
+                "Agent rewrote the entire auth module from scratch"
+                " instead of migrating incrementally."
             ),
-            claude_helpfulness=3,
-            mitigations=[
-                Mitigation(
-                    action_type="update_claude_md",
-                    target="Refactoring",
-                    content=(
-                        "When asked to refactor, modify existing code incrementally. "
-                        "Never rewrite entire modules unless explicitly asked."
-                    ),
-                ),
-            ],
-            estimated_cost=FrictionCost(
+            friction_cost=FrictionCost(
                 affected_steps=3, affected_tokens=12000, affected_time_seconds=90
             ),
         ),
@@ -149,70 +171,12 @@ def _build_mock_events(pool: dict[str, list[str]]) -> list[FrictionEvent]:
             ),
             severity=3,
             user_intention="Add input validation to the API endpoint",
-            friction_detail=(
-                "Agent added overly complex validation with custom error classes "
-                "when user wanted simple Pydantic field validators."
+            description=(
+                "Agent added overly complex validation when user"
+                " wanted simple Pydantic validators."
             ),
-            claude_helpfulness=4,
-            mitigations=[
-                Mitigation(
-                    action_type="update_claude_md",
-                    target="Coding Conventions",
-                    content=(
-                        "Use Pydantic field validators for API input "
-                        "validation. No custom error classes."
-                    ),
-                ),
-            ],
-            estimated_cost=FrictionCost(
+            friction_cost=FrictionCost(
                 affected_steps=2, affected_tokens=6500, affected_time_seconds=45
-            ),
-        ),
-        FrictionEvent(
-            friction_type="scope-violation",
-            span_ref=StepRef(
-                session_id=sid_3,
-                start_step_id=steps_3[0],
-                end_step_id=steps_3[-1] if len(steps_3) > 1 else None,
-            ),
-            severity=5,
-            user_intention="Fix the login button CSS alignment",
-            friction_detail=(
-                "Agent fixed the CSS but also refactored the entire component "
-                "to use a new design system, breaking existing tests."
-            ),
-            claude_helpfulness=2,
-            mitigations=[
-                Mitigation(
-                    action_type="update_claude_md",
-                    target="Task Execution",
-                    content=(
-                        "Only change what was explicitly requested. Never refactor adjacent code."
-                    ),
-                ),
-                Mitigation(
-                    action_type="write_test",
-                    target="tests/test_login.py",
-                    content="Add visual regression test for login button alignment.",
-                ),
-            ],
-            estimated_cost=FrictionCost(
-                affected_steps=4, affected_tokens=18000, affected_time_seconds=120
-            ),
-        ),
-        FrictionEvent(
-            friction_type="abandoned-task",
-            span_ref=StepRef(
-                session_id=sid_4,
-                start_step_id=steps_4[0],
-            ),
-            severity=2,
-            user_intention="Generate TypeScript types from the OpenAPI spec",
-            friction_detail="",
-            claude_helpfulness=4,
-            mitigations=[],
-            estimated_cost=FrictionCost(
-                affected_steps=1, affected_tokens=2000, affected_time_seconds=15
             ),
         ),
         FrictionEvent(
@@ -224,55 +188,25 @@ def _build_mock_events(pool: dict[str, list[str]]) -> list[FrictionEvent]:
             ),
             severity=3,
             user_intention="Run the test suite and fix the failing test",
-            friction_detail=(
-                "Agent fixed the wrong assertion three times before user "
-                "pointed out the actual issue was in the fixture setup."
+            description=(
+                "Agent fixed the wrong assertion three times before"
+                " user pointed out the fixture issue."
             ),
-            claude_helpfulness=3,
-            mitigations=[
-                Mitigation(
-                    action_type="update_claude_md",
-                    target="Debugging",
-                    content=(
-                        "When a test fails, read the full test file including fixtures "
-                        "before attempting a fix."
-                    ),
-                ),
-            ],
-            estimated_cost=FrictionCost(
+            friction_cost=FrictionCost(
                 affected_steps=3, affected_tokens=9500, affected_time_seconds=60
             ),
         ),
+        FrictionEvent(
+            friction_type="abandoned-task",
+            span_ref=StepRef(
+                session_id=sid_4,
+                start_step_id=steps_4[0],
+            ),
+            severity=2,
+            user_intention="Generate TypeScript types from the OpenAPI spec",
+            description="",
+            friction_cost=FrictionCost(
+                affected_steps=1, affected_tokens=2000, affected_time_seconds=15
+            ),
+        ),
     ]
-
-
-def _build_mock_type_summary(events: list[FrictionEvent]) -> list[TypeSummary]:
-    """Build type summary dynamically from mock events."""
-    type_groups: dict[str, list[FrictionEvent]] = defaultdict(list)
-    for event in events:
-        type_groups[event.friction_type].append(event)
-
-    summaries = []
-    for friction_type, group in type_groups.items():
-        total_steps = sum(e.estimated_cost.affected_steps for e in group)
-        total_time = sum(e.estimated_cost.affected_time_seconds or 0 for e in group)
-        total_tokens = sum(e.estimated_cost.affected_tokens or 0 for e in group)
-        affected = len({e.span_ref.session_id for e in group})
-        avg_sev = sum(e.severity for e in group) / len(group)
-
-        summaries.append(
-            TypeSummary(
-                friction_type=friction_type,
-                count=len(group),
-                affected_sessions=affected,
-                total_estimated_cost=FrictionCost(
-                    affected_steps=total_steps,
-                    affected_time_seconds=total_time if total_time > 0 else None,
-                    affected_tokens=total_tokens if total_tokens > 0 else None,
-                ),
-                avg_severity=round(avg_sev, 1),
-            )
-        )
-
-    summaries.sort(key=lambda s: s.avg_severity, reverse=True)
-    return summaries

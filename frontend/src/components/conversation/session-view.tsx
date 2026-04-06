@@ -65,7 +65,9 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
   const [navCollapsed, setNavCollapsed] = useState(true);
   const [sessionCost, setSessionCost] = useState<number | null>(null);
   const [shareStatus, setShareStatus] = useState<"idle" | "sharing" | "copied">("idle");
-  const [viewMode, setViewMode] = useState<"timeline" | "concise" | "flow">("concise");
+  const [viewMode, setViewMode] = useState<"concise" | "detail" | "workflow">(
+    pendingScrollStepId ? "detail" : "concise",
+  );
   const [navMode, setNavMode] = useState<NavMode>("prompts");
   const [flowData, setFlowData] = useState<FlowData | null>(null);
   const [flowLoading, setFlowLoading] = useState(false);
@@ -121,7 +123,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
 
   // Fetch flow data lazily when user toggles to flow view
   useEffect(() => {
-    if (viewMode !== "flow" || flowData || flowLoading || !sessionId) return;
+    if (viewMode !== "workflow" || flowData || flowLoading || !sessionId) return;
     setFlowLoading(true);
     const url = isSharedView && shareToken
       ? `/api/shares/${shareToken}/flow`
@@ -221,7 +223,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
 
   // Compute flow data for the nav panel when in flow mode
   const flowComputed = useMemo(() => {
-    if (!flowData || viewMode !== "flow") return undefined;
+    if (!flowData || viewMode !== "workflow") return undefined;
     return computeFlow(steps, flowData.tool_graph, flowData.phase_segments);
   }, [flowData, viewMode, steps]);
   const flowPhases = flowComputed?.phases;
@@ -420,9 +422,9 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
                   Concise
                 </button>
                 <button
-                  onClick={() => setViewMode("timeline")}
+                  onClick={() => setViewMode("detail")}
                   className={`flex-1 flex items-center justify-center gap-1 px-2.5 py-1.5 text-xs transition ${
-                    viewMode === "timeline"
+                    viewMode === "detail"
                       ? "bg-cyan-900/50 text-cyan-200 font-semibold"
                       : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/40"
                   }`}
@@ -431,9 +433,9 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
                   Detail
                 </button>
                 <button
-                  onClick={() => setViewMode("flow")}
+                  onClick={() => setViewMode("workflow")}
                   className={`flex-1 flex items-center justify-center gap-1 px-2.5 py-1.5 text-xs rounded-r-md transition ${
-                    viewMode === "flow"
+                    viewMode === "workflow"
                       ? "bg-cyan-900/50 text-cyan-200 font-semibold"
                       : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/40"
                   }`}
@@ -641,7 +643,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
       <div className="flex-1 flex min-h-0">
         {/* Steps / Flow */}
         <div ref={stepsRef} className="flex-1 overflow-y-auto">
-          {viewMode === "timeline" || viewMode === "concise" ? (
+          {viewMode === "detail" || viewMode === "concise" ? (
             <div className="max-w-5xl mx-auto px-4 py-6 space-y-3">
               {steps.length === 0 ? (
                 <div className="text-center text-zinc-500 text-sm py-8">

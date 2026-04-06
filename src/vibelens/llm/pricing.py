@@ -8,7 +8,7 @@ vibelens.services.dashboard.pricing.
 """
 
 from vibelens.llm.normalizer import normalize_model_name
-from vibelens.models.pricing import ModelPricing
+from vibelens.models.llm.pricing import ModelPricing
 
 TOKENS_PER_MTOK = 1_000_000
 

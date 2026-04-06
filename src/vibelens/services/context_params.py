@@ -42,6 +42,14 @@ class ContextParams:
     # Max chars for non-error output (ignored when include_non_error_obs is False)
     observation_max_chars: int
 
+    # -- Agent message truncation --
+    # Max total chars for an agent text message before head/tail splitting (0 = skip)
+    agent_message_max_chars: int
+    # Number of chars to keep from the start when truncating
+    agent_message_head_chars: int
+    # Number of chars to keep from the end when truncating
+    agent_message_tail_chars: int
+
     # -- Path display --
     # Replace $HOME prefix with ~ for shorter file paths
     shorten_home_prefix: bool
@@ -59,6 +67,9 @@ PRESET_CONCISE = ContextParams(
     error_truncate_chars=300,
     include_non_error_obs=False,
     observation_max_chars=0,
+    agent_message_max_chars=200,
+    agent_message_head_chars=150,
+    agent_message_tail_chars=50,
     shorten_home_prefix=True,
     path_max_segments=2,
 )
@@ -73,6 +84,9 @@ PRESET_MEDIUM = ContextParams(
     error_truncate_chars=600,
     include_non_error_obs=False,
     observation_max_chars=0,
+    agent_message_max_chars=500,
+    agent_message_head_chars=350,
+    agent_message_tail_chars=150,
     shorten_home_prefix=True,
     path_max_segments=3,
 )
@@ -87,6 +101,9 @@ PRESET_DETAIL = ContextParams(
     error_truncate_chars=1000,
     include_non_error_obs=True,
     observation_max_chars=150,
+    agent_message_max_chars=800,
+    agent_message_head_chars=600,
+    agent_message_tail_chars=200,
     shorten_home_prefix=True,
     path_max_segments=4,
 )

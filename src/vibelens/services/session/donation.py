@@ -64,9 +64,7 @@ def _filter_donatable_ids(session_ids: list[str], session_token: str | None) -> 
             )
             result.errors.append({"session_id": session_id, "error": "Session not found"})
         elif demo and not meta.get("_upload_id"):
-            logger.warning(
-                "Donation filter: session %s is an example, skipping", session_id
-            )
+            logger.warning("Donation filter: session %s is an example, skipping", session_id)
             result.errors.append(
                 {"session_id": session_id, "error": "Example sessions cannot be donated"}
             )

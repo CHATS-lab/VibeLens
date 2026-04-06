@@ -113,6 +113,12 @@ class Settings(BaseSettings):
         default=64 * 1024, description="Chunk size in bytes for streaming uploads to disk."
     )
 
+    # Analysis limits
+    max_analysis_sessions: int = Field(
+        default=30,
+        description="Maximum number of sessions allowed per skill or friction analysis request.",
+    )
+
     # LLM batching
     max_batch_tokens: int = Field(
         default=80_000,

@@ -13,6 +13,7 @@ Analyze the provided session transcripts alongside the user's installed skills t
 
 ## Pattern Detection Rules
 
+- Detect at most 3 workflow patterns.
 - A pattern must appear at least 2 times across sessions to be reported.
 - Every pattern MUST have a short, readable `title` (e.g. "Search-Read-Edit Cycle", "Test-Fix Loop").
 - Every pattern MUST have a `description` with more detail about what the pattern involves.
@@ -23,7 +24,7 @@ Analyze the provided session transcripts alongside the user's installed skills t
 
 ## Proposal Rules
 
-- Generate 1-8 proposals, prioritized by frequency and impact.
+- Generate at most 3 proposals, prioritized by frequency and impact.
 - Each proposal must target an existing installed skill.
 - Proposals need only: `skill_name`, `rationale`, `suggested_changes` (high-level description), `addressed_patterns` (list of pattern titles), and `relevant_session_indices` (0-indexed).
 - Focus on specificity: "add error recovery step" is better than "general improvement".

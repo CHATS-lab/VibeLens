@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, Field
 
-from vibelens.models.inference import BackendType
+from vibelens.models.llm.inference import BackendType
 from vibelens.models.skill.creation import SkillCreation
 from vibelens.models.skill.evolution import SkillEvolution
 from vibelens.models.skill.patterns import SkillMode, WorkflowPattern
@@ -24,6 +24,9 @@ class SkillAnalysisResult(BaseModel):
     session_ids: list[str] = Field(
         description="Session IDs that were successfully loaded and analyzed."
     )
+    skipped_session_ids: list[str] = Field(
+        default_factory=list, description="Session IDs that could not be loaded."
+    )
     title: str = Field(default="", description="LLM-generated analysis title, 5-10 words.")
     workflow_patterns: list[WorkflowPattern] = Field(
         default_factory=list, description="Detected workflow patterns from trajectory analysis."
@@ -39,9 +42,6 @@ class SkillAnalysisResult(BaseModel):
     )
     summary: str = Field(description="Overall analysis summary.")
     user_profile: str = Field(default="", description="Detected user workflow style.")
-    skipped_session_ids: list[str] = Field(
-        default_factory=list, description="Session IDs that could not be loaded."
-    )
     warnings: list[str] = Field(
         default_factory=list, description="Non-fatal issues encountered during analysis."
     )

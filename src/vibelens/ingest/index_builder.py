@@ -239,7 +239,7 @@ def _enrich_continuation_refs(
 
     For each Claude Code session file, checks if it contains entries from
     multiple sessionIds (indicating a continuation). Builds bidirectional
-    maps and sets last_trajectory_ref / continued_trajectory_ref on the
+    maps and sets prev_trajectory_ref / next_trajectory_ref on the
     cached skeleton objects.
 
     Args:
@@ -273,14 +273,14 @@ def _enrich_continuation_refs(
 
     for current_id, prev_id in continuation_map.items():
         current_traj = skeleton_by_id.get(current_id)
-        if current_traj and not current_traj.last_trajectory_ref:
-            current_traj.last_trajectory_ref = TrajectoryRef(session_id=prev_id)
+        if current_traj and not current_traj.prev_trajectory_ref:
+            current_traj.prev_trajectory_ref = TrajectoryRef(session_id=prev_id)
             linked += 1
 
     for prev_id, next_id in continued_by.items():
         prev_traj = skeleton_by_id.get(prev_id)
-        if prev_traj and not prev_traj.continued_trajectory_ref:
-            prev_traj.continued_trajectory_ref = TrajectoryRef(session_id=next_id)
+        if prev_traj and not prev_traj.next_trajectory_ref:
+            prev_traj.next_trajectory_ref = TrajectoryRef(session_id=next_id)
 
     if linked:
         logger.info("Enriched %d continuation chain links", linked)

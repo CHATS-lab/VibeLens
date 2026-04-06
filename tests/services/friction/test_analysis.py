@@ -10,7 +10,7 @@ Tests _compute_event_cost with various scenarios:
 
 from datetime import UTC, datetime
 
-from vibelens.models.analysis.friction import FrictionLLMEvent
+from vibelens.models.analysis.friction import FrictionEvent
 from vibelens.models.analysis.step_ref import StepRef
 from vibelens.models.trajectories.step import Metrics, Step
 from vibelens.models.trajectories.trajectory import Trajectory
@@ -44,16 +44,14 @@ def _make_step(
     )
 
 
-def _make_llm_event(session_id: str, start: str, end: str | None = None) -> FrictionLLMEvent:
-    """Build a minimal FrictionLLMEvent for testing."""
-    return FrictionLLMEvent(
+def _make_event(session_id: str, start: str, end: str | None = None) -> FrictionEvent:
+    """Build a minimal FrictionEvent for testing."""
+    return FrictionEvent(
         friction_type="test-type",
         span_ref=StepRef(session_id=session_id, start_step_id=start, end_step_id=end),
         severity=3,
         user_intention="test intention",
-        friction_detail="test detail",
-        claude_helpfulness=3,
-        mitigations=[],
+        description="test description",
     )
 
 
@@ -74,7 +72,7 @@ def test_cost_with_metrics_and_timestamps():
         _make_step("s3", prompt_tokens=300, completion_tokens=150, timestamp=ts3),
     ]
     traj = _make_trajectory("session-1", steps)
-    event = _make_llm_event("session-1", "s1", "s3")
+    event = _make_event("session-1", "s1", "s3")
 
     cost = _compute_event_cost(event, [traj])
 
@@ -89,13 +87,13 @@ def test_cost_with_metrics_and_timestamps():
 
 
 def test_cost_without_metrics():
-    """Cost computation when steps lack metrics — tokens should be None."""
+    """Cost computation when steps lack metrics -- tokens should be None."""
     steps = [
         _make_step("s1", has_metrics=False),
         _make_step("s2", has_metrics=False),
     ]
     traj = _make_trajectory("session-1", steps)
-    event = _make_llm_event("session-1", "s1", "s2")
+    event = _make_event("session-1", "s1", "s2")
 
     cost = _compute_event_cost(event, [traj])
 
@@ -106,13 +104,13 @@ def test_cost_without_metrics():
 
 
 def test_cost_without_timestamps():
-    """Cost computation when steps lack timestamps — time should be None."""
+    """Cost computation when steps lack timestamps -- time should be None."""
     steps = [
         _make_step("s1", prompt_tokens=100, completion_tokens=50),
         _make_step("s2", prompt_tokens=200, completion_tokens=100),
     ]
     traj = _make_trajectory("session-1", steps)
-    event = _make_llm_event("session-1", "s1", "s2")
+    event = _make_event("session-1", "s1", "s2")
 
     cost = _compute_event_cost(event, [traj])
 
@@ -123,8 +121,8 @@ def test_cost_without_timestamps():
 
 
 def test_cost_missing_trajectory():
-    """Cost computation when trajectory is not found — zero cost."""
-    event = _make_llm_event("nonexistent-session", "s1", "s2")
+    """Cost computation when trajectory is not found -- zero cost."""
+    event = _make_event("nonexistent-session", "s1", "s2")
     cost = _compute_event_cost(event, [])
 
     assert cost.affected_steps == 0
@@ -141,7 +139,7 @@ def test_cost_point_ref():
         _make_step("s2", prompt_tokens=100, completion_tokens=50),
     ]
     traj = _make_trajectory("session-1", steps)
-    event = _make_llm_event("session-1", "s1")
+    event = _make_event("session-1", "s1")
 
     cost = _compute_event_cost(event, [traj])
 
@@ -152,10 +150,10 @@ def test_cost_point_ref():
 
 
 def test_cost_invalid_step_ids():
-    """Cost computation when start_step_id is invalid — zero cost."""
+    """Cost computation when start_step_id is invalid -- zero cost."""
     steps = [_make_step("s1"), _make_step("s2")]
     traj = _make_trajectory("session-1", steps)
-    event = _make_llm_event("session-1", "nonexistent")
+    event = _make_event("session-1", "nonexistent")
 
     cost = _compute_event_cost(event, [traj])
 

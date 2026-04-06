@@ -288,7 +288,7 @@ class BaseParser(ABC):
         agent: Agent,
         steps: list[Step],
         project_path: str | None = None,
-        last_trajectory_ref: TrajectoryRef | None = None,
+        prev_trajectory_ref: TrajectoryRef | None = None,
         parent_trajectory_ref: TrajectoryRef | None = None,
         extra: dict | None = None,
     ) -> Trajectory:
@@ -303,7 +303,7 @@ class BaseParser(ABC):
             agent: Agent configuration.
             steps: Complete step list.
             project_path: Inferred working directory path.
-            last_trajectory_ref: Reference to previous session (continuation).
+            prev_trajectory_ref: Reference to previous session (continuation).
             parent_trajectory_ref: Reference to parent trajectory (sub-agent spawn).
             extra: Optional metadata dict for format-specific fields.
 
@@ -321,7 +321,7 @@ class BaseParser(ABC):
             agent=agent,
             steps=steps,
             final_metrics=_compute_final_metrics(steps),
-            last_trajectory_ref=last_trajectory_ref,
+            prev_trajectory_ref=prev_trajectory_ref,
             parent_trajectory_ref=parent_trajectory_ref,
             extra=extra,
         )

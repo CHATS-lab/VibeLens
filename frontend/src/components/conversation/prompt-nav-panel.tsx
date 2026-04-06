@@ -29,7 +29,7 @@ interface PromptNavPanelProps {
   onNavigate: (stepId: string) => void;
   width: number;
   onResize: (delta: number) => void;
-  viewMode: "timeline" | "concise" | "flow";
+  viewMode: "concise" | "detail" | "workflow";
   flowPhases?: FlowPhaseGroup[];
   flowSections?: FlowSection[];
   activePhaseIdx?: number | null;
@@ -97,7 +97,7 @@ export function PromptNavPanel({
   const entries = buildPromptEntries(steps);
   const hasPrompts = entries.length >= MIN_PROMPTS_FOR_NAV;
   const hasSubAgents = subAgents.length > 0;
-  const hasFlowPhases = viewMode === "flow" && flowPhases && flowPhases.length > 0;
+  const hasFlowPhases = viewMode === "workflow" && flowPhases && flowPhases.length > 0;
   const [activeSubAgentId, setActiveSubAgentId] = useState<string | null>(null);
 
   if (!hasPrompts && !hasSubAgents && !hasFlowPhases) return null;
@@ -127,7 +127,7 @@ export function PromptNavPanel({
   }
 
   // Flow mode: interleaved user prompts + phases
-  const hasFlowSections = viewMode === "flow" && flowSections && flowSections.length > 0;
+  const hasFlowSections = viewMode === "workflow" && flowSections && flowSections.length > 0;
   if (hasFlowPhases || hasFlowSections) {
     const sections = flowSections ?? [];
     let phaseIdx = 0;

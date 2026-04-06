@@ -35,7 +35,9 @@ async def list_sessions_endpoint(
     Returns:
         List of trajectory summary dicts.
     """
-    return list_sessions(project_name, limit, offset, session_token=x_session_token)
+    return list_sessions(
+        project_name, limit, offset, session_token=x_session_token, refresh=refresh
+    )
 
 
 @router.get("/sessions/search")

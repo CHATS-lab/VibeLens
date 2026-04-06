@@ -237,49 +237,33 @@ export interface StepRef {
 
 export interface Mitigation {
   action: string;
-  content: string;
-  action_type?: string;
-  target?: string;
+  confidence: number;
 }
 
 export interface FrictionEvent {
-  friction_id: string;
   friction_type: string;
   span_ref: StepRef;
-  severity: number;
   user_intention: string;
-  friction_detail: string;
-  claude_helpfulness: number;
-  mitigations: Mitigation[];
-  estimated_cost: FrictionCost;
-  project_path?: string | null;
-}
-
-export interface TypeSummary {
-  friction_type: string;
-  count: number;
-  affected_sessions: number;
-  avg_severity: number;
-  total_estimated_cost: FrictionCost;
-  description?: string | null;
+  description: string;
+  severity: number;
+  friction_cost: FrictionCost;
 }
 
 export interface FrictionAnalysisResult {
   analysis_id: string | null;
   title?: string | null;
-  events: FrictionEvent[];
+  user_profile?: string | null;
   summary: string;
-  top_mitigations: Mitigation[];
-  type_summary: TypeSummary[];
-  cross_batch_patterns?: string[];
+  mitigations: Mitigation[];
+  friction_events: FrictionEvent[];
   session_ids: string[];
-  sessions_skipped: string[];
+  skipped_session_ids: string[];
   warnings?: string[];
-  batch_count: number;
   backend_id: string;
   model: string;
-  cost_usd: number | null;
+  metrics: { cost_usd: number | null };
   duration_seconds: number | null;
+  batch_count: number;
   created_at: string;
 }
 
@@ -294,7 +278,7 @@ export interface FrictionMeta {
   duration_seconds: number | null;
 }
 
-export interface FrictionEstimate {
+export interface CostEstimate {
   model: string;
   batch_count: number;
   total_input_tokens: number;
@@ -304,6 +288,7 @@ export interface FrictionEstimate {
   pricing_found: boolean;
   formatted_cost: string;
 }
+
 
 export interface LLMStatus {
   available: boolean;
@@ -428,34 +413,6 @@ export interface SkillAnalysisResult {
   created_at: string;
 }
 
-export interface SkillCreationProposal {
-  skill_name: string;
-  description: string;
-  rationale: string;
-  addressed_patterns: string[];
-}
-
-export interface SkillCreationProposalOutput {
-  title: string;
-  user_profile: string;
-  workflow_patterns: WorkflowPattern[];
-  summary: string;
-  proposals: SkillCreationProposal[];
-}
-
-export interface SkillCreationProposalResult {
-  proposal_id: string | null;
-  session_ids: string[];
-  skipped_session_ids: string[];
-  backend_id: string;
-  created_at: string;
-  model: string;
-  metrics: { cost_usd: number | null };
-  duration_seconds: number | null;
-  batch_count: number;
-  warnings: string[];
-  proposal_output: SkillCreationProposalOutput;
-}
 
 export interface SkillAnalysisMeta {
   analysis_id: string;

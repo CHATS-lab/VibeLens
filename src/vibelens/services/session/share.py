@@ -1,7 +1,6 @@
-"""Share service for creating and managing shareable session links."""
+"""Share service for managing shareable session links via a registry file."""
 
 import json
-import secrets
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -11,118 +10,97 @@ from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
 
-SHARE_TOKEN_BYTES = 12
 FIRST_MESSAGE_MAX_LENGTH = 120
-DEFAULT_SHARE_TITLE = "Shared session"
+DEFAULT_SHARE_TITLE = "Shared Session"
+REGISTRY_FILENAME = "shared.json"
 
 
 class ShareService:
-    """Manages shared session snapshots on disk.
+    """Manages a registry of shared session IDs.
 
-    Each share produces two files under ``share_dir``:
-    - ``{token}.json``      — full trajectory array (same as export)
-    - ``{token}.meta.json`` — lightweight metadata (token, session_id, title, created_at)
+    Shares are tracked in a single ``shared.json`` file under ``share_dir``.
+    No trajectory data is copied — shared sessions are loaded from the normal
+    trajectory store at read time.
     """
 
     def __init__(self, share_dir: Path):
         self._dir = share_dir
         self._dir.mkdir(parents=True, exist_ok=True)
+        self._registry_path = self._dir / REGISTRY_FILENAME
+        self._registry: dict[str, ShareMeta] = self._load()
 
-    def _data_path(self, token: str) -> Path:
-        return self._dir / f"{token}.json"
-
-    def _meta_path(self, token: str) -> Path:
-        return self._dir / f"{token}.meta.json"
-
-    def create(self, session_id: str, trajectories: list[Trajectory]) -> ShareMeta:
-        """Snapshot a session and return share metadata.
+    def share(self, session_id: str, title: str) -> ShareMeta:
+        """Mark a session as shared and persist the registry.
 
         Args:
-            session_id: Original session identifier.
-            trajectories: Full trajectory list to snapshot.
+            session_id: Session identifier to share.
+            title: Display title for the shared session.
 
         Returns:
-            ShareMeta with generated token and extracted title.
+            ShareMeta for the newly shared session.
         """
-        token = secrets.token_urlsafe(SHARE_TOKEN_BYTES)
-        title = _extract_title(trajectories)
         now = datetime.now(UTC)
-
-        payload = [t.model_dump(mode="json") for t in trajectories]
-        self._data_path(token).write_text(
-            json.dumps(payload, indent=2, default=str, ensure_ascii=False), encoding="utf-8"
-        )
-
-        meta = ShareMeta(token=token, session_id=session_id, title=title, created_at=now)
-        self._meta_path(token).write_text(meta.model_dump_json(indent=2), encoding="utf-8")
-
-        logger.info("Created share %s for session %s", token, session_id)
+        meta = ShareMeta(session_id=session_id, title=title, created_at=now)
+        self._registry[session_id] = meta
+        self._save()
+        logger.info("Shared session %s", session_id)
         return meta
 
-    def load(self, token: str) -> list[dict] | None:
-        """Load shared trajectory data by token.
+    def unshare(self, session_id: str) -> bool:
+        """Remove a session from the shared registry.
 
         Args:
-            token: Share token to look up.
+            session_id: Session identifier to unshare.
 
         Returns:
-            Parsed trajectory list, or None if not found.
+            True if the session was shared and is now removed.
         """
-        path = self._data_path(token)
-        if not path.exists():
-            return None
-        return json.loads(path.read_text(encoding="utf-8"))
-
-    def load_meta(self, token: str) -> ShareMeta | None:
-        """Load share metadata by token.
-
-        Args:
-            token: Share token to look up.
-
-        Returns:
-            ShareMeta, or None if not found.
-        """
-        path = self._meta_path(token)
-        if not path.exists():
-            return None
-        return ShareMeta.model_validate_json(path.read_text(encoding="utf-8"))
-
-    def delete(self, token: str) -> bool:
-        """Remove a shared session snapshot.
-
-        Args:
-            token: Share token to revoke.
-
-        Returns:
-            True if files were deleted, False if token not found.
-        """
-        data_path = self._data_path(token)
-        meta_path = self._meta_path(token)
-        if not data_path.exists() and not meta_path.exists():
+        if session_id not in self._registry:
             return False
-        data_path.unlink(missing_ok=True)
-        meta_path.unlink(missing_ok=True)
-        logger.info("Deleted share %s", token)
+        del self._registry[session_id]
+        self._save()
+        logger.info("Unshared session %s", session_id)
         return True
 
-    def list_shares(self) -> list[ShareMeta]:
-        """List all existing shares sorted by creation time (newest first).
+    def is_shared(self, session_id: str) -> bool:
+        """Check whether a session is currently shared."""
+        return session_id in self._registry
+
+    def get_meta(self, session_id: str) -> ShareMeta | None:
+        """Return share metadata for a session, or None if not shared."""
+        return self._registry.get(session_id)
+
+    def list_shared(self) -> list[ShareMeta]:
+        """List all shared sessions sorted by creation time (newest first).
 
         Returns:
             List of ShareMeta objects.
         """
-        shares: list[ShareMeta] = []
-        for meta_path in self._dir.glob("*.meta.json"):
-            try:
-                meta = ShareMeta.model_validate_json(meta_path.read_text(encoding="utf-8"))
-                shares.append(meta)
-            except (json.JSONDecodeError, ValueError):
-                logger.warning("Skipping corrupt share metadata: %s", meta_path)
-        shares.sort(key=lambda m: m.created_at, reverse=True)
-        return shares
+        entries = list(self._registry.values())
+        entries.sort(key=lambda m: m.created_at, reverse=True)
+        return entries
+
+    def _save(self) -> None:
+        """Persist the registry to disk."""
+        payload = [m.model_dump(mode="json") for m in self._registry.values()]
+        self._registry_path.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+
+    def _load(self) -> dict[str, ShareMeta]:
+        """Load the registry from disk."""
+        if not self._registry_path.exists():
+            return {}
+        try:
+            raw = json.loads(self._registry_path.read_text(encoding="utf-8"))
+            entries = [ShareMeta.model_validate(item) for item in raw]
+            return {m.session_id: m for m in entries}
+        except (json.JSONDecodeError, ValueError):
+            logger.warning("Corrupt share registry at %s, starting fresh", self._registry_path)
+            return {}
 
 
-def _extract_title(trajectories: list[Trajectory]) -> str:
+def extract_title(trajectories: list[Trajectory]) -> str:
     """Extract a display title from the first trajectory's first_message."""
     if not trajectories:
         return DEFAULT_SHARE_TITLE

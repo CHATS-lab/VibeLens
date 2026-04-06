@@ -13,7 +13,11 @@ logger = get_logger(__name__)
 
 
 def list_sessions(
-    project_name: str | None, limit: int, offset: int, session_token: str | None = None
+    project_name: str | None,
+    limit: int,
+    offset: int,
+    session_token: str | None = None,
+    refresh: bool = False,
 ) -> list[dict]:
     """Return trajectory summaries from the active store.
 
@@ -22,10 +26,13 @@ def list_sessions(
         limit: Max results.
         offset: Results to skip.
         session_token: Browser tab token for upload scoping (demo mode).
+        refresh: If True, invalidate cached index to discover new sessions.
 
     Returns:
         List of trajectory summary dicts (no steps).
     """
+    if refresh and not is_demo_mode():
+        get_store().invalidate_index()
     summaries = list_all_metadata(session_token)
     logger.info(
         "list_sessions: metadata=%d token=%s",

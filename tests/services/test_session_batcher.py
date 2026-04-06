@@ -9,50 +9,49 @@ from unittest.mock import patch
 
 from vibelens.config.settings import Settings
 from vibelens.llm.tokenizer import count_tokens
-from vibelens.services.context_extraction import SessionContext
+from vibelens.models.context import SessionContext
 from vibelens.services.session_batcher import build_batches
 
 
 def _make_context(
     session_id: str,
     project_path: str | None = None,
-    char_count: int = 1000,
-    last_ref: str | None = None,
-    continued_ref: str | None = None,
+    text_length: int = 1000,
+    prev_ref: str | None = None,
+    next_ref: str | None = None,
     timestamp: datetime | None = None,
 ) -> SessionContext:
     """Build a minimal SessionContext for testing."""
-    text = "x" * char_count
+    text = "x" * text_length
     return SessionContext(
         session_id=session_id,
         project_path=project_path,
         context_text=text,
-        char_count=char_count,
         trajectory_group=[],
-        last_trajectory_ref_id=last_ref,
-        continued_trajectory_ref_id=continued_ref,
+        prev_trajectory_ref_id=prev_ref,
+        next_trajectory_ref_id=next_ref,
         timestamp=timestamp,
     )
 
 
 def test_single_session_single_batch() -> None:
     """One session produces one batch."""
-    ctx = _make_context("s1", char_count=5000)
+    ctx = _make_context("s1", text_length=5000)
     batches = build_batches([ctx])
 
     assert len(batches) == 1
-    assert len(batches[0].session_contexts) == 1
+    assert len(batches[0].contexts) == 1
     assert batches[0].batch_id == "batch-001"
     print(f"Single session: {batches[0].total_tokens} tokens")
 
 
 def test_multiple_sessions_single_batch() -> None:
     """Small sessions fit into a single batch."""
-    contexts = [_make_context(f"s{i}", char_count=2000) for i in range(5)]
+    contexts = [_make_context(f"s{i}", text_length=2000) for i in range(5)]
     batches = build_batches(contexts)
 
     assert len(batches) == 1
-    total = sum(len(b.session_contexts) for b in batches)
+    total = sum(len(b.contexts) for b in batches)
     assert total == 5
     print(f"5 sessions in 1 batch: {batches[0].total_tokens} tokens")
 
@@ -63,14 +62,14 @@ def test_budget_splits_into_multiple_batches() -> None:
     Each session is 40K chars = 5,000 tokens.
     Budget 6,000 → one session per batch.
     """
-    contexts = [_make_context(f"s{i}", char_count=40_000) for i in range(3)]
+    contexts = [_make_context(f"s{i}", text_length=40_000) for i in range(3)]
     batches = build_batches(contexts, max_batch_tokens=6_000)
 
     assert len(batches) == 3
-    total = sum(len(b.session_contexts) for b in batches)
+    total = sum(len(b.contexts) for b in batches)
     assert total == 3
     for batch in batches:
-        n = len(batch.session_contexts)
+        n = len(batch.contexts)
         print(f"  {batch.batch_id}: {n} sessions, {batch.total_tokens:,} tokens")
 
 
@@ -78,15 +77,15 @@ def test_linked_sessions_stay_in_same_chain() -> None:
     """Linked sessions are merged into chains via build_batches."""
     ts = datetime(2024, 1, 1, tzinfo=UTC)
     contexts = [
-        _make_context("s1", project_path="/p", timestamp=ts, continued_ref="s2"),
-        _make_context("s2", project_path="/p", timestamp=ts, last_ref="s1"),
+        _make_context("s1", project_path="/p", timestamp=ts, next_ref="s2"),
+        _make_context("s2", project_path="/p", timestamp=ts, prev_ref="s1"),
         _make_context("s3", project_path="/p", timestamp=ts),
     ]
     batches = build_batches(contexts)
 
     # All fit in one batch; s1 and s2 must be adjacent
     assert len(batches) == 1
-    ids = [c.session_id for c in batches[0].session_contexts]
+    ids = [c.session_id for c in batches[0].contexts]
     s1_idx = ids.index("s1")
     s2_idx = ids.index("s2")
     assert s2_idx == s1_idx + 1, f"Linked pair not adjacent: {ids}"
@@ -105,15 +104,15 @@ def test_oversized_session_gets_own_batch() -> None:
     Budget 8,000 → s1 gets split, s2 in its own batch.
     """
     contexts = [
-        _make_context("s1", char_count=100_000),
-        _make_context("s2", char_count=5_000),
+        _make_context("s1", text_length=100_000),
+        _make_context("s2", text_length=5_000),
     ]
     batches = build_batches(contexts, max_batch_tokens=8_000)
 
-    total = sum(len(b.session_contexts) for b in batches)
+    total = sum(len(b.contexts) for b in batches)
     assert total >= 2
     for batch in batches:
-        n = len(batch.session_contexts)
+        n = len(batch.contexts)
         print(f"  {batch.batch_id}: {n} sessions, {batch.total_tokens:,} tokens")
 
 
@@ -122,11 +121,11 @@ def test_default_batch_tokens_from_settings() -> None:
     custom_settings = Settings(max_batch_tokens=2_000)
 
     with patch("vibelens.services.session_batcher.get_settings", return_value=custom_settings):
-        contexts = [_make_context(f"s{i}", char_count=10_000) for i in range(3)]
+        contexts = [_make_context(f"s{i}", text_length=10_000) for i in range(3)]
         batches = build_batches(contexts)
 
     assert len(batches) == 3
-    total = sum(len(b.session_contexts) for b in batches)
+    total = sum(len(b.contexts) for b in batches)
     assert total == 3
     print(f"Settings-based batching: {len(batches)} batches from 3 sessions")
 
@@ -156,16 +155,16 @@ def test_same_project_time_near_packed_together() -> None:
     t3 = t0 + timedelta(hours=2)
     p = "/project-a"
     contexts = [
-        _make_context("s1", project_path=p, char_count=10_000, timestamp=t0),
-        _make_context("s2", project_path=p, char_count=10_000, timestamp=t1),
-        _make_context("s3", project_path=p, char_count=10_000, timestamp=t2),
-        _make_context("s4", project_path=p, char_count=10_000, timestamp=t3),
+        _make_context("s1", project_path=p, text_length=10_000, timestamp=t0),
+        _make_context("s2", project_path=p, text_length=10_000, timestamp=t1),
+        _make_context("s3", project_path=p, text_length=10_000, timestamp=t2),
+        _make_context("s4", project_path=p, text_length=10_000, timestamp=t3),
     ]
     batches = build_batches(contexts, max_batch_tokens=5_000)
 
     assert len(batches) == 1
-    assert len(batches[0].session_contexts) == 4
-    ids = [c.session_id for c in batches[0].session_contexts]
+    assert len(batches[0].contexts) == 4
+    ids = [c.session_id for c in batches[0].contexts]
     assert ids == ["s1", "s2", "s3", "s4"]
     print(f"Same-project packing: {len(batches)} batch, {batches[0].total_tokens} tokens")
 
@@ -181,16 +180,16 @@ def test_same_project_preferred_over_cross_project() -> None:
     t_near = t0 + timedelta(minutes=5)
     pa, pb = "/project-a", "/project-b"
     contexts = [
-        _make_context("s1", project_path=pa, char_count=10_000, timestamp=t0),
-        _make_context("s2", project_path=pa, char_count=10_000, timestamp=t1),
-        _make_context("s3", project_path=pb, char_count=10_000, timestamp=t_near),
+        _make_context("s1", project_path=pa, text_length=10_000, timestamp=t0),
+        _make_context("s2", project_path=pa, text_length=10_000, timestamp=t1),
+        _make_context("s3", project_path=pb, text_length=10_000, timestamp=t_near),
     ]
     batches = build_batches(contexts, max_batch_tokens=2_600)
 
     assert len(batches) == 2
     batch_a = next(b for b in batches if pa in b.project_paths)
-    assert len(batch_a.session_contexts) == 2
-    ids = {c.session_id for c in batch_a.session_contexts}
+    assert len(batch_a.contexts) == 2
+    ids = {c.session_id for c in batch_a.contexts}
     assert ids == {"s1", "s2"}
     print(f"Project affinity: batch-a has {ids}")
 
@@ -204,16 +203,17 @@ def test_linked_chain_stays_together() -> None:
     t0 = datetime(2024, 6, 1, 10, 0, tzinfo=UTC)
     t1 = t0 + timedelta(hours=1)
     t2 = t0 + timedelta(hours=2)
+    n = 10_000
     contexts = [
-        _make_context("s1", project_path="/p", char_count=10_000, timestamp=t0, continued_ref="s2"),
-        _make_context("s2", project_path="/p", char_count=10_000, timestamp=t1, last_ref="s1"),
-        _make_context("s3", project_path="/p", char_count=10_000, timestamp=t2),
+        _make_context("s1", project_path="/p", text_length=n, timestamp=t0, next_ref="s2"),
+        _make_context("s2", project_path="/p", text_length=n, timestamp=t1, prev_ref="s1"),
+        _make_context("s3", project_path="/p", text_length=n, timestamp=t2),
     ]
     batches = build_batches(contexts, max_batch_tokens=5_000)
 
     assert len(batches) == 1
-    assert len(batches[0].session_contexts) == 3
-    ids = [c.session_id for c in batches[0].session_contexts]
+    assert len(batches[0].contexts) == 3
+    ids = [c.session_id for c in batches[0].contexts]
     s1_pos = ids.index("s1")
     s2_pos = ids.index("s2")
     assert s2_pos == s1_pos + 1, f"Linked sessions not adjacent: {ids}"
@@ -226,14 +226,14 @@ def test_small_sessions_packed_fully() -> None:
     9 sessions of 1,250 tokens each. Budget 5,000.
     Should produce ≤3 batches, not 9.
     """
-    contexts = [_make_context(f"s{i}", char_count=10_000) for i in range(9)]
+    contexts = [_make_context(f"s{i}", text_length=10_000) for i in range(9)]
     batches = build_batches(contexts, max_batch_tokens=5_000)
 
     assert len(batches) <= 3
-    total = sum(len(b.session_contexts) for b in batches)
+    total = sum(len(b.contexts) for b in batches)
     assert total == 9
     for batch in batches:
-        n = len(batch.session_contexts)
+        n = len(batch.contexts)
         print(f"  {batch.batch_id}: {n} sessions, {batch.total_tokens:,} tokens")
 
 
@@ -248,14 +248,14 @@ def test_cross_project_fills_remaining_budget() -> None:
     t2 = t0 + timedelta(hours=2)
     pa, pb = "/project-a", "/project-b"
     contexts = [
-        _make_context("s1", project_path=pa, char_count=10_000, timestamp=t0),
-        _make_context("s2", project_path=pb, char_count=10_000, timestamp=t1),
-        _make_context("s3", project_path=pa, char_count=10_000, timestamp=t2),
+        _make_context("s1", project_path=pa, text_length=10_000, timestamp=t0),
+        _make_context("s2", project_path=pb, text_length=10_000, timestamp=t1),
+        _make_context("s3", project_path=pa, text_length=10_000, timestamp=t2),
     ]
     batches = build_batches(contexts, max_batch_tokens=3_800)
 
     assert len(batches) == 1
-    assert len(batches[0].session_contexts) == 3
+    assert len(batches[0].contexts) == 3
     print(f"Cross-project fill: 1 batch, {batches[0].total_tokens} tokens")
 
 
@@ -278,7 +278,6 @@ def _make_stepped_context(
         session_id=session_id,
         project_path=project_path,
         context_text=text,
-        char_count=len(text),
         trajectory_group=[],
     )
 
@@ -292,7 +291,7 @@ def test_oversized_session_split_at_step_boundaries() -> None:
     """
     ctx = _make_stepped_context("s1", step_count=20, chars_per_step=4_000)
     total_tokens = count_tokens(ctx.context_text)
-    print(f"Oversized session: {total_tokens} tokens, {ctx.char_count} chars")
+    print(f"Oversized session: {total_tokens} tokens, {len(ctx.context_text)} chars")
 
     batches = build_batches([ctx], max_batch_tokens=3_000)
 
@@ -300,10 +299,10 @@ def test_oversized_session_split_at_step_boundaries() -> None:
     for batch in batches:
         assert batch.total_tokens <= 3_000, f"{batch.batch_id} exceeds budget: {batch.total_tokens}"
         # Each part should contain the header
-        for sc in batch.session_contexts:
+        for sc in batch.contexts:
             assert "=== SESSION:" in sc.context_text
             assert sc.session_id.startswith("s1")
-        n = len(batch.session_contexts)
+        n = len(batch.contexts)
         print(f"  {batch.batch_id}: {n} session(s), {batch.total_tokens:,} tokens")
 
 
@@ -312,7 +311,7 @@ def test_oversized_session_no_step_boundaries_stays_intact() -> None:
 
     Falls back to a single batch even if it exceeds budget.
     """
-    ctx = _make_context("s1", char_count=100_000)
+    ctx = _make_context("s1", text_length=100_000)
     batches = build_batches([ctx], max_batch_tokens=5_000)
 
     assert len(batches) == 1
@@ -352,19 +351,19 @@ def test_realistic_mixed_sizes() -> None:
         _make_context(
             f"s{i}",
             project_path="/project-a",
-            char_count=sz * 8,
+            text_length=sz * 8,
             timestamp=t0 + timedelta(hours=i),
         )
         for i, sz in enumerate(sizes)
     ]
     batches = build_batches(contexts, max_batch_tokens=80_000)
 
-    total_sessions = sum(len(b.session_contexts) for b in batches)
+    total_sessions = sum(len(b.contexts) for b in batches)
     assert total_sessions == 17
     # With 169K total and 80K budget, 3 batches is optimal
     assert len(batches) <= 3, f"Expected ≤3 batches, got {len(batches)}"
     for batch in batches:
-        n = len(batch.session_contexts)
+        n = len(batch.contexts)
         print(f"  {batch.batch_id}: {n} sessions, {batch.total_tokens:,} tokens")
         assert batch.total_tokens <= 80_000, (
             f"{batch.batch_id} exceeds budget: {batch.total_tokens}"

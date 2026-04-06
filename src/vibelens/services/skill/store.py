@@ -19,7 +19,7 @@ def _build_meta(analysis_id: str, result: SkillAnalysisResult) -> SkillAnalysisM
         session_ids=result.session_ids,
         created_at=result.created_at,
         model=result.model,
-        cost_usd=result.cost_usd,
+        cost_usd=result.metrics.cost_usd,
         duration_seconds=result.duration_seconds,
     )
 

@@ -16,7 +16,7 @@ from vibelens.deps import (
 )
 from vibelens.llm.backends import _CLI_BACKEND_REGISTRY
 from vibelens.llm.pricing import lookup_pricing
-from vibelens.models.inference import BackendType
+from vibelens.models.llm.inference import BackendType
 from vibelens.schemas.llm import LLMConfigureRequest
 from vibelens.utils.log import get_logger
 
@@ -36,6 +36,7 @@ async def get_server_settings() -> dict:
         "claude_dir": str(settings.claude_dir),
         "app_mode": settings.app_mode.value,
         "max_zip_bytes": settings.max_zip_bytes,
+        "max_analysis_sessions": settings.max_analysis_sessions,
         "visible_agents": settings.visible_agents,
     }
 

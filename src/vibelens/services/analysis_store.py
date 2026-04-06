@@ -21,6 +21,15 @@ TOKEN_BYTES = 12
 INDEX_FILENAME = "index.jsonl"
 
 
+def generate_analysis_id() -> str:
+    """Generate a URL-safe analysis ID token.
+
+    Call this at the start of an analysis run so the ID can be used
+    for log correlation before the result is persisted.
+    """
+    return secrets.token_urlsafe(TOKEN_BYTES)
+
+
 class AnalysisStore[ResultT: BaseModel, MetaT: BaseModel]:
     """Generic JSONL-indexed analysis store.
 
@@ -51,9 +60,15 @@ class AnalysisStore[ResultT: BaseModel, MetaT: BaseModel]:
     def _data_path(self, analysis_id: str) -> Path:
         return self._dir / f"{analysis_id}.json"
 
-    def save(self, result: ResultT) -> MetaT:
-        """Persist a result and append metadata to the JSONL index."""
-        analysis_id = secrets.token_urlsafe(TOKEN_BYTES)
+    def save(self, result: ResultT, analysis_id: str | None = None) -> MetaT:
+        """Persist a result and append metadata to the JSONL index.
+
+        Args:
+            result: The analysis result to persist.
+            analysis_id: Pre-generated ID for log correlation. Generated if None.
+        """
+        if analysis_id is None:
+            analysis_id = generate_analysis_id()
         result.analysis_id = analysis_id  # type: ignore[attr-defined]
 
         self._data_path(analysis_id).write_text(result.model_dump_json(indent=2), encoding="utf-8")

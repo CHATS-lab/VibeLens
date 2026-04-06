@@ -28,10 +28,10 @@ from vibelens.llm.prompts.skill_creation import (
     SKILL_CREATION_PROPOSAL_SYNTHESIS_PROMPT,
 )
 from vibelens.llm.tokenizer import count_tokens
-from vibelens.models.inference import InferenceRequest
+from vibelens.models.llm.inference import InferenceRequest
 from vibelens.models.skill import SkillCreation, SkillCreationProposalOutput
+from vibelens.services.analysis_shared import format_batch_digest
 from vibelens.services.context_extraction import extract_session_context
-from vibelens.services.friction.digest import format_batch_digest
 from vibelens.services.session_batcher import build_batches
 from vibelens.services.skill.creation import (
     SKILL_CREATION_GENERATE_OUTPUT_TOKENS,
@@ -95,7 +95,7 @@ def _run_proposal_test(backend, label: str, session_count: int = 2) -> None:
         )
         system_prompt = SKILL_CREATION_PROPOSAL_PROMPT.render_system()
         user_prompt = SKILL_CREATION_PROPOSAL_PROMPT.render_user(
-            session_count=len(batch.session_contexts),
+            session_count=len(batch.contexts),
             session_digest=digest,
             output_schema=output_schema,
             installed_skills=installed_skills if installed_skills else None,

@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, Field
 
-from vibelens.models.inference import BackendType
+from vibelens.models.llm.inference import BackendType
 
 
 class LLMConfigureRequest(BaseModel):

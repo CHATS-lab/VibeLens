@@ -43,24 +43,6 @@ class SkillAnalysisRequest(BaseModel):
     mode: SkillMode = Field(description="Analysis mode: retrieval, creation, or evolution.")
 
 
-class SkillProposalRequest(BaseModel):
-    """Request for generating lightweight skill proposals."""
-
-    session_ids: list[str] = Field(description="Session IDs to analyze for proposals.")
-
-
-class SkillDeepCreateRequest(BaseModel):
-    """Request for generating full SKILL.md from an approved proposal."""
-
-    proposal_name: str = Field(description="Kebab-case skill name from the proposal.")
-    proposal_description: str = Field(description="One-line trigger description.")
-    proposal_rationale: str = Field(description="Why this skill would improve workflow.")
-    addressed_patterns: list[str] = Field(
-        default_factory=list,
-        description="Pattern titles this proposal addresses.",
-    )
-    session_ids: list[str] = Field(description="Session IDs to use as evidence.")
-
 
 class SkillAnalysisMeta(BaseModel):
     """Lightweight metadata for a persisted skill analysis."""

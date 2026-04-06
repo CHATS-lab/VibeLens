@@ -13,9 +13,9 @@ class TrajectoryRef(BaseModel):
     """Reference to another trajectory.
 
     Used for all trajectory cross-referencing:
-    - last_trajectory_ref: links to the continued-from session
+    - prev_trajectory_ref: links to the continued-from session
     - parent_trajectory_ref: links back to parent that spawned a sub-agent
-    - continued_trajectory_ref: links continuation segments
+    - next_trajectory_ref: links continuation segments
     - subagent_trajectory_ref: links delegated subagent runs
     """
 

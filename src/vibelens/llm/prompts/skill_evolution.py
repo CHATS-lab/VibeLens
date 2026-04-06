@@ -5,7 +5,7 @@ Two-step pipeline:
 2. Editing: generate granular edits for each approved proposal
 """
 
-from vibelens.models.prompts import AnalysisPrompt, load_template
+from vibelens.models.llm.prompts import AnalysisPrompt, load_template
 from vibelens.models.skill import SkillEvolution, SkillEvolutionProposalOutput
 
 SKILL_EVOLUTION_PROPOSAL_PROMPT = AnalysisPrompt(

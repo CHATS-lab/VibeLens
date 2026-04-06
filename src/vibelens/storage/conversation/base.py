@@ -106,8 +106,8 @@ class TrajectoryStore(ABC):
     ) -> None:
         """Carry over continuation refs from the index to loaded trajectories.
 
-        The index builder enriches skeletons with last_trajectory_ref and
-        continued_trajectory_ref via JSONL analysis.  When sessions are
+        The index builder enriches skeletons with prev_trajectory_ref and
+        next_trajectory_ref via JSONL analysis.  When sessions are
         re-parsed from disk these refs are lost, so we copy them back
         from the cached metadata onto the main trajectory.
         """
@@ -118,7 +118,7 @@ class TrajectoryStore(ABC):
         if not main:
             return
 
-        ref_fields = ("last_trajectory_ref", "continued_trajectory_ref")
+        ref_fields = ("prev_trajectory_ref", "next_trajectory_ref")
         for field in ref_fields:
             if getattr(main, field) is not None:
                 continue

@@ -5,7 +5,7 @@ Two-step pipeline:
 2. Generation: generate full SKILL.md for each approved proposal
 """
 
-from vibelens.models.prompts import AnalysisPrompt, load_template
+from vibelens.models.llm.prompts import AnalysisPrompt, load_template
 from vibelens.models.skill import SkillCreation, SkillCreationProposalOutput
 
 SKILL_CREATION_PROPOSAL_PROMPT = AnalysisPrompt(

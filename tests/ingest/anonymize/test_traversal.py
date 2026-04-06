@@ -151,13 +151,13 @@ def test_extra_dict_recursive() -> None:
 
 def test_trajectory_ref_path() -> None:
     t = _make_trajectory(
-        last_trajectory_ref=TrajectoryRef(
+        prev_trajectory_ref=TrajectoryRef(
             session_id="prev-session",
             trajectory_path="/Users/alice/.claude/projects/test/abc.jsonl",
         ),
     )
     result = traverse_trajectory(t, str.upper)
-    ref_path = result.last_trajectory_ref.trajectory_path
+    ref_path = result.prev_trajectory_ref.trajectory_path
     print(f"  trajectory_ref path: {ref_path}")
     assert ref_path == "/USERS/ALICE/.CLAUDE/PROJECTS/TEST/ABC.JSONL"
 
@@ -219,10 +219,10 @@ def test_none_fields_stay_none() -> None:
     t = _make_trajectory(
         project_path=None,
         first_message=None,
-        last_trajectory_ref=None,
+        prev_trajectory_ref=None,
     )
     result = traverse_trajectory(t, str.upper)
     assert result.project_path is None
     assert result.first_message is None
-    assert result.last_trajectory_ref is None
+    assert result.prev_trajectory_ref is None
     print("  None fields remain None")

@@ -10,14 +10,14 @@ import json
 from collections.abc import Coroutine
 from pathlib import Path
 
-from cachetools import TTLCache
 from pydantic import BaseModel
 
 from vibelens.deps import get_inference_backend
 from vibelens.llm.backend import InferenceBackend, InferenceError
 from vibelens.llm.tokenizer import count_tokens
-from vibelens.models.inference import BackendType
-from vibelens.services.context_extraction import SessionContext, extract_session_context
+from vibelens.models.context import SessionContext, SessionContextBatch
+from vibelens.models.llm.inference import BackendType
+from vibelens.services.context_extraction import extract_session_context
 from vibelens.services.context_params import PRESET_DETAIL, ContextParams
 from vibelens.services.session.store_resolver import (
     get_metadata_from_stores,
@@ -48,8 +48,11 @@ def require_backend() -> InferenceBackend:
 
 def extract_all_contexts(
     session_ids: list[str], session_token: str | None, params: ContextParams = PRESET_DETAIL
-) -> tuple[list[SessionContext], list[str], list[str]]:
+) -> SessionContextBatch:
     """Load sessions and extract compressed contexts.
+
+    Factory: loads sessions from stores, extracts each, returns a
+    SessionContextBatch with all results.
 
     Args:
         session_ids: Sessions to load.
@@ -57,7 +60,7 @@ def extract_all_contexts(
         params: Context extraction parameters controlling detail level.
 
     Returns:
-        Tuple of (session_contexts, loaded_ids, skipped_ids).
+        SessionContextBatch wrapping extracted contexts and load status.
     """
     contexts: list[SessionContext] = []
     loaded_ids: list[str] = []
@@ -81,37 +84,37 @@ def extract_all_contexts(
         contexts.append(ctx)
         loaded_ids.append(sid)
 
-    return contexts, loaded_ids, skipped_ids
+    return SessionContextBatch(
+        contexts=contexts, session_ids=loaded_ids, skipped_session_ids=skipped_ids
+    )
 
 
-def make_ttl_cache(
-    maxsize: int = CACHE_MAXSIZE,
-    ttl: int = CACHE_TTL_SECONDS,
-) -> TTLCache:
-    """Create a TTLCache with project defaults.
-
-    Args:
-        maxsize: Maximum number of entries before LRU eviction.
-        ttl: Time-to-live in seconds.
-
-    Returns:
-        Configured TTLCache instance.
-    """
-    return TTLCache(maxsize=maxsize, ttl=ttl)
-
-
-def build_digest_from_contexts(contexts: list[SessionContext]) -> str:
+def build_digest_from_contexts(context_set: SessionContextBatch) -> str:
     """Concatenate session context texts into a single digest string.
 
     Args:
-        contexts: Extracted session contexts.
+        context_set: SessionContextBatch wrapping extracted session contexts.
 
     Returns:
         Combined context text, or placeholder if empty.
     """
-    if not contexts:
+    if not context_set:
         return "[no sessions]"
-    return "\n\n".join(ctx.context_text for ctx in contexts)
+    return "\n\n".join(ctx.context_text for ctx in context_set)
+
+
+def format_batch_digest(batch: SessionContextBatch) -> str:
+    """Concatenate pre-extracted session contexts from a batch for one LLM prompt.
+
+    Args:
+        batch: SessionContextBatch containing pre-extracted session contexts.
+
+    Returns:
+        Formatted digest text with all session contexts.
+    """
+    if not batch.contexts:
+        return "[no sessions]"
+    return "\n\n".join(ctx.context_text for ctx in batch.contexts)
 
 
 def save_analysis_log(log_dir: Path, filename: str, content: str) -> None:
@@ -144,18 +147,6 @@ You are running as a headless analysis backend. Follow these rules strictly:
 CONTEXT_TOKEN_BUDGET = 100_000
 
 
-def build_schema_json(output_model: type[BaseModel]) -> str:
-    """Serialize a Pydantic model's JSON schema for prompt injection.
-
-    Args:
-        output_model: Pydantic model class.
-
-    Returns:
-        Pretty-printed JSON schema string.
-    """
-    return json.dumps(output_model.model_json_schema(), indent=2)
-
-
 def build_system_kwargs(output_model: type[BaseModel], backend: InferenceBackend) -> dict[str, str]:
     """Build common kwargs for render_system(): output_schema + backend_rules.
 
@@ -166,7 +157,9 @@ def build_system_kwargs(output_model: type[BaseModel], backend: InferenceBackend
     Returns:
         Dict with output_schema and backend_rules keys.
     """
-    kwargs: dict[str, str] = {"output_schema": build_schema_json(output_model)}
+    kwargs: dict[str, str] = {
+        "output_schema": json.dumps(output_model.model_json_schema(), indent=2)
+    }
     if backend.backend_id != BackendType.LITELLM:
         kwargs["backend_rules"] = CLI_BACKEND_RULES
     else:
@@ -198,7 +191,10 @@ def truncate_digest_to_fit(
     available = budget_tokens - overhead_tokens
     logger.info(
         "Token budget: overhead=%d, digest=%d, available=%d, budget=%d",
-        overhead_tokens, digest_tokens, available, budget_tokens,
+        overhead_tokens,
+        digest_tokens,
+        available,
+        budget_tokens,
     )
     if available <= 0:
         return "[digest truncated -- no token budget remaining]"
@@ -216,7 +212,9 @@ def truncate_digest_to_fit(
     truncated_count = digest_tokens - available
     logger.info(
         "Digest truncated: %d → %d tokens (%d removed)",
-        digest_tokens, available, truncated_count,
+        digest_tokens,
+        available,
+        truncated_count,
     )
     return f"{head}\n\n[... {truncated_count} tokens truncated ...]\n\n{tail}"
 
@@ -256,3 +254,34 @@ async def run_batches_concurrent(
         )
 
     return successes, warnings
+
+
+def log_analysis_summary(
+    context_set: SessionContextBatch, batches: list[SessionContextBatch], backend: InferenceBackend
+) -> None:
+    """Log a structured summary of an analysis run.
+
+    Args:
+        context_set: SessionContextBatch with loaded/skipped session metadata.
+        batches: Built session batches.
+        backend: Inference backend in use.
+    """
+    total_tokens = sum(b.total_tokens for b in batches)
+    logger.info(
+        "Analysis run: %d loaded, %d skipped, %d batches, %d total tokens, model=%s, backend=%s",
+        len(context_set.session_ids),
+        len(context_set.skipped_session_ids),
+        len(batches),
+        total_tokens,
+        backend.model,
+        backend.backend_id,
+    )
+    for batch in batches:
+        sids = [ctx.session_id for ctx in batch.contexts]
+        logger.info(
+            "Batch %s: %d sessions, %d tokens, ids=%s",
+            batch.batch_id,
+            len(sids),
+            batch.total_tokens,
+            sids,
+        )

@@ -18,7 +18,7 @@ def _build_meta(analysis_id: str, result: FrictionAnalysisResult) -> FrictionMet
         session_ids=result.session_ids,
         created_at=result.created_at,
         model=result.model,
-        cost_usd=result.cost_usd,
+        cost_usd=result.metrics.cost_usd,
         batch_count=result.batch_count,
         duration_seconds=result.duration_seconds,
     )

@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, Field
 
-from vibelens.models.inference import BackendType
+from vibelens.models.llm.inference import BackendType
 from vibelens.models.skill.patterns import WorkflowPattern
 from vibelens.models.trajectories.metrics import Metrics
 

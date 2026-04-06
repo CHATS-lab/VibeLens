@@ -8,7 +8,7 @@ Callers handle prompt construction and response parsing.
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 
-from vibelens.models.inference import BackendType, InferenceRequest, InferenceResult
+from vibelens.models.llm.inference import BackendType, InferenceRequest, InferenceResult
 
 
 class InferenceError(Exception):
