@@ -1,11 +1,11 @@
 import {
   Check,
   Code2,
-  Copy,
   Loader2,
   Package,
   Pencil,
   Share2,
+  FileText,
   Tag,
   Trash2,
   Wrench,
@@ -55,10 +55,10 @@ export function SkillCard({
                   <SourceBadge key={src.source_type} sourceType={src.source_type} sourcePath={src.source_path} />
                 ))}
               {lineCount > 0 && (
-                <span className="text-[10px] text-zinc-500">{lineCount} lines</span>
+                <span className="text-xs text-zinc-400">{lineCount} lines</span>
               )}
             </div>
-            <p className="text-sm text-zinc-300 mt-1 line-clamp-2">
+            <p className="text-sm text-zinc-200 mt-1 line-clamp-2">
               {skill.description || "No description"}
             </p>
             <TagList tags={tags} />
@@ -162,81 +162,83 @@ export function SkillDetailPopup({
     <Modal onClose={onClose} maxWidth="max-w-3xl">
       <ModalHeader onClose={onClose}>
         <div className="flex items-center gap-3">
-          <div className="p-1.5 rounded-md bg-teal-600/20">
-            <Package className="w-4 h-4 text-teal-400" />
+          <div className="p-2 rounded-lg bg-teal-600/20">
+            <Package className="w-5 h-5 text-teal-400" />
           </div>
           <div>
-            <h2 className="text-base font-bold font-mono text-white">{skill.name}</h2>
-            <div className="flex items-center gap-2 mt-0.5">
-              {skill.sources
-                .filter((s) => s.source_type !== "central")
-                .map((src) => (
-                  <SourceBadge key={src.source_type} sourceType={src.source_type} sourcePath={src.source_path} />
-                ))}
-              {lineCount > 0 && <span className="text-[10px] text-zinc-500">{lineCount} lines</span>}
-            </div>
+            <h2 className="text-lg font-bold font-mono text-white">{skill.name}</h2>
+            {lineCount > 0 && (
+              <span className="text-xs text-zinc-300">{lineCount} lines in SKILL.md</span>
+            )}
           </div>
         </div>
       </ModalHeader>
 
       <ModalBody>
-        <p className="text-sm text-zinc-200 leading-relaxed">
-          {skill.description || "No description"}
-        </p>
+        {/* Skill Description */}
+        <div>
+          <SectionTitle icon={<FileText className="w-4 h-4" />} label="Skill Description" />
+          <p className="text-sm text-zinc-200 leading-relaxed">
+            {skill.description || "No description"}
+          </p>
+        </div>
 
-        {/* Sources — inline row */}
-        {skill.sources.length > 0 && (
-          <div className="space-y-1.5">
-            {skill.sources.map((src, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <SourceBadge sourceType={src.source_type} sourcePath={src.source_path} />
-                <span className="text-xs text-zinc-400 font-mono truncate">{src.source_path}</span>
+        {/* Metadata grid: tags, tools, subdirs */}
+        {(tags.length > 0 || allowedTools.length > 0 || subdirs.length > 0) && (
+          <div className="rounded-lg border border-zinc-700/40 bg-zinc-800/30 divide-y divide-zinc-700/30">
+            {/* Tags + Tools row */}
+            {(tags.length > 0 || allowedTools.length > 0) && (
+              <div className="px-4 py-3 flex flex-wrap gap-x-6 gap-y-2">
+                {tags.length > 0 && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <SectionLabel icon={<Tag className="w-3 h-3" />} label="Tags" inline />
+                    {tags.map((tag) => <TagPill key={tag} tag={tag} />)}
+                  </div>
+                )}
+                {allowedTools.length > 0 && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <SectionLabel icon={<Wrench className="w-3 h-3" />} label="Tools" inline />
+                    {allowedTools.map((tool) => <ToolBadge key={tool} tool={tool} />)}
+                  </div>
+                )}
               </div>
-            ))}
+            )}
+
+            {/* Subdirectories */}
+            {subdirs.length > 0 && (
+              <div className="px-4 py-3">
+                <SectionLabel label="Directories" inline />
+                <SubdirList dirs={subdirs} />
+              </div>
+            )}
           </div>
         )}
 
-        {/* Tags — inline row */}
-        {tags.length > 0 && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <SectionLabel icon={<Tag className="w-3 h-3" />} label="Tags" />
-            {tags.map((tag) => <TagPill key={tag} tag={tag} />)}
-          </div>
-        )}
-
-        {/* Allowed Tools — inline row */}
-        {allowedTools.length > 0 && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <SectionLabel icon={<Wrench className="w-3 h-3" />} label="Tools" />
-            {allowedTools.map((tool) => <ToolBadge key={tool} tool={tool} />)}
-          </div>
-        )}
-
-        {/* Subdirectories */}
-        {subdirs.length > 0 && (
-          <div>
-            <SectionLabel label="Directories" />
-            <SubdirList dirs={subdirs} />
-          </div>
-        )}
-
-        {/* Sync to agent interfaces */}
+        {/* Sync to agent interfaces — show all agents from backend */}
         {agentSources.length > 0 && (
-          <div>
-            <SectionLabel icon={<Share2 className="w-3 h-3" />} label="Sync to Agent Interfaces" />
+          <div className="rounded-lg border border-teal-700/30 bg-teal-950/10 px-4 py-3">
+            <SectionTitle icon={<Share2 className="w-4 h-4" />} label="Sync to Agent Interfaces" />
             <div className="flex flex-wrap gap-2">
               {agentSources.map((src) => {
-                const isSynced = skill.skill_targets.includes(src.key) ||
-                  skill.sources.some((s) => s.source_type === src.key);
+                const installedSource = skill.sources.find((s) => s.source_type === src.key);
+                const isSynced = !!installedSource || skill.skill_targets.includes(src.key);
+                const hasDir = !!src.skills_dir;
+                const tooltipText = isSynced
+                  ? installedSource?.source_path ?? `Synced to ${src.label}`
+                  : hasDir
+                    ? `Sync to ${src.skills_dir}`
+                    : `${src.label} not installed on this system`;
                 return (
-                  <Tooltip key={src.key} text={isSynced ? `Synced to ${src.label}` : `Sync to ${src.label}`}>
+                  <Tooltip key={src.key} text={tooltipText}>
                     <button
                       onClick={() => guardAction(() => handleSync(src.key))}
-                      disabled={syncing === src.key}
+                      disabled={syncing === src.key || (!isSynced && !hasDir)}
                       className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border transition ${
                         isSynced
                           ? "bg-emerald-900/20 text-emerald-400 border-emerald-700/30"
-                          : "text-zinc-400 border-zinc-700/50 hover:text-zinc-200 hover:border-zinc-600"
+                          : hasDir
+                            ? "bg-zinc-800/60 text-zinc-400 border-zinc-600/50 hover:text-teal-300 hover:border-teal-600/50 hover:bg-teal-950/20"
+                            : "bg-zinc-800/30 text-zinc-600 border-zinc-700/30 cursor-not-allowed"
                       } disabled:opacity-50`}
                     >
                       {syncing === src.key ? (
@@ -244,7 +246,7 @@ export function SkillDetailPopup({
                       ) : isSynced ? (
                         <Check className="w-3 h-3" />
                       ) : (
-                        <Copy className="w-3 h-3" />
+                        <Share2 className="w-3 h-3" />
                       )}
                       {src.label}
                     </button>
@@ -258,9 +260,9 @@ export function SkillDetailPopup({
           </div>
         )}
 
-        {/* Content preview — rendered as markdown */}
+        {/* Skill Content */}
         <div>
-          <SectionLabel icon={<Code2 className="w-3 h-3" />} label="SKILL.md Content" />
+          <SectionTitle icon={<Code2 className="w-4 h-4" />} label="Skill Content" />
           {loadingContent ? (
             <div className="flex items-center gap-2 py-4">
               <Loader2 className="w-4 h-4 text-zinc-500 animate-spin" />
@@ -280,6 +282,16 @@ export function SkillDetailPopup({
         <InstallLocallyDialog onClose={() => setShowInstallDialog(false)} />
       )}
     </Modal>
+  );
+}
+
+/** Prominent section title with icon for major sections in detail popups. */
+function SectionTitle({ icon, label }: { icon: React.ReactNode; label: string }) {
+  return (
+    <div className="flex items-center gap-2 mb-2.5">
+      <span className="text-teal-400">{icon}</span>
+      <span className="text-sm font-semibold text-zinc-100">{label}</span>
+    </div>
   );
 }
 

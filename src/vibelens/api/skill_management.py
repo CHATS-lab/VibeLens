@@ -22,6 +22,8 @@ from vibelens.schemas.skills import (
     SkillWriteRequest,
 )
 from vibelens.services.analysis_shared import CACHE_TTL_SECONDS
+from vibelens.storage.skill.agent import AGENT_SKILL_REGISTRY
+from vibelens.storage.skill.disk import DiskSkillStore
 from vibelens.utils.github import download_skill_from_github
 
 logger = logging.getLogger(__name__)
@@ -32,10 +34,24 @@ FEATURED_SKILLS_PATH = Path(__file__).resolve().parents[3] / "featured-skills.js
 
 DEFAULT_PAGE_SIZE = 50
 
+
+def _make_agent_getter(source_type, skills_dir):
+    """Create a lazy getter for a third-party agent skill store."""
+    def _getter():
+        return DiskSkillStore(skills_dir.expanduser().resolve(), source_type)
+    return _getter
+
+
 AGENT_STORE_REGISTRY: dict[str, callable] = {
     "claude_code": get_skill_store,
     "codex": get_codex_skill_store,
 }
+
+# Register all third-party agents from the agent skill registry
+for _src_type, _skills_dir in AGENT_SKILL_REGISTRY.items():
+    _key = _src_type.value
+    if _key not in AGENT_STORE_REGISTRY:
+        AGENT_STORE_REGISTRY[_key] = _make_agent_getter(_src_type, _skills_dir)
 
 
 def _resolve_source_store(source: str):

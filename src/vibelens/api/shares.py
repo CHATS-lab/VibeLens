@@ -7,6 +7,10 @@ from vibelens.schemas.share import ShareMeta, ShareRequest, ShareResponse
 from vibelens.services.session.crud import get_session
 from vibelens.services.session.flow import compute_flow_from_trajectories
 from vibelens.services.session.share import extract_title
+from vibelens.services.session.store_resolver import load_from_all_stores
+from vibelens.utils import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/shares", tags=["shares"])
 
@@ -82,10 +86,13 @@ async def get_share(session_id: str) -> list[dict]:
     """
     share_service = get_share_service()
     if not share_service.is_shared(session_id):
+        logger.warning("get_share: session %s not in share registry", session_id[:8])
         raise HTTPException(status_code=404, detail="Share not found")
 
-    trajectories = get_session(session_id)
+    # Token-agnostic lookup: share viewers don't have the uploader's token
+    trajectories = load_from_all_stores(session_id)
     if not trajectories:
+        logger.warning("get_share: session %s shared but data not found in stores", session_id[:8])
         raise HTTPException(status_code=404, detail="Session data not found")
 
     return [t.model_dump(mode="json") for t in trajectories]
@@ -121,7 +128,8 @@ async def share_flow(session_id: str) -> dict:
     if not share_service.is_shared(session_id):
         raise HTTPException(status_code=404, detail="Share not found")
 
-    trajectories = get_session(session_id)
+    # Token-agnostic lookup: share viewers don't have the uploader's token
+    trajectories = load_from_all_stores(session_id)
     if not trajectories:
         raise HTTPException(status_code=404, detail="Session data not found")
 

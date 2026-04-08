@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.9.27] - 2026-04-08
+
+### Fixed
+- **Shared uploaded sessions 404**: Share links for uploaded sessions failed with "Share not found or has been revoked" because the share endpoint resolved sessions using the viewer's token (which differs from the uploader's). Added `load_from_all_stores()` that searches all upload stores regardless of token, used by share resolution endpoints.
+
 ## [0.9.26] - 2026-04-08
 
 ### Changed

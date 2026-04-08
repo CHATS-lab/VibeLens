@@ -8,7 +8,13 @@ In demo mode, iterates the user's registered upload stores (from the
 upload registry in deps.py) plus the shared example store.
 """
 
-from vibelens.deps import get_example_store, get_store, get_upload_stores, is_demo_mode
+from vibelens.deps import (
+    get_all_upload_stores,
+    get_example_store,
+    get_store,
+    get_upload_stores,
+    is_demo_mode,
+)
 from vibelens.utils import get_logger
 
 logger = get_logger(__name__)
@@ -82,6 +88,30 @@ def load_from_stores(session_id: str, session_token: str | None = None) -> list 
             return result
 
     # Fall back to example store
+    return get_example_store().load(session_id)
+
+
+def load_from_all_stores(session_id: str) -> list | None:
+    """Load a session searching all stores regardless of token.
+
+    Used for share resolution where the viewer has no access to
+    the uploader's session_token. Searches all upload stores then
+    falls back to the example store.
+
+    Args:
+        session_id: Session identifier to look up.
+
+    Returns:
+        List of Trajectory objects, or None if not found.
+    """
+    if not is_demo_mode():
+        return get_store().load(session_id)
+
+    for store in get_all_upload_stores():
+        result = store.load(session_id)
+        if result is not None:
+            return result
+
     return get_example_store().load(session_id)
 
 

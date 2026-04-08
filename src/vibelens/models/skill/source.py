@@ -27,7 +27,7 @@ class SkillSourceType(StrEnum):
     OPENHANDS = AgentType.OPENHANDS
     QWEN_CODE = AgentType.QWEN_CODE
     GEMINI_CLI = AgentType.GEMINI_CLI
-    GITHUB_COPILOT = AgentType.GITHUB_COPILOT
+    COPILOT = AgentType.COPILOT
     CENTRAL = "central"
     URL = "url"
 

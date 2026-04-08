@@ -209,7 +209,7 @@ export function LocalSkillsTab() {
           </div>
           <div>
             <h2 className="text-lg font-bold text-zinc-100">Skills</h2>
-            <p className="text-xs text-zinc-300">Manage and sync skills across agent interfaces</p>
+            <p className="text-sm text-zinc-200">Manage and sync skills across agent interfaces</p>
           </div>
         </div>
         <div className="flex items-center gap-2">

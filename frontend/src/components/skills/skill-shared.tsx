@@ -148,7 +148,7 @@ export function NoResultsState() {
 /** Small counter showing "X of Y skills". */
 export function SkillCount({ filtered, total }: { filtered: number; total: number }) {
   return (
-    <div className="text-xs text-zinc-300 mb-3">
+    <div className="text-sm text-zinc-200 mb-3">
       {filtered} of {total} skill{total !== 1 ? "s" : ""}
     </div>
   );

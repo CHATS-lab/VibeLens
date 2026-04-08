@@ -170,6 +170,21 @@ def get_upload_stores(session_token: str | None) -> list[DiskStore]:
     return _upload_registry.get(session_token, [])
 
 
+def get_all_upload_stores() -> list[DiskStore]:
+    """Return all upload stores across all tokens.
+
+    Used for token-agnostic lookups like shared session resolution,
+    where the viewer's token differs from the uploader's.
+
+    Returns:
+        Flat list of every registered upload DiskStore.
+    """
+    stores: list[DiskStore] = []
+    for token_stores in _upload_registry.values():
+        stores.extend(token_stores)
+    return stores
+
+
 def register_upload_store(session_token: str, store: DiskStore) -> None:
     """Register an upload store for a session_token.
 

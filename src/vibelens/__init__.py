@@ -1,3 +1,3 @@
 """VibeLens — Agent Trajectory analysis and visualization platform."""
 
-__version__ = "0.9.26"
+__version__ = "0.9.27"

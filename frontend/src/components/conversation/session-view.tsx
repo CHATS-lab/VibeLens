@@ -366,7 +366,8 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
       });
       if (!res.ok) throw new Error(`Failed to create share: ${res.status}`);
       const data = await res.json();
-      setShareDialog({ kind: "ready", url: data.url, copied: false });
+      const shareUrl = `${window.location.origin}/?share=${data.session_id}`;
+      setShareDialog({ kind: "ready", url: shareUrl, copied: false });
     } catch (err) {
       console.error("Share failed:", err);
       setShareDialog({ kind: "hidden" });
@@ -441,39 +442,45 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
             <div className="flex items-center gap-1 shrink-0 ml-3">
               {/* View mode toggle */}
               <div data-tour="view-modes" className="flex rounded-md border border-cyan-700/40 bg-zinc-800/60 mr-2 w-[280px]">
-                <button
-                  onClick={() => setViewMode("concise")}
-                  className={`flex-1 flex items-center justify-center gap-1 px-2.5 py-1.5 text-xs rounded-l-md transition ${
-                    viewMode === "concise"
-                      ? "bg-cyan-900/50 text-cyan-200 font-semibold"
-                      : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/40"
-                  }`}
-                >
-                  <AlignLeft className="w-3 h-3" />
-                  Concise
-                </button>
-                <button
-                  onClick={() => setViewMode("detail")}
-                  className={`flex-1 flex items-center justify-center gap-1 px-2.5 py-1.5 text-xs transition ${
-                    viewMode === "detail"
-                      ? "bg-cyan-900/50 text-cyan-200 font-semibold"
-                      : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/40"
-                  }`}
-                >
-                  <List className="w-3 h-3" />
-                  Detail
-                </button>
-                <button
-                  onClick={() => setViewMode("workflow")}
-                  className={`flex-1 flex items-center justify-center gap-1 px-2.5 py-1.5 text-xs rounded-r-md transition ${
-                    viewMode === "workflow"
-                      ? "bg-cyan-900/50 text-cyan-200 font-semibold"
-                      : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/40"
-                  }`}
-                >
-                  <GitBranch className="w-3 h-3" />
-                  Workflow
-                </button>
+                <Tooltip text="Messages only, tool calls hidden" className="flex-1">
+                  <button
+                    onClick={() => setViewMode("concise")}
+                    className={`w-full flex items-center justify-center gap-1 px-2.5 py-1.5 text-xs rounded-l-md transition ${
+                      viewMode === "concise"
+                        ? "bg-cyan-900/50 text-cyan-200 font-semibold"
+                        : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/40"
+                    }`}
+                  >
+                    <AlignLeft className="w-3 h-3" />
+                    Concise
+                  </button>
+                </Tooltip>
+                <Tooltip text="Full conversation with all tool calls" className="flex-1">
+                  <button
+                    onClick={() => setViewMode("detail")}
+                    className={`w-full flex items-center justify-center gap-1 px-2.5 py-1.5 text-xs transition ${
+                      viewMode === "detail"
+                        ? "bg-cyan-900/50 text-cyan-200 font-semibold"
+                        : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/40"
+                    }`}
+                  >
+                    <List className="w-3 h-3" />
+                    Detail
+                  </button>
+                </Tooltip>
+                <Tooltip text="Visual diagram of the agent's steps" className="flex-1">
+                  <button
+                    onClick={() => setViewMode("workflow")}
+                    className={`w-full flex items-center justify-center gap-1 px-2.5 py-1.5 text-xs rounded-r-md transition ${
+                      viewMode === "workflow"
+                        ? "bg-cyan-900/50 text-cyan-200 font-semibold"
+                        : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/40"
+                    }`}
+                  >
+                    <GitBranch className="w-3 h-3" />
+                    Workflow
+                  </button>
+                </Tooltip>
               </div>
               <div className="w-px h-6 bg-zinc-600/50 mx-1" />
               {!isSharedView && (
@@ -764,23 +771,36 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
 
     {/* Share link dialog */}
     {shareDialog.kind === "ready" && (
-      <Modal onClose={() => setShareDialog({ kind: "hidden" })} maxWidth="max-w-md">
-        <ModalHeader title="Share session" onClose={() => setShareDialog({ kind: "hidden" })} />
+      <Modal onClose={() => setShareDialog({ kind: "hidden" })} maxWidth="max-w-lg">
+        <ModalHeader onClose={() => setShareDialog({ kind: "hidden" })}>
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-md bg-cyan-900/30 border border-cyan-700/30">
+              <Share2 className="w-4 h-4 text-cyan-400" />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-zinc-100">Share session</h2>
+              <p className="text-xs text-zinc-500 mt-0.5">Anyone with this link can view the session</p>
+            </div>
+          </div>
+        </ModalHeader>
         <ModalBody>
-          <p className="text-xs text-zinc-400 mb-2">Anyone with this link can view the session.</p>
           <div className="flex items-center gap-2">
             <input
               readOnly
               value={shareDialog.url}
               onFocus={(e) => e.target.select()}
-              className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-xs text-zinc-200 font-mono select-all focus:outline-none focus:border-cyan-600"
+              className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-zinc-200 font-mono select-all focus:outline-none focus:border-cyan-600 transition"
             />
             <button
               onClick={() => handleCopyShareUrl(shareDialog.url)}
-              className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded text-xs font-medium transition bg-cyan-700 hover:bg-cyan-600 text-white"
+              className={`shrink-0 flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-xs font-medium transition ${
+                shareDialog.copied
+                  ? "bg-emerald-700 text-white"
+                  : "bg-cyan-700 hover:bg-cyan-600 text-white"
+              }`}
             >
               {shareDialog.copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-              {shareDialog.copied ? "Copied" : "Copy"}
+              {shareDialog.copied ? "Copied!" : "Copy link"}
             </button>
           </div>
         </ModalBody>

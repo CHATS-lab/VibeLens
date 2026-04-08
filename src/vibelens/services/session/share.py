@@ -28,6 +28,22 @@ class ShareService:
         self._dir.mkdir(parents=True, exist_ok=True)
         self._registry_path = self._dir / REGISTRY_FILENAME
         self._registry: dict[str, ShareMeta] = self._load()
+        self._last_mtime: float = self._file_mtime()
+
+    def _file_mtime(self) -> float:
+        """Return the registry file's modification time, or 0 if missing."""
+        try:
+            return self._registry_path.stat().st_mtime
+        except FileNotFoundError:
+            return 0.0
+
+    def _refresh_if_stale(self) -> None:
+        """Re-read registry from disk if another process modified it."""
+        mtime = self._file_mtime()
+        if mtime > self._last_mtime:
+            self._registry = self._load()
+            self._last_mtime = mtime
+            logger.info("Share registry refreshed from disk (%d entries)", len(self._registry))
 
     def share(self, session_id: str, title: str) -> ShareMeta:
         """Mark a session as shared and persist the registry.
@@ -64,10 +80,12 @@ class ShareService:
 
     def is_shared(self, session_id: str) -> bool:
         """Check whether a session is currently shared."""
+        self._refresh_if_stale()
         return session_id in self._registry
 
     def get_meta(self, session_id: str) -> ShareMeta | None:
         """Return share metadata for a session, or None if not shared."""
+        self._refresh_if_stale()
         return self._registry.get(session_id)
 
     def list_shared(self) -> list[ShareMeta]:
@@ -76,16 +94,18 @@ class ShareService:
         Returns:
             List of ShareMeta objects.
         """
+        self._refresh_if_stale()
         entries = list(self._registry.values())
         entries.sort(key=lambda m: m.created_at, reverse=True)
         return entries
 
     def _save(self) -> None:
-        """Persist the registry to disk."""
+        """Persist the registry to disk and update cached mtime."""
         payload = [m.model_dump(mode="json") for m in self._registry.values()]
         self._registry_path.write_text(
             json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8"
         )
+        self._last_mtime = self._file_mtime()
 
     def _load(self) -> dict[str, ShareMeta]:
         """Load the registry from disk."""

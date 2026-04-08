@@ -24,7 +24,7 @@ class AgentType(StrEnum):
     OPENHANDS = "openhands"
     QWEN_CODE = "qwen_code"
     GEMINI_CLI = "gemini_cli"
-    GITHUB_COPILOT = "github_copilot"
+    COPILOT = "copilot"
 
 
 class StepSource(StrEnum):

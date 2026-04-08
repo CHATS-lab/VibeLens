@@ -6,9 +6,12 @@ import {
   ExternalLink,
   FileArchive,
   Loader2,
+  MessageSquare,
+  Shield,
   Trash2,
   Upload,
   X,
+  Zap,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppContext } from "../app";
@@ -404,49 +407,63 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
           {step === "result" && (
             <div className="space-y-5">
               {uploading ? (
-                <div className="space-y-4">
-                  <div className="flex flex-col items-center gap-3 py-4">
-                    <Loader2 className="w-8 h-8 text-violet-400 animate-spin" />
-                    <p className="text-sm text-zinc-300">
-                      {uploadPhase === "sending" ? "Uploading..." : "Processing sessions..."}
-                    </p>
+                <div className="space-y-5">
+                  <div className="flex flex-col items-center gap-4 py-6">
+                    <div className="relative">
+                      <div className="w-16 h-16 rounded-full border-2 border-violet-500/30 flex items-center justify-center">
+                        <Loader2 className="w-7 h-7 text-violet-400 animate-spin" />
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-sm font-semibold text-zinc-100">
+                        {uploadPhase === "sending" ? "Uploading your data" : "Processing sessions"}
+                      </p>
+                      <p className="text-xs text-zinc-400 mt-1">
+                        {uploadPhase === "sending"
+                          ? "Sending your file to the server"
+                          : "Extracting, parsing, and scrubbing sensitive data"}
+                      </p>
+                    </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                  <div className="space-y-2">
+                    <div className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden">
                       {uploadPhase === "sending" ? (
                         <div
-                          className="h-full bg-violet-500 rounded-full transition-all duration-300"
+                          className="h-full bg-gradient-to-r from-violet-600 to-violet-400 rounded-full transition-all duration-300"
                           style={{ width: `${uploadProgress}%` }}
                         />
                       ) : (
-                        <div className="h-full bg-violet-500 rounded-full animate-pulse w-full" />
+                        <div className="h-full bg-gradient-to-r from-violet-600 to-violet-400 rounded-full animate-pulse w-full" />
                       )}
                     </div>
-                    <p className="text-[10px] text-zinc-500 text-center">
+                    <p className="text-xs text-zinc-400 text-center">
                       {uploadPhase === "sending"
-                        ? `Uploading — ${uploadProgress}% of ${((file?.size ?? 0) / (1024 * 1024)).toFixed(0)} MB`
-                        : "Server is extracting and parsing sessions…"}
+                        ? `${uploadProgress}% of ${((file?.size ?? 0) / (1024 * 1024)).toFixed(1)} MB uploaded`
+                        : "This may take a moment for large archives"}
                     </p>
                   </div>
                 </div>
               ) : result ? (
                 <div className="space-y-4">
                   {result.errors.length > 0 && result.sessions_parsed === 0 ? (
-                    <div className="flex flex-col items-center gap-2 py-3">
-                      <AlertCircle className="w-8 h-8 text-rose-400" />
-                      <p className="text-sm font-semibold text-rose-300">
-                        Upload failed
-                      </p>
+                    <div className="flex flex-col items-center gap-2 py-4">
+                      <div className="w-14 h-14 rounded-full bg-rose-500/10 border border-rose-500/20 flex items-center justify-center">
+                        <AlertCircle className="w-7 h-7 text-rose-400" />
+                      </div>
+                      <p className="text-base font-semibold text-rose-300">Upload failed</p>
+                      <p className="text-xs text-zinc-400">No sessions could be imported from this file.</p>
                     </div>
                   ) : (
-                    <div className="flex flex-col items-center gap-2 py-3">
-                      <CheckCircle2 className="w-8 h-8 text-emerald-400" />
-                      <p className="text-2xl font-semibold text-zinc-100 font-mono">
-                        {result.sessions_parsed}
-                      </p>
-                      <p className="text-xs text-zinc-400">
-                        {result.sessions_parsed === 1 ? "session" : "sessions"} imported
-                      </p>
+                    <div className="flex flex-col items-center gap-3 py-4">
+                      <div className="w-14 h-14 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+                        <CheckCircle2 className="w-7 h-7 text-emerald-400" />
+                      </div>
+                      <div className="text-center">
+                        <p className="text-base font-semibold text-zinc-100">Upload complete</p>
+                        <p className="text-sm text-zinc-400 mt-0.5">
+                          {result.sessions_parsed} {result.sessions_parsed === 1 ? "session" : "sessions"} imported with {result.steps_stored.toLocaleString()} steps
+                        </p>
+                      </div>
                     </div>
                   )}
                   <ResultStats result={result} />
@@ -539,17 +556,58 @@ function SelectorRow({
 
 function ResultStats({ result }: { result: UploadResult }) {
   const hasErrors = result.errors.length > 0;
+  const totalPrivacy = result.secrets_redacted + result.paths_anonymized + result.pii_redacted;
 
   return (
-    <div className="space-y-2">
-      <div className="grid grid-cols-3 gap-2 text-xs">
-        <StatBox label="Sessions" value={result.sessions_parsed} />
-        <StatBox label="Steps" value={result.steps_stored} />
-        <StatBox label="Skipped" value={result.skipped} />
+    <div className="space-y-3">
+      {/* Import stats */}
+      {/* Import stats */}
+      <div className="rounded-lg border border-zinc-700/40 bg-zinc-800/30">
+        <div className="grid grid-cols-3 divide-x divide-zinc-700/30">
+          <StatBox icon={<MessageSquare className="w-3.5 h-3.5 text-violet-400" />} label="Sessions" value={result.sessions_parsed} />
+          <StatBox icon={<Zap className="w-3.5 h-3.5 text-cyan-400" />} label="Steps" value={result.steps_stored} />
+          <StatBox label="Skipped" value={result.skipped} />
+        </div>
       </div>
+
+      {/* Privacy protection summary */}
+      {totalPrivacy > 0 && (
+        <div className="rounded-lg border border-emerald-700/30 bg-emerald-950/10 px-4 py-3">
+          <div className="flex items-center gap-2 mb-2.5">
+            <Shield className="w-4 h-4 text-emerald-400" />
+            <span className="text-sm font-semibold text-zinc-100">Privacy Protection</span>
+          </div>
+          <p className="text-xs text-zinc-300 mb-2">
+            Your data was automatically cleaned before storage. The following sensitive items were removed:
+          </p>
+          <div className="grid grid-cols-3 gap-2">
+            {result.secrets_redacted > 0 && (
+              <div className="bg-emerald-900/20 rounded-md px-2.5 py-2 text-center">
+                <p className="text-lg font-semibold font-mono text-emerald-400">{result.secrets_redacted.toLocaleString()}</p>
+                <p className="text-[10px] text-emerald-300/70 mt-0.5">API keys & tokens</p>
+              </div>
+            )}
+            {result.paths_anonymized > 0 && (
+              <div className="bg-emerald-900/20 rounded-md px-2.5 py-2 text-center">
+                <p className="text-lg font-semibold font-mono text-emerald-400">{result.paths_anonymized.toLocaleString()}</p>
+                <p className="text-[10px] text-emerald-300/70 mt-0.5">File paths</p>
+              </div>
+            )}
+            {result.pii_redacted > 0 && (
+              <div className="bg-emerald-900/20 rounded-md px-2.5 py-2 text-center">
+                <p className="text-lg font-semibold font-mono text-emerald-400">{result.pii_redacted.toLocaleString()}</p>
+                <p className="text-[10px] text-emerald-300/70 mt-0.5">Personal info</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {hasErrors && (
-        <div className="p-2.5 bg-rose-900/20 border border-rose-800/50 rounded text-xs text-rose-300 space-y-0.5">
-          <p className="font-medium">Errors:</p>
+        <div className="p-3 bg-rose-900/20 border border-rose-800/50 rounded-lg text-xs text-rose-300 space-y-1">
+          <p className="font-semibold text-rose-200">
+            {result.sessions_parsed > 0 ? "Some files had errors:" : "Errors:"}
+          </p>
           {result.errors.slice(0, 5).map((e, i) => (
             <p key={i} className="text-rose-400">
               {e.filename ? `${e.filename}: ` : ""}
@@ -562,11 +620,14 @@ function ResultStats({ result }: { result: UploadResult }) {
   );
 }
 
-function StatBox({ label, value }: { label: string; value: number }) {
+function StatBox({ icon, label, value }: { icon?: React.ReactNode; label: string; value: number }) {
   return (
-    <div className="bg-zinc-800/50 rounded px-2.5 py-1.5">
-      <p className="text-[10px] text-zinc-500">{label}</p>
-      <p className="text-zinc-200 font-mono text-sm">{value}</p>
+    <div className="px-3 py-2.5 text-center">
+      <div className="flex items-center justify-center gap-1.5 mb-1">
+        {icon}
+        <p className="text-xs text-zinc-400">{label}</p>
+      </div>
+      <p className="text-zinc-100 font-mono text-lg font-semibold">{value.toLocaleString()}</p>
     </div>
   );
 }

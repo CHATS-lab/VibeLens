@@ -23,7 +23,7 @@ AGENT_SKILL_REGISTRY: dict[SkillSourceType, Path] = {
     SkillSourceType.OPENHANDS: Path.home() / ".openhands" / "skills",
     SkillSourceType.QWEN_CODE: Path.home() / ".qwen" / "skills",
     SkillSourceType.GEMINI_CLI: Path.home() / ".gemini" / "skills",
-    SkillSourceType.GITHUB_COPILOT: Path.home() / ".copilot" / "skills",
+    SkillSourceType.COPILOT: Path.home() / ".copilot" / "skills",
 }
 
 
