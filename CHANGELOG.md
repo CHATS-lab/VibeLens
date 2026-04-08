@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.9.25] - 2026-04-08
+
+### Changed
+- **Skill evolution color theme**: Replaced amber accent with teal to match recommendation cards across all evolution UI elements (borders, badges, buttons, icons, confidence bars).
+- **Skill selection dialog for evolution**: Users now choose which installed skills to evolve before analysis starts, with checkbox list and select-all toggle. Selection passed through API to filter skills sent to LLM.
+- **Skill Description label**: All skill cards (Recommendation, Creation, Evolution) now display a bold "Skill Description:" prefix before the description text.
+- **BulletText markdown rendering**: Rewrote component to parse `**bold**` into `<strong>` elements and handle `\n\n` robustly between bullets.
+- **Model field descriptions**: Refined `rationale`, `summary`, and `user_profile` field descriptions across all skill models for conciseness and plain language with explicit bullet-point format guidance.
+- **LLM prompt bullet format rules**: All skill prompt templates now enforce bullet-point format for rationale, summary, and user_profile via two concise lines in Output Rules. No over-emphasis.
+- **Waiting page text styling**: Unified analysis loading text to `text-sm text-zinc-400` for better readability.
+
+### Fixed
+- **Tooltip overlap on Reference buttons**: Removed nested `<Tooltip>` wrappers from `FrictionRefList` and `StepRefList`, keeping only individual button tooltips.
+- **Duplicate evolution proposals**: Added server-side dedup keeping first proposal per skill, plus prompt-level "one proposal per skill" rule in evolution proposal template.
+
 ## [0.9.24] - 2026-04-07
 
 ### Changed

@@ -7,9 +7,10 @@ You will receive retrieval results from multiple batches that analyzed different
 1. **Merge recommendations**: If two batches recommend the same `skill_name`, keep the one with the highest `confidence` and the best `rationale`.
 2. **Deduplicate patterns**: Combine patterns with the same title. Merge their `example_refs` and keep the best description.
 3. **Rank by frequency**: Recommendations appearing across more batches should have higher confidence.
-4. **Cap at 10 recommendations**: Keep only the top recommendations by confidence.
-5. **Unify the summary**: Write a single cohesive summary.
-6. **Merge user profiles**: Combine batch-level profiles into one comprehensive profile.
+4. **Cap at 6 recommendations**: Keep only the most frequent and valuable recommendations by confidence.
+5. **Cap at 5 workflow patterns**: Merge similar patterns into one entry with combined `example_refs`.
+6. **Unify the summary**: Write a single cohesive summary.
+7. **Merge user profiles**: Combine batch-level profiles into one comprehensive profile.
 
 ## Output Rules
 
@@ -17,6 +18,7 @@ You will receive retrieval results from multiple batches that analyzed different
 - Do NOT include commentary, explanations, or markdown code fences.
 - The response must start with `{` and end with `}`.
 - NEVER reference sessions by ID, index, or UUID in text fields (summary, rationale, description, user_profile). Describe patterns in general terms that readers can understand without session context.
+- MANDATORY bullet format for `rationale`, `summary`, `user_profile`: one short sentence, then `\n- **Bold label**: explanation` bullets. No plain-text paragraphs.
 
 ## Output Schema
 

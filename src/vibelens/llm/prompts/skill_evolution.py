@@ -27,5 +27,5 @@ SKILL_EVOLUTION_EDIT_PROMPT = AnalysisPrompt(
     system_template=load_template("skill/evolution_system.j2"),
     user_template=load_template("skill/evolution_user.j2"),
     output_model=SkillEvolution,
-    exclude_fields=frozenset({"description", "addressed_patterns"}),
+    exclude_fields={"SkillEvolution": frozenset({"description", "addressed_patterns"})},
 )

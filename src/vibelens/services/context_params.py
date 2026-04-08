@@ -74,7 +74,7 @@ PRESET_CONCISE = ContextParams(
     path_max_segments=2,
 )
 
-# Balanced detail for skill creation and evolvement
+# Balanced detail for skill creation and evolvement proposal
 PRESET_MEDIUM = ContextParams(
     user_prompt_max_chars=1500,
     user_prompt_head_chars=1100,
@@ -91,7 +91,7 @@ PRESET_MEDIUM = ContextParams(
     path_max_segments=3,
 )
 
-# Full detail for friction analysis (matches legacy hardcoded defaults)
+# Full detail for friction analysis and skill creation and evolvement
 PRESET_DETAIL = ContextParams(
     user_prompt_max_chars=2000,
     user_prompt_head_chars=1500,

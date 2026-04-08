@@ -6,7 +6,7 @@ from trajectory message and observation fields.
 
 DEFAULT_MAX_TOTAL_CHARS = 200
 DEFAULT_MAX_VALUE_CHARS = 60
-ERROR_SIGNALS = ("error:", "traceback", "exception", "failed", "fatal", "errno")
+ERROR_SIGNALS = ("error:", "traceback", "exception", "failed", "fatal")
 
 
 def extract_text(content) -> str:

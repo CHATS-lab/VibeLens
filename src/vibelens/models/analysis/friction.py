@@ -57,7 +57,7 @@ class Mitigation(BaseModel):
         default="",
         description=(
             "One-sentence conclusion followed by 1-2 bullet points "
-            "starting with '- '. Max 50 words."
+            "starting with '\\n- '. Max 50 words."
         ),
     )
     confidence: float = Field(default=0.0, description="Confidence this will help. 0.0-1.0.")
@@ -72,7 +72,7 @@ class FrictionAnalysisOutput(BaseModel):
     user_profile: str = Field(
         description=(
             "One-sentence role summary followed by 1-2 bullet points "
-            "starting with '- '. Max 50 words."
+            "starting with '\\n- '. Max 50 words."
         )
     )
     friction_types: list[FrictionType] = Field(
@@ -81,7 +81,7 @@ class FrictionAnalysisOutput(BaseModel):
     summary: str = Field(
         description=(
             "One-sentence conclusion followed by 2-4 bullet points "
-            "starting with '- '. Max 100 words."
+            "starting with '\\n- '. Max 100 words."
         )
     )
     mitigations: list[Mitigation] = Field(
@@ -108,14 +108,14 @@ class FrictionAnalysisResult(BaseModel):
     summary: str = Field(
         description=(
             "One-sentence conclusion followed by 2-4 bullet points "
-            "starting with '- '. Max 100 words."
+            "starting with '\\n- '. Max 100 words."
         )
     )
     user_profile: str | None = Field(
         default=None,
         description=(
             "One-sentence role summary followed by 1-2 bullet points "
-            "starting with '- '. Max 50 words."
+            "starting with '\\n- '. Max 50 words."
         ),
     )
     mitigations: list[Mitigation] = Field(

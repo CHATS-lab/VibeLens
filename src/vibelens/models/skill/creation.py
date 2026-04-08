@@ -20,8 +20,10 @@ class SkillCreationProposal(BaseModel):
     )
     rationale: str = Field(
         description=(
-            "One-sentence conclusion followed by 1-2 bullet points "
-            "starting with '- '. Max 50 words."
+            "Plain-language explanation of why this skill is needed. "
+            "One short summary sentence, then 1-2 bullets. "
+            "Each bullet: '\\n- **Reason**: concise detail'. "
+            "Keep under 50 words total. Avoid jargon."
         )
     )
     addressed_patterns: list[str] = Field(
@@ -52,8 +54,8 @@ class SkillCreationProposalOutput(BaseModel):
     user_profile: str = Field(
         default="",
         description=(
-            "One-sentence role summary followed by 1-2 bullet points "
-            "starting with '- '. Max 50 words."
+            "One plain sentence describing the user's role, then 1-2 bullets "
+            "with '\\n- **Topic**: detail'. Under 40 words. Avoid jargon."
         ),
     )
     workflow_patterns: list[WorkflowPattern] = Field(
@@ -61,8 +63,9 @@ class SkillCreationProposalOutput(BaseModel):
     )
     summary: str = Field(
         description=(
-            "One-sentence conclusion followed by 2-4 bullet points starting with '- '. "
-            "Accessible to all expertise levels. Max 100 words."
+            "One plain sentence summarizing the key finding, then 2-4 bullets. "
+            "Each bullet: '\\n- **Finding**: concise explanation'. "
+            "Readable by non-experts. Under 80 words total."
         )
     )
     proposals: list[SkillCreationProposal] = Field(
@@ -118,8 +121,10 @@ class SkillCreation(BaseModel):
     skill_md_content: str = Field(description="Full SKILL.md content including YAML frontmatter.")
     rationale: str = Field(
         description=(
-            "One-sentence conclusion followed by 1-2 bullet points "
-            "starting with '- '. Max 50 words."
+            "Plain-language explanation of why this skill was created. "
+            "One short summary sentence, then 1-2 bullets. "
+            "Each bullet: '\\n- **Reason**: concise detail'. "
+            "Keep under 50 words total. Avoid jargon."
         )
     )
     tools_used: list[str] = Field(

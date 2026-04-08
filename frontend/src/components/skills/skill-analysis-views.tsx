@@ -32,6 +32,7 @@ import type {
 } from "../../types";
 import { BulletText } from "../bullet-text";
 import { DemoBanner } from "../demo-banner";
+import { LoadingSpinnerRings } from "../loading-spinner";
 import { Tooltip } from "../tooltip";
 import { WarningsBanner } from "../warnings-banner";
 import { applySkillEdits } from "./skill-edit-utils";
@@ -63,15 +64,12 @@ const MODE_SUBLABELS: Record<SkillMode, string> = {
 export function AnalysisLoadingState({ mode, sessionCount }: { mode: SkillMode; sessionCount: number }) {
   return (
     <div className="flex flex-col items-center gap-5">
-      <div className="relative">
-        <div className="absolute inset-0 rounded-full bg-teal-500/20 animate-ping" />
-        <Loader2 className="w-12 h-12 text-teal-400 animate-spin relative" />
-      </div>
-      <div className="text-center">
-        <p className="text-base font-semibold text-zinc-100">
+      <LoadingSpinnerRings color="teal" />
+      <div className="text-center space-y-1.5">
+        <p className="text-base font-semibold text-white">
           Analyzing {sessionCount} session{sessionCount !== 1 ? "s" : ""}
         </p>
-        <p className="text-sm text-zinc-300 mt-1.5">{MODE_SUBLABELS[mode]}</p>
+        <p className="text-sm text-zinc-300">{MODE_SUBLABELS[mode]}</p>
       </div>
     </div>
   );
@@ -338,17 +336,15 @@ function PatternCard({ pattern, index }: { pattern: WorkflowPattern; index: numb
 function StepRefList({ refs }: { refs: StepRef[] }) {
   if (refs.length === 0) return null;
   return (
-    <Tooltip text="Session steps where this pattern appears">
-      <div className="flex items-center gap-2 flex-wrap cursor-help">
-        <div className="flex items-center gap-1.5 text-sm">
-          <BookOpen className="w-4 h-4 text-cyan-400" />
-          <span className="font-semibold text-cyan-400">Reference:</span>
-        </div>
-        {refs.map((stepRef, i) => (
-          <JumpToStepButton key={i} stepRef={stepRef} />
-        ))}
+    <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex items-center gap-1.5 text-sm">
+        <BookOpen className="w-4 h-4 text-cyan-400" />
+        <span className="font-semibold text-cyan-400">Reference:</span>
       </div>
-    </Tooltip>
+      {refs.map((stepRef, i) => (
+        <JumpToStepButton key={i} stepRef={stepRef} />
+      ))}
+    </div>
   );
 }
 
@@ -492,7 +488,10 @@ function RecommendationCard({
           </div>
         </div>
         {rec.description && (
-          <p className="text-sm text-zinc-300 leading-relaxed mt-1.5">{rec.description}</p>
+          <p className="text-sm text-zinc-300 leading-relaxed mt-1.5">
+            <span className="font-semibold text-zinc-200">Skill Description: </span>
+            {rec.description}
+          </p>
         )}
       </div>
 
@@ -681,7 +680,10 @@ function CreatedSkillCard({
             )}
           </div>
         </div>
-        <BulletText text={skill.description} className="text-sm text-zinc-300 leading-relaxed mt-1.5" />
+        <p className="text-sm text-zinc-300 leading-relaxed mt-1.5">
+          <span className="font-semibold text-zinc-200">Skill Description: </span>
+          {skill.description}
+        </p>
       </div>
 
       {/* Why This is Useful */}
@@ -753,7 +755,7 @@ function EvolutionSection({
         icon={<TrendingUp className="w-5 h-5" />}
         title="Evolution Suggestions"
         tooltip="Targeted improvements for your installed skills based on real usage"
-        accentColor="text-amber-400"
+        accentColor="text-teal-400"
       />
       <div className="space-y-3">
         {suggestions.map((sug) => (
@@ -859,23 +861,23 @@ function EvolutionCard({
   }, [fetchWithToken, suggestion.skill_name]);
 
   return (
-    <div className="border border-amber-700/30 rounded-xl bg-amber-950/15 overflow-hidden">
+    <div className="border border-teal-700/30 rounded-xl bg-teal-950/10 overflow-hidden">
       {/* Header: Name + Badges + Confidence + Action */}
       <div className="px-5 pt-4 pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <span className="font-mono text-sm font-bold text-zinc-100">{suggestion.skill_name}</span>
+            <span className="font-mono text-base font-bold text-zinc-100">{suggestion.skill_name}</span>
             <Tooltip text={`${suggestion.edits.length} edit${suggestion.edits.length !== 1 ? "s" : ""} suggested`}>
-              <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-900/30 text-amber-300 border border-amber-700/20 cursor-help">
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-teal-900/30 text-teal-300 border border-teal-700/20 cursor-help">
                 <Pencil className="w-2.5 h-2.5" />
                 {suggestion.edits.length} edit{suggestion.edits.length !== 1 ? "s" : ""}
               </span>
             </Tooltip>
-            {suggestion.confidence > 0 && <ConfidenceBar confidence={suggestion.confidence} accentColor="amber" />}
+            {suggestion.confidence > 0 && <ConfidenceBar confidence={suggestion.confidence} accentColor="teal" />}
           </div>
           <div className="flex items-center gap-2.5">
             {updated ? (
-              <span className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-300 bg-amber-900/30 rounded-lg border border-amber-700/20">
+              <span className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-teal-300 bg-teal-900/30 rounded-lg border border-teal-700/20">
                 <Check className="w-3.5 h-3.5" /> Updated
               </span>
             ) : (
@@ -883,7 +885,7 @@ function EvolutionCard({
                 <button
                   onClick={handlePreview}
                   disabled={loadingOriginal}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-500 rounded-lg transition disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-teal-600 hover:bg-teal-500 rounded-lg transition disabled:opacity-50"
                 >
                   {loadingOriginal
                     ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -896,37 +898,40 @@ function EvolutionCard({
           </div>
         </div>
         {suggestion.description && (
-          <p className="text-sm text-zinc-300 leading-relaxed mt-1.5">{suggestion.description}</p>
+          <p className="text-sm text-zinc-300 leading-relaxed mt-1.5">
+            <span className="font-semibold text-zinc-200">Skill Description: </span>
+            {suggestion.description}
+          </p>
         )}
       </div>
 
       {/* Why This is Useful */}
-      <div className="px-5 py-3 border-t border-amber-700/20">
+      <div className="px-5 py-3 border-t border-teal-700/20">
         <div className="flex items-center gap-1.5 mb-1.5">
-          <Lightbulb className="w-3.5 h-3.5 text-amber-400" />
-          <span className="text-sm font-semibold text-amber-300 uppercase tracking-wide">Why This is Useful</span>
+          <Lightbulb className="w-3.5 h-3.5 text-teal-400" />
+          <span className="text-sm font-semibold text-teal-300 uppercase tracking-wide">Why This is Useful</span>
         </div>
         <BulletText text={suggestion.rationale} className="text-sm text-zinc-200 leading-relaxed" />
       </div>
 
       {/* Toggleable Addressed Workflow Patterns */}
       {matchedPatterns.length > 0 && (
-        <div className="px-5 py-3 border-t border-amber-700/20">
+        <div className="px-5 py-3 border-t border-teal-700/20">
           <button
             onClick={() => setPatternsExpanded(!patternsExpanded)}
             className="flex items-center gap-1.5 text-xs hover:opacity-80 transition"
           >
             {patternsExpanded
-              ? <ChevronDown className="w-3.5 h-3.5 text-amber-400" />
-              : <ChevronRight className="w-3.5 h-3.5 text-amber-400" />}
-            <Target className="w-3.5 h-3.5 text-amber-400" />
-            <span className="text-sm font-semibold text-amber-300 uppercase tracking-wide">Addressed Workflow Patterns</span>
+              ? <ChevronDown className="w-3.5 h-3.5 text-teal-400" />
+              : <ChevronRight className="w-3.5 h-3.5 text-teal-400" />}
+            <Target className="w-3.5 h-3.5 text-teal-400" />
+            <span className="text-sm font-semibold text-teal-300 uppercase tracking-wide">Addressed Workflow Patterns</span>
             <span className="text-zinc-500">({matchedPatterns.length})</span>
           </button>
           {patternsExpanded && (
             <div className="mt-2.5 space-y-3">
               {matchedPatterns.map((p, i) => (
-                <div key={i} className="border-l-2 border-amber-700/30 pl-3 space-y-1.5">
+                <div key={i} className="border-l-2 border-teal-700/30 pl-3 space-y-1.5">
                   <h6 className="text-sm font-semibold text-zinc-100">{p.title}</h6>
                   <BulletText text={p.description} className="text-sm text-zinc-300 leading-relaxed" />
                   <StepRefList refs={p.example_refs} />
@@ -938,16 +943,16 @@ function EvolutionCard({
       )}
 
       {/* Toggleable Proposed Edits */}
-      <div className="px-5 py-3 border-t border-amber-700/20">
+      <div className="px-5 py-3 border-t border-teal-700/20">
         <button
           onClick={handleExpand}
           className="flex items-center gap-1.5 text-xs hover:opacity-80 transition"
         >
           {expanded
-            ? <ChevronDown className="w-3.5 h-3.5 text-amber-400" />
-            : <ChevronRight className="w-3.5 h-3.5 text-amber-400" />}
-          <Pencil className="w-3.5 h-3.5 text-amber-400" />
-          <span className="text-sm font-semibold text-amber-300 uppercase tracking-wide">Proposed Edits</span>
+            ? <ChevronDown className="w-3.5 h-3.5 text-teal-400" />
+            : <ChevronRight className="w-3.5 h-3.5 text-teal-400" />}
+          <Pencil className="w-3.5 h-3.5 text-teal-400" />
+          <span className="text-sm font-semibold text-teal-300 uppercase tracking-wide">Proposed Edits</span>
           <span className="text-zinc-500">({suggestion.edits.length})</span>
         </button>
         {expanded && suggestion.edits.length > 0 && (

@@ -43,7 +43,7 @@ from vibelens.services.analysis_shared import (
     truncate_digest_to_fit,
 )
 from vibelens.services.analysis_store import generate_analysis_id
-from vibelens.services.context_params import PRESET_MEDIUM
+from vibelens.services.context_params import PRESET_DETAIL, PRESET_MEDIUM
 from vibelens.services.session_batcher import build_batches
 from vibelens.services.skill.shared import (
     SKILL_LOG_DIR,
@@ -68,8 +68,28 @@ SKILL_EVOLUTION_EDIT_TIMEOUT_SECONDS = 300
 EXPECTED_DEEP_CALLS = 3
 
 
+def _filter_skills(
+    skills: list[dict[str, str]], skill_names: list[str] | None
+) -> list[dict[str, str]]:
+    """Filter installed skills to only those the user selected.
+
+    Args:
+        skills: All installed skills (dicts with 'name' key).
+        skill_names: User-selected names. None means keep all.
+
+    Returns:
+        Filtered skill list.
+    """
+    if not skill_names:
+        return skills
+    allowed = set(skill_names)
+    return [s for s in skills if s["name"] in allowed]
+
+
 def estimate_skill_evolution(
-    session_ids: list[str], session_token: str | None = None
+    session_ids: list[str],
+    session_token: str | None = None,
+    skill_names: list[str] | None = None,
 ) -> CostEstimate:
     """Pre-flight cost estimate for skill evolution analysis.
 
@@ -79,6 +99,7 @@ def estimate_skill_evolution(
     Args:
         session_ids: Sessions to analyze.
         session_token: Browser tab token for upload scoping.
+        skill_names: Skill names to target. None means all installed skills.
 
     Returns:
         CostEstimate with projected cost range.
@@ -87,11 +108,13 @@ def estimate_skill_evolution(
         ValueError: If no sessions could be loaded or no installed skills.
     """
     backend = require_backend()
-    context_set = extract_all_contexts(session_ids, session_token, PRESET_MEDIUM)
+    context_set = extract_all_contexts(
+        session_ids=session_ids, session_token=session_token, params=PRESET_MEDIUM
+    )
     if not context_set:
         raise ValueError(f"No sessions could be loaded from: {session_ids}")
 
-    installed_skills = gather_installed_skills()
+    installed_skills = _filter_skills(gather_installed_skills(), skill_names)
     if not installed_skills:
         raise ValueError("No installed skills found for evolution analysis.")
 
@@ -125,7 +148,9 @@ def estimate_skill_evolution(
 
 
 async def analyze_skill_evolution(
-    session_ids: list[str], session_token: str | None = None
+    session_ids: list[str],
+    session_token: str | None = None,
+    skill_names: list[str] | None = None,
 ) -> SkillAnalysisResult:
     """Run evolvement-mode skill analysis: propose then deep-edit installed skills.
 
@@ -136,6 +161,7 @@ async def analyze_skill_evolution(
     Args:
         session_ids: Sessions to analyze.
         session_token: Browser tab token for upload scoping.
+        skill_names: Skill names to target. None means all installed skills.
 
     Returns:
         SkillAnalysisResult with evolutions populated.
@@ -151,15 +177,28 @@ async def analyze_skill_evolution(
     run_timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     log_dir = SKILL_LOG_DIR / run_timestamp
 
-    # Step 1: Generate proposals
-    proposal_result = await _infer_skill_evolution_proposals(session_ids, session_token, log_dir)
+    # Step 1: Generate proposals (filtered to user-selected skills)
+    proposal_result = await _infer_skill_evolution_proposals(
+        session_ids, session_token, log_dir, skill_names
+    )
 
-    proposal_names = [p.skill_name for p in proposal_result.proposal_output.proposals]
+    # Deduplicate: keep only the first proposal per skill_name
+    seen_skills: set[str] = set()
+    unique_proposals = []
+    for p in proposal_result.proposal_output.proposals:
+        if p.skill_name in seen_skills:
+            logger.warning("Dropping duplicate proposal for skill '%s'", p.skill_name)
+            continue
+        seen_skills.add(p.skill_name)
+        unique_proposals.append(p)
+    proposal_result.proposal_output.proposals = unique_proposals
+
+    proposal_names = [p.skill_name for p in unique_proposals]
     logger.info("Evolution proposals: %s", proposal_names)
 
     # Step 2: Deep-edit each proposal concurrently
     edit_tasks = []
-    for idx, p in enumerate(proposal_result.proposal_output.proposals):
+    for idx, p in enumerate(unique_proposals):
         # Filter to only relevant sessions when indices are specified
         if p.relevant_session_indices:
             relevant_ids = [
@@ -232,7 +271,10 @@ async def analyze_skill_evolution(
 
 
 async def _infer_skill_evolution_proposals(
-    session_ids: list[str], session_token: str | None, log_dir: Path
+    session_ids: list[str],
+    session_token: str | None,
+    log_dir: Path,
+    skill_names: list[str] | None = None,
 ) -> SkillEvolutionProposalResult:
     """Execute the proposal step: load sessions, batch, infer, validate.
 
@@ -240,6 +282,7 @@ async def _infer_skill_evolution_proposals(
         session_ids: Sessions to analyze.
         session_token: Browser tab token for upload scoping.
         log_dir: Shared log directory for saving prompts and outputs.
+        skill_names: Skill names to target. None means all installed skills.
 
     Returns:
         SkillEvolutionProposalResult with nested proposal_output and metadata.
@@ -249,12 +292,14 @@ async def _infer_skill_evolution_proposals(
         InferenceError: If LLM backend fails.
     """
     backend = require_backend()
-    context_set = extract_all_contexts(session_ids, session_token, PRESET_MEDIUM)
+    context_set = extract_all_contexts(
+        session_ids=session_ids, session_token=session_token, params=PRESET_MEDIUM
+    )
 
     if not context_set:
         raise ValueError(f"No sessions could be loaded from: {session_ids}")
 
-    installed_skills = gather_installed_skills()
+    installed_skills = _filter_skills(gather_installed_skills(), skill_names)
     if not installed_skills:
         raise ValueError("No installed skills found for evolution analysis.")
 
@@ -339,7 +384,9 @@ async def _infer_skill_evolution(
         Tuple of (SkillEvolution, cost in USD).
     """
     backend = require_backend()
-    context_set = extract_all_contexts(session_ids, session_token, PRESET_MEDIUM)
+    context_set = extract_all_contexts(
+        session_ids=session_ids, session_token=session_token, params=PRESET_DETAIL
+    )
 
     if not context_set:
         raise ValueError(f"No sessions could be loaded from: {session_ids}")
@@ -386,11 +433,11 @@ async def _infer_skill_evolution(
         log_dir = SKILL_LOG_DIR / run_timestamp
 
     suffix = f"_{proposal_index}" if proposal_index is not None else ""
-    save_analysis_log(log_dir, f"evolution{suffix}_system.txt", system_prompt)
-    save_analysis_log(log_dir, f"evolution{suffix}_user.txt", user_prompt)
+    save_analysis_log(log_dir, f"skill_evolution{suffix}_system.txt", system_prompt)
+    save_analysis_log(log_dir, f"skill_evolution{suffix}_user.txt", user_prompt)
 
     result = await backend.generate(request)
-    save_analysis_log(log_dir, f"evolution{suffix}_output.txt", result.text)
+    save_analysis_log(log_dir, f"skill_evolution{suffix}_output.txt", result.text)
 
     evolution = parse_llm_output(result.text, SkillEvolution, "deep edit")
     evolution.confidence = proposal_confidence
@@ -448,11 +495,11 @@ async def _infer_skill_evolution_proposal_batch(
     )
 
     if batch_index == 0:
-        save_analysis_log(log_dir, "evolution_proposal_system.txt", system_prompt)
-    save_analysis_log(log_dir, f"evolution_proposal_user_{batch_index}.txt", user_prompt)
+        save_analysis_log(log_dir, "skill_evolution_proposal_system.txt", system_prompt)
+    save_analysis_log(log_dir, f"skill_evolution_proposal_user_{batch_index}.txt", user_prompt)
 
     result = await backend.generate(request)
-    save_analysis_log(log_dir, f"evolution_proposal_output_{batch_index}.txt", result.text)
+    save_analysis_log(log_dir, f"skill_evolution_proposal_output_{batch_index}.txt", result.text)
 
     proposal_output = parse_llm_output(
         result.text, SkillEvolutionProposalOutput, "evolution proposal"
@@ -519,11 +566,11 @@ async def _synthesize_skill_evolution_proposals(
         json_schema=prompt.output_json_schema(),
     )
 
-    save_analysis_log(log_dir, "evolution_proposal_synthesis_system.txt", system_prompt)
-    save_analysis_log(log_dir, "evolution_proposal_synthesis_user.txt", user_prompt)
+    save_analysis_log(log_dir, "skill_evolution_proposal_synthesis_system.txt", system_prompt)
+    save_analysis_log(log_dir, "skill_evolution_proposal_synthesis_user.txt", user_prompt)
 
     result = await backend.generate(request)
-    save_analysis_log(log_dir, "evolution_proposal_synthesis_output.txt", result.text)
+    save_analysis_log(log_dir, "skill_evolution_proposal_synthesis_output.txt", result.text)
 
     synthesis_output = parse_llm_output(
         result.text, SkillEvolutionProposalOutput, "evolution proposal synthesis"

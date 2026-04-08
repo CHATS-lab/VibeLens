@@ -27,5 +27,5 @@ SKILL_CREATION_GENERATE_PROMPT = AnalysisPrompt(
     system_template=load_template("skill/creation_system.j2"),
     user_template=load_template("skill/creation_user.j2"),
     output_model=SkillCreation,
-    exclude_fields=frozenset({"addressed_patterns"}),
+    exclude_fields={"SkillCreation": frozenset({"addressed_patterns"})},
 )

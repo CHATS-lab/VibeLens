@@ -44,6 +44,7 @@ from vibelens.services.analysis_shared import (
     truncate_digest_to_fit,
 )
 from vibelens.services.analysis_store import generate_analysis_id
+from vibelens.services.context_params import PRESET_DETAIL
 from vibelens.services.session_batcher import build_batches
 from vibelens.services.skill.shared import parse_llm_output
 from vibelens.utils.log import clear_analysis_id, get_logger, set_analysis_id
@@ -73,7 +74,9 @@ def estimate_friction(session_ids: list[str], session_token: str | None = None) 
         ValueError: If no sessions could be loaded.
     """
     backend = require_backend()
-    context_set = extract_all_contexts(session_ids, session_token)
+    context_set = extract_all_contexts(
+        session_ids=session_ids, session_token=session_token, params=PRESET_DETAIL
+    )
 
     if not context_set:
         raise ValueError(f"No sessions could be loaded from: {session_ids}")
@@ -152,6 +155,11 @@ async def analyze_friction(
             backend, batch_results, len(context_set.session_ids), log_dir
         )
         total_cost += syn_cost
+        # Synthesis LLM may drop example_refs; recover from batch outputs
+        _merge_friction_refs(
+            analysis_output.friction_types,
+            [output.friction_types for output, _ in batch_results],
+        )
 
     # Step 3: Validate example_refs and compute friction_cost per type
     validated_types = _validate_and_enrich(analysis_output.friction_types, context_set)
@@ -218,16 +226,17 @@ async def _infer_friction_analysis_batch(
     )
 
     if batch_index == 0:
-        save_analysis_log(log_dir, "system_prompt.txt", system_prompt)
-    save_analysis_log(log_dir, f"user_prompt_{batch_index}.txt", user_prompt)
+        save_analysis_log(log_dir, "friction_analysis_system.txt", system_prompt)
+    save_analysis_log(log_dir, f"friction_analysis_user_{batch_index}.txt", user_prompt)
 
     try:
         result = await backend.generate(request)
     except Exception:
-        save_analysis_log(log_dir, f"error_{batch_index}.txt", "LLM inference failed.")
+        error_file = f"friction_analysis_error_{batch_index}.txt"
+        save_analysis_log(log_dir, error_file, "LLM inference failed.")
         raise
 
-    save_analysis_log(log_dir, f"output_{batch_index}.txt", result.text)
+    save_analysis_log(log_dir, f"friction_analysis_output_{batch_index}.txt", result.text)
 
     batch_output = parse_llm_output(result.text, FrictionAnalysisOutput, "friction analysis")
     cost = result.cost_usd or 0.0
@@ -299,16 +308,56 @@ async def _synthesize_friction_analysis(
         json_schema=FRICTION_SYNTHESIS_PROMPT.output_json_schema(),
     )
 
-    save_analysis_log(log_dir, "synthesis_system.txt", system_prompt)
-    save_analysis_log(log_dir, "synthesis_user.txt", user_prompt)
+    save_analysis_log(log_dir, "friction_synthesis_system.txt", system_prompt)
+    save_analysis_log(log_dir, "friction_synthesis_user.txt", user_prompt)
 
     result = await backend.generate(request)
-    save_analysis_log(log_dir, "synthesis_raw_output.txt", result.text)
+    save_analysis_log(log_dir, "friction_synthesis_output.txt", result.text)
 
     synthesis = parse_llm_output(result.text, FrictionAnalysisOutput, "friction synthesis")
     cost = result.cost_usd or 0.0
     logger.info("Synthesis complete: title=%r", synthesis.title)
     return synthesis, cost
+
+
+def _merge_friction_refs(
+    synthesis_types: list[FrictionType],
+    batch_types_list: list[list[FrictionType]],
+) -> None:
+    """Recover example_refs the synthesis LLM dropped.
+
+    Builds a union of all example_refs by type_name from batch results,
+    then fills any synthesis friction type whose refs are shorter than
+    the batch union.
+
+    Mutates synthesis_types in place.
+
+    Args:
+        synthesis_types: Friction types from synthesis output.
+        batch_types_list: Per-batch friction type lists with refs intact.
+    """
+    refs_by_type: dict[str, list[StepRef]] = {}
+    for batch_types in batch_types_list:
+        for ft in batch_types:
+            if not ft.example_refs:
+                continue
+            refs_by_type.setdefault(ft.type_name, []).extend(ft.example_refs)
+
+    merged_count = 0
+    for ft in synthesis_types:
+        batch_refs = refs_by_type.get(ft.type_name)
+        if not batch_refs:
+            continue
+        if len(ft.example_refs) < len(batch_refs):
+            ft.example_refs = list(batch_refs)
+            merged_count += 1
+
+    if merged_count:
+        logger.info(
+            "Merged friction example_refs into %d/%d synthesis types",
+            merged_count,
+            len(synthesis_types),
+        )
 
 
 def _validate_and_enrich(
@@ -365,9 +414,7 @@ def _validate_and_enrich(
     return validated
 
 
-def _compute_type_cost(
-    example_refs: list[StepRef], trajectories: list[Trajectory]
-) -> FrictionCost:
+def _compute_type_cost(example_refs: list[StepRef], trajectories: list[Trajectory]) -> FrictionCost:
     """Compute aggregate cost from all example_refs spans.
 
     For each ref, finds the matching trajectory and walks steps to compute

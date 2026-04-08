@@ -26,6 +26,8 @@ Generate precise edits for the given skill based on the proposal and session evi
 - Do NOT include commentary, explanations, or markdown code fences.
 - The response must start with `{` and end with `}`.
 - NEVER reference sessions by ID, index, or UUID in text fields (rationale). Describe patterns in general terms.
+- All text fields (`rationale`) MUST be concise, plain-language, and understandable by non-technical users. Avoid jargon and overly formal phrasing.
+- MANDATORY bullet format for `rationale`: one short sentence, then `\n- **Bold label**: explanation` bullets. No plain-text paragraphs.
 
 ## Output Schema
 

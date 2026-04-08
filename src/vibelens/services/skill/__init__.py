@@ -12,7 +12,10 @@ __all__ = [
 
 
 async def analyze_skills(
-    session_ids: list[str], mode: SkillMode, session_token: str | None = None
+    session_ids: list[str],
+    mode: SkillMode,
+    session_token: str | None = None,
+    skill_names: list[str] | None = None,
 ) -> SkillAnalysisResult:
     """Dispatch skill analysis to the appropriate mode handler."""
     if mode == SkillMode.RETRIEVAL:
@@ -26,11 +29,14 @@ async def analyze_skills(
     else:
         from vibelens.services.skill.evolution import analyze_skill_evolution
 
-        return await analyze_skill_evolution(session_ids, session_token)
+        return await analyze_skill_evolution(session_ids, session_token, skill_names)
 
 
 def estimate_skill_analysis(
-    session_ids: list[str], mode: SkillMode, session_token: str | None = None
+    session_ids: list[str],
+    mode: SkillMode,
+    session_token: str | None = None,
+    skill_names: list[str] | None = None,
 ) -> CostEstimate:
     """Pre-flight cost estimate dispatched to the appropriate mode handler."""
     if mode == SkillMode.RETRIEVAL:
@@ -44,4 +50,4 @@ def estimate_skill_analysis(
     else:
         from vibelens.services.skill.evolution import estimate_skill_evolution
 
-        return estimate_skill_evolution(session_ids, session_token)
+        return estimate_skill_evolution(session_ids, session_token, skill_names)

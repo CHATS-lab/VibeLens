@@ -13,7 +13,7 @@ SKILL_RETRIEVAL_PROMPT = AnalysisPrompt(
     system_template=load_template("skill/retrieval_system.j2"),
     user_template=load_template("skill/retrieval_user.j2"),
     output_model=SkillRetrievalOutput,
-    exclude_fields=frozenset({"description"}),
+    exclude_fields={"SkillRecommendation": frozenset({"description"})},
 )
 
 SKILL_RETRIEVAL_SYNTHESIS_PROMPT = AnalysisPrompt(
@@ -21,5 +21,5 @@ SKILL_RETRIEVAL_SYNTHESIS_PROMPT = AnalysisPrompt(
     system_template=load_template("skill/retrieval_synthesis_system.j2"),
     user_template=load_template("skill/retrieval_synthesis_user.j2"),
     output_model=SkillRetrievalOutput,
-    exclude_fields=frozenset({"description"}),
+    exclude_fields={"SkillRecommendation": frozenset({"description"})},
 )

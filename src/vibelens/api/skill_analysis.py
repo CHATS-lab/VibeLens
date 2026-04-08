@@ -27,11 +27,17 @@ router = APIRouter(prefix="/skills/analysis", tags=["skill-analysis"])
 
 
 async def _run_skill_analysis(
-    job_id: str, session_ids: list[str], mode: str, token: str | None
+    job_id: str,
+    session_ids: list[str],
+    mode: str,
+    token: str | None,
+    skill_names: list[str] | None = None,
 ) -> None:
     """Background wrapper for skill analysis."""
     try:
-        result = await analyze_skills(session_ids, mode, session_token=token)
+        result = await analyze_skills(
+            session_ids, mode, session_token=token, skill_names=skill_names
+        )
         mark_completed(job_id, result.analysis_id or "")
     except asyncio.CancelledError:
         logger.info("Skill analysis job %s was cancelled", job_id)
@@ -58,7 +64,9 @@ async def skill_estimate(
         raise HTTPException(status_code=400, detail="session_ids must not be empty")
 
     try:
-        est = estimate_skill_analysis(body.session_ids, body.mode, session_token=x_session_token)
+        est = estimate_skill_analysis(
+            body.session_ids, body.mode, session_token=x_session_token, skill_names=body.skill_names
+        )
     except ValueError as exc:
         status = 503 if "inference backend" in str(exc) else 400
         raise HTTPException(status_code=status, detail=str(exc)) from exc
@@ -100,7 +108,10 @@ async def skill_analysis(
     job_id = secrets.token_urlsafe(12)
     try:
         submit_job(
-            job_id, _run_skill_analysis(job_id, body.session_ids, body.mode, x_session_token)
+            job_id,
+            _run_skill_analysis(
+                job_id, body.session_ids, body.mode, x_session_token, body.skill_names
+            ),
         )
     except ValueError as exc:
         status = 503 if "inference backend" in str(exc) else 400

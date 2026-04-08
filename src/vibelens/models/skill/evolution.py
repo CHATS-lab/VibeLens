@@ -13,8 +13,10 @@ class SkillEvolutionProposal(BaseModel):
     skill_name: str = Field(description="Existing skill to evolve.")
     rationale: str = Field(
         description=(
-            "One-sentence conclusion on why evolution is needed, "
-            "followed by 1-2 bullet points starting with '- '. Max 50 words."
+            "Plain-language explanation of what to improve and why. "
+            "One short summary sentence, then 1-3 bullet points. "
+            "Each bullet: '\\n- **Change**: concise reason'. "
+            "Keep under 60 words total. Avoid jargon."
         )
     )
     suggested_changes: str = Field(description="High-level description of proposed changes.")
@@ -41,8 +43,8 @@ class SkillEvolutionProposalOutput(BaseModel):
     user_profile: str = Field(
         default="",
         description=(
-            "One-sentence role summary followed by 1-2 bullet points "
-            "starting with '- '. Max 50 words."
+            "One plain sentence describing the user's role, then 1-2 bullets "
+            "with '\\n- **Topic**: detail'. Under 40 words. Avoid jargon."
         ),
     )
     workflow_patterns: list[WorkflowPattern] = Field(
@@ -50,8 +52,9 @@ class SkillEvolutionProposalOutput(BaseModel):
     )
     summary: str = Field(
         description=(
-            "One-sentence conclusion followed by 2-4 bullet points starting with '- '. "
-            "Accessible to all expertise levels. Max 100 words."
+            "One plain sentence summarizing the key finding, then 2-4 bullets. "
+            "Each bullet: '\\n- **Finding**: concise explanation'. "
+            "Readable by non-experts. Under 80 words total."
         )
     )
     proposals: list[SkillEvolutionProposal] = Field(
@@ -118,8 +121,10 @@ class SkillEvolution(BaseModel):
     edits: list[SkillEdit] = Field(description="Ordered list of granular edits to apply.")
     rationale: str = Field(
         description=(
-            "One-sentence conclusion followed by 1-2 bullet points "
-            "starting with '- '. Max 50 words."
+            "Plain-language explanation of what changed and why it helps. "
+            "One short summary sentence, then 1-3 bullet points. "
+            "Each bullet: '\\n- **Change**: concise benefit'. "
+            "Keep under 60 words total. Avoid jargon."
         )
     )
     addressed_patterns: list[str] = Field(

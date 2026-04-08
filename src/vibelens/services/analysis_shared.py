@@ -65,7 +65,7 @@ def extract_all_contexts(
     loaded_ids: list[str] = []
     skipped_ids: list[str] = []
 
-    for sid in session_ids:
+    for idx, sid in enumerate(session_ids):
         if get_metadata_from_stores(sid, session_token) is None:
             skipped_ids.append(sid)
             continue
@@ -79,7 +79,7 @@ def extract_all_contexts(
             skipped_ids.append(sid)
             continue
 
-        ctx = extract_session_context(trajectories, params)
+        ctx = extract_session_context(trajectories, params, session_index=idx)
         contexts.append(ctx)
         loaded_ids.append(sid)
 

@@ -41,6 +41,10 @@ class SkillAnalysisRequest(BaseModel):
 
     session_ids: list[str] = Field(description="Session IDs to analyze.")
     mode: SkillMode = Field(description="Analysis mode: retrieval, creation, or evolution.")
+    skill_names: list[str] | None = Field(
+        default=None,
+        description="Skill names to target for evolution mode. None means all installed skills.",
+    )
 
 
 

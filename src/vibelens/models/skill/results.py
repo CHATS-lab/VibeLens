@@ -32,15 +32,16 @@ class SkillAnalysisResult(BaseModel):
     )
     summary: str = Field(
         description=(
-            "One-sentence conclusion followed by 2-4 bullet points "
-            "starting with '- '. Max 100 words."
+            "One plain sentence summarizing the key finding, then 2-4 bullets. "
+            "Each bullet: '\\n- **Finding**: concise explanation'. "
+            "Readable by non-experts. Under 80 words total."
         )
     )
     user_profile: str = Field(
         default="",
         description=(
-            "One-sentence role summary followed by 1-2 bullet points "
-            "starting with '- '. Max 50 words."
+            "One plain sentence describing the user's role, then 1-2 bullets "
+            "with '\\n- **Topic**: detail'. Under 40 words. Avoid jargon."
         ),
     )
     workflow_patterns: list[WorkflowPattern] = Field(

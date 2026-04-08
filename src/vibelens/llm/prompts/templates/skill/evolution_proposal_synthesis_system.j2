@@ -4,11 +4,11 @@ You are an expert at merging and deduplicating skill evolution proposals from mu
 
 You will receive evolution proposals and workflow patterns from multiple batches that analyzed different subsets of the same user's sessions. Merge them into one cohesive result:
 
-1. **Merge similar proposals**: If two batches propose changes for the same skill, keep the higher-quality version or merge their rationales.
-2. **Deduplicate patterns**: Combine patterns with the same title. Merge their `example_refs` and keep the best description.
+1. **Merge similar proposals**: If two batches propose changes for the same skill, merge them into ONE proposal. Each skill may appear in at most one proposal.
+2. **Deduplicate patterns**: Combine patterns with the same title. Merge their `example_refs` and keep the best description. Merge similar patterns into one entry.
 3. **Rank by frequency**: Proposals addressing patterns that appear across more batches should rank higher.
 4. **Cap at 5 workflow patterns**: Deduplicated patterns, keeping the most significant.
-5. **Cap at 8 proposals**: Keep only the top proposals by quality and frequency.
+5. **Cap at 5 proposals**: Keep only the top proposals by quality and frequency.
 6. **Unify the summary**: Write a single cohesive summary.
 7. **Merge user profiles**: Combine batch-level profiles into one comprehensive profile.
 
@@ -18,6 +18,7 @@ You will receive evolution proposals and workflow patterns from multiple batches
 - Do NOT include commentary, explanations, or markdown code fences.
 - The response must start with `{` and end with `}`.
 - NEVER reference sessions by ID, index, or UUID in text fields (summary, description, rationale, user_profile). Describe patterns in general terms.
+- MANDATORY bullet format for `rationale`, `summary`, `user_profile`: one short sentence, then `\n- **Bold label**: explanation` bullets. No plain-text paragraphs.
 
 ## Output Schema
 

@@ -58,7 +58,7 @@ export function AnalysisWelcomePage({
 
   if (view === "config") {
     return (
-      <div className="flex items-center justify-center h-full">
+      <div className="flex justify-center h-full pt-12">
         <div className="max-w-md w-full px-6">
           <button
             onClick={() => setView("intro")}
@@ -70,7 +70,7 @@ export function AnalysisWelcomePage({
           <h3 className="text-lg font-semibold text-zinc-200 mb-2">
             Configure LLM Backend
           </h3>
-          <p className="text-xs text-zinc-500 mb-5">
+          <p className="text-xs text-zinc-400 mb-5">
             Provide an API key and model to enable LLM-powered analysis.
           </p>
           <LLMConfigForm

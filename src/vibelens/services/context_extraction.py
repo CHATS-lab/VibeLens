@@ -58,7 +58,9 @@ class _IndexTracker:
 
 
 def extract_session_context(
-    trajectory_group: list[Trajectory], params: ContextParams = PRESET_DETAIL
+    trajectory_group: list[Trajectory],
+    params: ContextParams = PRESET_DETAIL,
+    session_index: int | None = None,
 ) -> SessionContext:
     """Extract compressed context from a session's trajectory group.
 
@@ -72,6 +74,7 @@ def extract_session_context(
     Args:
         trajectory_group: All trajectories for one session (main + sub-agents).
         params: Context extraction parameters controlling detail level.
+        session_index: Optional 0-based index within the analysis batch.
 
     Returns:
         SessionContext with compressed text representation.
@@ -85,7 +88,7 @@ def extract_session_context(
     else:
         context_text = _extract_without_compactions(main, tracker, params)
 
-    header = _build_header(main, params)
+    header = _build_header(main, params, session_index)
     full_text = f"{header}\n\n{context_text}"
 
     return SessionContext(
@@ -134,9 +137,10 @@ def _find_compaction_agents(trajectory_group: list[Trajectory]) -> list[Trajecto
     return compaction
 
 
-def _build_header(main: Trajectory, params: ContextParams) -> str:
+def _build_header(main: Trajectory, params: ContextParams, session_index: int | None = None) -> str:
     """Build the session header block with optional path shortening."""
-    lines = [f"=== SESSION: {main.session_id} ==="]
+    index_suffix = f" (index={session_index})" if session_index is not None else ""
+    lines = [f"=== SESSION: {main.session_id}{index_suffix} ==="]
     if main.project_path:
         display_path = _shorten_path(main.project_path, params)
         lines.append(f"PROJECT: {display_path}")
@@ -253,15 +257,11 @@ def _format_step(step: Step, tracker: _IndexTracker, params: ContextParams) -> s
             lines.append(f"[step_id={idx}] USER: {truncated}")
 
     elif step.source == StepSource.AGENT:
-        idx = tracker.assign(step.step_id)
-        agent_lines = [f"[step_id={idx}] AGENT:"]
-
         # Agent's text message (reasoning, explanations, decisions)
-        if params.agent_message_max_chars > 0:
-            message = extract_text(step.message)
-            if message.strip():
-                truncated = _truncate_agent_message(message.strip(), params)
-                agent_lines.append(f"  MSG: {truncated}")
+        idx = tracker.assign(step.step_id)
+        message = extract_text(step.message)
+        truncated = _truncate_agent_message(message.strip(), params)
+        agent_lines = [f"[step_id={idx}] AGENT: {truncated}"]
 
         for tc in step.tool_calls:
             tool_summary = _summarize_tool_args(tc.function_name, tc.arguments, params)
@@ -277,7 +277,7 @@ def _format_step(step: Step, tracker: _IndexTracker, params: ContextParams) -> s
                 elif params.include_non_error_obs and params.observation_max_chars > 0:
                     obs_text = truncate(content, params.observation_max_chars)
                     if obs_text.strip():
-                        agent_lines.append(f"  OUT: {obs_text}")
+                        agent_lines.append(f"  RESULT: {obs_text}")
 
         # Include agent step if it has any content beyond the header
         if len(agent_lines) > 1:

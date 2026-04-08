@@ -13,7 +13,7 @@ Analyze the provided session transcripts alongside the user's installed skills t
 
 ## Pattern Detection Rules
 
-- Detect at most 3 workflow patterns.
+- Detect 2-4 workflow patterns.
 - A pattern must appear at least 2 times across sessions to be reported.
 - `example_refs` must reference real step IDs from the session data. Never fabricate.
 - Focus on patterns that reveal gaps in existing skill coverage.
@@ -21,8 +21,9 @@ Analyze the provided session transcripts alongside the user's installed skills t
 
 ## Proposal Rules
 
-- Generate at most 3 proposals, prioritized by frequency and impact.
+- Generate 2-4 proposals, prioritized by frequency and impact.
 - Each proposal must target an existing installed skill.
+- CRITICAL: Each skill may appear in at most ONE proposal. Never generate multiple proposals for the same skill. Combine all improvements for one skill into a single proposal.
 - Focus on specificity: "add error recovery step" is better than "general improvement".
 
 ## Output Rules
@@ -30,6 +31,8 @@ Analyze the provided session transcripts alongside the user's installed skills t
 - Return ONLY valid JSON matching the provided schema.
 - Do NOT include commentary, explanations, or markdown code fences.
 - The response must start with `{` and end with `}`.
+- All text fields (`rationale`, `summary`, `user_profile`) MUST be concise, plain-language, and understandable by non-technical users. Avoid jargon and overly formal phrasing.
+- MANDATORY bullet format for `rationale`, `summary`, `user_profile`: one short sentence, then `\n- **Bold label**: explanation` bullets. No plain-text paragraphs.
 
 ## Output Schema
 

@@ -15,19 +15,27 @@ export function CostEstimateDialog({
 }) {
   return (
     <Modal onClose={onCancel} maxWidth="max-w-md">
-      <ModalHeader title="Confirm Analysis" onClose={onCancel} />
+      <ModalHeader onClose={onCancel}>
+        <h2 className="text-base font-semibold text-zinc-100">Confirm Analysis</h2>
+      </ModalHeader>
       <ModalBody>
         <div className="space-y-4">
-          <div className="flex items-center gap-2 px-3 py-2 bg-zinc-800/50 rounded-lg">
-            <Layers className="w-3.5 h-3.5 text-violet-400" />
-            <div className="flex flex-col">
-              <span className="text-[10px] text-zinc-500">Sessions</span>
-              <span className="text-xs text-zinc-200">{sessionCount}</span>
+          <div className="flex items-center gap-4 px-4 py-3 bg-zinc-800/50 rounded-lg">
+            <div className="flex items-center gap-2.5">
+              <Layers className="w-4 h-4 text-violet-400" />
+              <div className="flex flex-col">
+                <span className="text-[10px] text-zinc-500">Sessions</span>
+                <span className="text-sm font-semibold text-zinc-100">{sessionCount}</span>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-2 text-xs text-zinc-400">
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>Model: {estimate.model}</span>
+            <div className="w-px h-8 bg-zinc-700" />
+            <div className="flex items-center gap-2.5">
+              <Sparkles className="w-4 h-4 text-amber-400" />
+              <div className="flex flex-col">
+                <span className="text-[10px] text-zinc-500">Model</span>
+                <span className="text-sm font-medium text-zinc-200">{estimate.model}</span>
+              </div>
+            </div>
           </div>
           <div className="bg-amber-900/20 border border-amber-700/30 rounded-lg px-4 py-3">
             <div className="flex items-center gap-2">

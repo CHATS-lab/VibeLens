@@ -46,7 +46,7 @@ from vibelens.services.analysis_shared import (
     truncate_digest_to_fit,
 )
 from vibelens.services.analysis_store import generate_analysis_id
-from vibelens.services.context_params import PRESET_MEDIUM
+from vibelens.services.context_params import PRESET_DETAIL, PRESET_MEDIUM
 from vibelens.services.session_batcher import build_batches
 from vibelens.services.skill.shared import (
     SKILL_LOG_DIR,
@@ -91,7 +91,9 @@ def estimate_skill_creation(
         ValueError: If no sessions could be loaded.
     """
     backend = require_backend()
-    context_set = extract_all_contexts(session_ids, session_token, PRESET_MEDIUM)
+    context_set = extract_all_contexts(
+        session_ids=session_ids, session_token=session_token, params=PRESET_MEDIUM
+    )
     if not context_set:
         raise ValueError(f"No sessions could be loaded from: {session_ids}")
 
@@ -345,7 +347,9 @@ async def _infer_skill_creation(
         InferenceError: If LLM backend fails.
     """
     backend = require_backend()
-    context_set = extract_all_contexts(session_ids, session_token, PRESET_MEDIUM)
+    context_set = extract_all_contexts(
+        session_ids=session_ids, session_token=session_token, params=PRESET_DETAIL
+    )
 
     if not context_set:
         raise ValueError(f"No sessions could be loaded from: {session_ids}")
@@ -390,11 +394,11 @@ async def _infer_skill_creation(
         log_dir = SKILL_LOG_DIR / run_timestamp
 
     suffix = f"_{proposal_index}" if proposal_index is not None else ""
-    save_analysis_log(log_dir, f"deep_creation{suffix}_system.txt", system_prompt)
-    save_analysis_log(log_dir, f"deep_creation{suffix}_user.txt", user_prompt)
+    save_analysis_log(log_dir, f"skill_creation{suffix}_system.txt", system_prompt)
+    save_analysis_log(log_dir, f"skill_creation{suffix}_user.txt", user_prompt)
 
     result = await backend.generate(request)
-    save_analysis_log(log_dir, f"deep_creation{suffix}_output.txt", result.text)
+    save_analysis_log(log_dir, f"skill_creation{suffix}_output.txt", result.text)
 
     creation = parse_llm_output(result.text, SkillCreation, "deep creation")
     creation.confidence = proposal_confidence
@@ -451,11 +455,11 @@ async def _infer_skill_creation_proposal_batch(
     )
 
     if batch_index == 0:
-        save_analysis_log(log_dir, "proposal_system.txt", system_prompt)
-    save_analysis_log(log_dir, f"proposal_user_{batch_index}.txt", user_prompt)
+        save_analysis_log(log_dir, "skill_creation_proposal_system.txt", system_prompt)
+    save_analysis_log(log_dir, f"skill_creation_proposal_user_{batch_index}.txt", user_prompt)
 
     result = await backend.generate(request)
-    save_analysis_log(log_dir, f"proposal_output_{batch_index}.txt", result.text)
+    save_analysis_log(log_dir, f"skill_creation_proposal_output_{batch_index}.txt", result.text)
 
     proposal_output = parse_llm_output(result.text, SkillCreationProposalOutput, "proposal")
     cost = result.cost_usd or 0.0
@@ -520,11 +524,11 @@ async def _synthesize_skill_creation_proposals(
         json_schema=synthesis_prompt.output_json_schema(),
     )
 
-    save_analysis_log(log_dir, "proposal_synthesis_system.txt", system_prompt)
-    save_analysis_log(log_dir, "proposal_synthesis_user.txt", user_prompt)
+    save_analysis_log(log_dir, "skill_creation_proposal_synthesis_system.txt", system_prompt)
+    save_analysis_log(log_dir, "skill_creation_proposal_synthesis_user.txt", user_prompt)
 
     result = await backend.generate(request)
-    save_analysis_log(log_dir, "proposal_synthesis_output.txt", result.text)
+    save_analysis_log(log_dir, "skill_creation_proposal_synthesis_output.txt", result.text)
 
     synthesis_output = parse_llm_output(
         result.text, SkillCreationProposalOutput, "proposal synthesis"

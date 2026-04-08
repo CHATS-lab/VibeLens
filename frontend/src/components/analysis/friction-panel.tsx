@@ -326,19 +326,25 @@ export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: Fricti
       return (
         <div className="flex items-center justify-center h-full">
           <div className="flex flex-col items-center gap-5">
-            <LoadingSpinnerRings />
-            <div className="text-center space-y-1">
-              <p className="text-sm font-medium text-zinc-200">
+            <LoadingSpinnerRings color="amber" />
+            <div className="text-center space-y-1.5">
+              <p className="text-base font-semibold text-white">
                 Analyzing {checkedIds.size} session{checkedIds.size !== 1 ? "s" : ""} for friction
               </p>
-              <p className="text-xs text-zinc-500">Running in background — you can switch tabs</p>
+              <p className="text-sm text-zinc-300">Identifying patterns that slow you down</p>
             </div>
-            <button
-              onClick={handleStopAnalysis}
-              className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs text-zinc-300 hover:text-white bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded-md transition"
-            >
-              Stop
-            </button>
+            <div className="flex flex-col items-center gap-3 mt-1">
+              <div className="text-center space-y-1">
+                <p className="text-sm text-zinc-400">Running in background — you can switch tabs</p>
+                <p className="text-sm text-zinc-400">Usually takes 2-5 minutes</p>
+              </div>
+              <button
+                onClick={handleStopAnalysis}
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs text-rose-300 hover:text-white bg-rose-900/30 hover:bg-rose-800/50 border border-rose-700/50 rounded-md transition"
+              >
+                Stop
+              </button>
+            </div>
           </div>
         </div>
       );
@@ -351,6 +357,7 @@ export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: Fricti
             : `Analyzing ${checkedIds.size} session${checkedIds.size !== 1 ? "s" : ""} for friction`
         }
         sublabel={estimating ? "Preparing batches..." : "This may take a moment"}
+        color="amber"
       />
     );
   }
@@ -650,17 +657,15 @@ function FrictionTypeCard({ frictionType }: { frictionType: FrictionType }) {
 function FrictionRefList({ refs }: { refs: FrictionType["example_refs"] }) {
   if (refs.length === 0) return null;
   return (
-    <Tooltip text="Session steps where this issue appears">
-      <div className="flex items-center gap-2 flex-wrap cursor-help">
-        <div className="flex items-center gap-1.5 text-sm">
-          <BookOpen className="w-4 h-4 text-cyan-400" />
-          <span className="font-semibold text-cyan-400">Reference:</span>
-        </div>
-        {refs.map((ref, i) => (
-          <FrictionStepButton key={`${ref.session_id}-${ref.start_step_id}-${i}`} ref_={ref} />
-        ))}
+    <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex items-center gap-1.5 text-sm">
+        <BookOpen className="w-4 h-4 text-cyan-400" />
+        <span className="font-semibold text-cyan-400">Reference:</span>
       </div>
-    </Tooltip>
+      {refs.map((ref, i) => (
+        <FrictionStepButton key={`${ref.session_id}-${ref.start_step_id}-${i}`} ref_={ref} />
+      ))}
+    </div>
   );
 }
 

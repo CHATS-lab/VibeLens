@@ -15,14 +15,14 @@ Analyze the provided session transcripts to:
 
 ## Pattern Detection Rules
 
-- Detect at most 3 workflow patterns.
+- Detect 2-4 workflow patterns.
 - A pattern must appear at least 2 times across sessions to be reported.
 - `example_refs` must reference real step IDs from the session data. Never fabricate.
 - NEVER reference sessions by ID, index, or UUID in text fields (summary, description, rationale, user_profile). Describe patterns in general terms that readers can understand without session context.
 
 ## Proposal Rules
 
-- Generate at most 3 proposals, prioritized by frequency and pain severity.
+- Generate 2-4 proposals, prioritized by frequency and pain severity.
 - Each proposal must directly address one or more detected patterns.
 - Do not generate proposals that duplicate already-installed functionality.
 - Focus on specificity: "test-fix-loop" is better than "general-helper".
@@ -32,6 +32,8 @@ Analyze the provided session transcripts to:
 - Return ONLY valid JSON matching the provided schema.
 - Do NOT include commentary, explanations, or markdown code fences.
 - The response must start with `{` and end with `}`.
+- All text fields (`rationale`, `summary`, `user_profile`) MUST be concise, plain-language, and understandable by non-technical users. Avoid jargon and overly formal phrasing.
+- MANDATORY bullet format for `rationale`, `summary`, `user_profile`: one short sentence, then `\n- **Bold label**: explanation` bullets. No plain-text paragraphs.
 
 ## Output Schema
 

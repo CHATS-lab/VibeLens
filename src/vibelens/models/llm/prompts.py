@@ -43,9 +43,13 @@ class AnalysisPrompt(BaseModel):
     output_model: type[BaseModel] = Field(
         description="Pydantic model class for parsing structured LLM output."
     )
-    exclude_fields: frozenset[str] = Field(
-        default_factory=frozenset,
-        description="Field names to strip from the JSON schema sent to the LLM.",
+    exclude_fields: dict[str, frozenset[str]] = Field(
+        default_factory=dict,
+        description=(
+            "Model-scoped field names to strip from the JSON schema sent to the LLM. "
+            "Keys are model class names (matching $defs keys or the root schema title). "
+            "Values are sets of field names to remove from that model."
+        ),
     )
 
     def render_system(self, **kwargs: object) -> str:
@@ -73,8 +77,8 @@ class AnalysisPrompt(BaseModel):
     def output_json_schema(self) -> dict:
         """Return JSON schema for output_model, stripping exclude_fields.
 
-        Strips excluded fields from both top-level properties and any
-        nested model definitions under $defs.
+        Applies model-scoped field exclusions: each key in exclude_fields
+        is matched against the root schema title or $defs keys.
 
         Returns:
             JSON schema dict with excluded fields removed.
@@ -82,9 +86,12 @@ class AnalysisPrompt(BaseModel):
         schema = copy.deepcopy(self.output_model.model_json_schema())
         if not self.exclude_fields:
             return schema
-        _strip_fields(schema, self.exclude_fields)
-        for def_schema in schema.get("$defs", {}).values():
-            _strip_fields(def_schema, self.exclude_fields)
+        root_title = schema.get("title", "")
+        if root_title in self.exclude_fields:
+            _strip_fields(schema, self.exclude_fields[root_title])
+        for def_name, def_schema in schema.get("$defs", {}).items():
+            if def_name in self.exclude_fields:
+                _strip_fields(def_schema, self.exclude_fields[def_name])
         return schema
 
 

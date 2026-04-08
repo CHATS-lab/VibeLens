@@ -11,7 +11,7 @@ Merge evolution proposals from {{ batch_count }} batches analyzing {{ session_co
 
 ### Workflow Patterns
 {% for pattern in batch.workflow_patterns %}
-- **{{ pattern.title }}**: {{ pattern.description }}
+- **{{ pattern.title }}**: {{ pattern.description }} (refs: {% for ref in pattern.example_refs %}{{ ref }}{% if not loop.last %}, {% endif %}{% endfor %})
 {% endfor %}
 
 ### Proposals

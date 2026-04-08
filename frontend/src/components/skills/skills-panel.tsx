@@ -1,10 +1,11 @@
-import { History, PanelRightClose, PanelRightOpen, Search, Sparkles, Square, TrendingUp } from "lucide-react";
+import { Check, History, Info, PanelRightClose, PanelRightOpen, Search, Sparkles, Square, TrendingUp } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppContext } from "../../app";
-import type { AnalysisJobResponse, AnalysisJobStatus, CostEstimate, LLMStatus, SkillAnalysisResult, SkillMode } from "../../types";
+import type { AnalysisJobResponse, AnalysisJobStatus, CostEstimate, LLMStatus, SkillAnalysisResult, SkillInfo, SkillMode } from "../../types";
 import { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "../../styles";
 import { AnalysisWelcomePage } from "../analysis-welcome";
 import { CostEstimateDialog } from "../cost-estimate-dialog";
+import { Modal, ModalBody, ModalFooter, ModalHeader } from "../modal";
 import { Tooltip } from "../tooltip";
 import { ExploreSkillsTab } from "./explore-skills-tab";
 import { LocalSkillsTab } from "./local-skills-tab";
@@ -46,7 +47,7 @@ const MODE_DESCRIPTIONS: Record<SkillMode, { title: string; desc: string; icon: 
   evolution: {
     title: "Skill Evolution",
     desc: "Analyze installed skills against your usage data and suggest targeted improvements.",
-    icon: <TrendingUp className="w-10 h-10 text-amber-400/50" />,
+    icon: <TrendingUp className="w-10 h-10 text-teal-400/50" />,
   },
 };
 
@@ -119,22 +120,24 @@ export function SkillsPanel({ checkedIds, activeJobId, onJobIdChange }: SkillsPa
   }, [refreshLlmStatus]);
 
   const pendingModeRef = useRef<SkillMode>("retrieval");
+  const selectedSkillNamesRef = useRef<string[] | undefined>(undefined);
+  const [showSkillSelector, setShowSkillSelector] = useState(false);
 
-  const handleRequestEstimate = useCallback(
+  const proceedToEstimate = useCallback(
     async (mode: SkillMode) => {
-      if (checkedIds.size === 0) return;
-      pendingModeRef.current = mode;
       setEstimating(true);
       setAnalysisError(null);
       try {
+        const body: Record<string, unknown> = { session_ids: [...checkedIds], mode };
+        if (selectedSkillNamesRef.current) body.skill_names = selectedSkillNamesRef.current;
         const res = await fetchWithToken("/api/skills/analysis/estimate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ session_ids: [...checkedIds], mode }),
+          body: JSON.stringify(body),
         });
         if (!res.ok) {
-          const body = await res.json().catch(() => null);
-          throw new Error(body?.detail || `HTTP ${res.status}`);
+          const data = await res.json().catch(() => null);
+          throw new Error(data?.detail || `HTTP ${res.status}`);
         }
         setEstimate(await res.json());
       } catch (err) {
@@ -146,20 +149,45 @@ export function SkillsPanel({ checkedIds, activeJobId, onJobIdChange }: SkillsPa
     [checkedIds, fetchWithToken],
   );
 
+  const handleRequestEstimate = useCallback(
+    (mode: SkillMode) => {
+      if (checkedIds.size === 0) return;
+      pendingModeRef.current = mode;
+      selectedSkillNamesRef.current = undefined;
+      if (mode === "evolution") {
+        setShowSkillSelector(true);
+        return;
+      }
+      proceedToEstimate(mode);
+    },
+    [checkedIds, proceedToEstimate],
+  );
+
+  const handleSkillSelectionConfirm = useCallback(
+    (skillNames: string[]) => {
+      setShowSkillSelector(false);
+      selectedSkillNamesRef.current = skillNames;
+      proceedToEstimate(pendingModeRef.current);
+    },
+    [proceedToEstimate],
+  );
+
   const handleConfirmAnalysis = useCallback(async () => {
     const mode = pendingModeRef.current;
     setEstimate(null);
     setAnalysisLoading(true);
     setAnalysisError(null);
     try {
+      const body: Record<string, unknown> = { session_ids: [...checkedIds], mode };
+      if (selectedSkillNamesRef.current) body.skill_names = selectedSkillNamesRef.current;
       const res = await fetchWithToken("/api/skills/analysis", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_ids: [...checkedIds], mode }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.detail || `HTTP ${res.status}`);
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.detail || `HTTP ${res.status}`);
       }
       const data: AnalysisJobResponse = await res.json();
       if (data.status === "completed" && data.analysis_id) {
@@ -335,11 +363,14 @@ export function SkillsPanel({ checkedIds, activeJobId, onJobIdChange }: SkillsPa
               <div className="flex flex-col items-center gap-5">
                 <AnalysisLoadingState mode={currentMode} sessionCount={checkedIds.size} />
                 {activeJobId && (
-                  <div className="flex flex-col items-center gap-2 mt-2">
-                    <p className="text-xs text-zinc-300">Running in background — you can switch tabs</p>
+                  <div className="flex flex-col items-center gap-3 mt-1">
+                    <div className="text-center space-y-1">
+                      <p className="text-sm text-zinc-400">Running in background — you can switch tabs</p>
+                      <p className="text-sm text-zinc-400">Usually takes 2-5 minutes</p>
+                    </div>
                     <button
                       onClick={handleStopAnalysis}
-                      className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs text-zinc-300 hover:text-white bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded-md transition"
+                      className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs text-rose-300 hover:text-white bg-rose-900/30 hover:bg-rose-800/50 border border-rose-700/50 rounded-md transition"
                     >
                       <Square className="w-3 h-3" />
                       Stop
@@ -424,6 +455,132 @@ export function SkillsPanel({ checkedIds, activeJobId, onJobIdChange }: SkillsPa
           onCancel={() => setEstimate(null)}
         />
       )}
+      {showSkillSelector && (
+        <SkillSelectionDialog
+          fetchWithToken={fetchWithToken}
+          onConfirm={handleSkillSelectionConfirm}
+          onCancel={() => setShowSkillSelector(false)}
+        />
+      )}
     </div>
+  );
+}
+
+function SkillSelectionDialog({
+  fetchWithToken,
+  onConfirm,
+  onCancel,
+}: {
+  fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
+  onConfirm: (skillNames: string[]) => void;
+  onCancel: () => void;
+}) {
+  const [skills, setSkills] = useState<SkillInfo[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetchWithToken("/api/skills/local?page_size=200");
+        if (!res.ok) throw new Error("Failed to load skills");
+        const data = await res.json();
+        const items: SkillInfo[] = data.items ?? [];
+        setSkills(items);
+        setSelected(new Set());
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [fetchWithToken]);
+
+  const allSelected = skills.length > 0 && selected.size === skills.length;
+
+  const toggleAll = () => {
+    setSelected(allSelected ? new Set() : new Set(skills.map((s) => s.name)));
+  };
+
+  const toggleSkill = (name: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
+
+  return (
+    <Modal onClose={onCancel} maxWidth="max-w-lg">
+      <ModalHeader title="Select Skills to Evolve" onClose={onCancel} />
+      <ModalBody>
+        <div className="flex items-start gap-2 px-3 py-2 bg-teal-950/20 border border-teal-700/30 rounded-lg mb-4">
+          <Info className="w-4 h-4 text-teal-400 mt-0.5 shrink-0" />
+          <p className="text-xs text-zinc-300 leading-relaxed">
+            Choose the skills that are relevant to the selected sessions. Only selected skills will be analyzed for improvements.
+          </p>
+        </div>
+        {loading && <p className="text-sm text-zinc-400 text-center py-8">Loading installed skills...</p>}
+        {error && <p className="text-sm text-rose-400 text-center py-4">{error}</p>}
+        {!loading && skills.length === 0 && (
+          <p className="text-sm text-zinc-400 text-center py-8">No installed skills found. Install skills first.</p>
+        )}
+        {!loading && skills.length > 0 && (
+          <div className="space-y-1">
+            <button
+              onClick={toggleAll}
+              className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg hover:bg-zinc-800/50 transition text-left"
+            >
+              <span className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
+                allSelected ? "bg-teal-600 border-teal-500" : "border-zinc-600"
+              }`}>
+                {allSelected && <Check className="w-3 h-3 text-white" />}
+              </span>
+              <span className="text-sm font-semibold text-zinc-200">Select all</span>
+              <span className="text-xs text-zinc-500 ml-auto">{selected.size}/{skills.length}</span>
+            </button>
+            <div className="border-t border-zinc-800 my-1" />
+            <div className="max-h-64 overflow-y-auto space-y-0.5">
+              {skills.map((skill) => (
+                <button
+                  key={skill.name}
+                  onClick={() => toggleSkill(skill.name)}
+                  className="flex items-start gap-2.5 w-full px-3 py-2 rounded-lg hover:bg-zinc-800/50 transition text-left"
+                >
+                  <span className={`w-4 h-4 mt-0.5 rounded border flex items-center justify-center shrink-0 ${
+                    selected.has(skill.name) ? "bg-teal-600 border-teal-500" : "border-zinc-600"
+                  }`}>
+                    {selected.has(skill.name) && <Check className="w-3 h-3 text-white" />}
+                  </span>
+                  <div className="min-w-0">
+                    <span className="text-sm font-mono font-semibold text-zinc-100">{skill.name}</span>
+                    {skill.description && (
+                      <p className="text-xs text-zinc-400 mt-0.5 line-clamp-2">{skill.description}</p>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </ModalBody>
+      <ModalFooter>
+        <button
+          onClick={onCancel}
+          className="px-4 py-2 text-sm text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-md transition"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={() => onConfirm([...selected])}
+          disabled={selected.size === 0}
+          className="px-4 py-2 text-sm font-semibold text-white bg-teal-600 hover:bg-teal-500 rounded-md transition disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          Continue with {selected.size} skill{selected.size !== 1 ? "s" : ""}
+        </button>
+      </ModalFooter>
+    </Modal>
   );
 }

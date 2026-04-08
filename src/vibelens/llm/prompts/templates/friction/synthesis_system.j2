@@ -10,9 +10,9 @@ Produce a JSON object that synthesizes all batch results into a single user-faci
 
 1. **title**: Capture the dominant friction theme across all batches.
 2. **user_profile**: Merge profiles from all batches into one coherent description.
-3. **friction_types**: Deduplicated and merged. Keep at most 5. Prefer higher severity and recurring patterns. If two types from different batches share the same `type_name`, merge them into one entry and combine their `example_refs`.
+3. **friction_types**: Deduplicated and merged. Keep at most 5. Prefer higher severity and recurring patterns. If two types from different batches share the same `type_name`, merge them into one entry and combine their `example_refs` into a single list.
 4. **summary**: Focus on the 1-2 biggest patterns, not every detail. Write for someone who cannot remember every interaction. Never reference batches, chunks, or internal processing.
-5. **mitigations**: 0-5 highest-impact recommendations. Deduplicate similar recommendations from different batches.
+5. **mitigations**: Cap at 5 highest-impact recommendations. Deduplicate similar recommendations from different batches.
 
 ## Output Rules
 

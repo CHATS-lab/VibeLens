@@ -34,7 +34,7 @@ from vibelens.services.analysis_shared import (
     truncate_digest_to_fit,
 )
 from vibelens.services.analysis_store import generate_analysis_id
-from vibelens.services.context_params import PRESET_CONCISE
+from vibelens.services.context_params import PRESET_CONCISE, PRESET_MEDIUM
 from vibelens.services.session_batcher import build_batches
 from vibelens.services.skill.shared import (
     SKILL_LOG_DIR,
@@ -73,7 +73,9 @@ def estimate_skill_retrieval(
         ValueError: If no sessions could be loaded.
     """
     backend = require_backend()
-    context_set = extract_all_contexts(session_ids, session_token, PRESET_CONCISE)
+    context_set = extract_all_contexts(
+        session_ids=session_ids, session_token=session_token, params=PRESET_MEDIUM
+    )
     if not context_set:
         raise ValueError(f"No sessions could be loaded from: {session_ids}")
 
@@ -106,7 +108,9 @@ async def analyze_skill_retrieval(
     set_analysis_id(analysis_id)
 
     backend = require_backend()
-    context_set = extract_all_contexts(session_ids, session_token, PRESET_CONCISE)
+    context_set = extract_all_contexts(
+        session_ids=session_ids, session_token=session_token, params=PRESET_CONCISE
+    )
 
     if not context_set:
         clear_analysis_id()
@@ -232,11 +236,11 @@ async def _infer_skill_retrieval_batch(
     )
 
     if batch_index == 0:
-        save_analysis_log(log_dir, "retrieval_system.txt", system_prompt)
-    save_analysis_log(log_dir, f"retrieval_user_{batch_index}.txt", user_prompt)
+        save_analysis_log(log_dir, "skill_retrieval_system.txt", system_prompt)
+    save_analysis_log(log_dir, f"skill_retrieval_user_{batch_index}.txt", user_prompt)
 
     result = await backend.generate(request)
-    save_analysis_log(log_dir, f"retrieval_output_{batch_index}.txt", result.text)
+    save_analysis_log(log_dir, f"skill_retrieval_output_{batch_index}.txt", result.text)
 
     retrieval_output = parse_llm_output(result.text, SkillRetrievalOutput, "retrieval")
     cost = result.cost_usd or 0.0
@@ -301,11 +305,11 @@ async def _synthesize_skill_retrieval(
         json_schema=prompt.output_json_schema(),
     )
 
-    save_analysis_log(log_dir, "retrieval_synthesis_system.txt", system_prompt)
-    save_analysis_log(log_dir, "retrieval_synthesis_user.txt", user_prompt)
+    save_analysis_log(log_dir, "skill_retrieval_synthesis_system.txt", system_prompt)
+    save_analysis_log(log_dir, "skill_retrieval_synthesis_user.txt", user_prompt)
 
     result = await backend.generate(request)
-    save_analysis_log(log_dir, "retrieval_synthesis_output.txt", result.text)
+    save_analysis_log(log_dir, "skill_retrieval_synthesis_output.txt", result.text)
 
     synthesis_output = parse_llm_output(result.text, SkillRetrievalOutput, "retrieval synthesis")
     cost = result.cost_usd or 0.0

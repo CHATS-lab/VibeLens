@@ -345,7 +345,7 @@ export function LLMConfigForm({
 }) {
   const [backend, setBackend] = useState(llmStatus?.backend_id === "mock" ? "litellm" : llmStatus?.backend_id ?? "litellm");
   const [apiKey, setApiKey] = useState("");
-  const [model, setModel] = useState(llmStatus?.model ?? "anthropic/claude-haiku-4-5");
+  const [model, setModel] = useState(llmStatus?.model ?? "");
   const [cliModel, setCliModel] = useState("");
   const [baseUrl, setBaseUrl] = useState(llmStatus?.base_url ?? "");
   const [timeout, setTimeout_] = useState(llmStatus?.timeout ?? 120);
@@ -419,13 +419,13 @@ export function LLMConfigForm({
   return (
     <div className="space-y-3">
       <div>
-        <label className="block text-xs font-medium text-zinc-400 mb-1">Backend</label>
+        <label className="block text-xs font-medium text-zinc-300 mb-1">Backend</label>
         <BackendDropdown value={backend} onChange={setBackend} accentColor={accentColor} />
       </div>
 
       {!isCliBackend && backend !== "disabled" && (
         <div>
-          <label className="block text-xs font-medium text-zinc-400 mb-1">API Key</label>
+          <label className="block text-xs font-medium text-zinc-300 mb-1">API Key</label>
           <input
             type="password"
             value={apiKey}
@@ -434,7 +434,7 @@ export function LLMConfigForm({
             className={`w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none ${accent.focus}`}
           />
           {llmStatus?.api_key_masked && !apiKey && (
-            <p className="mt-1 text-xs text-zinc-500">
+            <p className="mt-1 text-xs text-zinc-400">
               Key configured: {llmStatus.api_key_masked}. Leave empty to keep it.
             </p>
           )}
@@ -443,14 +443,14 @@ export function LLMConfigForm({
 
       {!isCliBackend && backend !== "disabled" && (
         <div>
-          <label className="block text-xs font-medium text-zinc-400 mb-1">Model</label>
+          <label className="block text-xs font-medium text-zinc-300 mb-1">Model</label>
           <ModelCombobox value={model} onChange={setModel} accentColor={accentColor} />
         </div>
       )}
 
       {isCliBackend && hasCliModels && (
         <div>
-          <label className="block text-xs font-medium text-zinc-400 mb-1">Model</label>
+          <label className="block text-xs font-medium text-zinc-300 mb-1">Model</label>
           <CliModelSelector
             backendId={backend}
             value={cliModel}
@@ -462,7 +462,7 @@ export function LLMConfigForm({
       )}
 
       {isCliBackend && !hasCliModels && (
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-zinc-400">
           Uses your local {BACKEND_OPTIONS.find((o) => o.value === backend)?.label ?? backend} installation. No model selection available.
         </p>
       )}
@@ -471,7 +471,7 @@ export function LLMConfigForm({
         <button
           type="button"
           onClick={() => setShowAdvanced((v) => !v)}
-          className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300 transition"
+          className="flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-200 transition"
         >
           {showAdvanced ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
           Advanced
@@ -481,8 +481,8 @@ export function LLMConfigForm({
       {showAdvanced && !isCliBackend && backend !== "disabled" && (
         <div className="space-y-3 pl-3 border-l-2 border-zinc-700/50">
           <div>
-            <label className="block text-xs font-medium text-zinc-400 mb-1">
-              Base URL <span className="text-zinc-600">(auto-resolved if empty)</span>
+            <label className="block text-xs font-medium text-zinc-300 mb-1">
+              Base URL <span className="text-zinc-500">(auto-resolved if empty)</span>
             </label>
             <input
               type="text"
@@ -494,7 +494,7 @@ export function LLMConfigForm({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1">Timeout (s)</label>
+              <label className="block text-xs font-medium text-zinc-300 mb-1">Timeout (s)</label>
               <input
                 type="number"
                 value={timeout}
@@ -505,7 +505,7 @@ export function LLMConfigForm({
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1">Max Tokens</label>
+              <label className="block text-xs font-medium text-zinc-300 mb-1">Max Tokens</label>
               <input
                 type="number"
                 value={maxTokens}
