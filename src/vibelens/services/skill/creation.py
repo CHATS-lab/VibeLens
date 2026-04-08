@@ -208,8 +208,6 @@ async def analyze_skill_creation(
         title=proposal_output.title,
         workflow_patterns=proposal_output.workflow_patterns,
         creations=creations,
-        summary=proposal_output.summary,
-        user_profile=proposal_output.user_profile,
         session_ids=proposal_result.session_ids,
         skipped_session_ids=proposal_result.skipped_session_ids,
         warnings=creation_warnings,
@@ -293,9 +291,7 @@ async def _infer_skill_creation_proposals(
 
     final_output = SkillCreationProposalOutput(
         title=proposal_output.title,
-        user_profile=proposal_output.user_profile,
         workflow_patterns=validated_patterns,
-        summary=proposal_output.summary,
         proposals=proposal_output.proposals,
     )
 
@@ -486,8 +482,6 @@ async def _synthesize_skill_creation_proposals(
     batch_data = [
         {
             "title": output.title,
-            "summary": output.summary,
-            "user_profile": output.user_profile,
             "workflow_patterns": [
                 {
                     "title": p.title,

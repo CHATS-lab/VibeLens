@@ -11,6 +11,9 @@ from vibelens.schemas.session import DownloadRequest
 from vibelens.services.session.crud import get_session, list_projects, list_sessions
 from vibelens.services.session.flow import get_session_flow
 from vibelens.services.session.search import search_sessions
+from vibelens.utils import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(tags=["sessions"])
 
@@ -94,10 +97,16 @@ async def export_session(
     """
     group = get_session(session_id, session_token=x_session_token)
     if not group:
+        logger.warning(
+            "export_session: session %s not found (token=%s)",
+            session_id,
+            x_session_token[:8] if x_session_token else "none",
+        )
         raise HTTPException(status_code=404, detail="Session not found")
 
     payload = [t.model_dump(mode="json") for t in group]
     filename = f"vibelens-{session_id[:8]}.json"
+    logger.info("export_session: exporting %s (%d trajectories)", session_id[:8], len(payload))
     return JSONResponse(
         content=payload, headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
@@ -138,6 +147,11 @@ async def download_sessions(
         for session_id in request.session_ids:
             group = get_session(session_id, session_token=x_session_token)
             if not group:
+                logger.warning(
+                    "download_sessions: session %s not found, skipping (token=%s)",
+                    session_id,
+                    x_session_token[:8] if x_session_token else "none",
+                )
                 continue
             payload = [t.model_dump(mode="json") for t in group]
             filename = f"vibelens-{session_id[:8]}.json"

@@ -26,7 +26,9 @@ export function Tooltip({ text, children, className }: TooltipProps) {
     const tooltipWidth = tooltipRef.current?.offsetWidth ?? 200;
     const GAP = 6;
 
-    const fitsAbove = rect.top - tooltipHeight - GAP > 0;
+    // Reserve clearance for fixed headers (tab bar, nav, etc.)
+    const TOP_CLEARANCE = 48;
+    const fitsAbove = rect.top - tooltipHeight - GAP > TOP_CLEARANCE;
     const top = fitsAbove
       ? rect.top - GAP + window.scrollY
       : rect.bottom + GAP + window.scrollY;
@@ -62,7 +64,7 @@ export function Tooltip({ text, children, className }: TooltipProps) {
                 : "translateX(-50%) translateY(-100%)",
               visibility: coords ? "visible" : "hidden",
             }}
-            className="z-[9999] px-3 py-2 text-xs leading-relaxed text-zinc-100 bg-zinc-800/95 border border-zinc-600 rounded-lg shadow-2xl max-w-[300px] text-center pointer-events-none break-words"
+            className="z-[9999] px-3 py-2 text-xs leading-relaxed text-zinc-100 bg-zinc-800/95 border border-zinc-600 rounded-lg shadow-2xl max-w-[300px] w-max text-center pointer-events-none break-words"
           >
             {text}
           </span>,

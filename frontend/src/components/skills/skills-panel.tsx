@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppContext } from "../../app";
 import type { AnalysisJobResponse, AnalysisJobStatus, CostEstimate, LLMStatus, SkillAnalysisResult, SkillInfo, SkillMode } from "../../types";
 import { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "../../styles";
-import { AnalysisWelcomePage } from "../analysis-welcome";
+import { AnalysisWelcomePage, TutorialBanner } from "../analysis-welcome";
 import { CostEstimateDialog } from "../cost-estimate-dialog";
 import { Modal, ModalBody, ModalFooter, ModalHeader } from "../modal";
 import { Tooltip } from "../tooltip";
@@ -33,21 +33,38 @@ const MODE_MAP: Record<string, SkillMode> = {
   evolve: "evolution",
 };
 
-const MODE_DESCRIPTIONS: Record<SkillMode, { title: string; desc: string; icon: React.ReactNode }> = {
+const MODE_DESCRIPTIONS: Record<SkillMode, {
+  title: string;
+  desc: string;
+  icon: React.ReactNode;
+  tutorial: { title: string; description: string };
+}> = {
   retrieval: {
     title: "Skill Recommendation",
     desc: "Detect workflow patterns and discover existing skills that match your coding style.",
     icon: <Search className="w-10 h-10 text-teal-400/50" />,
+    tutorial: {
+      title: "How does this work?",
+      description: "VibeLens scans your sessions for patterns in how you work, then searches the community skill library for ready-made skills that match your workflow.",
+    },
   },
   creation: {
     title: "Skill Customization",
     desc: "Generate new SKILL.md files from detected automation opportunities in your sessions.",
     icon: <Sparkles className="w-10 h-10 text-emerald-400/50" />,
+    tutorial: {
+      title: "How does this work?",
+      description: "VibeLens looks at your sessions and creates brand-new skill files written specifically for your workflow. These capture patterns unique to how you work that aren't covered by existing skills.",
+    },
   },
   evolution: {
     title: "Skill Evolution",
     desc: "Analyze installed skills against your usage data and suggest targeted improvements.",
     icon: <TrendingUp className="w-10 h-10 text-teal-400/50" />,
+    tutorial: {
+      title: "How does this work?",
+      description: "VibeLens compares your installed skills with how you actually use your agents. Where it finds gaps or outdated instructions, it suggests edits to make those skills work better for you.",
+    },
   },
 };
 
@@ -360,8 +377,9 @@ export function SkillsPanel({ checkedIds, activeJobId, onJobIdChange }: SkillsPa
           {activeTab === "explore" && <ExploreSkillsTab onSwitchTab={setActiveTab} />}
           {isAnalysisTab && (analysisLoading || estimating) && (
             <div className="flex items-center justify-center h-full">
-              <div className="flex flex-col items-center gap-5">
+              <div className="flex flex-col items-center gap-5 max-w-md">
                 <AnalysisLoadingState mode={currentMode} sessionCount={checkedIds.size} />
+                <TutorialBanner tutorial={MODE_DESCRIPTIONS[currentMode].tutorial} accentColor="teal" />
                 {activeJobId && (
                   <div className="flex flex-col items-center gap-3 mt-1">
                     <div className="text-center space-y-1">
@@ -394,6 +412,7 @@ export function SkillsPanel({ checkedIds, activeJobId, onJobIdChange }: SkillsPa
               error={analysisError}
               onRun={() => handleRequestEstimate(currentMode)}
               isDemo={appMode === "demo"}
+              tutorial={MODE_DESCRIPTIONS[currentMode].tutorial}
             />
           )}
           {isAnalysisTab && !analysisLoading && analysisResult && (
@@ -402,6 +421,7 @@ export function SkillsPanel({ checkedIds, activeJobId, onJobIdChange }: SkillsPa
               activeTab={activeTab}
               onNew={handleNewAnalysis}
               fetchWithToken={fetchWithToken}
+              tutorial={MODE_DESCRIPTIONS[currentMode].tutorial}
             />
           )}
         </div>

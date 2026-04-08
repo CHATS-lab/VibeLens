@@ -1,9 +1,11 @@
 import { ChevronLeft, ChevronRight, Code2, Info, Package, Plus, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppContext } from "../../app";
+import { useDemoGuard } from "../../hooks/use-demo-guard";
 import type { SkillInfo, SkillSourceInfo } from "../../types";
 import { SEARCH_DEBOUNCE_MS } from "../../styles";
 import { ConfirmDialog } from "../confirm-dialog";
+import { InstallLocallyDialog } from "../install-locally-dialog";
 import { SkillCard, SkillDetailPopup } from "./skill-cards";
 import { SkillEditorDialog } from "./skill-editor-dialog";
 import { SyncAfterSaveDialog } from "./sync-after-save-dialog";
@@ -31,6 +33,7 @@ const EDITOR_CLOSED: EditorState = { open: false, mode: "create", name: "", cont
 
 export function LocalSkillsTab() {
   const { fetchWithToken } = useAppContext();
+  const { guardAction, showInstallDialog, setShowInstallDialog } = useDemoGuard();
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -211,7 +214,7 @@ export function LocalSkillsTab() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setEditorState({ open: true, mode: "create", name: "", content: "" })}
+            onClick={() => guardAction(() => setEditorState({ open: true, mode: "create", name: "", content: "" }))}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-teal-600 hover:bg-teal-500 rounded-md transition"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -228,15 +231,19 @@ export function LocalSkillsTab() {
       </div>
 
       {/* Skill explanation */}
-      <div className="mb-5 flex items-start gap-3 px-4 py-3.5 bg-teal-900/20 border border-teal-700/30 rounded-lg">
-        <Info className="w-4.5 h-4.5 text-teal-400 shrink-0 mt-0.5" />
-        <p className="text-sm text-zinc-200 leading-relaxed">
-          <span className="font-semibold text-teal-300">What's a skill?</span>{" "}
-          A skill is a SKILL.md instruction file for your coding agent. It tells
-          the agent how to handle specific tasks — like a personalized rulebook.
-          Install skills here, browse the community, or let VibeLens create them
-          from your session patterns.
-        </p>
+      <div className="relative mb-5 px-4 py-3.5 rounded-lg border border-teal-800/40 bg-gradient-to-r from-teal-950/40 via-teal-900/20 to-indigo-950/40 overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(139,92,246,0.08),transparent_60%)]" />
+        <div className="relative flex items-center gap-3">
+          <div className="shrink-0 p-2 rounded-lg bg-teal-500/15 border border-teal-500/20">
+            <Info className="w-4 h-4 text-teal-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-teal-300">What's a skill?</p>
+            <p className="text-sm text-teal-400/70 mt-0.5">
+              A skill is an instruction file that tells your coding agent how to handle specific tasks, like a personalized rulebook. Create them here, install community skills from the <span className="font-semibold text-teal-300">Explore</span> tab, or let VibeLens generate them from your coding sessions.
+            </p>
+          </div>
+        </div>
       </div>
 
       <SourceFilterBar
@@ -262,7 +269,7 @@ export function LocalSkillsTab() {
           subtitle="Skills are loaded from ~/.claude/skills/ and ~/.codex/skills/ on startup"
         >
           <button
-            onClick={() => setEditorState({ open: true, mode: "create", name: "", content: "" })}
+            onClick={() => guardAction(() => setEditorState({ open: true, mode: "create", name: "", content: "" }))}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-teal-600 hover:bg-teal-500 rounded-md transition"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -280,8 +287,8 @@ export function LocalSkillsTab() {
             <SkillCard
               key={skill.name}
               skill={skill}
-              onEdit={openEditDialog}
-              onDelete={setDeleteTarget}
+              onEdit={(s) => guardAction(() => openEditDialog(s))}
+              onDelete={(name) => guardAction(() => setDeleteTarget(name))}
               onViewDetail={setDetailSkill}
             />
           ))}
@@ -334,6 +341,10 @@ export function LocalSkillsTab() {
           fetchWithToken={fetchWithToken}
           onClose={() => setSyncPromptSkill(null)}
         />
+      )}
+
+      {showInstallDialog && (
+        <InstallLocallyDialog onClose={() => setShowInstallDialog(false)} />
       )}
     </div>
   );

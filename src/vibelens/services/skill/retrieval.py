@@ -267,8 +267,6 @@ async def _synthesize_skill_retrieval(
     batch_data = [
         {
             "title": output.title,
-            "summary": output.summary,
-            "user_profile": output.user_profile,
             "workflow_patterns": [
                 {
                     "title": p.title,
@@ -448,8 +446,6 @@ def _build_skill_retrieval_result(
         title=llm_output.title,
         workflow_patterns=validated_patterns,
         recommendations=llm_output.recommendations,
-        summary=llm_output.summary,
-        user_profile=llm_output.user_profile,
         session_ids=loaded_ids,
         skipped_session_ids=skipped_ids,
         warnings=warnings or [],

@@ -3,12 +3,6 @@ Merge evolution proposals from {{ batch_count }} batches analyzing {{ session_co
 {% for batch in batch_results %}
 ## Batch {{ loop.index }}: {{ batch.title }}
 
-### Summary
-{{ batch.summary }}
-
-### User Profile
-{{ batch.user_profile }}
-
 ### Workflow Patterns
 {% for pattern in batch.workflow_patterns %}
 - **{{ pattern.title }}**: {{ pattern.description }} (refs: {% for ref in pattern.example_refs %}{{ ref }}{% if not loop.last %}, {% endif %}{% endfor %})
@@ -23,4 +17,4 @@ Merge evolution proposals from {{ batch_count }} batches analyzing {{ session_co
 
 {% endfor %}
 
-Produce a single merged result. Deduplicate workflow patterns by merging `example_refs`. Rank proposals by frequency and quality. Include `title`, `user_profile`, and `summary`.
+Produce a single merged result. Deduplicate workflow patterns by merging `example_refs`. Rank proposals by frequency and quality. Include a self-explanatory `title`.

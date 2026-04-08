@@ -10,9 +10,9 @@ app:
   mode: demo
 
 demo:
-  example_sessions: "examples/claude-example-v2"
-  friction_dir: "examples/claude-example-v2/friction_analyses"
-  skill_analysis_dir: "examples/claude-example-v2/skill_analyses"
+  example_sessions: "examples/recipe-book"
+  friction_dir: "examples/recipe-book/friction_analyses"
+  skill_analysis_dir: "examples/recipe-book/skill_analyses"
 
 donation:
   dir: ~/.vibelens/donations-v2

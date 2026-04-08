@@ -31,29 +31,32 @@ def list_all_metadata(session_token: str | None = None) -> list[dict]:
     if not is_demo_mode():
         return list(get_store().list_metadata())
 
-    user_stores = get_upload_stores(session_token)
-    if user_stores:
-        metadata: list[dict] = []
-        seen_ids: set[str] = set()
-        for store in user_stores:
-            for m in store.list_metadata():
-                sid = m.get("session_id")
-                if sid and sid not in seen_ids:
-                    metadata.append(m)
-                    seen_ids.add(sid)
-        logger.info(
-            "list_all_metadata: token=%s has %d upload sessions from %d stores",
-            session_token[:8] if session_token else "none",
-            len(metadata),
-            len(user_stores),
-        )
-        return metadata
+    # Always include example sessions in demo mode
+    metadata: list[dict] = []
+    seen_ids: set[str] = set()
 
-    # No uploads for this token — return example sessions
-    metadata = list(get_example_store().list_metadata())
+    # Collect user uploads first (if any)
+    for store in get_upload_stores(session_token):
+        for m in store.list_metadata():
+            sid = m.get("session_id")
+            if sid and sid not in seen_ids:
+                metadata.append(m)
+                seen_ids.add(sid)
+
+    upload_count = len(metadata)
+
+    # Always append example sessions (deduped)
+    for m in get_example_store().list_metadata():
+        sid = m.get("session_id")
+        if sid and sid not in seen_ids:
+            metadata.append(m)
+            seen_ids.add(sid)
+
     logger.info(
-        "list_all_metadata: token=%s has no uploads, returning %d examples",
+        "list_all_metadata: token=%s has %d uploads + %d examples = %d total",
         session_token[:8] if session_token else "none",
+        upload_count,
+        len(metadata) - upload_count,
         len(metadata),
     )
     return metadata

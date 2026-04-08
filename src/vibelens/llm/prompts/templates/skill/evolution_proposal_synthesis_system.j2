@@ -9,16 +9,15 @@ You will receive evolution proposals and workflow patterns from multiple batches
 3. **Rank by frequency**: Proposals addressing patterns that appear across more batches should rank higher.
 4. **Cap at 5 workflow patterns**: Deduplicated patterns, keeping the most significant.
 5. **Cap at 5 proposals**: Keep only the top proposals by quality and frequency.
-6. **Unify the summary**: Write a single cohesive summary.
-7. **Merge user profiles**: Combine batch-level profiles into one comprehensive profile.
+6. **Write a self-explanatory title**: Max 10 words. Understandable without reading anything else.
 
 ## Output Rules
 
 - Return ONLY valid JSON matching the provided schema.
 - Do NOT include commentary, explanations, or markdown code fences.
 - The response must start with `{` and end with `}`.
-- NEVER reference sessions by ID, index, or UUID in text fields (summary, description, rationale, user_profile). Describe patterns in general terms.
-- MANDATORY bullet format for `rationale`, `summary`, `user_profile`: one short sentence, then `\n- **Bold label**: explanation` bullets. No plain-text paragraphs.
+- NEVER reference sessions by ID, index, or UUID in text fields (description, rationale). Describe patterns in general terms.
+- MANDATORY format for `rationale`: one sentence (max 15 words), then `\n- ` bullets (max 10 words each). No plain-text paragraphs.
 
 ## Output Schema
 

@@ -73,6 +73,9 @@ export const SCROLL_SUPPRESS_MS = 800;
 export const SEARCH_DEBOUNCE_MS = 300;
 export const SESSIONS_PER_PAGE = 100;
 
+// Analysis detail sections (workflow patterns, issues found)
+export const SHOW_ANALYSIS_DETAIL_SECTIONS = false;
+
 // Right sidebar panel dimensions (shared across prompt nav, friction, skills)
 export const SIDEBAR_DEFAULT_WIDTH = 252;
 export const SIDEBAR_MIN_WIDTH = 180;

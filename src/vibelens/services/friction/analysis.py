@@ -167,8 +167,6 @@ async def analyze_friction(
     duration = round(time.monotonic() - start_time, 2)
     friction_result = FrictionAnalysisResult(
         title=analysis_output.title,
-        user_profile=analysis_output.user_profile,
-        summary=analysis_output.summary,
         mitigations=analysis_output.mitigations,
         friction_types=validated_types,
         session_ids=context_set.session_ids,
@@ -263,8 +261,6 @@ async def _synthesize_friction_analysis(
     batch_data = [
         {
             "title": output.title,
-            "user_profile": output.user_profile,
-            "summary": output.summary,
             "friction_types": [
                 {
                     "type_name": ft.type_name,

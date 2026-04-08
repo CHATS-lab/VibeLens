@@ -254,8 +254,6 @@ export interface FrictionType {
 export interface FrictionAnalysisResult {
   analysis_id: string | null;
   title?: string | null;
-  user_profile?: string | null;
-  summary: string;
   mitigations: Mitigation[];
   friction_types: FrictionType[];
   session_ids: string[];
@@ -406,8 +404,6 @@ export interface SkillAnalysisResult {
   recommendations: SkillRecommendation[];
   creations: SkillCreation[];
   evolutions: SkillEvolution[];
-  summary: string;
-  user_profile: string;
   session_ids: string[];
   skipped_session_ids: string[];
   warnings?: string[];

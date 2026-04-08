@@ -16,7 +16,6 @@ import {
   Shield,
   Sparkles,
   Target,
-  User,
   Zap,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -32,14 +31,15 @@ import type {
   Mitigation,
 } from "../../types";
 import { formatCost, formatDuration, formatTokens } from "../../utils";
-import { SEVERITY_COLORS, SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH } from "../../styles";
+import { SEVERITY_COLORS, SHOW_ANALYSIS_DETAIL_SECTIONS, SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH } from "../../styles";
 import { DemoBanner } from "../demo-banner";
-import { AnalysisWelcomePage } from "../analysis-welcome";
+import { AnalysisWelcomePage, TutorialBanner } from "../analysis-welcome";
 import { LoadingSpinner, LoadingSpinnerRings } from "../loading-spinner";
 import { CostEstimateDialog } from "../cost-estimate-dialog";
 import { Tooltip } from "../tooltip";
 import { FrictionHistory } from "./friction-history";
 import { BulletText } from "../bullet-text";
+import { CopyButton } from "../copy-button";
 import { WarningsBanner } from "../warnings-banner";
 
 const SEVERITY_LABELS: Record<number, string> = {
@@ -58,18 +58,13 @@ const SEVERITY_DESCRIPTIONS: Record<number, string> = {
   5: "Critical — Gave up on the task entirely",
 };
 
-const FRICTION_TYPE_LABELS: Record<string, string> = {
-  "misunderstood-intent": "Misunderstood What You Wanted",
-  "wrong-approach": "Wrong Approach Taken",
-  "repeated-failure": "Kept Failing Despite Corrections",
-  "quality-rejection": "Output Quality Not Accepted",
-  "scope-violation": "Did Too Much or Too Little",
-  "instruction-violation": "Ignored Your Rules",
-  "stale-context": "Forgot What You Said",
-  "destructive-action": "Made Unwanted Changes",
-  "slow-progress": "Too Slow",
-  "abandoned-task": "You Gave Up",
-};
+/** Convert kebab-case type_name to Title Case for display. */
+function frictionTypeLabel(typeName: string): string {
+  return typeName
+    .split("-")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
 
 function confidenceLevel(c: number): "high" | "medium" | "low" {
   if (c >= 0.7) return "high";
@@ -78,6 +73,11 @@ function confidenceLevel(c: number): "high" | "medium" | "low" {
 }
 
 const POLL_INTERVAL_MS = 3000;
+
+const FRICTION_TUTORIAL = {
+  title: "How does this work?",
+  description: "VibeLens reviews your coding sessions to find where things went wrong: getting stuck, repeating yourself, or fixing agent mistakes. You get practical tips to avoid those issues next time.",
+};
 
 interface FrictionPanelProps {
   checkedIds: Set<string>;
@@ -325,7 +325,7 @@ export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: Fricti
     if (activeJobId) {
       return (
         <div className="flex items-center justify-center h-full">
-          <div className="flex flex-col items-center gap-5">
+          <div className="flex flex-col items-center gap-5 max-w-md">
             <LoadingSpinnerRings color="amber" />
             <div className="text-center space-y-1.5">
               <p className="text-base font-semibold text-white">
@@ -333,6 +333,7 @@ export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: Fricti
               </p>
               <p className="text-sm text-zinc-300">Identifying patterns that slow you down</p>
             </div>
+            <TutorialBanner tutorial={FRICTION_TUTORIAL} accentColor="cyan" />
             <div className="flex flex-col items-center gap-3 mt-1">
               <div className="text-center space-y-1">
                 <p className="text-sm text-zinc-400">Running in background — you can switch tabs</p>
@@ -379,6 +380,8 @@ export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: Fricti
             error={error}
             onRun={handleRequestAnalysis}
             isDemo={appMode === "demo"}
+            tutorial={FRICTION_TUTORIAL}
+            tutorialAccentColor="cyan"
           />
         </div>
         {sidebar}
@@ -393,14 +396,14 @@ export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: Fricti
         <div className="max-w-4xl mx-auto px-6 py-8 space-y-8">
           {result.backend_id === "mock" && <DemoBanner />}
           <ResultHeader result={result} onNew={handleNewAnalysis} />
+          <TutorialBanner tutorial={FRICTION_TUTORIAL} accentColor="cyan" />
           {result.warnings && result.warnings.length > 0 && (
             <WarningsBanner warnings={result.warnings} />
           )}
-          <SummaryCard summary={result.summary} userProfile={result.user_profile} />
           {result.mitigations.length > 0 && (
             <MitigationsSection mitigations={result.mitigations} frictionTypes={result.friction_types} />
           )}
-          {result.friction_types.length > 0 && (
+          {SHOW_ANALYSIS_DETAIL_SECTIONS && result.friction_types.length > 0 && (
             <FrictionTypesSection frictionTypes={result.friction_types} />
           )}
           <AnalysisMeta result={result} />
@@ -439,46 +442,15 @@ function ResultHeader({
           </p>
         </div>
       </div>
-      <button
-        onClick={onNew}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-200 hover:text-white bg-amber-600/20 hover:bg-amber-600/40 border border-amber-500/40 rounded-lg transition"
-      >
-        <Plus className="w-3.5 h-3.5" />
-        New
-      </button>
-    </div>
-  );
-}
-
-function SummaryCard({
-  summary,
-  userProfile,
-}: {
-  summary: string;
-  userProfile?: string | null;
-}) {
-  return (
-    <div className="border border-zinc-700/40 rounded-xl bg-zinc-900/60 overflow-hidden">
-      <div className="px-5 pt-4 pb-4">
-        <div className="flex items-center gap-2 mb-2.5">
-          <div className="p-1.5 rounded-lg bg-zinc-700/30">
-            <Sparkles className="w-4 h-4 text-amber-400" />
-          </div>
-          <h3 className="text-sm font-semibold text-zinc-100">Summary</h3>
-        </div>
-        <BulletText text={summary} className="text-sm text-zinc-200 leading-relaxed pl-[2.375rem]" />
-      </div>
-      {userProfile && (
-        <div className="px-5 pt-4 pb-4 border-t border-zinc-700/40">
-          <div className="flex items-center gap-2 mb-2.5">
-            <div className="p-1.5 rounded-lg bg-zinc-700/30">
-              <User className="w-4 h-4 text-amber-400" />
-            </div>
-            <h3 className="text-sm font-semibold text-zinc-100">User Profile</h3>
-          </div>
-          <BulletText text={userProfile} className="text-sm text-zinc-300 leading-relaxed pl-[2.375rem]" />
-        </div>
-      )}
+      <Tooltip text="Analyze new sessions">
+        <button
+          onClick={onNew}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-200 hover:text-white bg-amber-600/20 hover:bg-amber-600/40 border border-amber-500/40 rounded-lg transition"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          New
+        </button>
+      </Tooltip>
     </div>
   );
 }
@@ -496,7 +468,7 @@ function SectionHeader({
     <Tooltip text={tooltip}>
       <div className="flex items-center gap-2 mb-3 cursor-help">
         <span className="text-amber-400">{icon}</span>
-        <h3 className="text-base font-semibold text-zinc-100">{title}</h3>
+        <h3 className="text-lg font-semibold text-zinc-100">{title}</h3>
       </div>
     </Tooltip>
   );
@@ -540,6 +512,7 @@ function ConfidenceBar({ confidence }: { confidence: number }) {
 }
 
 function MitigationCard({ mitigation, frictionTypes }: { mitigation: Mitigation; frictionTypes: FrictionType[] }) {
+  const [rationaleExpanded, setRationaleExpanded] = useState(true);
   const [typesExpanded, setTypesExpanded] = useState(false);
 
   const addressedTypes = mitigation.addressed_friction_types ?? [];
@@ -555,6 +528,7 @@ function MitigationCard({ mitigation, frictionTypes }: { mitigation: Mitigation;
           <div className="flex items-center gap-2.5">
             <span className="text-base font-bold text-zinc-100">{mitigation.title}</span>
             {mitigation.confidence > 0 && <ConfidenceBar confidence={mitigation.confidence} />}
+            <CopyButton text={mitigation.action} />
           </div>
         </div>
         <BulletText text={mitigation.action} className="text-sm text-zinc-300 leading-relaxed mt-1.5" />
@@ -563,11 +537,19 @@ function MitigationCard({ mitigation, frictionTypes }: { mitigation: Mitigation;
       {/* Rationale */}
       {mitigation.rationale && (
         <div className="px-5 py-3 border-t border-amber-700/20">
-          <div className="flex items-center gap-1.5 mb-1.5">
+          <button
+            onClick={() => setRationaleExpanded(!rationaleExpanded)}
+            className="flex items-center gap-1.5 text-xs hover:opacity-80 transition"
+          >
+            {rationaleExpanded
+              ? <ChevronDown className="w-3.5 h-3.5 text-amber-400" />
+              : <ChevronRight className="w-3.5 h-3.5 text-amber-400" />}
             <Lightbulb className="w-3.5 h-3.5 text-amber-400" />
-            <span className="text-sm font-semibold text-amber-300 uppercase tracking-wide">Why This is Useful</span>
-          </div>
-          <BulletText text={mitigation.rationale} className="text-sm text-zinc-200 leading-relaxed" />
+            <span className="text-sm font-semibold text-amber-300 uppercase tracking-wide">Why this helps</span>
+          </button>
+          {rationaleExpanded && (
+            <BulletText text={mitigation.rationale} className="text-sm text-zinc-200 leading-relaxed mt-1.5" />
+          )}
         </div>
       )}
 
@@ -582,7 +564,7 @@ function MitigationCard({ mitigation, frictionTypes }: { mitigation: Mitigation;
               ? <ChevronDown className="w-3.5 h-3.5 text-amber-400" />
               : <ChevronRight className="w-3.5 h-3.5 text-amber-400" />}
             <Target className="w-3.5 h-3.5 text-amber-400" />
-            <span className="text-sm font-semibold text-amber-300 uppercase tracking-wide">Addressed Issues</span>
+            <span className="text-sm font-semibold text-amber-300 uppercase tracking-wide">What this fixes</span>
             <span className="text-zinc-500">({matchedTypes.length})</span>
           </button>
           {typesExpanded && (
@@ -590,7 +572,7 @@ function MitigationCard({ mitigation, frictionTypes }: { mitigation: Mitigation;
               {matchedTypes.map((ft) => (
                 <div key={ft.type_name} className="border-l-2 border-amber-700/30 pl-3 space-y-1.5">
                   <h6 className="text-base font-semibold text-zinc-100">
-                    {FRICTION_TYPE_LABELS[ft.type_name] ?? ft.type_name}
+                    {frictionTypeLabel(ft.type_name)}
                   </h6>
                   <BulletText text={ft.description} className="text-sm text-zinc-300 leading-relaxed" />
                   <FrictionRefList refs={ft.example_refs} />
@@ -611,8 +593,8 @@ function FrictionTypesSection({ frictionTypes }: { frictionTypes: FrictionType[]
     <div>
       <SectionHeader
         icon={<AlertTriangle className="w-5 h-5" />}
-        title="Issues Found"
-        tooltip="Moments where you were dissatisfied with the agent's behavior"
+        title="What Went Wrong"
+        tooltip="Moments where things slowed you down or went off track"
       />
       <div className="space-y-3">
         {sorted.map((ft) => (
@@ -625,7 +607,7 @@ function FrictionTypesSection({ frictionTypes }: { frictionTypes: FrictionType[]
 
 function FrictionTypeCard({ frictionType }: { frictionType: FrictionType }) {
   const [expanded, setExpanded] = useState(false);
-  const label = FRICTION_TYPE_LABELS[frictionType.type_name] ?? frictionType.type_name;
+  const label = frictionTypeLabel(frictionType.type_name);
 
   return (
     <div

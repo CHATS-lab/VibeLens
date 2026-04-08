@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.9.26] - 2026-04-08
+
+### Changed
+- **Removed summary and user_profile fields**: Dropped `summary`, `user_profile` from all analysis models (friction, skill retrieval/creation/evolution), LLM prompts, synthesis templates, mock data, and frontend types. Analysis results now show only title, tips/recommendations, and issue cards.
+- **Self-explanatory titles**: All LLM prompt templates now enforce a 10-word max self-explanatory `title` that readers can understand without reading the rest of the report.
+- **Plain-language friction types**: Removed hardcoded friction type taxonomy from prompts. LLM now generates plain-language kebab-case labels (e.g. "changed-wrong-files") instead of fixed categories. Frontend converts kebab-case to Title Case dynamically.
+- **Audience section in all prompts**: Added "Audience" block to all analysis and skill prompt templates requiring plain, everyday language with no coding jargon.
+- **Rationale format standardized**: All rationale Field descriptions and prompt rules now enforce "one sentence (max 15 words), then `\n-` bullets (max 10 words each)" across friction and skill models.
+- **Tutorial banners**: Added `TutorialBanner` component shown on welcome pages, loading screens, and result pages explaining how each analysis feature works.
+- **Collapsible rationale sections**: "Why This is Useful" renamed to "Why this helps" and made collapsible (expanded by default) across all card types: MitigationCard, RecommendationCard, CreatedSkillCard, EvolutionCard.
+- **Section label renames**: "Addressed Issues" renamed to "What this fixes", "Addressed Workflow Patterns" to "What this covers", "Issues Found" to "What Went Wrong", "Workflow Patterns" to "How You Work".
+- **Section heading font size**: Section headers (friction and skill panels) enlarged from `text-base` to `text-lg`.
+- **Demo mode guards**: Added `useDemoGuard` hook that intercepts write actions (create/edit/delete skills, install, sync) in demo mode and shows the install-locally dialog instead. Applied across local-skills-tab, explore-skills-tab, skill-cards, skill-analysis-views, friction-history, skills-history.
+- **Example badge in history**: Friction and skill history cards show an "Example" badge when in demo mode.
+- **Share dialog redesign**: Session share flow now opens a modal with a copyable URL input instead of inline "Link copied!" text. Demo mode blocks sharing uploaded sessions with an explanation dialog.
+- **Session download via fetch**: Export button now uses `fetchWithToken` (supporting auth tokens) instead of direct `<a>` link navigation.
+- **Header collapse toggle**: Session header collapse toggle moved from a separate button to clicking the header row itself, using `ChevronRight`/`ChevronDown` instead of `ChevronUp`/`ChevronDown`.
+- **Prompt nav default state**: Prompt navigation sidebar now starts expanded instead of collapsed.
+- **Skill detail popup polish**: Tags and Allowed Tools sections switched from stacked to inline row layout. Description text lightened. Font sizes increased for stats, source links, and sync buttons.
+- **Install locally dialog extracted**: `InstallLocallyDialog` extracted from `analysis-welcome.tsx` to its own file for reuse by demo guard hooks.
+- **Demo store resolver**: Demo mode now always shows example sessions alongside user uploads, instead of showing only uploads when present.
+- **Session export logging**: Added structured logging to session export and download endpoints for debugging 404s.
+- **CopyButton on mitigation tips**: MitigationCard action text now has a copy button.
+- **Hidden detail sections**: Added `SHOW_ANALYSIS_DETAIL_SECTIONS` constant (default `false`) to hide "What Went Wrong" and "How You Work" sections, keeping the UI focused on tips and recommendations.
+
+### Removed
+- **Friction type taxonomy**: Removed the 10-item hardcoded taxonomy from the analysis prompt. LLM now freely names friction types.
+- **`FRICTION_TYPE_LABELS` map**: Removed the static label lookup in favor of dynamic kebab-to-title conversion.
+- **`SHARE_STATUS_RESET_MS` constant**: No longer needed with the modal-based share flow.
+- **Example data files**: Removed `examples/claude-example-v2/` (session data, friction analyses, skill analyses) from tracked files.
+
 ## [0.9.25] - 2026-04-08
 
 ### Changed

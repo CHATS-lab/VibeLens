@@ -1,9 +1,11 @@
 import { Calendar, Clock, Coins, History, Layers, Loader2, Timer, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useAppContext } from "../../app";
+import { useDemoGuard } from "../../hooks/use-demo-guard";
 import type { FrictionAnalysisResult, FrictionMeta } from "../../types";
 import { formatCost } from "../../utils";
 import { ConfirmDialog } from "../confirm-dialog";
+import { InstallLocallyDialog } from "../install-locally-dialog";
 
 function formatDuration(seconds: number): string {
   if (seconds < 60) return `${seconds.toFixed(1)}s`;
@@ -112,6 +114,7 @@ function HistoryCard({
   onSelect: () => void;
   onDelete: () => void;
 }) {
+  const { isDemo, guardAction, showInstallDialog, setShowInstallDialog } = useDemoGuard();
   const [showConfirm, setShowConfirm] = useState(false);
   const date = new Date(item.created_at);
   const dateStr = isNaN(date.getTime())
@@ -137,6 +140,11 @@ function HistoryCard({
               <Layers className="w-2.5 h-2.5" />
               {item.session_ids.length} session{item.session_ids.length !== 1 ? "s" : ""}
             </span>
+            {isDemo && (
+              <span className="px-1.5 py-0.5 rounded border text-[10px] font-medium bg-amber-900/30 border-amber-700/30 text-amber-400">
+                Example
+              </span>
+            )}
             {item.cost_usd != null && (
               <span className="inline-flex items-center gap-1 text-[10px] text-zinc-300">
                 <Coins className="w-2.5 h-2.5 text-amber-400" />
@@ -167,7 +175,7 @@ function HistoryCard({
         <button
           onClick={(e) => {
             e.stopPropagation();
-            setShowConfirm(true);
+            guardAction(() => setShowConfirm(true));
           }}
           disabled={deleting}
           className="opacity-0 group-hover:opacity-100 p-1 text-zinc-500 hover:text-rose-400 rounded transition"
@@ -191,6 +199,9 @@ function HistoryCard({
           }}
           onCancel={() => setShowConfirm(false)}
         />
+      )}
+      {showInstallDialog && (
+        <InstallLocallyDialog onClose={() => setShowInstallDialog(false)} />
       )}
     </div>
   );

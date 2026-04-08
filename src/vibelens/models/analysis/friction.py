@@ -31,7 +31,9 @@ class FrictionCost(BaseModel):
 class FrictionType(BaseModel):
     """A friction category detected by the LLM, with one or more examples."""
 
-    type_name: str = Field(description="Kebab-case friction type from taxonomy.")
+    type_name: str = Field(
+        description="Plain-language kebab-case label (e.g. 'changed-wrong-files')."
+    )
     description: str = Field(
         description="What the user wanted and how the agent performed differently (max 30 words)."
     )
@@ -50,14 +52,17 @@ class Mitigation(BaseModel):
     title: str = Field(description="Short heading for the mitigation (max 8 words).")
     addressed_friction_types: list[str] = Field(
         default_factory=list,
-        description="Friction type slugs this mitigation addresses (e.g. 'scope-violation').",
+        description=(
+            "Friction type_name values this mitigation addresses "
+            "(e.g. 'changed-wrong-files')."
+        ),
     )
     action: str = Field(description="How to address the friction (max 30 words).")
     rationale: str = Field(
         default="",
         description=(
-            "One-sentence conclusion followed by 1-2 bullet points "
-            "starting with '\\n- '. Max 50 words."
+            "One sentence (max 15 words), then 1-2 bullets "
+            "starting with '\\n- ' (max 10 words each)."
         ),
     )
     confidence: float = Field(default=0.0, description="Confidence this will help. 0.0-1.0.")
@@ -67,22 +72,13 @@ class FrictionAnalysisOutput(BaseModel):
     """LLM output model for one batch (and synthesis)."""
 
     title: str = Field(
-        description="Clear, reader-friendly title capturing the main theme. Max 8 words."
-    )
-    user_profile: str = Field(
         description=(
-            "One-sentence role summary followed by 1-2 bullet points "
-            "starting with '\\n- '. Max 50 words."
+            "Self-explanatory title describing the main finding. "
+            "Understandable without reading the rest. Max 10 words."
         )
     )
     friction_types: list[FrictionType] = Field(
         default_factory=list, description="0-5 friction type categories."
-    )
-    summary: str = Field(
-        description=(
-            "One-sentence conclusion followed by 2-4 bullet points "
-            "starting with '\\n- '. Max 100 words."
-        )
     )
     mitigations: list[Mitigation] = Field(
         default_factory=list, description="0-5 actionable recommendations."
@@ -103,19 +99,9 @@ class FrictionAnalysisResult(BaseModel):
     )
     title: str | None = Field(
         default=None,
-        description="Clear, reader-friendly title from LLM. Max 8 words.",
-    )
-    summary: str = Field(
         description=(
-            "One-sentence conclusion followed by 2-4 bullet points "
-            "starting with '\\n- '. Max 100 words."
-        )
-    )
-    user_profile: str | None = Field(
-        default=None,
-        description=(
-            "One-sentence role summary followed by 1-2 bullet points "
-            "starting with '\\n- '. Max 50 words."
+            "Self-explanatory title describing the main finding. "
+            "Understandable without reading the rest. Max 10 words."
         ),
     )
     mitigations: list[Mitigation] = Field(

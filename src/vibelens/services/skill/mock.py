@@ -51,21 +51,11 @@ def build_mock_skill_result(session_ids: list[str], mode: SkillMode) -> SkillAna
 
     return SkillAnalysisResult(
         mode=mode,
+        title="You Search, Read, and Edit Files in Repetitive Cycles That Could Be Automated",
         workflow_patterns=patterns,
         recommendations=recommendations,
         creations=creations,
         evolutions=evolutions,
-        summary=(
-            f"Strong automation candidates found across {len(loaded_ids)} sessions.\n"
-            f"- {len(patterns)} recurring workflow patterns detected\n"
-            "- Search-read-edit sequences are the most frequent and automatable\n"
-            "- Test-fix loops and file scaffolding also benefit from skill automation"
-        ),
-        user_profile=(
-            "Developer focused on Python/TypeScript full-stack projects. "
-            "Frequently uses Grep → Read → Edit → Bash workflows for code modifications. "
-            "Prefers iterative development with test-driven verification."
-        ),
         session_ids=loaded_ids,
         skipped_session_ids=skipped,
         backend_id=BackendType.MOCK,

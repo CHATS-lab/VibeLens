@@ -16,7 +16,9 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useAppContext } from "../../app";
+import { useDemoGuard } from "../../hooks/use-demo-guard";
 import type { FeaturedSkill, FeaturedSkillsResponse, SkillInfo, SkillSourceInfo } from "../../types";
+import { InstallLocallyDialog } from "../install-locally-dialog";
 import { Tooltip } from "../tooltip";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "../modal";
 import { CategoryBadge, TagList, TagPill } from "./skill-badges";
@@ -141,7 +143,7 @@ export function ExploreSkillsTab({ onSwitchTab }: { onSwitchTab?: (tab: SkillTab
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-teal-300">Not sure which skills to add?</p>
             <p className="text-sm text-teal-400/70 mt-0.5">
-              Switch to the <span className="font-semibold text-teal-300">Recommend</span> tab — it analyzes your coding sessions and recommends skills tailored to your workflow.
+              Switch to the <span className="font-semibold text-teal-300">Recommend</span> tab. It analyzes your sessions and recommends skills tailored to your workflow.
             </p>
           </div>
           {onSwitchTab && (
@@ -275,6 +277,7 @@ function FeaturedSkillDetailPopup({
   onInstalled: (slug: string) => void;
   onClose: () => void;
 }) {
+  const { guardAction, showInstallDialog, setShowInstallDialog } = useDemoGuard();
   const [installing, setInstalling] = useState(false);
   const [installed, setInstalled] = useState(isInstalled);
   const [installError, setInstallError] = useState<string | null>(null);
@@ -338,20 +341,20 @@ function FeaturedSkillDetailPopup({
       </ModalHeader>
 
       <ModalBody>
-        <p className="text-sm text-zinc-300 leading-relaxed">{skill.summary}</p>
+        <p className="text-sm text-zinc-200 leading-relaxed">{skill.summary}</p>
 
+        {/* Tags — inline row */}
         {skill.tags.length > 0 && (
-          <div>
-            <div className="flex items-center gap-1.5 text-xs text-zinc-500 mb-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 text-xs text-zinc-400 shrink-0">
               <Tag className="w-3 h-3" /> <span>Tags</span>
             </div>
-            <div className="flex flex-wrap gap-1.5">
-              {skill.tags.map((tag) => <TagPill key={tag} tag={tag} />)}
-            </div>
+            {skill.tags.map((tag) => <TagPill key={tag} tag={tag} />)}
           </div>
         )}
 
-        <div className="flex items-center gap-6 text-xs text-zinc-400">
+        {/* Stats row */}
+        <div className="flex items-center gap-5 text-sm text-zinc-300">
           {skill.stars > 0 && (
             <div className="flex items-center gap-1.5">
               <Star className="w-3.5 h-3.5 text-amber-400" />
@@ -360,16 +363,17 @@ function FeaturedSkillDetailPopup({
           )}
           {skill.downloads > 0 && (
             <div className="flex items-center gap-1.5">
-              <Download className="w-3.5 h-3.5 text-zinc-500" />
+              <Download className="w-3.5 h-3.5 text-zinc-400" />
               <span>{skill.downloads.toLocaleString()} downloads</span>
             </div>
           )}
-          <span className="text-zinc-500">Updated {new Date(skill.updated_at).toLocaleDateString()}</span>
+          <span className="text-zinc-500 text-xs">Updated {new Date(skill.updated_at).toLocaleDateString()}</span>
         </div>
 
+        {/* Agent interface targets */}
         {!installed && agentSources.length > 0 && (
           <div>
-            <div className="flex items-center gap-1.5 text-xs text-zinc-500 mb-2">
+            <div className="flex items-center gap-1.5 text-xs text-zinc-400 mb-2">
               <Share2 className="w-3 h-3" /> <span>Also install to agent interfaces</span>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -377,10 +381,10 @@ function FeaturedSkillDetailPopup({
                 <button
                   key={src.key}
                   onClick={() => toggleTarget(src.key)}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium rounded-md border transition ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border transition ${
                     selectedTargets.has(src.key)
                       ? SOURCE_COLORS[src.key] || "bg-zinc-700 text-zinc-300 border-zinc-600"
-                      : "text-zinc-500 border-zinc-700/50 hover:text-zinc-300 hover:border-zinc-600"
+                      : "text-zinc-400 border-zinc-700/50 hover:text-zinc-200 hover:border-zinc-600"
                   }`}
                 >
                   {selectedTargets.has(src.key) ? <Check className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
@@ -388,7 +392,7 @@ function FeaturedSkillDetailPopup({
                 </button>
               ))}
             </div>
-            <p className="text-[10px] text-zinc-600 mt-1.5">
+            <p className="text-xs text-zinc-600 mt-1.5">
               Skills are always installed to the central store (~/.vibelens/skills/)
             </p>
           </div>
@@ -401,18 +405,19 @@ function FeaturedSkillDetailPopup({
           </div>
         )}
 
+        {/* Source link */}
         {skill.source_url && (
-          <div>
-            <div className="flex items-center gap-1.5 text-xs text-zinc-500 mb-2">
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 text-xs text-zinc-400 shrink-0">
               <ExternalLink className="w-3 h-3" /> <span>Source</span>
             </div>
             <a
               href={skill.source_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs text-teal-400 hover:text-teal-300 underline underline-offset-2 transition"
+              className="inline-flex items-center gap-1.5 text-sm text-teal-400 hover:text-teal-300 underline underline-offset-2 transition truncate"
             >
-              {skill.source_url} <ExternalLink className="w-3 h-3" />
+              {skill.source_url} <ExternalLink className="w-3 h-3 shrink-0" />
             </a>
           </div>
         )}
@@ -437,7 +442,7 @@ function FeaturedSkillDetailPopup({
         )}
         {!installed ? (
           <button
-            onClick={handleInstall}
+            onClick={() => guardAction(handleInstall)}
             disabled={installing}
             className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium text-white bg-teal-600 hover:bg-teal-500 rounded transition disabled:opacity-50"
           >
@@ -450,6 +455,10 @@ function FeaturedSkillDetailPopup({
           </span>
         )}
       </ModalFooter>
+
+      {showInstallDialog && (
+        <InstallLocallyDialog onClose={() => setShowInstallDialog(false)} />
+      )}
     </Modal>
   );
 }

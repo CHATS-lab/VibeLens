@@ -33,22 +33,9 @@ def build_mock_friction_result(session_ids: list[str]) -> FrictionAnalysisResult
     step_id_pool = _collect_step_ids(session_ids)
     friction_types = _build_mock_types(step_id_pool)
     skipped = [sid for sid in session_ids if sid not in step_id_pool]
-    session_count = len(step_id_pool)
 
     return FrictionAnalysisResult(
-        title="Scope Violations and Misunderstood Intent",
-        user_profile=(
-            "Full-stack developer working on auth, API, and frontend components.\n"
-            "- Prefers incremental changes over rewrites\n"
-            "- Expects tested code on first attempt"
-        ),
-        summary=(
-            f"Agent frequently misunderstood intent across "
-            f"{session_count} session{'s' if session_count != 1 else ''}.\n"
-            f"- {len(friction_types)} friction categories detected, mostly from scope violations\n"
-            "- Repeated pattern of editing files not mentioned in the request\n"
-            "- User had to correct or revert changes multiple times"
-        ),
+        title="Agent Often Changed More Than Requested and Misread Your Requirements",
         mitigations=[
             Mitigation(
                 title="Confirm requirements before coding",

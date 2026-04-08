@@ -17,7 +17,6 @@ import {
   Target,
   Timer,
   TrendingUp,
-  User,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type {
@@ -30,10 +29,14 @@ import type {
   StepRef,
   WorkflowPattern,
 } from "../../types";
+import { useDemoGuard } from "../../hooks/use-demo-guard";
 import { BulletText } from "../bullet-text";
+import { TutorialBanner } from "../analysis-welcome";
 import { DemoBanner } from "../demo-banner";
+import { InstallLocallyDialog } from "../install-locally-dialog";
 import { LoadingSpinnerRings } from "../loading-spinner";
 import { Tooltip } from "../tooltip";
+import { SHOW_ANALYSIS_DETAIL_SECTIONS } from "../../styles";
 import { WarningsBanner } from "../warnings-banner";
 import { applySkillEdits } from "./skill-edit-utils";
 import { EvolutionDiffView } from "./skill-evolution-diff";
@@ -80,11 +83,13 @@ export function AnalysisResultView({
   activeTab,
   onNew,
   fetchWithToken,
+  tutorial,
 }: {
   result: SkillAnalysisResult;
   activeTab: SkillTab;
   onNew: () => void;
   fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
+  tutorial?: { title: string; description: string };
 }) {
   const [agentSources, setAgentSources] = useState<SkillSourceInfo[]>([]);
 
@@ -104,12 +109,10 @@ export function AnalysisResultView({
       {result.backend_id === "mock" && <DemoBanner />}
       {/* Header */}
       <ResultHeader result={result} onNew={onNew} mode={result.mode} />
+      {tutorial && <TutorialBanner tutorial={tutorial} accentColor="teal" />}
       {result.warnings && result.warnings.length > 0 && (
         <WarningsBanner warnings={result.warnings} />
       )}
-
-      {/* Summary card */}
-      <SummaryCard summary={result.summary} userProfile={result.user_profile} />
 
       {/* Recommended Skills (Recommend) */}
       {activeTab === "retrieve" && result.recommendations.length > 0 && (
@@ -142,7 +145,7 @@ export function AnalysisResultView({
       )}
 
       {/* Workflow Patterns — shown at the bottom */}
-      {result.workflow_patterns.length > 0 && (
+      {SHOW_ANALYSIS_DETAIL_SECTIONS && result.workflow_patterns.length > 0 && (
         <PatternSection patterns={result.workflow_patterns} />
       )}
 
@@ -189,41 +192,14 @@ function ResultHeader({
           </p>
         </div>
       </div>
-      <button
-        onClick={onNew}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-teal-200 hover:text-white bg-teal-600/20 hover:bg-teal-600/40 border border-teal-500/40 rounded-lg transition"
-      >
-        <Plus className="w-3.5 h-3.5" /> New
-      </button>
-    </div>
-  );
-}
-
-function SummaryCard({ summary, userProfile }: { summary: string; userProfile: string }) {
-  return (
-    <div className="border border-zinc-700/40 rounded-xl bg-zinc-900/60 overflow-hidden">
-      {/* Summary */}
-      <div className="px-5 pt-4 pb-4">
-        <div className="flex items-center gap-2 mb-2.5">
-          <div className="p-1.5 rounded-lg bg-zinc-700/30">
-            <Sparkles className="w-4 h-4 text-teal-400" />
-          </div>
-          <h3 className="text-sm font-semibold text-zinc-100">Summary</h3>
-        </div>
-        <BulletText text={summary} className="text-sm text-zinc-200 leading-relaxed pl-[2.375rem]" />
-      </div>
-      {/* User Profile */}
-      {userProfile && (
-        <div className="px-5 pt-4 pb-4 border-t border-zinc-700/40">
-          <div className="flex items-center gap-2 mb-2.5">
-            <div className="p-1.5 rounded-lg bg-zinc-700/30">
-              <User className="w-4 h-4 text-teal-400" />
-            </div>
-            <h3 className="text-sm font-semibold text-zinc-100">User Profile</h3>
-          </div>
-          <BulletText text={userProfile} className="text-sm text-zinc-300 leading-relaxed pl-[2.375rem]" />
-        </div>
-      )}
+      <Tooltip text="Analyze New Sessions">
+        <button
+          onClick={onNew}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-teal-200 hover:text-white bg-teal-600/20 hover:bg-teal-600/40 border border-teal-500/40 rounded-lg transition"
+        >
+          <Plus className="w-3.5 h-3.5" /> New
+        </button>
+      </Tooltip>
     </div>
   );
 }
@@ -243,7 +219,7 @@ function SectionHeader({
     <Tooltip text={tooltip}>
       <div className="flex items-center gap-2 mb-3 cursor-help">
         <span className={accentColor}>{icon}</span>
-        <h3 className="text-base font-semibold text-zinc-100">{title}</h3>
+        <h3 className="text-lg font-semibold text-zinc-100">{title}</h3>
       </div>
     </Tooltip>
   );
@@ -289,8 +265,8 @@ function PatternSection({ patterns }: { patterns: WorkflowPattern[] }) {
     <section>
       <SectionHeader
         icon={<Target className="w-5 h-5" />}
-        title="Workflow Patterns"
-        tooltip="Recurring patterns detected across sessions"
+        title="How You Work"
+        tooltip="Recurring habits and patterns found across your sessions"
       />
       <div className="space-y-3">
         {patterns.map((p, i) => <PatternCard key={i} pattern={p} index={i} />)}
@@ -417,10 +393,12 @@ function RecommendationCard({
   fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
   agentSources: SkillSourceInfo[];
 }) {
+  const { guardAction, showInstallDialog, setShowInstallDialog } = useDemoGuard();
   const [showPreview, setShowPreview] = useState(false);
   const [previewContent, setPreviewContent] = useState<string | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [installed, setInstalled] = useState(false);
+  const [rationaleExpanded, setRationaleExpanded] = useState(true);
   const [patternsExpanded, setPatternsExpanded] = useState(false);
 
   const matchedPatterns = workflowPatterns.filter((p) =>
@@ -477,7 +455,7 @@ function RecommendationCard({
             ) : (
               <Tooltip text="Preview and install skill">
                 <button
-                  onClick={handlePreview}
+                  onClick={() => guardAction(handlePreview)}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-teal-600 hover:bg-teal-500 rounded-lg transition"
                 >
                   <Eye className="w-3.5 h-3.5" />
@@ -495,16 +473,24 @@ function RecommendationCard({
         )}
       </div>
 
-      {/* Why This is Useful */}
+      {/* Why this helps */}
       <div className="px-5 py-3 border-t border-teal-700/20">
-        <div className="flex items-center gap-1.5 mb-1.5">
+        <button
+          onClick={() => setRationaleExpanded(!rationaleExpanded)}
+          className="flex items-center gap-1.5 text-xs hover:opacity-80 transition"
+        >
+          {rationaleExpanded
+            ? <ChevronDown className="w-3.5 h-3.5 text-teal-400" />
+            : <ChevronRight className="w-3.5 h-3.5 text-teal-400" />}
           <Lightbulb className="w-3.5 h-3.5 text-teal-400" />
-          <span className="text-sm font-semibold text-teal-300 uppercase tracking-wide">Why This is Useful</span>
-        </div>
-        <BulletText text={rec.rationale} className="text-sm text-zinc-200 leading-relaxed" />
+          <span className="text-sm font-semibold text-teal-300 uppercase tracking-wide">Why this helps</span>
+        </button>
+        {rationaleExpanded && (
+          <BulletText text={rec.rationale} className="text-sm text-zinc-200 leading-relaxed mt-1.5" />
+        )}
       </div>
 
-      {/* Toggleable Addressed Workflow Patterns */}
+      {/* Toggleable What this covers */}
       {matchedPatterns.length > 0 && (
         <div className="px-5 py-3 border-t border-teal-700/20">
           <button
@@ -515,7 +501,7 @@ function RecommendationCard({
               ? <ChevronDown className="w-3.5 h-3.5 text-teal-400" />
               : <ChevronRight className="w-3.5 h-3.5 text-teal-400" />}
             <Target className="w-3.5 h-3.5 text-teal-400" />
-            <span className="text-sm font-semibold text-teal-300 uppercase tracking-wide">Addressed Workflow Patterns</span>
+            <span className="text-sm font-semibold text-teal-300 uppercase tracking-wide">What this covers</span>
             <span className="text-zinc-500">({matchedPatterns.length})</span>
           </button>
           {patternsExpanded && (
@@ -540,6 +526,9 @@ function RecommendationCard({
           agentSources={agentSources}
           loading={loadingPreview}
         />
+      )}
+      {showInstallDialog && (
+        <InstallLocallyDialog onClose={() => setShowInstallDialog(false)} />
       )}
     </div>
   );
@@ -618,9 +607,11 @@ function CreatedSkillCard({
   fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
   agentSources: SkillSourceInfo[];
 }) {
+  const { guardAction, showInstallDialog, setShowInstallDialog } = useDemoGuard();
   const [showPreview, setShowPreview] = useState(false);
   const [installed, setInstalled] = useState(false);
   const [editedContent, setEditedContent] = useState(skill.skill_md_content);
+  const [rationaleExpanded, setRationaleExpanded] = useState(true);
   const [patternsExpanded, setPatternsExpanded] = useState(false);
 
   const matchedPatterns = workflowPatterns.filter((p) =>
@@ -670,7 +661,7 @@ function CreatedSkillCard({
             ) : (
               <Tooltip text="Preview and install skill">
                 <button
-                  onClick={() => setShowPreview(true)}
+                  onClick={() => guardAction(() => setShowPreview(true))}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg transition"
                 >
                   <Eye className="w-3.5 h-3.5" />
@@ -686,16 +677,24 @@ function CreatedSkillCard({
         </p>
       </div>
 
-      {/* Why This is Useful */}
+      {/* Why this helps */}
       <div className="px-5 py-3 border-t border-emerald-700/20">
-        <div className="flex items-center gap-1.5 mb-1.5">
+        <button
+          onClick={() => setRationaleExpanded(!rationaleExpanded)}
+          className="flex items-center gap-1.5 text-xs hover:opacity-80 transition"
+        >
+          {rationaleExpanded
+            ? <ChevronDown className="w-3.5 h-3.5 text-emerald-400" />
+            : <ChevronRight className="w-3.5 h-3.5 text-emerald-400" />}
           <Lightbulb className="w-3.5 h-3.5 text-emerald-400" />
-          <span className="text-sm font-semibold text-emerald-300 uppercase tracking-wide">Why This is Useful</span>
-        </div>
-        <BulletText text={skill.rationale} className="text-sm text-zinc-200 leading-relaxed" />
+          <span className="text-sm font-semibold text-emerald-300 uppercase tracking-wide">Why this helps</span>
+        </button>
+        {rationaleExpanded && (
+          <BulletText text={skill.rationale} className="text-sm text-zinc-200 leading-relaxed mt-1.5" />
+        )}
       </div>
 
-      {/* Toggleable Addressed Workflow Patterns */}
+      {/* Toggleable What this covers */}
       {matchedPatterns.length > 0 && (
         <div className="px-5 py-3 border-t border-emerald-700/20">
           <button
@@ -706,7 +705,7 @@ function CreatedSkillCard({
               ? <ChevronDown className="w-3.5 h-3.5 text-emerald-400" />
               : <ChevronRight className="w-3.5 h-3.5 text-emerald-400" />}
             <Target className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="text-sm font-semibold text-emerald-300 uppercase tracking-wide">Addressed Workflow Patterns</span>
+            <span className="text-sm font-semibold text-emerald-300 uppercase tracking-wide">What this covers</span>
             <span className="text-zinc-500">({matchedPatterns.length})</span>
           </button>
           {patternsExpanded && (
@@ -731,6 +730,9 @@ function CreatedSkillCard({
           onCancel={() => setShowPreview(false)}
           agentSources={agentSources}
         />
+      )}
+      {showInstallDialog && (
+        <InstallLocallyDialog onClose={() => setShowInstallDialog(false)} />
       )}
     </div>
   );
@@ -783,8 +785,10 @@ function EvolutionCard({
   fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
   agentSources: SkillSourceInfo[];
 }) {
+  const { guardAction, showInstallDialog, setShowInstallDialog } = useDemoGuard();
   const [expanded, setExpanded] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [rationaleExpanded, setRationaleExpanded] = useState(true);
   const [patternsExpanded, setPatternsExpanded] = useState(false);
 
   const matchedPatterns = workflowPatterns.filter((p) =>
@@ -883,7 +887,7 @@ function EvolutionCard({
             ) : (
               <Tooltip text="Preview merged result">
                 <button
-                  onClick={handlePreview}
+                  onClick={() => guardAction(handlePreview)}
                   disabled={loadingOriginal}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-teal-600 hover:bg-teal-500 rounded-lg transition disabled:opacity-50"
                 >
@@ -905,16 +909,24 @@ function EvolutionCard({
         )}
       </div>
 
-      {/* Why This is Useful */}
+      {/* Why this helps */}
       <div className="px-5 py-3 border-t border-teal-700/20">
-        <div className="flex items-center gap-1.5 mb-1.5">
+        <button
+          onClick={() => setRationaleExpanded(!rationaleExpanded)}
+          className="flex items-center gap-1.5 text-xs hover:opacity-80 transition"
+        >
+          {rationaleExpanded
+            ? <ChevronDown className="w-3.5 h-3.5 text-teal-400" />
+            : <ChevronRight className="w-3.5 h-3.5 text-teal-400" />}
           <Lightbulb className="w-3.5 h-3.5 text-teal-400" />
-          <span className="text-sm font-semibold text-teal-300 uppercase tracking-wide">Why This is Useful</span>
-        </div>
-        <BulletText text={suggestion.rationale} className="text-sm text-zinc-200 leading-relaxed" />
+          <span className="text-sm font-semibold text-teal-300 uppercase tracking-wide">Why this helps</span>
+        </button>
+        {rationaleExpanded && (
+          <BulletText text={suggestion.rationale} className="text-sm text-zinc-200 leading-relaxed mt-1.5" />
+        )}
       </div>
 
-      {/* Toggleable Addressed Workflow Patterns */}
+      {/* Toggleable What this covers */}
       {matchedPatterns.length > 0 && (
         <div className="px-5 py-3 border-t border-teal-700/20">
           <button
@@ -925,7 +937,7 @@ function EvolutionCard({
               ? <ChevronDown className="w-3.5 h-3.5 text-teal-400" />
               : <ChevronRight className="w-3.5 h-3.5 text-teal-400" />}
             <Target className="w-3.5 h-3.5 text-teal-400" />
-            <span className="text-sm font-semibold text-teal-300 uppercase tracking-wide">Addressed Workflow Patterns</span>
+            <span className="text-sm font-semibold text-teal-300 uppercase tracking-wide">What this covers</span>
             <span className="text-zinc-500">({matchedPatterns.length})</span>
           </button>
           {patternsExpanded && (
@@ -975,6 +987,9 @@ function EvolutionCard({
           agentSources={agentSources}
           variant="update"
         />
+      )}
+      {showInstallDialog && (
+        <InstallLocallyDialog onClose={() => setShowInstallDialog(false)} />
       )}
     </div>
   );

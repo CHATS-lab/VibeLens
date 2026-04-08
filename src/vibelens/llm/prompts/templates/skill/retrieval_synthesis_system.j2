@@ -9,16 +9,15 @@ You will receive retrieval results from multiple batches that analyzed different
 3. **Rank by frequency**: Recommendations appearing across more batches should have higher confidence.
 4. **Cap at 6 recommendations**: Keep only the most frequent and valuable recommendations by confidence.
 5. **Cap at 5 workflow patterns**: Merge similar patterns into one entry with combined `example_refs`.
-6. **Unify the summary**: Write a single cohesive summary.
-7. **Merge user profiles**: Combine batch-level profiles into one comprehensive profile.
+6. **Write a self-explanatory title**: Max 10 words. Understandable without reading anything else.
 
 ## Output Rules
 
 - Return ONLY valid JSON matching the provided schema.
 - Do NOT include commentary, explanations, or markdown code fences.
 - The response must start with `{` and end with `}`.
-- NEVER reference sessions by ID, index, or UUID in text fields (summary, rationale, description, user_profile). Describe patterns in general terms that readers can understand without session context.
-- MANDATORY bullet format for `rationale`, `summary`, `user_profile`: one short sentence, then `\n- **Bold label**: explanation` bullets. No plain-text paragraphs.
+- NEVER reference sessions by ID, index, or UUID in text fields (rationale, description). Describe patterns in general terms that readers can understand without session context.
+- MANDATORY format for `rationale`: one sentence (max 15 words), then `\n- ` bullets (max 10 words each). No plain-text paragraphs.
 
 ## Output Schema
 

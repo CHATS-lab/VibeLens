@@ -1,9 +1,9 @@
-import { ArrowLeft, ExternalLink, Package, Play, Settings, Terminal } from "lucide-react";
+import { ArrowLeft, Lightbulb, Play, Settings } from "lucide-react";
 import { useState } from "react";
 import type { LLMStatus } from "../types";
 import { DemoBanner } from "./demo-banner";
+import { InstallLocallyDialog } from "./install-locally-dialog";
 import { LLMConfigForm } from "./llm-config";
-import { Modal, ModalBody, ModalFooter, ModalHeader } from "./modal";
 import { Tooltip } from "./tooltip";
 
 type AccentColor = "amber" | "teal" | "cyan";
@@ -20,6 +20,49 @@ const ACCENT_LINK: Record<AccentColor, string> = {
   cyan: "text-cyan-400 hover:text-cyan-300",
 };
 
+const ACCENT_TUTORIAL: Record<AccentColor, {
+  border: string;
+  bg: string;
+  radial: string;
+  iconBg: string;
+  iconColor: string;
+  title: string;
+  desc: string;
+}> = {
+  amber: {
+    border: "border-amber-800/40",
+    bg: "bg-gradient-to-r from-amber-950/40 via-amber-900/20 to-orange-950/40",
+    radial: "bg-[radial-gradient(ellipse_at_top_right,rgba(234,88,12,0.08),transparent_60%)]",
+    iconBg: "bg-amber-500/15 border border-amber-500/20",
+    iconColor: "text-amber-400",
+    title: "text-amber-300",
+    desc: "text-amber-400/70",
+  },
+  teal: {
+    border: "border-teal-800/40",
+    bg: "bg-gradient-to-r from-teal-950/40 via-teal-900/20 to-indigo-950/40",
+    radial: "bg-[radial-gradient(ellipse_at_top_right,rgba(139,92,246,0.08),transparent_60%)]",
+    iconBg: "bg-teal-500/15 border border-teal-500/20",
+    iconColor: "text-teal-400",
+    title: "text-teal-300",
+    desc: "text-teal-400/70",
+  },
+  cyan: {
+    border: "border-cyan-800/40",
+    bg: "bg-gradient-to-r from-cyan-950/40 via-cyan-900/20 to-blue-950/40",
+    radial: "bg-[radial-gradient(ellipse_at_top_right,rgba(59,130,246,0.08),transparent_60%)]",
+    iconBg: "bg-cyan-500/15 border border-cyan-500/20",
+    iconColor: "text-cyan-400",
+    title: "text-cyan-300",
+    desc: "text-cyan-400/70",
+  },
+};
+
+export interface Tutorial {
+  title: string;
+  description: string;
+}
+
 interface AnalysisWelcomePageProps {
   icon: React.ReactNode;
   title: string;
@@ -33,6 +76,8 @@ interface AnalysisWelcomePageProps {
   error: string | null;
   onRun: () => void;
   isDemo?: boolean;
+  tutorial?: Tutorial;
+  tutorialAccentColor?: AccentColor;
 }
 
 export function AnalysisWelcomePage({
@@ -48,6 +93,8 @@ export function AnalysisWelcomePage({
   error,
   onRun,
   isDemo,
+  tutorial,
+  tutorialAccentColor,
 }: AnalysisWelcomePageProps) {
   const [view, setView] = useState<"intro" | "config">("intro");
   const [showInstallDialog, setShowInstallDialog] = useState(false);
@@ -95,6 +142,8 @@ export function AnalysisWelcomePage({
         <p className="text-sm text-zinc-400 mb-6 leading-relaxed">
           {description}
         </p>
+
+        {tutorial && <TutorialBanner tutorial={tutorial} accentColor={tutorialAccentColor ?? accentColor} />}
 
         {/* LLM status indicator */}
         {!isMock && (
@@ -161,59 +210,21 @@ export function AnalysisWelcomePage({
   );
 }
 
-function InstallLocallyDialog({ onClose }: { onClose: () => void }) {
-  const [copied, setCopied] = useState(false);
-
-  const installCommand = "pip install vibelens && vibelens serve";
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(installCommand);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
+export function TutorialBanner({ tutorial, accentColor }: { tutorial: Tutorial; accentColor: AccentColor }) {
+  const s = ACCENT_TUTORIAL[accentColor];
   return (
-    <Modal onClose={onClose} maxWidth="max-w-md">
-      <ModalHeader title="Install VibeLens Locally" onClose={onClose} />
-      <ModalBody>
-        <div className="flex items-center justify-center mb-2">
-          <div className="p-3 rounded-full bg-cyan-900/30 border border-cyan-700/30">
-            <Package className="w-6 h-6 text-cyan-400" />
-          </div>
+    <div className={`relative w-full px-4 py-3.5 rounded-lg ${s.border} ${s.bg} overflow-hidden text-left mb-6`}>
+      <div className={`absolute inset-0 ${s.radial}`} />
+      <div className="relative flex items-center gap-3">
+        <div className={`shrink-0 p-2 rounded-lg ${s.iconBg}`}>
+          <Lightbulb className={`w-4 h-4 ${s.iconColor}`} />
         </div>
-        <p className="text-sm text-zinc-300 text-center leading-relaxed">
-          LLM-powered analysis is available when running VibeLens on your own machine. Install it with one command:
-        </p>
-        <button
-          onClick={handleCopy}
-          className="w-full group flex items-center gap-2 px-4 py-3 bg-zinc-800 hover:bg-zinc-750 border border-zinc-700 rounded-lg transition text-left"
-        >
-          <Terminal className="w-4 h-4 text-zinc-500 shrink-0" />
-          <code className="text-sm text-cyan-300 flex-1 font-mono">{installCommand}</code>
-          <span className="text-xs text-zinc-500 group-hover:text-zinc-300 transition shrink-0">
-            {copied ? "Copied!" : "Copy"}
-          </span>
-        </button>
-        <div className="flex justify-center">
-          <a
-            href="https://github.com/yejh123/VibeLens"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-xs text-cyan-400 hover:text-cyan-300 transition"
-          >
-            <ExternalLink className="w-3 h-3" />
-            View on GitHub
-          </a>
+        <div className="flex-1 min-w-0">
+          <p className={`text-sm font-semibold ${s.title}`}>{tutorial.title}</p>
+          <p className={`text-sm ${s.desc} mt-0.5`}>{tutorial.description}</p>
         </div>
-      </ModalBody>
-      <ModalFooter>
-        <button
-          onClick={onClose}
-          className="px-4 py-2 text-sm text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-md transition"
-        >
-          Got it
-        </button>
-      </ModalFooter>
-    </Modal>
+      </div>
+    </div>
   );
 }
+

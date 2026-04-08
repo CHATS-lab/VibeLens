@@ -13,10 +13,8 @@ class SkillEvolutionProposal(BaseModel):
     skill_name: str = Field(description="Existing skill to evolve.")
     rationale: str = Field(
         description=(
-            "Plain-language explanation of what to improve and why. "
-            "One short summary sentence, then 1-3 bullet points. "
-            "Each bullet: '\\n- **Change**: concise reason'. "
-            "Keep under 60 words total. Avoid jargon."
+            "One sentence (max 15 words), then 1-3 bullets "
+            "starting with '\\n- ' (max 10 words each). Plain language, no jargon."
         )
     )
     suggested_changes: str = Field(description="High-level description of proposed changes.")
@@ -38,24 +36,13 @@ class SkillEvolutionProposalOutput(BaseModel):
 
     title: str = Field(
         default="",
-        description="Clear, reader-friendly title capturing the main finding. Max 8 words.",
-    )
-    user_profile: str = Field(
-        default="",
         description=(
-            "One plain sentence describing the user's role, then 1-2 bullets "
-            "with '\\n- **Topic**: detail'. Under 40 words. Avoid jargon."
+            "Self-explanatory title describing the main finding. "
+            "Understandable without reading the rest. Max 10 words."
         ),
     )
     workflow_patterns: list[WorkflowPattern] = Field(
         default_factory=list, description="Detected workflow patterns from trajectory analysis."
-    )
-    summary: str = Field(
-        description=(
-            "One plain sentence summarizing the key finding, then 2-4 bullets. "
-            "Each bullet: '\\n- **Finding**: concise explanation'. "
-            "Readable by non-experts. Under 80 words total."
-        )
     )
     proposals: list[SkillEvolutionProposal] = Field(
         default_factory=list, description="Evolution proposals for existing skills."
@@ -121,10 +108,8 @@ class SkillEvolution(BaseModel):
     edits: list[SkillEdit] = Field(description="Ordered list of granular edits to apply.")
     rationale: str = Field(
         description=(
-            "Plain-language explanation of what changed and why it helps. "
-            "One short summary sentence, then 1-3 bullet points. "
-            "Each bullet: '\\n- **Change**: concise benefit'. "
-            "Keep under 60 words total. Avoid jargon."
+            "One sentence (max 15 words), then 1-3 bullets "
+            "starting with '\\n- ' (max 10 words each). Plain language, no jargon."
         )
     )
     addressed_patterns: list[str] = Field(

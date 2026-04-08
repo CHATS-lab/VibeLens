@@ -2,7 +2,6 @@ import {
   Check,
   Code2,
   Copy,
-  FileText,
   Loader2,
   Package,
   Pencil,
@@ -12,12 +11,14 @@ import {
   Wrench,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Tooltip } from "../tooltip";
-import { Modal, ModalHeader, ModalBody } from "../modal";
+import { useDemoGuard } from "../../hooks/use-demo-guard";
+import type { SkillInfo, SkillSourceInfo } from "../../types";
+import { InstallLocallyDialog } from "../install-locally-dialog";
 import { MarkdownRenderer } from "../markdown-renderer";
+import { Modal, ModalHeader, ModalBody } from "../modal";
+import { Tooltip } from "../tooltip";
 import { SourceBadge, SubdirList, TagList, TagPill, ToolBadge, ToolList } from "./skill-badges";
 import { SOURCE_LABELS } from "./skill-constants";
-import type { SkillInfo, SkillSourceInfo } from "../../types";
 
 /** Compact card for a locally installed skill in the list view. */
 export function SkillCard({
@@ -99,6 +100,7 @@ export function SkillDetailPopup({
   fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
   onRefresh: () => void;
 }) {
+  const { guardAction, showInstallDialog, setShowInstallDialog } = useDemoGuard();
   const [skill, setSkill] = useState<SkillInfo>(initialSkill);
   const [content, setContent] = useState<string | null>(null);
   const [loadingContent, setLoadingContent] = useState(true);
@@ -178,42 +180,35 @@ export function SkillDetailPopup({
       </ModalHeader>
 
       <ModalBody>
-        <p className="text-sm text-zinc-300 leading-relaxed">
+        <p className="text-sm text-zinc-200 leading-relaxed">
           {skill.description || "No description"}
         </p>
 
-        {/* Sources */}
+        {/* Sources — inline row */}
         {skill.sources.length > 0 && (
-          <div>
-            <SectionLabel icon={<FileText className="w-3 h-3" />} label="Sources" />
-            <div className="space-y-1.5">
-              {skill.sources.map((src, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <SourceBadge sourceType={src.source_type} sourcePath={src.source_path} />
-                  <span className="text-[10px] text-zinc-500 font-mono truncate">{src.source_path}</span>
-                </div>
-              ))}
-            </div>
+          <div className="space-y-1.5">
+            {skill.sources.map((src, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <SourceBadge sourceType={src.source_type} sourcePath={src.source_path} />
+                <span className="text-xs text-zinc-400 font-mono truncate">{src.source_path}</span>
+              </div>
+            ))}
           </div>
         )}
 
-        {/* Tags */}
+        {/* Tags — inline row */}
         {tags.length > 0 && (
-          <div>
+          <div className="flex items-center gap-2 flex-wrap">
             <SectionLabel icon={<Tag className="w-3 h-3" />} label="Tags" />
-            <div className="flex flex-wrap gap-1.5">
-              {tags.map((tag) => <TagPill key={tag} tag={tag} />)}
-            </div>
+            {tags.map((tag) => <TagPill key={tag} tag={tag} />)}
           </div>
         )}
 
-        {/* Allowed Tools */}
+        {/* Allowed Tools — inline row */}
         {allowedTools.length > 0 && (
-          <div>
-            <SectionLabel icon={<Wrench className="w-3 h-3" />} label="Allowed Tools" />
-            <div className="flex flex-wrap gap-1.5">
-              {allowedTools.map((tool) => <ToolBadge key={tool} tool={tool} />)}
-            </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <SectionLabel icon={<Wrench className="w-3 h-3" />} label="Tools" />
+            {allowedTools.map((tool) => <ToolBadge key={tool} tool={tool} />)}
           </div>
         )}
 
@@ -236,9 +231,9 @@ export function SkillDetailPopup({
                 return (
                   <Tooltip key={src.key} text={isSynced ? `Synced to ${src.label}` : `Sync to ${src.label}`}>
                     <button
-                      onClick={() => handleSync(src.key)}
+                      onClick={() => guardAction(() => handleSync(src.key))}
                       disabled={syncing === src.key}
-                      className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium rounded-md border transition ${
+                      className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border transition ${
                         isSynced
                           ? "bg-emerald-900/20 text-emerald-400 border-emerald-700/30"
                           : "text-zinc-400 border-zinc-700/50 hover:text-zinc-200 hover:border-zinc-600"
@@ -258,7 +253,7 @@ export function SkillDetailPopup({
               })}
             </div>
             {syncMessage && (
-              <p className="text-[10px] text-emerald-400/70 mt-1.5">{syncMessage}</p>
+              <p className="text-xs text-emerald-400/70 mt-1.5">{syncMessage}</p>
             )}
           </div>
         )}
@@ -280,14 +275,18 @@ export function SkillDetailPopup({
           )}
         </div>
       </ModalBody>
+
+      {showInstallDialog && (
+        <InstallLocallyDialog onClose={() => setShowInstallDialog(false)} />
+      )}
     </Modal>
   );
 }
 
-/** Small label row used as section header inside detail popups. */
-function SectionLabel({ icon, label }: { icon?: React.ReactNode; label: string }) {
+/** Small label used as section header or inline label inside detail popups. */
+function SectionLabel({ icon, label, inline }: { icon?: React.ReactNode; label: string; inline?: boolean }) {
   return (
-    <div className="flex items-center gap-1.5 text-xs text-zinc-500 mb-2">
+    <div className={`flex items-center gap-1.5 text-xs text-zinc-400 shrink-0 ${inline ? "" : "mb-2"}`}>
       {icon}
       <span>{label}</span>
     </div>

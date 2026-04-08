@@ -28,20 +28,10 @@ class SkillAnalysisResult(BaseModel):
         default_factory=list, description="Session IDs that could not be loaded."
     )
     title: str = Field(
-        default="", description="Clear, reader-friendly analysis title. Max 8 words."
-    )
-    summary: str = Field(
-        description=(
-            "One plain sentence summarizing the key finding, then 2-4 bullets. "
-            "Each bullet: '\\n- **Finding**: concise explanation'. "
-            "Readable by non-experts. Under 80 words total."
-        )
-    )
-    user_profile: str = Field(
         default="",
         description=(
-            "One plain sentence describing the user's role, then 1-2 bullets "
-            "with '\\n- **Topic**: detail'. Under 40 words. Avoid jargon."
+            "Self-explanatory title describing the main finding. "
+            "Understandable without reading the rest. Max 10 words."
         ),
     )
     workflow_patterns: list[WorkflowPattern] = Field(
