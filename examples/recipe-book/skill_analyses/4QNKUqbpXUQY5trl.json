@@ -1,0 +1,118 @@
+{
+  "analysis_id": "4QNKUqbpXUQY5trl",
+  "mode": "evolution",
+  "session_ids": [
+    "09f6e57d-e9cb-4d80-83b5-644b06ba5050"
+  ],
+  "skipped_session_ids": [],
+  "title": "Two Skills Miss Steps You Always Do Manually",
+  "workflow_patterns": [
+    {
+      "title": "Planning the Whole Project Before Starting",
+      "description": "You ask the agent to build something, and it spends time making a detailed plan before writing any code. It explores folders and writes out every step first.",
+      "example_refs": [
+        {
+          "session_id": "09f6e57d-e9cb-4d80-83b5-644b06ba5050",
+          "start_step_id": "2851ce15-2b3a-4a23-8756-7fdd13932434",
+          "end_step_id": "0c4447d4-a5c8-4519-ba5c-5374c2a837ae"
+        }
+      ],
+      "frequency": 1
+    },
+    {
+      "title": "Creating Many Files at Once",
+      "description": "The agent creates multiple style and code files in batches, following the layout from the plan. Each file handles colors, layout, or animations separately.",
+      "example_refs": [
+        {
+          "session_id": "09f6e57d-e9cb-4d80-83b5-644b06ba5050",
+          "start_step_id": "0d743274-1776-4b7d-9062-bf7320b59a19",
+          "end_step_id": "df2befc0-ffcf-488a-9b61-57bbb80bdabe"
+        }
+      ],
+      "frequency": 1
+    },
+    {
+      "title": "Preview, Feedback, and Fix Rounds",
+      "description": "The agent starts the site locally, takes a screenshot, you review it and point out problems (wrong images, broken buttons), then the agent fixes and re-checks.",
+      "example_refs": [
+        {
+          "session_id": "09f6e57d-e9cb-4d80-83b5-644b06ba5050",
+          "start_step_id": "655decd2-4c91-4e71-b91b-536255dc7c34",
+          "end_step_id": "ab0818ab-7762-4517-8a1f-1676b071b04d"
+        },
+        {
+          "session_id": "09f6e57d-e9cb-4d80-83b5-644b06ba5050",
+          "start_step_id": "91b0eb4e-958f-4ff4-b590-0123a2ffd97d",
+          "end_step_id": "0ac22a63-368a-4d88-8f27-0afc54e97503"
+        }
+      ],
+      "frequency": 2
+    },
+    {
+      "title": "Searching for Images Online",
+      "description": "The agent uses a helper to search the web for image URLs, then puts those URLs into the site's code files.",
+      "example_refs": [
+        {
+          "session_id": "09f6e57d-e9cb-4d80-83b5-644b06ba5050",
+          "start_step_id": "9180e56d-20cb-444b-bf82-872ae91fa3aa",
+          "end_step_id": "572883c9-2f87-461b-9e77-26c30dbc5b4a"
+        }
+      ],
+      "frequency": 1
+    }
+  ],
+  "recommendations": [],
+  "creations": [],
+  "evolutions": [
+    {
+      "skill_name": "frontend-design",
+      "description": "Build polished frontend interfaces with dark themes, animations, and responsive CSS grid layouts.",
+      "edits": [
+        {
+          "old_string": "",
+          "new_string": "\n\n## Style File Organization for Static Sites\n\nWhen building static HTML/CSS/JS sites, split styles into five files by purpose:\n\n1. **variables.css** — All shared values: colors, spacing, fonts, shadows\n2. **base.css** — Default body styles, text sizes, scrollbar look\n3. **layout.css** — Header, grid for cards, footer, screen size adjustments\n4. **components.css** — Cards, popups, search box, filter buttons, labels\n5. **animations.css** — Entrance effects, hover changes, popup transitions\n\nNever put color or spacing values directly in other files. Always refer back to variables.css.\n\n### Image Strategy\n\nUse curated image URLs from Unsplash instead of random placeholder services:\n- Format: `https://images.unsplash.com/photo-{id}?w=800&h=600&fit=crop`\n- Each image should match its content (food photos for recipes, etc.)\n- Add `loading=\"lazy\"` to all `<img>` elements\n- Show a shimmer animation while images load\n\n### Before You Ship Checklist\n\nBefore declaring a static site complete, verify:\n- [ ] Popup close works: X button, clicking outside, and Escape key\n- [ ] Search box filters content correctly\n- [ ] Filter buttons toggle and filter cards\n- [ ] Tab key moves focus logically through the page\n- [ ] Screen reader announcements on changing content",
+          "replace_all": false
+        }
+      ],
+      "rationale": "The skill lacks guidance on organizing style files.\n- Missing checklist that would catch broken buttons\n- No image strategy led to wrong placeholder images",
+      "addressed_patterns": [
+        "Creating Many Files at Once",
+        "Preview, Feedback, and Fix Rounds"
+      ],
+      "confidence": 0.85
+    },
+    {
+      "skill_name": "webapp-testing",
+      "description": "Automated Playwright testing with screenshot comparison for web application visual verification.",
+      "edits": [
+        {
+          "old_string": "",
+          "new_string": "\n\n## Visual Review Steps for Static Sites\n\nWhen checking a static site during development, follow these steps:\n\n### Quick Start\n```bash\npython3 -m http.server 8080 &\n```\n\n### Take a Screenshot\n```python\nfrom playwright.sync_api import sync_playwright\n\nwith sync_playwright() as p:\n    browser = p.chromium.launch()\n    page = browser.new_page(viewport={'width': 1440, 'height': 900})\n    page.goto('http://localhost:8080', wait_until='networkidle')\n    page.wait_for_timeout(2000)  # Let images and animations finish\n    page.screenshot(path='/tmp/site-review.png', full_page=True)\n    browser.close()\n```\n\n### Check for Errors\nBefore taking the screenshot, listen for errors in the browser console:\n```python\nerrors = []\npage.on('console', lambda msg: errors.append(msg.text) if msg.type == 'error' else None)\n```\nTell the user about any errors alongside the screenshot.\n\n### Check Different Screen Sizes\nTake screenshots at three widths to make sure the layout adjusts:\n- Desktop: 1440x900\n- Tablet: 768x1024\n- Phone: 375x812\n\n### Test That Buttons Work\nAfter the visual check, quickly test key interactions:\n```python\n# Test popup open and close\npage.click('.card:first-child')\nassert page.is_visible('.modal')\npage.keyboard.press('Escape')\nassert not page.is_visible('.modal')\n\n# Test search filtering\npage.fill('.search', 'pancake')\nassert page.locator('.card:visible').count() >= 1\n```",
+          "replace_all": false
+        }
+      ],
+      "rationale": "The skill lacks a structured visual review process.\n- Needs a screenshot template with error checking\n- Missing button tests that would catch the popup bug",
+      "addressed_patterns": [
+        "Preview, Feedback, and Fix Rounds"
+      ],
+      "confidence": 0.80
+    }
+  ],
+  "warnings": [],
+  "backend_id": "claude-cli",
+  "model": "claude-haiku-4-5",
+  "metrics": {
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "cached_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cost_usd": 0.0891475,
+    "prompt_token_ids": null,
+    "completion_token_ids": null,
+    "logprobs": null,
+    "extra": null
+  },
+  "duration_seconds": 98.41,
+  "batch_count": 1,
+  "created_at": "2026-04-06T14:18:47.331562+00:00"
+}

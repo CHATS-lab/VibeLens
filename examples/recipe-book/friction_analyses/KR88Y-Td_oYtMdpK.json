@@ -1,0 +1,101 @@
+{
+  "analysis_id": "KR88Y-Td_oYtMdpK",
+  "title": "Wrong Images and Broken Close Button Caused Rework",
+  "mitigations": [
+    {
+      "title": "Use food photos, not random images",
+      "action": "Use curated, content-relevant image URLs instead of random placeholder services that show unrelated pictures.",
+      "rationale": "Random placeholders showed landscapes instead of food.\n- Users judge recipe sites by food imagery\n- Curated images match the actual content",
+      "confidence": 0.92,
+      "addressed_friction_types": ["used-wrong-images"]
+    },
+    {
+      "title": "Test buttons before showing the site",
+      "action": "After adding interactive elements like modals and buttons, click each one to verify it works before presenting to the user.",
+      "rationale": "The close button looked correct but did nothing.\n- A quick click test catches missing connections\n- Prevents users from getting stuck",
+      "confidence": 0.88,
+      "addressed_friction_types": ["close-button-didnt-work"]
+    },
+    {
+      "title": "Check the site works before previewing",
+      "action": "Before showing a preview, run quick checks: click all buttons, test search, and verify images load correctly.",
+      "rationale": "Both image and button issues reached the user.\n- Quick checks catch obvious failures early\n- Prevents wasted review rounds",
+      "confidence": 0.78,
+      "addressed_friction_types": ["close-button-didnt-work", "used-wrong-images"]
+    }
+  ],
+  "friction_types": [
+    {
+      "type_name": "used-wrong-images",
+      "description": "You wanted food images for each recipe but the agent used a random image service that showed landscapes and objects instead.",
+      "severity": 4,
+      "example_refs": [
+        {
+          "session_id": "09f6e57d-e9cb-4d80-83b5-644b06ba5050",
+          "start_step_id": "7f5f17c9-61d5-4c9f-8034-29ce79d5ab9b",
+          "end_step_id": "572883c9-2f87-461b-9e77-26c30dbc5b4a"
+        }
+      ],
+      "friction_cost": {
+        "affected_steps": 42,
+        "affected_tokens": 85000,
+        "affected_time_seconds": 480
+      }
+    },
+    {
+      "type_name": "close-button-didnt-work",
+      "description": "The recipe detail popup had a close button that did nothing, leaving you stuck in the popup with no way to go back.",
+      "severity": 4,
+      "example_refs": [
+        {
+          "session_id": "09f6e57d-e9cb-4d80-83b5-644b06ba5050",
+          "start_step_id": "91b0eb4e-958f-4ff4-b590-0123a2ffd97d",
+          "end_step_id": "0ac22a63-368a-4d88-8f27-0afc54e97503"
+        }
+      ],
+      "friction_cost": {
+        "affected_steps": 5,
+        "affected_tokens": 12000,
+        "affected_time_seconds": 90
+      }
+    },
+    {
+      "type_name": "spent-too-long-planning",
+      "description": "You wanted to start building right away but the agent spent a long time exploring and planning before you interrupted it.",
+      "severity": 2,
+      "example_refs": [
+        {
+          "session_id": "09f6e57d-e9cb-4d80-83b5-644b06ba5050",
+          "start_step_id": "4eb17004-87a4-4e76-82ad-e67b6091502e",
+          "end_step_id": "9bf36d6e-b52a-476a-b493-61101010c494"
+        }
+      ],
+      "friction_cost": {
+        "affected_steps": 8,
+        "affected_tokens": 24000,
+        "affected_time_seconds": 180
+      }
+    }
+  ],
+  "session_ids": [
+    "09f6e57d-e9cb-4d80-83b5-644b06ba5050"
+  ],
+  "skipped_session_ids": [],
+  "warnings": [],
+  "backend_id": "claude-cli",
+  "model": "claude-haiku-4-5",
+  "metrics": {
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "cached_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cost_usd": 0.0523175,
+    "prompt_token_ids": null,
+    "completion_token_ids": null,
+    "logprobs": null,
+    "extra": null
+  },
+  "duration_seconds": 62.17,
+  "batch_count": 1,
+  "created_at": "2026-04-06T14:22:33.481927+00:00"
+}

@@ -1,0 +1,134 @@
+{
+  "analysis_id": "aDAryPfBnmyvPtSF",
+  "mode": "retrieval",
+  "session_ids": [
+    "09f6e57d-e9cb-4d80-83b5-644b06ba5050"
+  ],
+  "skipped_session_ids": [],
+  "title": "You Keep Repeating the Same Preview-Fix Steps",
+  "workflow_patterns": [
+    {
+      "title": "Planning the Whole Project Before Starting",
+      "description": "You ask the agent to build something, and it spends time making a detailed plan before writing any code. It explores folders and writes out every step first.",
+      "example_refs": [
+        {
+          "session_id": "09f6e57d-e9cb-4d80-83b5-644b06ba5050",
+          "start_step_id": "2851ce15-2b3a-4a23-8756-7fdd13932434",
+          "end_step_id": "0c4447d4-a5c8-4519-ba5c-5374c2a837ae"
+        }
+      ],
+      "frequency": 1
+    },
+    {
+      "title": "Creating Many Files at Once",
+      "description": "The agent creates multiple style and code files in batches, following the layout from the plan. Each file handles a specific concern like colors, layout, or animations.",
+      "example_refs": [
+        {
+          "session_id": "09f6e57d-e9cb-4d80-83b5-644b06ba5050",
+          "start_step_id": "0d743274-1776-4b7d-9062-bf7320b59a19",
+          "end_step_id": "df2befc0-ffcf-488a-9b61-57bbb80bdabe"
+        }
+      ],
+      "frequency": 1
+    },
+    {
+      "title": "Preview, Feedback, and Fix Rounds",
+      "description": "The agent starts the site locally, takes a screenshot, you review it and point out problems (wrong images, broken buttons), then the agent fixes and re-checks.",
+      "example_refs": [
+        {
+          "session_id": "09f6e57d-e9cb-4d80-83b5-644b06ba5050",
+          "start_step_id": "655decd2-4c91-4e71-b91b-536255dc7c34",
+          "end_step_id": "ab0818ab-7762-4517-8a1f-1676b071b04d"
+        },
+        {
+          "session_id": "09f6e57d-e9cb-4d80-83b5-644b06ba5050",
+          "start_step_id": "91b0eb4e-958f-4ff4-b590-0123a2ffd97d",
+          "end_step_id": "0ac22a63-368a-4d88-8f27-0afc54e97503"
+        }
+      ],
+      "frequency": 2
+    },
+    {
+      "title": "Searching for Images Online",
+      "description": "The agent uses a helper to search the web for image URLs, then puts those URLs into the site's code files.",
+      "example_refs": [
+        {
+          "session_id": "09f6e57d-e9cb-4d80-83b5-644b06ba5050",
+          "start_step_id": "9180e56d-20cb-444b-bf82-872ae91fa3aa",
+          "end_step_id": "572883c9-2f87-461b-9e77-26c30dbc5b4a"
+        }
+      ],
+      "frequency": 1
+    },
+    {
+      "title": "Fixing Bugs You Reported",
+      "description": "You told the agent a button wasn't working, it read the code, found the missing piece, fixed it, and confirmed it worked.",
+      "example_refs": [
+        {
+          "session_id": "09f6e57d-e9cb-4d80-83b5-644b06ba5050",
+          "start_step_id": "91b0eb4e-958f-4ff4-b590-0123a2ffd97d",
+          "end_step_id": "0ac22a63-368a-4d88-8f27-0afc54e97503"
+        }
+      ],
+      "frequency": 1
+    }
+  ],
+  "recommendations": [
+    {
+      "skill_name": "frontend-design",
+      "description": "Build polished frontend interfaces with dark themes, animations, and responsive CSS grid layouts.",
+      "rationale": "Matches your site-building workflow closely.\n- Covers dark themes, animations, and layouts\n- Addresses the multi-file creation pattern",
+      "addressed_patterns": [
+        "Creating Many Files at Once",
+        "Preview, Feedback, and Fix Rounds"
+      ],
+      "confidence": 0.88
+    },
+    {
+      "skill_name": "blueprint",
+      "description": "Convert high-level objectives into step-by-step implementation plans before writing code.",
+      "rationale": "Matches your plan-then-build approach directly.\n- Turns big requests into clear step-by-step plans",
+      "addressed_patterns": [
+        "Planning the Whole Project Before Starting"
+      ],
+      "confidence": 0.82
+    },
+    {
+      "skill_name": "webapp-testing",
+      "description": "Automated Playwright testing with screenshot comparison for web application visual verification.",
+      "rationale": "Directly helps with your preview-and-fix rounds.\n- Takes screenshots and checks for visual issues\n- Catches broken buttons before you see them",
+      "addressed_patterns": [
+        "Preview, Feedback, and Fix Rounds"
+      ],
+      "confidence": 0.78
+    },
+    {
+      "skill_name": "canvas-design",
+      "description": "Create polished visual designs with gradients, animations, and curated imagery for web projects.",
+      "rationale": "Partial match for visual polish needs.\n- Helps with gradients, animations, and images",
+      "addressed_patterns": [
+        "Creating Many Files at Once"
+      ],
+      "confidence": 0.55
+    }
+  ],
+  "creations": [],
+  "evolutions": [],
+  "warnings": [],
+  "backend_id": "claude-cli",
+  "model": "claude-haiku-4-5",
+  "metrics": {
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "cached_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cost_usd": 0.0687235,
+    "prompt_token_ids": null,
+    "completion_token_ids": null,
+    "logprobs": null,
+    "extra": null
+  },
+  "duration_seconds": 74.33,
+  "batch_count": 1,
+  "created_at": "2026-04-06T14:12:05.892341+00:00"
+}

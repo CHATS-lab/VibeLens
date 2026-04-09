@@ -30,7 +30,7 @@
   <img src="figures/comic-blurb.jpg" alt="VibeLens Comic — Understand your agent. Teach it. Master it.">
 </p>
 
-<p align="center"><em>Understand your agent. Teach it. Master it.</em></p>
+<p align="center"><em>Let your agent know you better!</em></p>
 
 ---
 
@@ -48,9 +48,9 @@ One install. Reads local logs. Works with **Claude Code**, **Codex CLI**, **Gemi
 |---------|-------------|
 | **Session visualization** | Step-by-step timeline with tool calls, thinking, and sub-agents |
 | **Dashboard analytics** | Usage heatmaps, cost breakdowns, and per-project stats |
-| **Productivity tips** | Spots retry loops, circular debugging, abandoned approaches across sessions |
+| **Productivity tips** | Detects recurring frustration patterns and suggests concrete fixes |
 | **Personalization** | Retrieve, customize, and evolve reusable skills from your real sessions |
-| **Session sharing** | One-click shareable links for team review |
+| **Session sharing** | Share sessions via one-click links |
 | **Multi-agent support** | Claude Code, Codex CLI, Gemini CLI, OpenClaw with auto-detection |
 
 ## Supported Agents
