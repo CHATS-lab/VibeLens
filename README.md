@@ -46,8 +46,8 @@ One install. Reads local logs. Works with **Claude Code**, **Codex CLI**, **Gemi
 
 | Feature | Description |
 |---------|-------------|
-| **Session visualization** | Step-by-step timeline with tool calls, thinking blocks, sub-agent spawns, and flow diagrams |
-| **Dashboard analytics** | Usage heatmaps, cost breakdowns by model, peak-hour histograms, per-project drill-downs |
+| **Session visualization** | Step-by-step timeline with tool calls, thinking, and sub-agents |
+| **Dashboard analytics** | Usage heatmaps, cost breakdowns, and per-project stats |
 | **Productivity tips** | Spots retry loops, circular debugging, abandoned approaches across sessions |
 | **Personalization** | Retrieve, customize, and evolve reusable skills from your real sessions |
 | **Session sharing** | One-click shareable links for team review |
