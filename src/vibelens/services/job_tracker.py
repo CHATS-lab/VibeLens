@@ -4,9 +4,9 @@ import asyncio
 import time
 from collections.abc import Coroutine
 from dataclasses import dataclass, field
-from enum import StrEnum
 from typing import Any
 
+from vibelens.utils.compat import StrEnum
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)

@@ -1,10 +1,9 @@
 """Shared skill analysis primitives used across all modes."""
 
-from enum import StrEnum
-
 from pydantic import BaseModel, Field, computed_field
 
 from vibelens.models.analysis.step_ref import StepRef
+from vibelens.utils.compat import StrEnum
 
 
 class SkillMode(StrEnum):

@@ -1,10 +1,9 @@
 """Source metadata for skills."""
 
-from enum import StrEnum
-
 from pydantic import BaseModel, Field
 
 from vibelens.models.enums import AgentType
+from vibelens.utils.compat import StrEnum
 
 
 class SkillSourceType(StrEnum):

@@ -1,8 +1,8 @@
 """Inference request and result models for LLM backends."""
 
-from enum import StrEnum
-
 from pydantic import BaseModel, Field
+
+from vibelens.utils.compat import StrEnum
 
 
 class BackendType(StrEnum):

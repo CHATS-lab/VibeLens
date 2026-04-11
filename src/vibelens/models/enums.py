@@ -1,6 +1,6 @@
 """Enumeration types for VibeLens domain models."""
 
-from enum import StrEnum
+from vibelens.utils.compat import StrEnum
 
 
 class AgentType(StrEnum):

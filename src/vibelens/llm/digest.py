@@ -4,9 +4,8 @@ Pure functions with no I/O. Produces token-efficient text representations
 of trajectory data at three depth levels for different context budgets.
 """
 
-from enum import StrEnum
-
 from vibelens.models.trajectories import Trajectory
+from vibelens.utils.compat import StrEnum
 from vibelens.utils.content import content_to_text, is_error_content, summarize_args, truncate
 
 # Character limits per message at each digest depth
