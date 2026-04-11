@@ -12,6 +12,7 @@ import json
 import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Optional
 
 from fastapi import HTTPException, UploadFile
 
@@ -124,7 +125,7 @@ async def _stream_to_disk(file: UploadFile, dest: Path, max_bytes: int) -> int:
     return total_written
 
 
-def _find_manifest_in_zip(names: list[str]) -> str | None:
+def _find_manifest_in_zip(names: list[str]) -> Optional[str]:
     """Find manifest.json in a ZIP, checking both root and one-level deep.
 
     Supports new-format ZIPs (``{donation_id}/manifest.json``) and

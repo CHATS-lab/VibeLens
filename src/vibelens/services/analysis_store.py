@@ -9,6 +9,7 @@ import json
 import secrets
 from collections.abc import Callable
 from pathlib import Path
+from typing import Generic, Optional, TypeVar
 
 from pydantic import BaseModel
 
@@ -16,6 +17,9 @@ from vibelens.utils.json import locked_jsonl_append, locked_jsonl_remove
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
+
+ResultT = TypeVar("ResultT", bound=BaseModel)
+MetaT = TypeVar("MetaT", bound=BaseModel)
 
 # Bytes of randomness for URL-safe analysis IDs (12 bytes → 16 chars)
 TOKEN_BYTES = 12
@@ -32,7 +36,7 @@ def generate_analysis_id() -> str:
     return secrets.token_urlsafe(TOKEN_BYTES)
 
 
-class AnalysisStore[ResultT: BaseModel, MetaT: BaseModel]:
+class AnalysisStore(Generic[ResultT, MetaT]):
     """Generic JSONL-indexed analysis store.
 
     Uses a single JSONL index file for metadata (fast listing) and
@@ -62,7 +66,7 @@ class AnalysisStore[ResultT: BaseModel, MetaT: BaseModel]:
     def _data_path(self, analysis_id: str) -> Path:
         return self._dir / f"{analysis_id}.json"
 
-    def save(self, result: ResultT, analysis_id: str | None = None) -> MetaT:
+    def save(self, result: ResultT, analysis_id: Optional[str] = None) -> MetaT:
         """Persist a result and append metadata to the JSONL index.
 
         Args:
@@ -81,7 +85,7 @@ class AnalysisStore[ResultT: BaseModel, MetaT: BaseModel]:
         logger.info("Saved analysis %s to %s", analysis_id, self._dir.name)
         return meta
 
-    def load(self, analysis_id: str) -> ResultT | None:
+    def load(self, analysis_id: str) -> Optional[ResultT]:
         """Load a full analysis result by ID."""
         path = self._data_path(analysis_id)
         if not path.exists():

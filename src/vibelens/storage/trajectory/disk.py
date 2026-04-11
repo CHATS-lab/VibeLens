@@ -13,6 +13,7 @@ are found automatically.
 import json
 import shutil
 from pathlib import Path
+from typing import Optional
 
 from vibelens.ingest.parsers.parsed import ParsedTrajectoryParser
 from vibelens.models.trajectories import Trajectory
@@ -37,7 +38,7 @@ class DiskTrajectoryStore(BaseTrajectoryStore):
     from TrajectoryStore.
     """
 
-    def __init__(self, root: Path, default_tags: dict | None = None) -> None:
+    def __init__(self, root: Path, default_tags: Optional[dict] = None) -> None:
         super().__init__()
         self._root = root
         self._parser = ParsedTrajectoryParser()

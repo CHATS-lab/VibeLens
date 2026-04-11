@@ -23,6 +23,7 @@ import json
 from collections import Counter
 from os.path import commonpath, dirname
 from pathlib import Path
+from typing import Optional
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
 from vibelens.ingest.parsers.base import BaseParser, mark_error_content
@@ -57,13 +58,13 @@ class GeminiParser(BaseParser):
     """
 
     AGENT_TYPE = AgentType.GEMINI
-    LOCAL_DATA_DIR: Path | None = Path.home() / ".gemini"
+    LOCAL_DATA_DIR: Optional[Path] = Path.home() / ".gemini"
 
     def discover_session_files(self, data_dir: Path) -> list[Path]:
         """Find Gemini session files inside chats/ directories."""
         return sorted(f for f in data_dir.rglob("session-*.json") if "chats" in f.parts)
 
-    def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
+    def parse(self, content: str, source_path: Optional[str] = None) -> list[Trajectory]:
         """Parse Gemini CLI session JSON content into a Trajectory.
 
         Args:
@@ -196,7 +197,9 @@ _PATH_ARG_KEYS = {"file_path", "path", "filename", "directory"}
 _MIN_PATH_DEPTH = 3
 
 
-def resolve_project_path(hash_dir: str, gemini_dir: Path, steps: list[Step] | None = None) -> str:
+def resolve_project_path(
+    hash_dir: str, gemini_dir: Path, steps: Optional[list[Step]] = None
+) -> str:
     """Resolve a Gemini SHA-256 hash directory to the original project path.
 
     Uses four strategies in order of speed:
@@ -347,7 +350,7 @@ def _extract_user_content(raw: dict) -> str:
     return coerce_to_string(raw.get("content", []))
 
 
-def _extract_thinking(raw: dict) -> str | None:
+def _extract_thinking(raw: dict) -> Optional[str]:
     """Extract concatenated thinking text from thoughts array.
 
     Gemini structures thinking as ``{subject, description, timestamp}``
@@ -369,7 +372,7 @@ def _extract_thinking(raw: dict) -> str | None:
     return "\n".join(parts) if parts else None
 
 
-def _parse_gemini_tokens(tokens: dict | None) -> Metrics | None:
+def _parse_gemini_tokens(tokens: Optional[dict]) -> Optional[Metrics]:
     """Parse Gemini CLI token statistics into Metrics."""
     if not tokens:
         return None
@@ -382,7 +385,7 @@ def _parse_gemini_tokens(tokens: dict | None) -> Metrics | None:
 
 def _build_tool_calls_and_observation(
     raw_tool_calls: list, session_id: str, msg_idx: int
-) -> tuple[list[ToolCall], Observation | None]:
+) -> tuple[list[ToolCall], Optional[Observation]]:
     """Convert Gemini CLI toolCalls into ToolCall objects and Observation.
 
     Gemini embeds the result directly inside each toolCall object,
@@ -426,7 +429,7 @@ def _build_tool_calls_and_observation(
     return calls, observation
 
 
-def _extract_tool_output(result: list) -> str | None:
+def _extract_tool_output(result: list) -> Optional[str]:
     """Extract output text from a Gemini toolCall result array."""
     if not result:
         return None

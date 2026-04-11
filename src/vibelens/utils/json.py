@@ -4,6 +4,7 @@ import fcntl
 import json
 import re
 from pathlib import Path
+from typing import Optional, Union
 
 from vibelens.utils.log import get_logger
 
@@ -15,7 +16,7 @@ logger = get_logger(__name__)
 _CODE_FENCE_RE = re.compile(r"```(?:json)?\s*\n(.*)\n```", re.DOTALL)
 
 
-def load_json_file(path: Path) -> dict | list | None:
+def load_json_file(path: Path) -> Optional[Union[dict, list]]:
     """Read and parse a JSON file, returning None on failure.
 
     Args:

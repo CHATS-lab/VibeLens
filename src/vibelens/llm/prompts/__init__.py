@@ -3,6 +3,8 @@
 Central lookup for all available AnalysisPrompt instances.
 """
 
+from typing import Optional
+
 from vibelens.llm.prompts.friction_analysis import FRICTION_ANALYSIS_PROMPT
 from vibelens.llm.prompts.skill_evolution import SKILL_EVOLUTION_PROPOSAL_PROMPT
 from vibelens.llm.prompts.skill_retrieval import SKILL_RETRIEVAL_PROMPT
@@ -15,7 +17,7 @@ PROMPT_REGISTRY: dict[str, AnalysisPrompt] = {
 }
 
 
-def get_prompt(task_id: str) -> AnalysisPrompt | None:
+def get_prompt(task_id: str) -> Optional[AnalysisPrompt]:
     """Look up a registered analysis prompt by task ID.
 
     Args:

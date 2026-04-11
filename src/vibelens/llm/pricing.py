@@ -7,6 +7,8 @@ Cost computation that operates on trajectory models lives in
 vibelens.services.dashboard.pricing.
 """
 
+from typing import Optional
+
 from vibelens.llm.normalizer import normalize_model_name
 from vibelens.models.llm.pricing import ModelPricing
 
@@ -331,7 +333,7 @@ PRICING_TABLE: dict[str, ModelPricing] = {
 }
 
 
-def lookup_pricing(model_name: str | None) -> ModelPricing | None:
+def lookup_pricing(model_name: Optional[str]) -> Optional[ModelPricing]:
     """Look up pricing for a model name.
 
     Tries exact match in PRICING_TABLE first, then normalizes.

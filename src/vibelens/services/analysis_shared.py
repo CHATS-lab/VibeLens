@@ -9,6 +9,7 @@ import asyncio
 import json
 from collections.abc import Coroutine
 from pathlib import Path
+from typing import Optional
 
 from vibelens.deps import get_inference_backend
 from vibelens.llm.backend import InferenceBackend, InferenceError
@@ -48,7 +49,7 @@ def require_backend() -> InferenceBackend:
 
 
 def extract_all_contexts(
-    session_ids: list[str], session_token: str | None, params: ContextParams = PRESET_DETAIL
+    session_ids: list[str], session_token: Optional[str], params: ContextParams = PRESET_DETAIL
 ) -> SessionContextBatch:
     """Load sessions and extract compressed contexts.
 

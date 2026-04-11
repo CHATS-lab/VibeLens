@@ -1,5 +1,7 @@
 """File upload endpoints — thin HTTP layer delegating to services."""
 
+from typing import Optional
+
 from fastapi import APIRouter, Form, Header, HTTPException, UploadFile
 
 from vibelens.models.enums import AgentType
@@ -29,7 +31,7 @@ async def get_upload_commands(agent_type: str, os_platform: str) -> dict:
 
 @router.post("/upload/zip")
 async def upload_zip(
-    file: UploadFile, agent_type: str = Form(...), x_session_token: str | None = Header(None)
+    file: UploadFile, agent_type: str = Form(...), x_session_token: Optional[str] = Header(None)
 ) -> UploadResult:
     """Upload a zip archive of agent conversation data.
 

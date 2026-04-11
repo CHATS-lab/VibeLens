@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import Optional
 
 from vibelens.ingest.parsers.claude_code_web import ClaudeCodeWebParser
 from vibelens.models.enums import StepSource
@@ -13,7 +14,7 @@ DATASET_DIR_2 = Path("datasets/data-2026-03-29-19-48-24-batch-0000")
 
 
 def _make_conversation(
-    uuid: str = "conv-001", name: str = "Test Conversation", chat_messages: list | None = None
+    uuid: str = "conv-001", name: str = "Test Conversation", chat_messages: Optional[list] = None
 ) -> dict:
     """Build a minimal conversation dict."""
     return {
@@ -31,7 +32,7 @@ def _human_msg(
     uuid: str = "msg-h1",
     text: str = "Hello",
     created_at: str = "2025-10-24T19:39:14.000000Z",
-    attachments: list | None = None,
+    attachments: Optional[list] = None,
 ) -> dict:
     """Build a human chat_message."""
     return {
@@ -46,7 +47,7 @@ def _human_msg(
 
 def _assistant_msg(
     uuid: str = "msg-a1",
-    content_blocks: list | None = None,
+    content_blocks: Optional[list] = None,
     created_at: str = "2025-10-24T19:39:16.000000Z",
 ) -> dict:
     """Build an assistant chat_message."""

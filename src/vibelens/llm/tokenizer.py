@@ -7,12 +7,14 @@ The encoder is lazily loaded on first use and cached as a module-level
 singleton to avoid repeated initialization overhead.
 """
 
+from typing import Optional
+
 import tiktoken
 
 # tiktoken encoding shared by Claude, GPT-4, and most modern LLMs
 ENCODING_NAME = "cl100k_base"
 
-_encoder: tiktoken.Encoding | None = None
+_encoder: Optional[tiktoken.Encoding] = None
 
 
 def _get_encoder() -> tiktoken.Encoding:

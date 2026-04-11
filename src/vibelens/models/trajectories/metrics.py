@@ -1,6 +1,6 @@
 """Metrics model for ATIF trajectories."""
 
-from typing import Any
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -25,19 +25,19 @@ class Metrics(BaseModel):
         default=0,
         description="[VibeLens] Tokens written into the prompt cache (Anthropic-specific).",
     )
-    cost_usd: float | None = Field(
+    cost_usd: Optional[float] = Field(
         default=None, description="Monetary cost of the API call in USD."
     )
-    prompt_token_ids: list[int] | None = Field(
+    prompt_token_ids: Optional[list[int]] = Field(
         default=None, description="Token IDs for prompt tokens sent to the LLM (ATIF v1.4)."
     )
-    completion_token_ids: list[int] | None = Field(
+    completion_token_ids: Optional[list[int]] = Field(
         default=None,
         description="Token IDs for completion tokens, enabling RL training (ATIF v1.3).",
     )
-    logprobs: list[float] | None = Field(
+    logprobs: Optional[list[float]] = Field(
         default=None, description="Log probability assigned to each generated token."
     )
-    extra: dict[str, Any] | None = Field(
+    extra: Optional[dict[str, Any]] = Field(
         default=None, description="Custom metrics not covered by ATIF core fields."
     )

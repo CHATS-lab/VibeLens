@@ -2,6 +2,7 @@
 
 import time
 from datetime import datetime, timedelta
+from typing import Optional
 
 from cachetools import TTLCache
 
@@ -41,11 +42,11 @@ _tool_usage_cache: TTLCache = TTLCache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL_SECO
 
 
 def load_filtered_trajectories(
-    project_path: str | None,
-    date_from: str | None,
-    date_to: str | None,
-    session_token: str | None,
-    agent_name: str | None = None,
+    project_path: Optional[str],
+    date_from: Optional[str],
+    date_to: Optional[str],
+    session_token: Optional[str],
+    agent_name: Optional[str] = None,
 ) -> tuple[list[Trajectory], list[dict]]:
     """Load all trajectories matching the filters.
 
@@ -70,11 +71,11 @@ def load_filtered_trajectories(
 
 
 def get_dashboard_stats(
-    project_path: str | None,
-    date_from: str | None,
-    date_to: str | None,
-    session_token: str | None,
-    agent_name: str | None = None,
+    project_path: Optional[str],
+    date_from: Optional[str],
+    date_to: Optional[str],
+    session_token: Optional[str],
+    agent_name: Optional[str] = None,
 ) -> DashboardStats:
     """Compute dashboard stats with caching and session count reconciliation.
 
@@ -116,11 +117,11 @@ def get_dashboard_stats(
 
 
 def get_tool_usage(
-    project_path: str | None,
-    date_from: str | None,
-    date_to: str | None,
-    session_token: str | None,
-    agent_name: str | None = None,
+    project_path: Optional[str],
+    date_from: Optional[str],
+    date_to: Optional[str],
+    session_token: Optional[str],
+    agent_name: Optional[str] = None,
 ) -> list[ToolUsageStat]:
     """Compute per-tool usage statistics with caching.
 
@@ -149,7 +150,9 @@ def get_tool_usage(
     return result
 
 
-def get_session_analytics(session_id: str, session_token: str | None) -> SessionAnalytics | None:
+def get_session_analytics(
+    session_id: str, session_token: Optional[str]
+) -> Optional[SessionAnalytics]:
     """Compute detailed analytics for a single session.
 
     Args:
@@ -206,7 +209,7 @@ def warm_cache() -> None:
 
 
 def _load_and_enrich_trajectories(
-    metadata: list[dict], session_token: str | None, batch_size: int = 0
+    metadata: list[dict], session_token: Optional[str], batch_size: int = 0
 ) -> list[Trajectory]:
     """Load trajectories from metadata, enriching project_path from skeleton data.
 

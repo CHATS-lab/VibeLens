@@ -14,6 +14,7 @@ import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import PurePosixPath
+from typing import Optional
 
 from vibelens.models.context import SessionContext
 from vibelens.models.enums import StepSource
@@ -60,7 +61,7 @@ class _IndexTracker:
 def extract_session_context(
     trajectory_group: list[Trajectory],
     params: ContextParams = PRESET_DETAIL,
-    session_index: int | None = None,
+    session_index: Optional[int] = None,
 ) -> SessionContext:
     """Extract compressed context from a session's trajectory group.
 
@@ -138,7 +139,9 @@ def _find_compaction_agents(trajectory_group: list[Trajectory]) -> list[Trajecto
     return compaction
 
 
-def _build_header(main: Trajectory, params: ContextParams, session_index: int | None = None) -> str:
+def _build_header(
+    main: Trajectory, params: ContextParams, session_index: Optional[int] = None
+) -> str:
     """Build the session header block with optional path shortening."""
     index_suffix = f" (index={session_index})" if session_index is not None else ""
     lines = [f"=== SESSION: {main.session_id}{index_suffix} ==="]
@@ -214,7 +217,7 @@ def _extract_without_compactions(
 
 def _build_compaction_boundaries(
     compaction_agents: list[Trajectory],
-) -> list[tuple[datetime | None, str]]:
+) -> list[tuple[Optional[datetime], str]]:
     """Build timestamped compaction summaries sorted by timestamp.
 
     Each compaction agent typically has step[0] as system/user prompt and
@@ -224,7 +227,7 @@ def _build_compaction_boundaries(
     Returns:
         Sorted list of (timestamp, summary_text) pairs.
     """
-    boundaries: list[tuple[datetime | None, str]] = []
+    boundaries: list[tuple[Optional[datetime], str]] = []
     for agent in compaction_agents:
         for step in agent.steps:
             if step.source == StepSource.AGENT:

@@ -1,7 +1,7 @@
 """Step model for ATIF trajectories."""
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional, Union
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -30,40 +30,42 @@ class Step(BaseModel):
             "UUID strings for stable cross-session referencing."
         )
     )
-    timestamp: datetime | None = Field(default=None, description="When the step was created.")
+    timestamp: Optional[datetime] = Field(default=None, description="When the step was created.")
     source: StepSource = Field(description="The originator of this step.")
-    model_name: str | None = Field(default=None, description="LLM model identifier for this step.")
-    reasoning_effort: str | float | None = Field(
+    model_name: Optional[str] = Field(
+        default=None, description="LLM model identifier for this step."
+    )
+    reasoning_effort: Optional[Union[str, float]] = Field(
         default=None,
         description="Qualitative or quantitative measure of reasoning effort (ATIF v1.6).",
     )
-    message: str | list[ContentPart] = Field(
+    message: Union[str, list[ContentPart]] = Field(
         default="",
         description=(
             "Dialogue message. String for text-only, or ContentPart "
             "array for multimodal content (ATIF v1.6)."
         ),
     )
-    reasoning_content: str | None = Field(
+    reasoning_content: Optional[str] = Field(
         default=None, description="Agent's explicit internal reasoning text."
     )
     tool_calls: list[ToolCall] = Field(
         default_factory=list, description="Tool invocations extracted from this step."
     )
-    observation: Observation | None = Field(
+    observation: Optional[Observation] = Field(
         default=None, description="Tool execution results observed after this step."
     )
-    metrics: Metrics | None = Field(
+    metrics: Optional[Metrics] = Field(
         default=None, description="Token usage and cost statistics for this step."
     )
-    is_copied_context: bool | None = Field(
+    is_copied_context: Optional[bool] = Field(
         default=None,
         description=(
             "Whether this step was copied from a previous trajectory "
             "for context during continuation (ATIF v1.5)."
         ),
     )
-    extra: dict[str, Any] | None = Field(default=None, description="Custom step-level metadata.")
+    extra: Optional[dict[str, Any]] = Field(default=None, description="Custom step-level metadata.")
 
     @model_validator(mode="after")
     def validate_tool_observation_pairing(self) -> "Step":

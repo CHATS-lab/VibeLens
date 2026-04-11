@@ -7,6 +7,7 @@ originated and which interfaces it can be synced to.
 """
 
 from pathlib import Path
+from typing import Optional
 
 import yaml
 
@@ -38,7 +39,9 @@ class CentralSkillStore(DiskSkillStore):
         super().__init__(root_dir, SkillSourceType.CENTRAL)
         self._skills_dir.mkdir(parents=True, exist_ok=True)
 
-    def _build_skill_info(self, name: str, skill_dir: Path, skill_file: Path) -> SkillInfo | None:
+    def _build_skill_info(
+        self, name: str, skill_dir: Path, skill_file: Path
+    ) -> Optional[SkillInfo]:
         """Parse central SKILL.md with extra metadata (tags, sources, skill_targets)."""
         try:
             text = skill_file.read_text(encoding="utf-8")
@@ -75,7 +78,7 @@ class CentralSkillStore(DiskSkillStore):
 
     def import_skill_from(
         self, source_store: "BaseSkillStore", name: str, overwrite: bool = False
-    ) -> SkillInfo | None:
+    ) -> Optional[SkillInfo]:
         """Import a skill, injecting source provenance into frontmatter."""
         result = super().import_skill_from(source_store, name, overwrite=overwrite)
         if result is None:

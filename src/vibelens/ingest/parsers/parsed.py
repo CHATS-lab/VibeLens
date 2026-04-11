@@ -6,6 +6,7 @@ DiskStore to use the same parser-based loading path as LocalStore.
 """
 
 import json
+from typing import Optional
 
 from vibelens.ingest.parsers.base import BaseParser
 from vibelens.models.enums import AgentType
@@ -25,7 +26,7 @@ class ParsedTrajectoryParser(BaseParser):
     AGENT_TYPE = AgentType.PARSED
     LOCAL_DATA_DIR = None
 
-    def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
+    def parse(self, content: str, source_path: Optional[str] = None) -> list[Trajectory]:
         """Parse JSON content into Trajectory objects.
 
         Accepts either a JSON array of trajectory dicts or a single

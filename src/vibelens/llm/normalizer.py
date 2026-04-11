@@ -5,6 +5,7 @@ date suffixes, case variations) to canonical model keys.
 """
 
 import re
+from typing import Optional
 
 # Ordered prefix-to-canonical mapping, most specific first.
 # Prefix matching handles date suffixes (e.g. claude-3-5-sonnet-20241022)
@@ -109,7 +110,7 @@ def _strip_prefixes(raw_name: str) -> str:
     return name
 
 
-def normalize_model_name(raw_name: str | None) -> str | None:
+def normalize_model_name(raw_name: Optional[str]) -> Optional[str]:
     """Normalize a raw model name to a canonical key.
 
     Handles provider prefixes (qwen/model), path prefixes (Gemini),

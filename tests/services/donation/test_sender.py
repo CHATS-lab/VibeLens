@@ -4,6 +4,7 @@ import json
 import tempfile
 import zipfile
 from pathlib import Path
+from typing import Optional
 
 from vibelens.services.donation.sender import (
     _create_donation_zip,
@@ -21,7 +22,7 @@ DONATION_ID = "20260401120000_test"
 
 
 def _make_session(
-    session_id: str, project_path: str | None = None, git_branch: str | None = None
+    session_id: str, project_path: Optional[str] = None, git_branch: Optional[str] = None
 ) -> _SessionData:
     """Create a minimal _SessionData for testing."""
     return _SessionData(

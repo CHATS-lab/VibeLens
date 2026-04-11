@@ -9,6 +9,8 @@ Model hierarchy:
 - FrictionAnalysisResult: Final merged result across all batches
 """
 
+from typing import Optional
+
 from pydantic import BaseModel, Field
 
 from vibelens.models.analysis.step_ref import StepRef
@@ -20,10 +22,10 @@ class FrictionCost(BaseModel):
     """Computed from example_refs spans — NOT LLM-generated."""
 
     affected_steps: int = Field(default=0, description="Total steps across all example spans.")
-    affected_tokens: int | None = Field(
+    affected_tokens: Optional[int] = Field(
         default=None, description="Sum of step metrics tokens across all spans."
     )
-    affected_time_seconds: int | None = Field(
+    affected_time_seconds: Optional[int] = Field(
         default=None, description="Sum of timestamp deltas across all spans."
     )
 
@@ -88,7 +90,7 @@ class FrictionAnalysisOutput(BaseModel):
 class FrictionAnalysisResult(BaseModel):
     """Complete friction analysis result merged across all batches."""
 
-    analysis_id: str | None = Field(
+    analysis_id: Optional[str] = Field(
         default=None, description="Persistence ID. Set when the result is saved to disk."
     )
     session_ids: list[str] = Field(
@@ -97,7 +99,7 @@ class FrictionAnalysisResult(BaseModel):
     skipped_session_ids: list[str] = Field(
         default_factory=list, description="Session IDs from the request that were not found."
     )
-    title: str | None = Field(
+    title: Optional[str] = Field(
         default=None,
         description=(
             "Self-explanatory title describing the main finding. "
@@ -117,7 +119,7 @@ class FrictionAnalysisResult(BaseModel):
     metrics: Metrics = Field(
         default_factory=Metrics, description="Token usage and cost from the inference step."
     )
-    duration_seconds: float | None = Field(
+    duration_seconds: Optional[float] = Field(
         default=None, description="Wall-clock analysis duration in seconds."
     )
     warnings: list[str] = Field(

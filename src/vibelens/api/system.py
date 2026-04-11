@@ -1,6 +1,7 @@
 """System endpoints for settings, status, and LLM configuration."""
 
 import importlib
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 
@@ -168,7 +169,7 @@ async def list_cli_models() -> dict:
     return result
 
 
-def _format_pricing(model_name: str) -> dict | None:
+def _format_pricing(model_name: str) -> Optional[dict]:
     """Look up pricing for a model and return a compact dict.
 
     Args:

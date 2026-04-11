@@ -1,5 +1,7 @@
 """Session donation — package and send sessions to the donation server."""
 
+from typing import Optional
+
 from vibelens.deps import is_demo_mode
 from vibelens.schemas.session import DonateResult
 from vibelens.services.donation.sender import send_donation
@@ -9,7 +11,9 @@ from vibelens.utils.log import get_logger
 logger = get_logger(__name__)
 
 
-async def donate_sessions(session_ids: list[str], session_token: str | None = None) -> DonateResult:
+async def donate_sessions(
+    session_ids: list[str], session_token: Optional[str] = None
+) -> DonateResult:
     """Package sessions into a ZIP and send to the donation server.
 
     Collects session data from the active store (LocalStore or DiskStore),
@@ -38,7 +42,9 @@ class _DonatableResult:
         self.errors: list[dict] = []
 
 
-def _filter_donatable_ids(session_ids: list[str], session_token: str | None) -> _DonatableResult:
+def _filter_donatable_ids(
+    session_ids: list[str], session_token: Optional[str]
+) -> _DonatableResult:
     """Check accessibility and donatability for each session ID.
 
     Access is gated by store_resolver: if the session is not in any store

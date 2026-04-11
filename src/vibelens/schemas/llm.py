@@ -1,5 +1,7 @@
 """LLM configuration request schemas."""
 
+from typing import Optional
+
 from pydantic import BaseModel, Field
 
 from vibelens.models.llm.inference import BackendType
@@ -16,7 +18,7 @@ class LLMConfigureRequest(BaseModel):
         default="anthropic/claude-sonnet-4-5",
         description="Model in litellm format (e.g. 'anthropic/claude-sonnet-4-5').",
     )
-    base_url: str | None = Field(
+    base_url: Optional[str] = Field(
         default=None, description="Custom base URL (auto-resolved from provider if None)."
     )
     timeout: int = Field(default=120, description="Timeout in seconds.")

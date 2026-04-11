@@ -18,6 +18,7 @@ agents.  Tool calls use a flat ``tool_uses`` array without result data
 import json
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Optional
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
 from vibelens.ingest.parsers.base import ROLE_TO_SOURCE, BaseParser
@@ -33,7 +34,7 @@ class DataclawParser(BaseParser):
 
     AGENT_TYPE = AgentType.DATACLAW
 
-    def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
+    def parse(self, content: str, source_path: Optional[str] = None) -> list[Trajectory]:
         """Parse dataclaw JSONL content into Trajectory objects.
 
         Args:
@@ -88,7 +89,7 @@ class DataclawParser(BaseParser):
                 continue
 
     def parse_session(
-        self, record: dict, diagnostics: DiagnosticsCollector | None = None
+        self, record: dict, diagnostics: Optional[DiagnosticsCollector] = None
     ) -> Trajectory:
         """Parse a single dataclaw session record into a Trajectory.
 
@@ -108,7 +109,7 @@ class DataclawParser(BaseParser):
         model = record.get("model", "")
         raw_messages = record.get("messages", [])
         steps = _build_steps(raw_messages, session_id, model)
-        extra: dict | None = {"source_type": "huggingface"}
+        extra: Optional[dict] = {"source_type": "huggingface"}
         if diagnostics:
             diag = diagnostics.to_diagnostics().model_dump()
             if any(v for v in diag.values()):

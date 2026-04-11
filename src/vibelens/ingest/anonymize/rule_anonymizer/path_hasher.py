@@ -12,6 +12,7 @@ file names, author fields, and document headers.
 import hashlib
 import os
 import re
+from typing import Optional
 
 from vibelens.config.anonymize import MIN_BARE_USERNAME_LENGTH
 
@@ -119,7 +120,7 @@ class PathHasher:
         extra_usernames: Additional usernames to detect beyond the current OS user.
     """
 
-    def __init__(self, extra_usernames: list[str] | None = None) -> None:
+    def __init__(self, extra_usernames: Optional[list[str]] = None) -> None:
         self._username_to_hash: dict[str, str] = {}
         # Maps every variant string → same hash as the original username
         self._variant_to_hash: dict[str, str] = {}
@@ -138,12 +139,12 @@ class PathHasher:
     def _rebuild_patterns(self) -> None:
         """Compile path-matching regexes from the current username set."""
         if not self._username_to_hash:
-            self._path_pattern: re.Pattern[str] | None = None
-            self._encoded_pattern: re.Pattern[str] | None = None
-            self._win_path_pattern: re.Pattern[str] | None = None
-            self._wsl_path_pattern: re.Pattern[str] | None = None
-            self._bare_pattern: re.Pattern[str] | None = None
-            self._variant_pattern: re.Pattern[str] | None = None
+            self._path_pattern: Optional[re.Pattern[str]] = None
+            self._encoded_pattern: Optional[re.Pattern[str]] = None
+            self._win_path_pattern: Optional[re.Pattern[str]] = None
+            self._wsl_path_pattern: Optional[re.Pattern[str]] = None
+            self._bare_pattern: Optional[re.Pattern[str]] = None
+            self._variant_pattern: Optional[re.Pattern[str]] = None
             return
 
         # Escape and sort longest-first to avoid partial matches

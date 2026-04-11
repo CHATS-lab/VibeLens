@@ -1,5 +1,7 @@
 """Session-related request and response models."""
 
+from typing import Optional
+
 from pydantic import BaseModel, Field
 
 from vibelens.models.enums import DataSourceType
@@ -14,10 +16,10 @@ class DownloadRequest(BaseModel):
 class RemoteSessionsQuery(BaseModel):
     """Query parameters for remote session listing."""
 
-    project_id: str | None = Field(
+    project_id: Optional[str] = Field(
         default=None, description="Filter sessions by project identifier."
     )
-    source_type: DataSourceType | None = Field(
+    source_type: Optional[DataSourceType] = Field(
         default=None, description="Filter sessions by data source type."
     )
     limit: int = Field(default=100, description="Maximum number of sessions to return.")
@@ -35,7 +37,7 @@ class DonateResult(BaseModel):
 
     total: int = Field(description="Total number of sessions in the request.")
     donated: int = Field(description="Number of sessions successfully donated.")
-    donation_id: str | None = Field(
+    donation_id: Optional[str] = Field(
         default=None, description="Donation ID, present on successful donation."
     )
     errors: list[dict] = Field(

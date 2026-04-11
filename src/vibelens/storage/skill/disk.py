@@ -17,6 +17,7 @@ Subclassed by CentralSkillStore (adds source metadata injection).
 
 import shutil
 from pathlib import Path
+from typing import Optional, Union
 
 import yaml
 
@@ -87,7 +88,7 @@ class DiskSkillStore(BaseSkillStore):
         logger.debug("Scanned %d skills from %s", len(skills), self._skills_dir)
         return skills
 
-    def get_skill(self, name: str) -> SkillInfo | None:
+    def get_skill(self, name: str) -> Optional[SkillInfo]:
         """Look up a single skill by directory name."""
         if not VALID_SKILL_NAME.match(name):
             return None
@@ -97,7 +98,7 @@ class DiskSkillStore(BaseSkillStore):
             return None
         return self._build_skill_info(name, skill_dir, skill_file)
 
-    def read_content(self, name: str) -> str | None:
+    def read_content(self, name: str) -> Optional[str]:
         """Read the full SKILL.md content for a named skill."""
         skill_file = self._skills_dir / name / SKILL_FILENAME
         if not skill_file.is_file():
@@ -144,7 +145,9 @@ class DiskSkillStore(BaseSkillStore):
         logger.info("Deleted skill %r from %s", name, skill_dir)
         return True
 
-    def _build_skill_info(self, name: str, skill_dir: Path, skill_file: Path) -> SkillInfo | None:
+    def _build_skill_info(
+        self, name: str, skill_dir: Path, skill_file: Path
+    ) -> Optional[SkillInfo]:
         """Parse a SKILL.md and build SkillInfo metadata."""
         try:
             text = skill_file.read_text(encoding="utf-8")
@@ -203,7 +206,7 @@ def parse_frontmatter(text: str) -> dict:
         return {}
 
 
-def parse_allowed_tools(raw: str | list | None) -> list[str]:
+def parse_allowed_tools(raw: Optional[Union[str, list]]) -> list[str]:
     """Normalize allowed-tools from frontmatter into a list of tool names.
 
     Handles both comma-separated strings and YAML lists.

@@ -20,6 +20,7 @@ Reusable by friction analysis, skill analysis, and other batch-inference modules
 import re
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Optional
 
 from vibelens.deps import get_settings
 from vibelens.llm.tokenizer import count_tokens
@@ -48,11 +49,11 @@ class _Chain:
     contexts: list[SessionContext]
     tokens: int
     project: str
-    timestamp: datetime | None
+    timestamp: Optional[datetime]
 
 
 def build_batches(
-    session_contexts: list[SessionContext], max_batch_tokens: int | None = None
+    session_contexts: list[SessionContext], max_batch_tokens: Optional[int] = None
 ) -> list[SessionContextBatch]:
     """Group session contexts into batches for LLM calls.
 
@@ -268,7 +269,7 @@ def _collect_linked_sessions(
 
     # Walk forward from head, marking visited as we go
     chain: list[SessionContext] = []
-    current: SessionContext | None = head
+    current: Optional[SessionContext] = head
     while current and current.session_id not in visited:
         visited.add(current.session_id)
         chain.append(current)

@@ -8,6 +8,7 @@ import hashlib
 import json
 from enum import Enum
 from pathlib import Path
+from typing import TypeVar
 
 from cachetools import TTLCache
 from pydantic import BaseModel, ValidationError
@@ -21,6 +22,8 @@ from vibelens.utils.json import extract_json_from_llm_output
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
+
+ModelT = TypeVar("ModelT", bound=BaseModel)
 
 # Directory for detailed request/response skill analysis logs
 SKILL_LOG_DIR = Path("logs/skill")
@@ -141,7 +144,7 @@ def merge_batch_refs(
         )
 
 
-def parse_llm_output[ModelT: BaseModel](text: str, model_class: type[ModelT], label: str) -> ModelT:
+def parse_llm_output(text: str, model_class: type[ModelT], label: str) -> ModelT:
     """Parse raw LLM text into a Pydantic model.
 
     Extracts JSON from the text, validates against the model schema,

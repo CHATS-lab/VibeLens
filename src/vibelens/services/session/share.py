@@ -3,6 +3,7 @@
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Optional
 
 from vibelens.models.trajectories import Trajectory
 from vibelens.schemas.share import ShareMeta
@@ -86,7 +87,7 @@ class ShareService:
         self._refresh_if_stale()
         return session_id in self._registry
 
-    def get_meta(self, session_id: str) -> ShareMeta | None:
+    def get_meta(self, session_id: str) -> Optional[ShareMeta]:
         """Return share metadata for a session, or None if not shared."""
         self._refresh_if_stale()
         return self._registry.get(session_id)

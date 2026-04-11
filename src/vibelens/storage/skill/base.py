@@ -4,6 +4,7 @@ import shutil
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
+from typing import Optional
 
 from vibelens.models.skill import SkillInfo, SkillSourceType
 from vibelens.utils.log import get_logger
@@ -23,7 +24,7 @@ class BaseSkillStore(ABC):
     """
 
     def __init__(self) -> None:
-        self._cache: list[SkillInfo] | None = None
+        self._cache: Optional[list[SkillInfo]] = None
         self._cached_at: float = 0.0
 
     @property
@@ -41,11 +42,11 @@ class BaseSkillStore(ABC):
         """List all installed skills with metadata (fresh scan)."""
 
     @abstractmethod
-    def get_skill(self, name: str) -> SkillInfo | None:
+    def get_skill(self, name: str) -> Optional[SkillInfo]:
         """Look up a single skill by name."""
 
     @abstractmethod
-    def read_content(self, name: str) -> str | None:
+    def read_content(self, name: str) -> Optional[str]:
         """Read the full skill definition file content."""
 
     @abstractmethod
@@ -73,7 +74,7 @@ class BaseSkillStore(ABC):
 
     def import_skill_from(
         self, source_store: "BaseSkillStore", name: str, overwrite: bool = False
-    ) -> SkillInfo | None:
+    ) -> Optional[SkillInfo]:
         """Copy one skill directory from another store into this store."""
         source_dir = source_store.skill_path(name)
         if not source_dir.is_dir():

@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+from typing import Optional
 
 import yaml
 
@@ -55,7 +56,7 @@ YAML_FIELD_MAP: dict[str, dict[str, str]] = {
 }
 
 
-def discover_config_path() -> Path | None:
+def discover_config_path() -> Optional[Path]:
     """Auto-discover a YAML config file.
 
     Checks (in order):

@@ -22,6 +22,7 @@ Data format observations:
 
 import json
 from pathlib import Path
+from typing import Optional
 
 from vibelens.ingest.parsers.base import BaseParser
 from vibelens.models.enums import AgentType, StepSource
@@ -60,7 +61,7 @@ class ClaudeCodeWebParser(BaseParser):
         """
         return sorted(data_dir.rglob(CONVERSATIONS_FILENAME))
 
-    def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
+    def parse(self, content: str, source_path: Optional[str] = None) -> list[Trajectory]:
         """Parse a conversations.json array into Trajectory objects.
 
         Args:
@@ -96,7 +97,7 @@ class ClaudeCodeWebParser(BaseParser):
         return trajectories
 
 
-def _parse_conversation(parser: ClaudeCodeWebParser, conversation: dict) -> Trajectory | None:
+def _parse_conversation(parser: ClaudeCodeWebParser, conversation: dict) -> Optional[Trajectory]:
     """Convert one conversation dict to a Trajectory.
 
     Args:
@@ -164,7 +165,7 @@ def _build_steps(chat_messages: list, session_id: str) -> list[Step]:
     return steps
 
 
-def _build_human_step(msg: dict, session_id: str, msg_idx: int) -> Step | None:
+def _build_human_step(msg: dict, session_id: str, msg_idx: int) -> Optional[Step]:
     """Build a USER step from a human message.
 
     Args:
@@ -182,7 +183,7 @@ def _build_human_step(msg: dict, session_id: str, msg_idx: int) -> Step | None:
     step_id = msg.get("uuid") or deterministic_id("msg", session_id, str(msg_idx), "human")
     timestamp = parse_iso_timestamp(msg.get("created_at"))
 
-    extra: dict | None = None
+    extra: Optional[dict] = None
     if attachments:
         extra = {"attachments": attachments}
 
@@ -191,7 +192,7 @@ def _build_human_step(msg: dict, session_id: str, msg_idx: int) -> Step | None:
     )
 
 
-def _build_assistant_step(msg: dict, session_id: str, msg_idx: int) -> Step | None:
+def _build_assistant_step(msg: dict, session_id: str, msg_idx: int) -> Optional[Step]:
     """Build an AGENT step from an assistant message.
 
     Decomposes the content blocks into text, reasoning, tool calls, and
@@ -222,7 +223,7 @@ def _build_assistant_step(msg: dict, session_id: str, msg_idx: int) -> Step | No
     step_id = msg.get("uuid") or deterministic_id("msg", session_id, str(msg_idx), "assistant")
     timestamp = parse_iso_timestamp(msg.get("created_at"))
 
-    observation: Observation | None = None
+    observation: Optional[Observation] = None
     if observation_results:
         observation = Observation(results=observation_results)
 
@@ -261,7 +262,7 @@ def _decompose_assistant_content(
 
     # Track tool_use blocks for pairing with tool_result blocks
     # Maps tool_use.id -> tool_call_id (our generated ID)
-    tool_id_map: dict[str | None, str] = {}
+    tool_id_map: dict[Optional[str], str] = {}
     tool_use_counter = 0
 
     for block in content_blocks:
@@ -310,7 +311,7 @@ def _decompose_assistant_content(
     return text_parts, reasoning_parts, tool_calls, observation_results
 
 
-def _extract_tool_result_content(block: dict) -> str | None:
+def _extract_tool_result_content(block: dict) -> Optional[str]:
     """Extract text content from a tool_result block.
 
     The content field can be a string, a list of sub-blocks (each with

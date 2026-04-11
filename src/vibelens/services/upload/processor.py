@@ -18,6 +18,7 @@ import asyncio
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 from fastapi import HTTPException, UploadFile
 
@@ -135,7 +136,7 @@ def cleanup_extraction(extraction_dir: Path) -> None:
 
 
 async def process_zip(
-    file: UploadFile, agent_type: str, session_token: str | None = None
+    file: UploadFile, agent_type: str, session_token: Optional[str] = None
 ) -> UploadResult:
     """Full upload orchestration: stream -> validate -> extract -> parse -> store.
 

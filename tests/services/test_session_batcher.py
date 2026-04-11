@@ -5,6 +5,7 @@ oversized sessions, and settings-based defaults.
 """
 
 from datetime import UTC, datetime, timedelta
+from typing import Optional
 from unittest.mock import patch
 
 from vibelens.config.settings import Settings
@@ -15,11 +16,11 @@ from vibelens.services.session_batcher import build_batches
 
 def _make_context(
     session_id: str,
-    project_path: str | None = None,
+    project_path: Optional[str] = None,
     text_length: int = 1000,
-    prev_ref: str | None = None,
-    next_ref: str | None = None,
-    timestamp: datetime | None = None,
+    prev_ref: Optional[str] = None,
+    next_ref: Optional[str] = None,
+    timestamp: Optional[datetime] = None,
 ) -> SessionContext:
     """Build a minimal SessionContext for testing."""
     text = "x" * text_length
@@ -263,7 +264,7 @@ def _make_stepped_context(
     session_id: str,
     step_count: int,
     chars_per_step: int,
-    project_path: str | None = None,
+    project_path: Optional[str] = None,
 ) -> SessionContext:
     """Build a SessionContext with realistic step boundaries for split testing."""
     header = f"=== SESSION: {session_id} ==="

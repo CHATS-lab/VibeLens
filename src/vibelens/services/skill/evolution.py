@@ -11,6 +11,7 @@ import asyncio
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Optional
 
 from vibelens.deps import get_skill_analysis_store
 from vibelens.llm.backend import InferenceBackend
@@ -71,7 +72,7 @@ EXPECTED_DEEP_CALLS = 3
 
 
 def _filter_skills(
-    skills: list[dict[str, str]], skill_names: list[str] | None
+    skills: list[dict[str, str]], skill_names: Optional[list[str]]
 ) -> list[dict[str, str]]:
     """Filter installed skills to only those the user selected.
 
@@ -90,8 +91,8 @@ def _filter_skills(
 
 def estimate_skill_evolution(
     session_ids: list[str],
-    session_token: str | None = None,
-    skill_names: list[str] | None = None,
+    session_token: Optional[str] = None,
+    skill_names: Optional[list[str]] = None,
 ) -> CostEstimate:
     """Pre-flight cost estimate for skill evolution analysis.
 
@@ -151,8 +152,8 @@ def estimate_skill_evolution(
 
 async def analyze_skill_evolution(
     session_ids: list[str],
-    session_token: str | None = None,
-    skill_names: list[str] | None = None,
+    session_token: Optional[str] = None,
+    skill_names: Optional[list[str]] = None,
 ) -> SkillAnalysisResult:
     """Run evolvement-mode skill analysis: propose then deep-edit installed skills.
 
@@ -272,9 +273,9 @@ async def analyze_skill_evolution(
 
 async def _infer_skill_evolution_proposals(
     session_ids: list[str],
-    session_token: str | None,
+    session_token: Optional[str],
     log_dir: Path,
-    skill_names: list[str] | None = None,
+    skill_names: Optional[list[str]] = None,
 ) -> SkillEvolutionProposalResult:
     """Execute the proposal step: load sessions, batch, infer, validate.
 
@@ -360,10 +361,10 @@ async def _infer_skill_evolution(
     suggested_changes: str,
     addressed_patterns: list[str],
     session_ids: list[str],
-    session_token: str | None = None,
+    session_token: Optional[str] = None,
     proposal_confidence: float = 0.0,
-    log_dir: Path | None = None,
-    proposal_index: int | None = None,
+    log_dir: Optional[Path] = None,
+    proposal_index: Optional[int] = None,
 ) -> tuple[SkillEvolution, float]:
     """Generate granular edits for one existing skill.
 

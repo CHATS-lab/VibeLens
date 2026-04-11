@@ -1,5 +1,7 @@
 """Skill-related services — analysis, persistence, and digest formatting."""
 
+from typing import Optional
+
 from vibelens.llm.cost_estimator import CostEstimate
 from vibelens.models.skill import SkillAnalysisResult, SkillMode
 from vibelens.services.skill.store import SkillAnalysisStore
@@ -14,8 +16,8 @@ __all__ = [
 async def analyze_skills(
     session_ids: list[str],
     mode: SkillMode,
-    session_token: str | None = None,
-    skill_names: list[str] | None = None,
+    session_token: Optional[str] = None,
+    skill_names: Optional[list[str]] = None,
 ) -> SkillAnalysisResult:
     """Dispatch skill analysis to the appropriate mode handler."""
     if mode == SkillMode.RETRIEVAL:
@@ -35,8 +37,8 @@ async def analyze_skills(
 def estimate_skill_analysis(
     session_ids: list[str],
     mode: SkillMode,
-    session_token: str | None = None,
-    skill_names: list[str] | None = None,
+    session_token: Optional[str] = None,
+    skill_names: Optional[list[str]] = None,
 ) -> CostEstimate:
     """Pre-flight cost estimate dispatched to the appropriate mode handler."""
     if mode == SkillMode.RETRIEVAL:

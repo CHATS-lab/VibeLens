@@ -1,6 +1,6 @@
 """Agent configuration model for ATIF trajectories."""
 
-from typing import Any
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -12,13 +12,15 @@ class Agent(BaseModel):
     """
 
     name: str = Field(description="Name of the agent system (e.g. 'claude-code', 'codex').")
-    version: str | None = Field(default=None, description="Version identifier of the agent system.")
-    model_name: str | None = Field(
+    version: Optional[str] = Field(
+        default=None, description="Version identifier of the agent system."
+    )
+    model_name: Optional[str] = Field(
         default=None, description="Default LLM model. Step-level model_name overrides this."
     )
-    tool_definitions: list[dict[str, Any]] | None = Field(
+    tool_definitions: Optional[list[dict[str, Any]]] = Field(
         default=None, description="Tool/function definitions available to the agent (ATIF v1.5)."
     )
-    extra: dict[str, Any] | None = Field(
+    extra: Optional[dict[str, Any]] = Field(
         default=None, description="Custom agent configuration details."
     )

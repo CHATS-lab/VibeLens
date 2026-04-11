@@ -1,5 +1,7 @@
 """Shared response models for background analysis jobs."""
 
+from typing import Optional
+
 from pydantic import BaseModel
 
 
@@ -8,7 +10,7 @@ class AnalysisJobResponse(BaseModel):
 
     job_id: str
     status: str
-    analysis_id: str | None = None
+    analysis_id: Optional[str] = None
 
 
 class AnalysisJobStatus(BaseModel):
@@ -16,5 +18,5 @@ class AnalysisJobStatus(BaseModel):
 
     job_id: str
     status: str
-    analysis_id: str | None = None
-    error_message: str | None = None
+    analysis_id: Optional[str] = None
+    error_message: Optional[str] = None

@@ -1,5 +1,7 @@
 """Skill analysis API schemas — request models and lightweight metadata."""
 
+from typing import Optional
+
 from pydantic import BaseModel, Field
 
 from vibelens.models.skill import SkillMode
@@ -41,7 +43,7 @@ class SkillAnalysisRequest(BaseModel):
 
     session_ids: list[str] = Field(description="Session IDs to analyze.")
     mode: SkillMode = Field(description="Analysis mode: retrieval, creation, or evolution.")
-    skill_names: list[str] | None = Field(
+    skill_names: Optional[list[str]] = Field(
         default=None,
         description="Skill names to target for evolution mode. None means all installed skills.",
     )
@@ -57,8 +59,8 @@ class SkillAnalysisMeta(BaseModel):
     session_ids: list[str] = Field(description="Sessions that were analyzed.")
     created_at: str = Field(description="ISO timestamp of analysis.")
     model: str = Field(description="Model used for analysis.")
-    cost_usd: float | None = Field(default=None, description="Inference cost.")
-    duration_seconds: float | None = Field(
+    cost_usd: Optional[float] = Field(default=None, description="Inference cost.")
+    duration_seconds: Optional[float] = Field(
         default=None, description="Wall-clock analysis duration in seconds."
     )
     is_example: bool = Field(

@@ -1,5 +1,7 @@
 """Service-layer result models with metadata for skill analysis."""
 
+from typing import Optional
+
 from pydantic import BaseModel, Field
 
 from vibelens.models.llm.inference import BackendType
@@ -17,7 +19,7 @@ class SkillAnalysisResult(BaseModel):
     backend info, and cost metadata from the service layer.
     """
 
-    analysis_id: str | None = Field(
+    analysis_id: Optional[str] = Field(
         default=None, description="Persistence ID. Set when saved to disk."
     )
     mode: SkillMode = Field(description="Which analysis mode was used.")
@@ -56,7 +58,7 @@ class SkillAnalysisResult(BaseModel):
     warnings: list[str] = Field(
         default_factory=list, description="Non-fatal issues encountered during analysis."
     )
-    duration_seconds: float | None = Field(
+    duration_seconds: Optional[float] = Field(
         default=None, description="Wall-clock analysis duration in seconds."
     )
     is_example: bool = Field(

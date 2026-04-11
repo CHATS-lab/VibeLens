@@ -13,6 +13,7 @@ import shutil
 import tempfile
 from abc import abstractmethod
 from pathlib import Path
+from typing import Optional
 
 from vibelens.llm.backend import InferenceBackend, InferenceError, InferenceTimeoutError
 from vibelens.models.llm.inference import (
@@ -44,7 +45,7 @@ class CliBackend(InferenceBackend):
     augmentation, and output parsing.
     """
 
-    def __init__(self, model: str | None = None, timeout: int = 120):
+    def __init__(self, model: Optional[str] = None, timeout: int = 120):
         """Initialize CLI backend.
 
         Args:
@@ -77,7 +78,7 @@ class CliBackend(InferenceBackend):
         return []
 
     @property
-    def default_model(self) -> str | None:
+    def default_model(self) -> Optional[str]:
         """Cheapest recommended model for this CLI, or None if no selection."""
         return None
 

@@ -18,7 +18,7 @@ import re
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, Optional, Union
 from uuid import uuid4
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
@@ -151,12 +151,12 @@ _AUTO_PROMPT_PREFIXES = (
 class _SessionMeta(NamedTuple):
     """Aggregated metadata from a single pass over raw JSONL content."""
 
-    session_id: str | None
-    last_session_id: str | None
-    model_name: str | None
-    version: str | None
-    project_path: str | None
-    git_branches: list[str] | None
+    session_id: Optional[str]
+    last_session_id: Optional[str]
+    model_name: Optional[str]
+    version: Optional[str]
+    project_path: Optional[str]
+    git_branches: Optional[list[str]]
 
 
 class ClaudeCodeParser(BaseParser):
@@ -167,7 +167,7 @@ class ClaudeCodeParser(BaseParser):
     """
 
     AGENT_TYPE = AgentType.CLAUDE_CODE
-    LOCAL_DATA_DIR: Path | None = Path.home() / ".claude"
+    LOCAL_DATA_DIR: Optional[Path] = Path.home() / ".claude"
 
     def discover_session_files(self, data_dir: Path) -> list[Path]:
         """Find Claude Code session JSONL files, excluding sub-agents and history index."""
@@ -187,7 +187,7 @@ class ClaudeCodeParser(BaseParser):
             files.extend(sorted(subagent_dir.glob("agent-*.jsonl")))
         return files
 
-    def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
+    def parse(self, content: str, source_path: Optional[str] = None) -> list[Trajectory]:
         """Parse JSONL session content into Trajectory objects.
 
         Returns a list containing the main session trajectory and any
@@ -231,7 +231,7 @@ class ClaudeCodeParser(BaseParser):
             or collector.orphaned_tool_calls > 0
             or collector.orphaned_tool_results > 0
         )
-        extra: dict | None = None
+        extra: Optional[dict] = None
         if has_diagnostics_issues:
             extra = {"diagnostics": collector.to_diagnostics().model_dump()}
 
@@ -265,7 +265,7 @@ class ClaudeCodeParser(BaseParser):
         return [main_trajectory, *sub_trajectories]
 
     def parse_session_index(
-        self, claude_dir: Path, since: datetime | None = None, limit: int | None = None
+        self, claude_dir: Path, since: Optional[datetime] = None, limit: Optional[int] = None
     ) -> list[Trajectory]:
         """Parse history.jsonl to build lightweight skeleton Trajectory objects.
 
@@ -394,9 +394,9 @@ class ClaudeCodeParser(BaseParser):
         agent_file: Path,
         parent_sid: str,
         source_path: Path,
-        spawn_step_id: str | None,
-        spawn_tool_call_id: str | None,
-    ) -> Trajectory | None:
+        spawn_step_id: Optional[str],
+        spawn_tool_call_id: Optional[str],
+    ) -> Optional[Trajectory]:
         """Parse a single sub-agent file and assemble its Trajectory.
 
         Args:
@@ -468,8 +468,8 @@ class ClaudeCodeParser(BaseParser):
     def _parse_content(
         self,
         content: str,
-        diagnostics: DiagnosticsCollector | None = None,
-        session_id: str | None = None,
+        diagnostics: Optional[DiagnosticsCollector] = None,
+        session_id: Optional[str] = None,
     ) -> list[Step]:
         """Parse JSONL content string into Step objects.
 
@@ -541,7 +541,7 @@ class ClaudeCodeParser(BaseParser):
             # skill content so they get the correct source label and metadata.
             # Only classify string messages; multimodal (list) messages are
             # always genuine user content (e.g. pasted screenshots).
-            extra_classify: dict[str, Any] | None = None
+            extra_classify: Optional[dict[str, Any]] = None
             if source == StepSource.USER and message and isinstance(message, str):
                 source, extra_classify = classify_user_message(message, entry)
 
@@ -579,7 +579,7 @@ class ClaudeCodeParser(BaseParser):
 
 def classify_user_message(
     text: str, entry: dict[str, Any]
-) -> tuple[StepSource, dict[str, Any] | None]:
+) -> tuple[StepSource, Optional[dict[str, Any]]]:
     """Classify a user-role message as real user, system, skill, or auto-generated.
 
     Claude Code injects system content (XML tags, continuation notices),
@@ -687,7 +687,7 @@ def _merge_entry_group(group: list[dict]) -> dict:
 
 
 def _parse_jsonl_content(
-    content: str, diagnostics: DiagnosticsCollector | None = None
+    content: str, diagnostics: Optional[DiagnosticsCollector] = None
 ) -> list[dict]:
     """Parse JSONL content string into relevant entry dicts.
 
@@ -795,7 +795,7 @@ def _make_enqueue_user_entry(entry: dict) -> dict:
     }
 
 
-def _build_step_extra(entry: dict) -> dict[str, Any] | None:
+def _build_step_extra(entry: dict) -> Optional[dict[str, Any]]:
     """Build step-level extra dict from Claude Code entry fields.
 
     Extracts format-specific metadata mirroring Harbor's convention:
@@ -855,7 +855,7 @@ def _scan_session_metadata(content: str) -> _SessionMeta:
     """
     session_counter: Counter[str] = Counter()
     model_counter: Counter[str] = Counter()
-    version: str | None = None
+    version: Optional[str] = None
     cwd_values: list[str] = []
     branches: set[str] = set()
 
@@ -914,7 +914,7 @@ def _scan_session_metadata(content: str) -> _SessionMeta:
     )
 
 
-def _extract_git_branches(content: str) -> list[str] | None:
+def _extract_git_branches(content: str) -> Optional[list[str]]:
     """Extract unique git branch names from JSONL entries.
 
     Thin wrapper around _scan_session_metadata for backward compatibility
@@ -930,8 +930,8 @@ def _extract_git_branches(content: str) -> list[str] | None:
 
 
 def _decompose_raw_content(
-    raw_content: str | list, tool_results: dict[str, dict] | None = None
-) -> tuple[str, str | None, list[ToolCall], Observation | None]:
+    raw_content: Union[str, list], tool_results: Optional[dict[str, dict]] = None
+) -> tuple[str, Optional[str], list[ToolCall], Optional[Observation]]:
     """Decompose Anthropic Messages API content into separated Step fields.
 
     Converts the polymorphic content block array from Claude Code API
@@ -1037,7 +1037,7 @@ def _decompose_raw_content(
         if joined_text:
             content_parts.append(ContentPart(type=ContentType.TEXT, text=joined_text))
         content_parts.extend(image_parts)
-        message: str | list[ContentPart] = content_parts
+        message: Union[str, list[ContentPart]] = content_parts
     else:
         message = "\n\n".join(text_parts).strip() if text_parts else ""
 
@@ -1048,8 +1048,8 @@ def _decompose_raw_content(
 
 
 def _extract_tool_result_content(
-    content: str | list | None,
-) -> str | list[ContentPart] | None:
+    content: Optional[Union[str, list]],
+) -> Optional[Union[str, list[ContentPart]]]:
     """Extract text (and optionally images) from a tool_result content field.
 
     When the content list contains image blocks, returns a list[ContentPart]
@@ -1097,7 +1097,7 @@ def _extract_tool_result_content(
     return str(content)
 
 
-def _extract_tool_result_metadata(result: dict) -> dict[str, Any] | None:
+def _extract_tool_result_metadata(result: dict) -> Optional[dict[str, Any]]:
     """Extract structured execution metadata from a cached tool result.
 
     When the tool result cache contains a ``tool_use_result`` dict (captured
@@ -1354,7 +1354,7 @@ def _collect_tool_results(raw_entries: list[dict]) -> dict[str, dict]:
                     has_images = isinstance(result_content, list) and any(
                         isinstance(b, dict) and b.get("type") == "image" for b in result_content
                     )
-                    output: str | list = (
+                    output: Union[str, list] = (
                         result_content if has_images else coerce_to_string(result_content)
                     )
                     result_entry: dict = {"output": output, "is_error": bool(is_error)}
@@ -1364,7 +1364,7 @@ def _collect_tool_results(raw_entries: list[dict]) -> dict[str, dict]:
     return tool_results
 
 
-def _parse_metrics(usage_data: dict | None) -> Metrics | None:
+def _parse_metrics(usage_data: Optional[dict]) -> Optional[Metrics]:
     """Parse Anthropic usage dict into VibeLens Metrics model.
 
     Token field mapping (aligned with Harbor convention):

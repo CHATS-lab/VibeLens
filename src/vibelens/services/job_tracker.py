@@ -5,7 +5,7 @@ import time
 from collections.abc import Coroutine
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any
+from typing import Any, Optional
 
 from vibelens.utils.log import get_logger
 
@@ -24,8 +24,8 @@ class AnalysisJob:
     job_id: str
     status: JobStatus
     task: asyncio.Task[Any]
-    analysis_id: str | None = None
-    error_message: str | None = None
+    analysis_id: Optional[str] = None
+    error_message: Optional[str] = None
     created_at: float = field(default_factory=time.monotonic)
 
 
@@ -41,7 +41,7 @@ def submit_job(job_id: str, coro: Coroutine[Any, Any, Any]) -> AnalysisJob:
     return job
 
 
-def get_job(job_id: str) -> AnalysisJob | None:
+def get_job(job_id: str) -> Optional[AnalysisJob]:
     """Return the job for *job_id*, or None."""
     return _jobs.get(job_id)
 

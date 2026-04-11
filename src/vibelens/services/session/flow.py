@@ -1,5 +1,7 @@
 """Flow analysis service — tool dependency graph and phase detection."""
 
+from typing import Optional, Union
+
 from vibelens.models.trajectories import Trajectory
 from vibelens.services.session.phase import detect_phases
 from vibelens.services.session.store_resolver import get_metadata_from_stores, load_from_stores
@@ -8,7 +10,7 @@ from vibelens.services.session.tool_graph import build_tool_graph
 
 def compute_flow_from_trajectories(
     trajectories: list[Trajectory], identifier: str
-) -> dict[str, str | list[dict] | dict]:
+) -> dict[str, Union[str, list[dict], dict]]:
     """Compute tool dependency graph and phase segments from trajectories.
 
     Shared logic used by both session and share flow endpoints.
@@ -35,8 +37,8 @@ def compute_flow_from_trajectories(
 
 
 def get_session_flow(
-    session_id: str, session_token: str | None
-) -> dict[str, str | list[dict] | dict] | None:
+    session_id: str, session_token: Optional[str]
+) -> Optional[dict[str, Union[str, list[dict], dict]]]:
     """Compute tool dependency graph and phase segments for a single session.
 
     Access is gated by store_resolver: if the session is not in any store

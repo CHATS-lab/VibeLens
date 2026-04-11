@@ -1,7 +1,7 @@
 """Trajectory model for ATIF (Agent Trajectory Interchange Format)."""
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -41,26 +41,26 @@ class Trajectory(BaseModel):
     )
     session_id: str = Field(description="Unique identifier for the entire agent run.")
     agent: Agent = Field(description="Agent system configuration.")
-    timestamp: datetime | None = Field(
+    timestamp: Optional[datetime] = Field(
         default=None, description="[VibeLens] Session start timestamp, derived from first step."
     )
-    project_path: str | None = Field(
+    project_path: Optional[str] = Field(
         default=None, description="[VibeLens] Working directory inferred from conversation data."
     )
-    first_message: str | None = Field(
+    first_message: Optional[str] = Field(
         default=None, description="[VibeLens] Truncated first user message for session preview."
     )
-    final_metrics: FinalMetrics | None = Field(
+    final_metrics: Optional[FinalMetrics] = Field(
         default=None, description="Summary metrics for the entire trajectory."
     )
-    prev_trajectory_ref: TrajectoryRef | None = Field(
+    prev_trajectory_ref: Optional[TrajectoryRef] = Field(
         default=None,
         description=(
             "[VibeLens] Reference to the previous session this one continues from. "
             "Only set on main sessions that are continuations of earlier conversations."
         ),
     )
-    parent_trajectory_ref: TrajectoryRef | None = Field(
+    parent_trajectory_ref: Optional[TrajectoryRef] = Field(
         default=None,
         description=(
             "[VibeLens] Reference to the parent trajectory that spawned this sub-agent. "
@@ -68,14 +68,14 @@ class Trajectory(BaseModel):
             "Only set on sub-agent trajectories."
         ),
     )
-    next_trajectory_ref: TrajectoryRef | None = Field(
+    next_trajectory_ref: Optional[TrajectoryRef] = Field(
         default=None,
         description="Reference to continuation trajectory for multi-segment sessions.",
     )
-    notes: str | None = Field(
+    notes: Optional[str] = Field(
         default=None, description="Design notes or explanations for format discrepancies."
     )
-    extra: dict[str, Any] | None = Field(default=None, description="Custom root-level metadata.")
+    extra: Optional[dict[str, Any]] = Field(default=None, description="Custom root-level metadata.")
     steps: list[Step] = Field(
         min_length=1, description="Complete interaction history as ordered Step objects."
     )

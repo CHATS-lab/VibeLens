@@ -3,6 +3,7 @@
 import io
 import json
 import zipfile
+from typing import Optional
 
 from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -20,11 +21,11 @@ router = APIRouter(tags=["sessions"])
 
 @router.get("/sessions")
 async def list_sessions_endpoint(
-    project_name: str | None = None,
+    project_name: Optional[str] = None,
     limit: int = 0,
     offset: int = 0,
     refresh: bool = False,
-    x_session_token: str | None = Header(None),
+    x_session_token: Optional[str] = Header(None),
 ) -> list[dict]:
     """List trajectory summaries (without steps).
 
@@ -45,7 +46,7 @@ async def list_sessions_endpoint(
 
 @router.get("/sessions/search")
 async def search_sessions_endpoint(
-    q: str = "", sources: str = "user_prompts", x_session_token: str | None = Header(None)
+    q: str = "", sources: str = "user_prompts", x_session_token: Optional[str] = Header(None)
 ) -> list[str]:
     """Search sessions by query across selected text sources.
 
@@ -65,7 +66,7 @@ async def search_sessions_endpoint(
 
 @router.get("/sessions/{session_id}")
 async def get_session_endpoint(
-    session_id: str, x_session_token: str | None = Header(None)
+    session_id: str, x_session_token: Optional[str] = Header(None)
 ) -> list[dict]:
     """Get full trajectory group (main + sub-agents) by session ID.
 
@@ -84,7 +85,7 @@ async def get_session_endpoint(
 
 @router.get("/sessions/{session_id}/export")
 async def export_session(
-    session_id: str, x_session_token: str | None = Header(None)
+    session_id: str, x_session_token: Optional[str] = Header(None)
 ) -> JSONResponse:
     """Export trajectory group as downloadable JSON.
 
@@ -113,7 +114,7 @@ async def export_session(
 
 
 @router.get("/sessions/{session_id}/flow")
-async def session_flow(session_id: str, x_session_token: str | None = Header(None)) -> dict:
+async def session_flow(session_id: str, x_session_token: Optional[str] = Header(None)) -> dict:
     """Compute tool dependency graph and phase segments for a session flow diagram.
 
     Args:
@@ -131,7 +132,7 @@ async def session_flow(session_id: str, x_session_token: str | None = Header(Non
 
 @router.post("/sessions/download")
 async def download_sessions(
-    request: DownloadRequest, x_session_token: str | None = Header(None)
+    request: DownloadRequest, x_session_token: Optional[str] = Header(None)
 ) -> StreamingResponse:
     """Export multiple sessions as a downloadable zip archive.
 
@@ -166,7 +167,7 @@ async def download_sessions(
 
 
 @router.get("/projects")
-async def list_projects_endpoint(x_session_token: str | None = Header(None)) -> list[str]:
+async def list_projects_endpoint(x_session_token: Optional[str] = Header(None)) -> list[str]:
     """List all known project paths.
 
     Args:

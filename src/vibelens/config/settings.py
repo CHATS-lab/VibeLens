@@ -1,6 +1,7 @@
 """Core settings model and loader."""
 
 from pathlib import Path
+from typing import Optional
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings
@@ -172,7 +173,7 @@ class Settings(BaseSettings):
         return self
 
 
-def load_settings(config_path: Path | None = None) -> Settings:
+def load_settings(config_path: Optional[Path] = None) -> Settings:
     """Load settings from YAML config, environment, and .env file.
 
     Priority (highest to lowest):

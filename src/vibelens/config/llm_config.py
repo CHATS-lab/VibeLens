@@ -9,6 +9,7 @@ the ``"llm"`` key. Legacy YAML files are auto-migrated on first load.
 import json
 import os
 from pathlib import Path
+from typing import Optional
 
 import yaml
 from pydantic import BaseModel, Field, field_validator
@@ -77,7 +78,7 @@ class LLMConfig(BaseModel):
         ),
     )
     api_key: str = Field(default="", description="API key for the LLM provider.")
-    base_url: str | None = Field(
+    base_url: Optional[str] = Field(
         default=None, description="Custom base URL. Auto-resolved from PROVIDER_BASE_URLS if None."
     )
     model: str = Field(default="anthropic/claude-haiku-4-5", description="Model in litellm format.")
@@ -93,7 +94,7 @@ class LLMConfig(BaseModel):
         return value
 
 
-def discover_settings_path() -> Path | None:
+def discover_settings_path() -> Optional[Path]:
     """Find the settings file path, triggering YAML migration if needed.
 
     Checks (in order):
@@ -126,7 +127,7 @@ def discover_settings_path() -> Path | None:
     return None
 
 
-def load_llm_config(config_path: Path | None = None) -> LLMConfig:
+def load_llm_config(config_path: Optional[Path] = None) -> LLMConfig:
     """Load LLM config from settings.json (or legacy YAML), then apply env overrides.
 
     Priority (highest to lowest):
@@ -187,7 +188,7 @@ def save_llm_config(config: LLMConfig, config_path: Path) -> None:
     logger.info("Saved LLM config to %s", config_path)
 
 
-def resolve_base_url(config: LLMConfig) -> str | None:
+def resolve_base_url(config: LLMConfig) -> Optional[str]:
     """Resolve base URL from config or provider registry.
 
     If ``config.base_url`` is set, returns it. Otherwise extracts the
@@ -208,7 +209,7 @@ def resolve_base_url(config: LLMConfig) -> str | None:
     return PROVIDER_BASE_URLS.get(provider)
 
 
-def _extract_provider(model: str) -> str | None:
+def _extract_provider(model: str) -> Optional[str]:
     """Extract provider prefix from a litellm model name (e.g. 'anthropic/...' → 'anthropic')."""
     if "/" not in model:
         return None

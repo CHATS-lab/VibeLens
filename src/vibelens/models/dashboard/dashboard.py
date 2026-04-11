@@ -1,5 +1,7 @@
 """Dashboard aggregate analysis and behavior models."""
 
+from typing import Optional
+
 from pydantic import BaseModel, Field
 
 from vibelens.models.analysis.phase import PhaseSegment
@@ -60,7 +62,7 @@ class AgentBehaviorResult(BaseModel):
     common_tool_patterns: list[dict] = Field(
         description="Frequently observed tool-call sequences and their counts."
     )
-    thinking_action_consistency: float | None = Field(
+    thinking_action_consistency: Optional[float] = Field(
         default=None,
         description="Correlation between thinking content and subsequent actions (0.0-1.0).",
     )
@@ -172,7 +174,7 @@ class DashboardStats(BaseModel):
         description="Session count keyed by agent name (e.g. claude-code, codex, gemini).",
     )
     timezone: str = Field(default="UTC", description="IANA timezone name used for time groupings.")
-    cached_at: str | None = Field(
+    cached_at: Optional[str] = Field(
         default=None, description="ISO timestamp when these stats were last computed and cached."
     )
 
@@ -191,6 +193,6 @@ class SessionAnalytics(BaseModel):
     phase_segments: list[PhaseSegment] = Field(
         description="Conversation phase segments from PhaseDetector."
     )
-    cost_usd: float | None = Field(
+    cost_usd: Optional[float] = Field(
         default=None, description="Estimated session cost in USD based on API pricing."
     )

@@ -3,7 +3,7 @@
 import hashlib
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -22,7 +22,7 @@ class SkillInfo(BaseModel):
         default_factory=list,
         description="All known sources from which this skill was loaded or is available.",
     )
-    central_path: Path | None = Field(
+    central_path: Optional[Path] = Field(
         default=None,
         description="Absolute path to the managed copy under ~/.vibelens/skills, if present.",
     )
