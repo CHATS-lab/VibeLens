@@ -4,7 +4,7 @@ Builds realistic SkillAnalysisResult instances using real step IDs
 from loaded trajectories.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from vibelens.deps import get_central_skill_store
 from vibelens.models.analysis.step_ref import StepRef
@@ -61,7 +61,7 @@ def build_mock_skill_result(session_ids: list[str], mode: SkillMode) -> SkillAna
         backend_id=BackendType.MOCK,
         model="mock/test-model",
         metrics=Metrics(cost_usd=0.035),
-        created_at=datetime.now(UTC).isoformat(),
+        created_at=datetime.now(timezone.utc).isoformat(),
     )
 
 

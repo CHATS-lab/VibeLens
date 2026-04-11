@@ -16,7 +16,7 @@ a pre-scan to build the result map before constructing ToolCall objects.
 import json
 import re
 from collections import Counter
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, NamedTuple
 from uuid import uuid4
@@ -46,7 +46,7 @@ from vibelens.utils import coerce_to_string, get_logger, normalize_timestamp
 
 # Sentinel for sorting steps that lack timestamps — placed before all
 # real timestamps so they don't disrupt chronological ordering.
-_EPOCH_MIN = datetime.min.replace(tzinfo=UTC)
+_EPOCH_MIN = datetime.min.replace(tzinfo=timezone.utc)
 
 logger = get_logger(__name__)
 
@@ -293,7 +293,7 @@ class ClaudeCodeParser(BaseParser):
         for session_id, data in sessions.items():
             project_path = data["project_path"] or None
             first_message = self.truncate_first_message(data["first_message"]) or None
-            timestamp = datetime.fromtimestamp(data["last_timestamp"] / 1000, tz=UTC)
+            timestamp = datetime.fromtimestamp(data["last_timestamp"] / 1000, tz=timezone.utc)
 
             # Skeleton step so Trajectory validation passes (min_length=1)
             skeleton_step = Step(

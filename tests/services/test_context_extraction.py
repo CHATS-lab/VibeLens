@@ -4,7 +4,7 @@ Tests compaction detection via extra flag, full-step extraction,
 tool arg summarization, and non-compaction fallback.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from vibelens.models.analysis.step_ref import StepRef
 from vibelens.models.context import SessionContextBatch
@@ -82,9 +82,9 @@ def test_extract_without_compaction():
 
 def test_extract_with_compaction():
     """Sessions with compaction include summaries and ALL steps (no duplication)."""
-    ts_base = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
-    ts_compact = datetime(2024, 1, 1, 12, 30, 0, tzinfo=UTC)
-    ts_after = datetime(2024, 1, 1, 12, 31, 0, tzinfo=UTC)
+    ts_base = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    ts_compact = datetime(2024, 1, 1, 12, 30, 0, tzinfo=timezone.utc)
+    ts_after = datetime(2024, 1, 1, 12, 31, 0, tzinfo=timezone.utc)
 
     main = _make_trajectory(
         session_id="session-2",
@@ -189,13 +189,13 @@ def test_find_compaction_agents():
     compact1 = _make_trajectory(
         "acompact-a",
         [_make_step("s1", "system", "compact")],
-        timestamp=datetime(2024, 1, 1, 12, 0, tzinfo=UTC),
+        timestamp=datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc),
         extra={"is_compaction_agent": True},
     )
     compact2 = _make_trajectory(
         "acompact-b",
         [_make_step("s1", "system", "compact")],
-        timestamp=datetime(2024, 1, 1, 13, 0, tzinfo=UTC),
+        timestamp=datetime(2024, 1, 1, 13, 0, tzinfo=timezone.utc),
         extra={"is_compaction_agent": True},
     )
     regular_sub = _make_trajectory(
@@ -217,7 +217,7 @@ def test_extra_flag_required_for_compaction():
     fake_compact = _make_trajectory(
         "acompact-fake",
         [_make_step("s1", "system", "compact")],
-        timestamp=datetime(2024, 1, 1, 12, 0, tzinfo=UTC),
+        timestamp=datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc),
     )
 
     result = _find_compaction_agents([main, fake_compact])

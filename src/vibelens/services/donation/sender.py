@@ -15,7 +15,7 @@ import shutil
 import tempfile
 import zipfile
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
@@ -541,7 +541,7 @@ def _create_donation_zip(
         ]
         manifest: dict = {
             "donation_id": donation_id,
-            "timestamp": datetime.now(UTC).isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "vibelens_version": __version__,
             "sessions": manifest_sessions,
         }

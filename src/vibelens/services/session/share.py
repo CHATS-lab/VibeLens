@@ -1,7 +1,7 @@
 """Share service for managing shareable session links via a registry file."""
 
 import json
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from vibelens.models.trajectories import Trajectory
@@ -58,7 +58,7 @@ class ShareService:
         Returns:
             ShareMeta for the newly shared session.
         """
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         meta = ShareMeta(session_id=session_id, title=title, created_at=now)
         self._registry[session_id] = meta
         self._save()

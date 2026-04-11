@@ -10,7 +10,7 @@ and legacy ZIPs (root-level manifest.json) for backward compatibility.
 import asyncio
 import json
 import zipfile
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import HTTPException, UploadFile
@@ -67,7 +67,7 @@ async def receive_donation(file: UploadFile) -> dict:
 
     index_entry = {
         "donation_id": donation_id,
-        "timestamp": datetime.now(UTC).isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "zip_filename": zip_filename,
         "zip_size_bytes": total_written,
         "sessions": manifest.get("sessions", []),

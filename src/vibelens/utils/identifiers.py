@@ -5,7 +5,7 @@ deterministic content-addressed IDs (parser step/tool-call dedup).
 """
 
 import hashlib
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
 # strftime format for the time-prefix portion of timestamped IDs
@@ -26,7 +26,7 @@ def generate_timestamped_id(uuid_length: int = SHORT_UUID_LENGTH) -> str:
     Returns:
         Identifier string, e.g. ``20260408143012_a1b2``.
     """
-    timestamp = datetime.now(UTC).strftime(TIMESTAMPED_ID_FORMAT)
+    timestamp = datetime.now(timezone.utc).strftime(TIMESTAMPED_ID_FORMAT)
     short_uuid = uuid4().hex[:uuid_length]
     return f"{timestamp}_{short_uuid}"
 

@@ -4,7 +4,7 @@ Tests chain merging, affinity-based packing, budget constraints,
 oversized sessions, and settings-based defaults.
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 from vibelens.config.settings import Settings
@@ -75,7 +75,7 @@ def test_budget_splits_into_multiple_batches() -> None:
 
 def test_linked_sessions_stay_in_same_chain() -> None:
     """Linked sessions are merged into chains via build_batches."""
-    ts = datetime(2024, 1, 1, tzinfo=UTC)
+    ts = datetime(2024, 1, 1, tzinfo=timezone.utc)
     contexts = [
         _make_context("s1", project_path="/p", timestamp=ts, next_ref="s2"),
         _make_context("s2", project_path="/p", timestamp=ts, prev_ref="s1"),
@@ -149,7 +149,7 @@ def test_same_project_time_near_packed_together() -> None:
     Budget 5,000 tokens. Each session = 1,250 tokens.
     4 same-project sessions should pack into 1 batch, time-ordered.
     """
-    t0 = datetime(2024, 6, 1, 10, 0, tzinfo=UTC)
+    t0 = datetime(2024, 6, 1, 10, 0, tzinfo=timezone.utc)
     t1 = t0 + timedelta(minutes=30)
     t2 = t0 + timedelta(hours=1)
     t3 = t0 + timedelta(hours=2)
@@ -175,7 +175,7 @@ def test_same_project_preferred_over_cross_project() -> None:
     Budget 2,600 (fits 2 sessions of 1,250 each).
     s1(proj-a) + s2(proj-a) should go together, not s1 + s3(proj-b).
     """
-    t0 = datetime(2024, 6, 1, 10, 0, tzinfo=UTC)
+    t0 = datetime(2024, 6, 1, 10, 0, tzinfo=timezone.utc)
     t1 = t0 + timedelta(hours=1)
     t_near = t0 + timedelta(minutes=5)
     pa, pb = "/project-a", "/project-b"
@@ -200,7 +200,7 @@ def test_linked_chain_stays_together() -> None:
     s1 → s2 (linked). s3 is standalone. Budget fits all.
     s1 and s2 must be in the same batch and adjacent.
     """
-    t0 = datetime(2024, 6, 1, 10, 0, tzinfo=UTC)
+    t0 = datetime(2024, 6, 1, 10, 0, tzinfo=timezone.utc)
     t1 = t0 + timedelta(hours=1)
     t2 = t0 + timedelta(hours=2)
     n = 10_000
@@ -243,7 +243,7 @@ def test_cross_project_fills_remaining_budget() -> None:
     Budget 3,800. Three sessions of 1,250 tokens each.
     s1 + s3 (same project) pack first, then s2 (cross-project) fills.
     """
-    t0 = datetime(2024, 6, 1, 10, 0, tzinfo=UTC)
+    t0 = datetime(2024, 6, 1, 10, 0, tzinfo=timezone.utc)
     t1 = t0 + timedelta(hours=1)
     t2 = t0 + timedelta(hours=2)
     pa, pb = "/project-a", "/project-b"
@@ -327,7 +327,7 @@ def test_realistic_mixed_sizes() -> None:
     Token sizes (chars = tokens * 8 for 'x' strings):
       59K, 23K, 21K, 21K, 18K, 10K, 10K, 8K, 5K, 4K + 7 small (1-3K)
     """
-    t0 = datetime(2024, 6, 1, 10, 0, tzinfo=UTC)
+    t0 = datetime(2024, 6, 1, 10, 0, tzinfo=timezone.utc)
     sizes = [
         59000,
         23000,

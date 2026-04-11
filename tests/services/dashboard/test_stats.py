@@ -1,6 +1,6 @@
 """Tests for dashboard_service aggregation functions."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -48,7 +48,7 @@ def _make_trajectory(
     if tools is None:
         tools = ["Read", "Edit", "Bash"]
     if timestamp is None:
-        timestamp = datetime(2026, 3, 15, 10, 0, tzinfo=UTC)
+        timestamp = datetime(2026, 3, 15, 10, 0, tzinfo=timezone.utc)
 
     end_time = timestamp + timedelta(minutes=1)
 
@@ -173,9 +173,9 @@ class TestComputeDashboardStats:
 
     def test_daily_stats_grouping(self):
         """Sessions group by local date correctly."""
-        ts1 = datetime(2026, 3, 15, 10, 0, tzinfo=UTC)
-        ts2 = datetime(2026, 3, 15, 14, 0, tzinfo=UTC)
-        ts3 = datetime(2026, 3, 16, 9, 0, tzinfo=UTC)
+        ts1 = datetime(2026, 3, 15, 10, 0, tzinfo=timezone.utc)
+        ts2 = datetime(2026, 3, 15, 14, 0, tzinfo=timezone.utc)
+        ts3 = datetime(2026, 3, 16, 9, 0, tzinfo=timezone.utc)
         trajs = [
             _make_trajectory(session_id="s1", timestamp=ts1),
             _make_trajectory(session_id="s2", timestamp=ts2),
@@ -191,13 +191,13 @@ class TestComputeDashboardStats:
 
     def test_hourly_distribution(self):
         """Hourly distribution uses local hours."""
-        ts = datetime(2026, 3, 15, 10, 0, tzinfo=UTC)
+        ts = datetime(2026, 3, 15, 10, 0, tzinfo=timezone.utc)
         local_hour = ts.astimezone().hour
         trajs = [
             _make_trajectory(session_id="s1", timestamp=ts),
             _make_trajectory(
                 session_id="s2",
-                timestamp=datetime(2026, 3, 15, 10, 30, tzinfo=UTC),
+                timestamp=datetime(2026, 3, 15, 10, 30, tzinfo=timezone.utc),
             ),
         ]
         result = compute_dashboard_stats(trajs)
@@ -209,7 +209,7 @@ class TestComputeDashboardStats:
 
     def test_heatmap_keys(self):
         """Heatmap uses local weekday_hour format."""
-        ts = datetime(2026, 3, 15, 10, 0, tzinfo=UTC)
+        ts = datetime(2026, 3, 15, 10, 0, tzinfo=timezone.utc)
         local_ts = ts.astimezone()
         expected_key = f"{local_ts.weekday()}_{local_ts.hour}"
         trajs = [_make_trajectory(timestamp=ts)]
@@ -263,8 +263,8 @@ class TestComputeDashboardStats:
 
     def test_daily_activity_heatmap(self):
         """Daily activity has date -> count entries in local timezone."""
-        ts1 = datetime(2026, 3, 15, 10, 0, tzinfo=UTC)
-        ts2 = datetime(2026, 3, 15, 14, 0, tzinfo=UTC)
+        ts1 = datetime(2026, 3, 15, 10, 0, tzinfo=timezone.utc)
+        ts2 = datetime(2026, 3, 15, 14, 0, tzinfo=timezone.utc)
         trajs = [
             _make_trajectory(session_id="s1", timestamp=ts1),
             _make_trajectory(session_id="s2", timestamp=ts2),
@@ -279,9 +279,9 @@ class TestComputeDashboardStats:
 
     def test_this_year_period(self):
         """This year period accumulates sessions from current year."""
-        now = datetime.now(tz=UTC)
-        this_year_ts = datetime(now.year, 1, 15, 10, 0, tzinfo=UTC)
-        last_year_ts = datetime(now.year - 1, 6, 15, 10, 0, tzinfo=UTC)
+        now = datetime.now(tz=timezone.utc)
+        this_year_ts = datetime(now.year, 1, 15, 10, 0, tzinfo=timezone.utc)
+        last_year_ts = datetime(now.year - 1, 6, 15, 10, 0, tzinfo=timezone.utc)
         trajs = [
             _make_trajectory(session_id="s1", timestamp=this_year_ts),
             _make_trajectory(session_id="s2", timestamp=last_year_ts),
@@ -321,7 +321,7 @@ class TestComputeDashboardStats:
 
     def test_cost_in_period_stats(self):
         """Period stats include cost accumulation."""
-        now = datetime.now(tz=UTC)
+        now = datetime.now(tz=timezone.utc)
         traj = _make_trajectory(model="claude-sonnet-4-6", timestamp=now)
         result = compute_dashboard_stats([traj])
 
@@ -346,14 +346,14 @@ class TestComputeDashboardStats:
                 step_id="s1",
                 source="user",
                 message="hi",
-                timestamp=datetime(2026, 3, 15, 10, 0, tzinfo=UTC),
+                timestamp=datetime(2026, 3, 15, 10, 0, tzinfo=timezone.utc),
             ),
             Step(
                 step_id="s2",
                 source="agent",
                 message="hello",
                 model_name="some-unknown-model",
-                timestamp=datetime(2026, 3, 15, 10, 1, tzinfo=UTC),
+                timestamp=datetime(2026, 3, 15, 10, 1, tzinfo=timezone.utc),
                 metrics=Metrics(prompt_tokens=100, completion_tokens=50),
             ),
         ]
@@ -375,14 +375,14 @@ class TestComputeDashboardStats:
                 step_id="s1",
                 source="user",
                 message="hi",
-                timestamp=datetime(2026, 3, 15, 10, 0, tzinfo=UTC),
+                timestamp=datetime(2026, 3, 15, 10, 0, tzinfo=timezone.utc),
             ),
             Step(
                 step_id="s2",
                 source="agent",
                 message="hello",
                 model_name="claude-opus-4-6",
-                timestamp=datetime(2026, 3, 15, 10, 1, tzinfo=UTC),
+                timestamp=datetime(2026, 3, 15, 10, 1, tzinfo=timezone.utc),
             ),
         ]
         traj = Trajectory(
@@ -567,7 +567,7 @@ class TestEdgeCases:
 
     def test_identical_timestamps_stable_sort(self):
         """Sessions with identical timestamps maintain stable ordering."""
-        same_ts = datetime(2026, 3, 15, 10, 0, tzinfo=UTC)
+        same_ts = datetime(2026, 3, 15, 10, 0, tzinfo=timezone.utc)
         trajs = [
             _make_trajectory(session_id=f"s{i}", timestamp=same_ts)
             for i in range(5)

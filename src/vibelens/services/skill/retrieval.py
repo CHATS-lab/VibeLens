@@ -3,7 +3,7 @@
 import json
 import re
 import time
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from vibelens.deps import get_skill_analysis_store
@@ -132,7 +132,7 @@ async def analyze_skill_retrieval(
     )
     log_analysis_summary(context_set, batches, backend)
 
-    run_timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+    run_timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     log_dir = SKILL_LOG_DIR / run_timestamp
 
     tasks = [
@@ -459,5 +459,5 @@ def _build_skill_retrieval_result(
         metrics=Metrics(cost_usd=cost_usd),
         duration_seconds=duration_seconds,
         batch_count=batch_count,
-        created_at=datetime.now(UTC).isoformat(),
+        created_at=datetime.now(timezone.utc).isoformat(),
     )

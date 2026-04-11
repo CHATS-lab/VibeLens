@@ -7,7 +7,7 @@ distributions, model/project/agent counts, and cost estimation.
 
 import time
 from collections import defaultdict
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from vibelens.llm.normalizer import normalize_model_name
 from vibelens.models.dashboard.dashboard import (
@@ -197,7 +197,7 @@ class _StatsAccumulator:
     def _to_local(self, ts: datetime) -> datetime:
         """Convert timestamp to local timezone (naive assumed UTC)."""
         if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=UTC)
+            ts = ts.replace(tzinfo=timezone.utc)
         return ts.astimezone(self.local_tz)
 
     def add_session(self, session: SessionAggregate) -> None:

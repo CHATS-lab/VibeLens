@@ -2,7 +2,7 @@
 
 import json
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -219,7 +219,7 @@ class TestParseHistoryIndex:
         print(f"  parsed {len(result)} sessions, sorted newest-first")
 
         # since filter
-        since = datetime(2024, 3, 1, tzinfo=UTC)
+        since = datetime(2024, 3, 1, tzinfo=timezone.utc)
         filtered = _parser.parse_session_index(claude_dir, since=since)
         filtered_ids = {t.session_id for t in filtered}
         assert "old" not in filtered_ids
@@ -307,7 +307,7 @@ class TestParseSessionJsonl:
         assert user_step.source == StepSource.USER
         assert user_step.message == "Hello"
         assert user_step.timestamp is not None
-        assert user_step.timestamp.tzinfo == UTC
+        assert user_step.timestamp.tzinfo == timezone.utc
 
         # Assistant step
         agent_step = result[1]
@@ -541,8 +541,8 @@ class TestMetadataViaAssembleTrajectory:
 
     def test_duration(self):
         """Duration computed from first/last timestamps, zero for single or missing timestamps."""
-        t1 = datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC)
-        t2 = datetime(2025, 1, 1, 10, 5, 0, tzinfo=UTC)
+        t1 = datetime(2025, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
+        t2 = datetime(2025, 1, 1, 10, 5, 0, tzinfo=timezone.utc)
 
         # Two timestamps produce 300s duration
         steps = [

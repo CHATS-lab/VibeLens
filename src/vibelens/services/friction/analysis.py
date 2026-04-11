@@ -7,7 +7,7 @@ compute friction_cost per type → persist → cache.
 
 import hashlib
 import time
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from cachetools import TTLCache
@@ -139,7 +139,7 @@ async def analyze_friction(
         len(batches),
     )
 
-    run_timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+    run_timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     log_dir = FRICTION_LOG_DIR / run_timestamp
     log_analysis_summary(context_set, batches, backend)
 
@@ -182,7 +182,7 @@ async def analyze_friction(
         model=backend.model,
         metrics=Metrics(cost_usd=total_cost if total_cost > 0 else None),
         duration_seconds=duration,
-        created_at=datetime.now(UTC).isoformat(),
+        created_at=datetime.now(timezone.utc).isoformat(),
     )
     get_friction_store().save(friction_result, analysis_id)
     clear_analysis_id()

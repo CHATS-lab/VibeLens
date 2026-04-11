@@ -4,7 +4,7 @@ Builds realistic FrictionAnalysisResult with user-centric friction types
 covering all severity levels, spread across available sessions.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from vibelens.models.analysis.friction import (
     FrictionAnalysisResult,
@@ -87,7 +87,7 @@ def build_mock_friction_result(session_ids: list[str]) -> FrictionAnalysisResult
         backend_id=BackendType.MOCK,
         model="mock/test-model",
         metrics=Metrics(cost_usd=0.042),
-        created_at=datetime.now(UTC).isoformat(),
+        created_at=datetime.now(timezone.utc).isoformat(),
     )
 
 

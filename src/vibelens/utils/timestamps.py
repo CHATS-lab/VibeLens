@@ -2,7 +2,7 @@
 
 import math
 import time
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 # Numeric values above this threshold are treated as millisecond-epoch;
 # below it they are treated as second-epoch.  The boundary corresponds
@@ -59,7 +59,7 @@ def parse_iso_timestamp(value: str | None) -> datetime | None:
     try:
         dt = datetime.fromisoformat(value)
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=UTC)
+            dt = dt.replace(tzinfo=timezone.utc)
         return _validate_range(dt)
     except (ValueError, TypeError):
         return None
@@ -87,9 +87,9 @@ def normalize_timestamp(value: int | float | str | None) -> datetime | None:
         if not _is_finite(numeric) or numeric < 0:
             return None
         if numeric >= EPOCH_MS_THRESHOLD:
-            dt = datetime.fromtimestamp(numeric / 1000, tz=UTC)
+            dt = datetime.fromtimestamp(numeric / 1000, tz=timezone.utc)
         else:
-            dt = datetime.fromtimestamp(numeric, tz=UTC)
+            dt = datetime.fromtimestamp(numeric, tz=timezone.utc)
         return _validate_range(dt)
     except (ValueError, TypeError, OSError, OverflowError):
         return None
@@ -112,11 +112,11 @@ def parse_metadata_timestamp(meta: dict) -> datetime | None:
     if ts is None:
         return None
     if isinstance(ts, datetime):
-        return ts if ts.tzinfo else ts.replace(tzinfo=UTC)
+        return ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
     if isinstance(ts, str):
         try:
             dt = datetime.fromisoformat(ts)
-            return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+            return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
         except ValueError:
             return None
     return None
@@ -137,10 +137,10 @@ def monotonic_ms() -> int:
 def utc_now_iso() -> str:
     """Return current UTC time as an ISO-8601 string.
 
-    Replaces the common ``datetime.now(UTC).isoformat()`` pattern
+    Replaces the common ``datetime.now(timezone.utc).isoformat()`` pattern
     with a single call.
 
     Returns:
         ISO-8601 timestamp string with UTC timezone.
     """
-    return datetime.now(UTC).isoformat()
+    return datetime.now(timezone.utc).isoformat()

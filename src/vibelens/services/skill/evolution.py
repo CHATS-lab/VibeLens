@@ -9,7 +9,7 @@ Two-step pipeline (mirrors creation):
 
 import asyncio
 import time
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from vibelens.deps import get_skill_analysis_store
@@ -176,7 +176,7 @@ async def analyze_skill_evolution(
     analysis_id = generate_analysis_id()
     set_analysis_id(analysis_id)
 
-    run_timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+    run_timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     log_dir = SKILL_LOG_DIR / run_timestamp
 
     # Step 1: Generate proposals (filtered to user-selected skills)
@@ -261,7 +261,7 @@ async def analyze_skill_evolution(
         metrics=Metrics(cost_usd=total_cost if total_cost > 0 else None),
         duration_seconds=duration,
         batch_count=proposal_result.batch_count,
-        created_at=datetime.now(UTC).isoformat(),
+        created_at=datetime.now(timezone.utc).isoformat(),
     )
     get_skill_analysis_store().save(skill_result, analysis_id)
     clear_analysis_id()
@@ -349,7 +349,7 @@ async def _infer_skill_evolution_proposals(
         model=backend.model,
         metrics=Metrics(cost_usd=total_cost if total_cost > 0 else None),
         batch_count=len(batches),
-        created_at=datetime.now(UTC).isoformat(),
+        created_at=datetime.now(timezone.utc).isoformat(),
         proposal_output=final_output,
     )
 
@@ -427,7 +427,7 @@ async def _infer_skill_evolution(
     )
 
     if log_dir is None:
-        run_timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        run_timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         log_dir = SKILL_LOG_DIR / run_timestamp
 
     suffix = f"_{proposal_index}" if proposal_index is not None else ""
