@@ -3,7 +3,6 @@
 import threading
 import webbrowser
 from pathlib import Path
-from typing import Optional
 
 import typer
 import uvicorn
@@ -24,9 +23,9 @@ def _open_browser(url: str) -> None:
 
 @app.command()
 def serve(
-    host: Optional[str] = typer.Option(None, help="Bind host"),
-    port: Optional[int] = typer.Option(None, help="Bind port"),
-    config: Optional[Path] = typer.Option(None, help="Path to YAML config file"),  # noqa: B008
+    host: str | None = typer.Option(None, help="Bind host"),
+    port: int | None = typer.Option(None, help="Bind port"),
+    config: Path | None = typer.Option(None, help="Path to YAML config file"),  # noqa: B008
     open_browser: bool = typer.Option(True, "--open/--no-open", help="Open browser on startup"),
 ) -> None:
     """Start the VibeLens server."""

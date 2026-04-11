@@ -1,6 +1,5 @@
 """Creation-mode LLM output and service result models."""
 
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -65,7 +64,7 @@ class SkillCreationProposalOutput(BaseModel):
 class SkillCreationProposalResult(BaseModel):
     """Service result wrapping proposals with metadata."""
 
-    proposal_id: Optional[str] = Field(
+    proposal_id: str | None = Field(
         default=None, description="Persistence ID. Set when saved to disk."
     )
     session_ids: list[str] = Field(
@@ -80,7 +79,7 @@ class SkillCreationProposalResult(BaseModel):
     metrics: Metrics = Field(
         default_factory=Metrics, description="Token usage and cost from the inference step."
     )
-    duration_seconds: Optional[float] = Field(
+    duration_seconds: float | None = Field(
         default=None, description="Wall-clock analysis duration in seconds."
     )
     batch_count: int = Field(default=1, description="Number of LLM batches used.")

@@ -9,7 +9,6 @@ import contextlib
 import json
 import time
 from pathlib import Path
-from typing import Optional
 
 from vibelens.utils.log import get_logger
 
@@ -21,7 +20,7 @@ CACHE_VERSION = 1
 DEFAULT_CACHE_PATH = Path.home() / ".vibelens" / "session_index.json"
 
 
-def load_cache(cache_path: Path = DEFAULT_CACHE_PATH) -> Optional[dict]:
+def load_cache(cache_path: Path = DEFAULT_CACHE_PATH) -> dict | None:
     """Load the persistent index cache from disk.
 
     Returns None if the cache file is missing, corrupt, or has an
@@ -50,7 +49,7 @@ def save_cache(
     metadata_cache: dict[str, dict],
     file_mtimes: dict[str, float],
     continuation_map: dict[str, str],
-    path_to_session_id: Optional[dict[str, str]] = None,
+    path_to_session_id: dict[str, str] | None = None,
     cache_path: Path = DEFAULT_CACHE_PATH,
 ) -> None:
     """Write the index cache to disk.

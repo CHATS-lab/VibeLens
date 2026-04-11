@@ -7,7 +7,6 @@ that reveals the agent's problem-solving strategy beyond a flat
 chronological list.
 """
 
-from typing import Optional, Union
 
 from vibelens.models.analysis.tool_graph import ToolDependencyGraph, ToolEdge
 from vibelens.models.trajectories import Step
@@ -33,7 +32,7 @@ class _FlatCall:
         tc_id: str,
         name: str,
         category: str,
-        raw_input: Optional[Union[dict, str]],
+        raw_input: dict | str | None,
         is_error: bool,
         step_id: str,
         index: int,
@@ -120,7 +119,7 @@ def _flatten_tool_calls(steps: list[Step]) -> list[_FlatCall]:
     return result
 
 
-def _extract_file_path(raw_input: Optional[Union[dict, str]]) -> str:
+def _extract_file_path(raw_input: dict | str | None) -> str:
     """Extract a file path from tool input arguments."""
     if not isinstance(raw_input, dict):
         return ""

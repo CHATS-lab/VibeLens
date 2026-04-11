@@ -1,6 +1,5 @@
 """Evolution-mode LLM output models."""
 
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -54,7 +53,7 @@ class SkillEvolutionProposalOutput(BaseModel):
 class SkillEvolutionProposalResult(BaseModel):
     """Service result wrapping evolution proposals with metadata."""
 
-    proposal_id: Optional[str] = Field(
+    proposal_id: str | None = Field(
         default=None, description="Persistence ID. Set when saved to disk."
     )
     session_ids: list[str] = Field(
@@ -69,7 +68,7 @@ class SkillEvolutionProposalResult(BaseModel):
     metrics: Metrics = Field(
         default_factory=Metrics, description="Token usage and cost from the inference step."
     )
-    duration_seconds: Optional[float] = Field(
+    duration_seconds: float | None = Field(
         default=None, description="Wall-clock analysis duration in seconds."
     )
     batch_count: int = Field(default=1, description="Number of LLM batches used.")

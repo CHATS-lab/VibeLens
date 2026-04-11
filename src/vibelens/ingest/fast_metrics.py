@@ -11,14 +11,13 @@ when Claude Code logs multiple JSONL lines for the same API response.
 
 import json
 from pathlib import Path
-from typing import Optional
 
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
 
 
-def scan_session_metrics(file_path: Path) -> Optional[dict]:
+def scan_session_metrics(file_path: Path) -> dict | None:
     """Extract aggregate metrics from a Claude Code JSONL session file.
 
     Scans line-by-line, extracting usage data from assistant messages

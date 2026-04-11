@@ -1,6 +1,5 @@
 """Donation endpoints — send donations (self-use) and receive them (demo)."""
 
-from typing import Optional
 
 from fastapi import APIRouter, Header, UploadFile
 
@@ -16,7 +15,7 @@ router = APIRouter(tags=["donation"])
 
 @router.post("/sessions/donate")
 async def donate_sessions_endpoint(
-    request: DonateRequest, x_session_token: Optional[str] = Header(None)
+    request: DonateRequest, x_session_token: str | None = Header(None)
 ) -> DonateResult:
     """Donate selected sessions.
 

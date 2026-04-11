@@ -2,7 +2,6 @@
 
 import json
 from pathlib import Path
-from typing import Optional
 
 from vibelens.ingest.parsers.base import is_error_content
 from vibelens.ingest.parsers.gemini import (
@@ -26,8 +25,8 @@ def _make_session(
     session_id: str = "sess-1",
     start_time: str = "2025-01-15T10:00:00Z",
     last_updated: str = "2025-01-15T10:30:00Z",
-    messages: Optional[list] = None,
-    kind: Optional[str] = None,
+    messages: list | None = None,
+    kind: str | None = None,
 ) -> dict:
     """Build a minimal Gemini session dict."""
     if messages is None:

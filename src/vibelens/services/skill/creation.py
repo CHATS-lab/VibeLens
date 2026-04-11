@@ -11,7 +11,6 @@ import asyncio
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 from cachetools import TTLCache
 
@@ -76,7 +75,7 @@ _proposal_cache: TTLCache = TTLCache(maxsize=32, ttl=CACHE_TTL_SECONDS)
 
 
 def estimate_skill_creation(
-    session_ids: list[str], session_token: Optional[str] = None
+    session_ids: list[str], session_token: str | None = None
 ) -> CostEstimate:
     """Pre-flight cost estimate for skill creation analysis.
 
@@ -131,7 +130,7 @@ def estimate_skill_creation(
 
 
 async def analyze_skill_creation(
-    session_ids: list[str], session_token: Optional[str] = None
+    session_ids: list[str], session_token: str | None = None
 ) -> SkillAnalysisResult:
     """Backward-compatible creation: proposals then deep creation for each.
 
@@ -228,7 +227,7 @@ async def analyze_skill_creation(
 
 
 async def _infer_skill_creation_proposals(
-    session_ids: list[str], session_token: Optional[str] = None, log_dir: Optional[Path] = None
+    session_ids: list[str], session_token: str | None = None, log_dir: Path | None = None
 ) -> SkillCreationProposalResult:
     """Run the proposal step: detect patterns and generate lightweight proposals.
 
@@ -320,10 +319,10 @@ async def _infer_skill_creation(
     proposal_rationale: str,
     addressed_patterns: list[str],
     session_ids: list[str],
-    session_token: Optional[str] = None,
+    session_token: str | None = None,
     proposal_confidence: float = 0.0,
-    log_dir: Optional[Path] = None,
-    proposal_index: Optional[int] = None,
+    log_dir: Path | None = None,
+    proposal_index: int | None = None,
 ) -> tuple[SkillCreation, float]:
     """Generate full SKILL.md content for one approved proposal.
 

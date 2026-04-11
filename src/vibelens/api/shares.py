@@ -1,6 +1,5 @@
 """Share endpoints for creating and retrieving shareable session links."""
 
-from typing import Optional
 
 from fastapi import APIRouter, Header, HTTPException, Request
 
@@ -38,7 +37,7 @@ def _build_share_url(request: Request, session_id: str) -> str:
 
 @router.post("")
 async def create_share(
-    body: ShareRequest, request: Request, x_session_token: Optional[str] = Header(None)
+    body: ShareRequest, request: Request, x_session_token: str | None = Header(None)
 ) -> ShareResponse:
     """Mark a session as shared and return the shareable URL.
 

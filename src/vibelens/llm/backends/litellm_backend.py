@@ -8,7 +8,6 @@ File named litellm_backend.py (not litellm.py) to avoid shadowing the package.
 """
 
 from collections.abc import AsyncIterator
-from typing import Optional
 
 import litellm
 
@@ -41,7 +40,7 @@ class LiteLLMBackend(InferenceBackend):
     use litellm's provider-prefixed format (e.g. 'anthropic/claude-sonnet-4-5').
     """
 
-    def __init__(self, config: LLMConfig, model_override: Optional[str] = None):
+    def __init__(self, config: LLMConfig, model_override: str | None = None):
         """Initialize LiteLLM backend from LLMConfig.
 
         Args:
@@ -170,7 +169,7 @@ def _build_messages(request: InferenceRequest) -> list[dict]:
     ]
 
 
-def _parse_usage(response) -> Optional[TokenUsage]:
+def _parse_usage(response) -> TokenUsage | None:
     """Extract token usage from a litellm response."""
     usage = getattr(response, "usage", None)
     if not usage:
@@ -181,7 +180,7 @@ def _parse_usage(response) -> Optional[TokenUsage]:
     )
 
 
-def _extract_cost(response) -> Optional[float]:
+def _extract_cost(response) -> float | None:
     """Extract cost from litellm response using litellm's built-in pricing."""
     try:
         cost = litellm.completion_cost(completion_response=response)

@@ -14,7 +14,6 @@ References:
     - Rules system: https://cursor.com/docs/rules
 """
 
-from typing import Optional
 
 from vibelens.llm.backends.cli_base import CliBackend
 from vibelens.models.llm.inference import BackendType, InferenceRequest
@@ -46,7 +45,7 @@ class CursorCliBackend(CliBackend):
         return CURSOR_CLI_MODELS
 
     @property
-    def default_model(self) -> Optional[str]:
+    def default_model(self) -> str | None:
         return CURSOR_CLI_DEFAULT_MODEL
 
     @property

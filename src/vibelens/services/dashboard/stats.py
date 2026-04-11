@@ -8,7 +8,6 @@ distributions, model/project/agent counts, and cost estimation.
 import time
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
-from typing import Optional
 
 from vibelens.llm.normalizer import normalize_model_name
 from vibelens.models.dashboard.dashboard import (
@@ -32,7 +31,7 @@ NO_PROJECT = "(no project)"
 
 
 def compute_dashboard_stats(
-    trajectories: list[Trajectory], total_sessions: Optional[int] = None
+    trajectories: list[Trajectory], total_sessions: int | None = None
 ) -> DashboardStats:
     """Compute aggregate dashboard statistics from full trajectories.
 
@@ -65,10 +64,10 @@ def compute_dashboard_stats(
 
 def filter_metadata(
     metadata_list: list[dict],
-    project_path: Optional[str] = None,
-    date_from: Optional[str] = None,
-    date_to: Optional[str] = None,
-    agent_name: Optional[str] = None,
+    project_path: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    agent_name: str | None = None,
 ) -> list[dict]:
     """Filter metadata by project path, date range, and agent name.
 
@@ -127,7 +126,7 @@ class SessionAggregate:
         self.duration: int = 0
         self.model: str = UNKNOWN_MODEL
         self.project: str = NO_PROJECT
-        self.timestamp: Optional[datetime] = None
+        self.timestamp: datetime | None = None
         self.agent_name: str = "unknown"
         self.cost_usd: float = 0.0
 
@@ -412,7 +411,7 @@ def _aggregate_metadata(meta: dict) -> SessionAggregate:
     return agg
 
 
-def _is_real_model(name: Optional[str]) -> bool:
+def _is_real_model(name: str | None) -> bool:
     """Check if a model name is a real model (not a placeholder).
 
     Some parsers emit placeholder names like "<unknown>" when the model
@@ -471,7 +470,7 @@ def aggregate_session(traj: Trajectory) -> SessionAggregate:
     return agg
 
 
-def _in_date_range(meta: dict, date_from: Optional[str], date_to: Optional[str]) -> bool:
+def _in_date_range(meta: dict, date_from: str | None, date_to: str | None) -> bool:
     """Check if a metadata entry's timestamp falls within the date range."""
     ts = parse_metadata_timestamp(meta)
     if ts is None:

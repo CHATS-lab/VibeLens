@@ -1,7 +1,7 @@
 """Dependency injection singletons for VibeLens."""
 
 from collections.abc import Callable
-from typing import Any, Optional
+from typing import Any
 
 from vibelens.config import (
     LLMConfig,
@@ -141,7 +141,7 @@ def set_llm_config(config: LLMConfig) -> None:
     set_inference_backend(backend)
 
 
-def get_inference_backend() -> Optional[InferenceBackend]:
+def get_inference_backend() -> InferenceBackend | None:
     """Return cached InferenceBackend, or None if disabled."""
     value = _registry.get("inference_backend", _NOT_CHECKED)
     if value is not _NOT_CHECKED:
@@ -154,12 +154,12 @@ def get_inference_backend() -> Optional[InferenceBackend]:
     return backend
 
 
-def set_inference_backend(backend: Optional[InferenceBackend]) -> None:
+def set_inference_backend(backend: InferenceBackend | None) -> None:
     """Replace the inference backend singleton at runtime."""
     _registry["inference_backend"] = backend
 
 
-def get_upload_stores(session_token: Optional[str]) -> list[DiskTrajectoryStore]:
+def get_upload_stores(session_token: str | None) -> list[DiskTrajectoryStore]:
     """Return upload stores for a given session_token.
 
     Args:

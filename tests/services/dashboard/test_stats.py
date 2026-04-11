@@ -1,7 +1,6 @@
 """Tests for dashboard_service aggregation functions."""
 
 from datetime import UTC, datetime, timedelta
-from typing import Optional
 
 import pytest
 
@@ -38,8 +37,8 @@ def _make_metadata(
 def _make_trajectory(
     session_id: str = "test-session",
     model: str = "claude-sonnet-4-6",
-    tools: Optional[list[str]] = None,
-    timestamp: Optional[datetime] = None,
+    tools: list[str] | None = None,
+    timestamp: datetime | None = None,
     project: str = "/Users/test/myproject",
     duration: int = 60,
     prompt_tokens: int = 200,

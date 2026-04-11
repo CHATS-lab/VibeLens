@@ -1,7 +1,6 @@
 """Inference request and result models for LLM backends."""
 
 from enum import StrEnum
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -43,10 +42,10 @@ class InferenceRequest(BaseModel):
     temperature: float = Field(
         default=0.0, description="Sampling temperature (0.0 = deterministic)."
     )
-    timeout: Optional[int] = Field(
+    timeout: int | None = Field(
         default=None, description="Request timeout in seconds. None uses the backend default."
     )
-    json_schema: Optional[dict] = Field(
+    json_schema: dict | None = Field(
         default=None,
         description="JSON schema for structured output constraint. None for free-form text.",
     )
@@ -60,8 +59,8 @@ class InferenceResult(BaseModel):
 
     text: str = Field(description="Generated text content.")
     model: str = Field(description="Model identifier that produced this result.")
-    usage: Optional[TokenUsage] = Field(default=None, description="Token usage statistics.")
-    cost_usd: Optional[float] = Field(
+    usage: TokenUsage | None = Field(default=None, description="Token usage statistics.")
+    cost_usd: float | None = Field(
         default=None,
         description="Estimated cost in USD. None for free backends (CLI subscriptions).",
     )

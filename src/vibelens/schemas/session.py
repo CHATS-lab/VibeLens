@@ -1,6 +1,5 @@
 """Session-related request and response models."""
 
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -16,10 +15,10 @@ class DownloadRequest(BaseModel):
 class RemoteSessionsQuery(BaseModel):
     """Query parameters for remote session listing."""
 
-    project_id: Optional[str] = Field(
+    project_id: str | None = Field(
         default=None, description="Filter sessions by project identifier."
     )
-    source_type: Optional[DataSourceType] = Field(
+    source_type: DataSourceType | None = Field(
         default=None, description="Filter sessions by data source type."
     )
     limit: int = Field(default=100, description="Maximum number of sessions to return.")
@@ -37,7 +36,7 @@ class DonateResult(BaseModel):
 
     total: int = Field(description="Total number of sessions in the request.")
     donated: int = Field(description="Number of sessions successfully donated.")
-    donation_id: Optional[str] = Field(
+    donation_id: str | None = Field(
         default=None, description="Donation ID, present on successful donation."
     )
     errors: list[dict] = Field(

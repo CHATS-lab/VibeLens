@@ -1,6 +1,5 @@
 """StepRef — reusable locator for a step or step range within a session trajectory."""
 
-from typing import Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -14,7 +13,7 @@ class StepRef(BaseModel):
 
     session_id: str = Field(description="Session containing the referenced step(s).")
     start_step_id: str = Field(description="Step ID of the first (or only) step.")
-    end_step_id: Optional[str] = Field(
+    end_step_id: str | None = Field(
         default=None, description="Last step for range refs. None for point refs."
     )
 

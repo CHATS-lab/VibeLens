@@ -6,7 +6,7 @@ extras), while leaving structural fields (IDs, timestamps, metrics) untouched.
 """
 
 from collections.abc import Callable
-from typing import Any, Optional, Union
+from typing import Any
 
 from vibelens.models.trajectories.trajectory import Trajectory
 
@@ -69,8 +69,8 @@ def _transform_value(value: Any, transform: Callable[[str], str]) -> Any:
 
 
 def _transform_extra(
-    extra: Optional[dict[str, Any]], transform: Callable[[str], str]
-) -> Optional[dict[str, Any]]:
+    extra: dict[str, Any] | None, transform: Callable[[str], str]
+) -> dict[str, Any] | None:
     """Transform all string values inside an ``extra`` dict recursively."""
     if extra is None:
         return None
@@ -78,8 +78,8 @@ def _transform_extra(
 
 
 def _transform_content_parts(
-    message: Union[str, list], transform: Callable[[str], str]
-) -> Union[str, list]:
+    message: str | list, transform: Callable[[str], str]
+) -> str | list:
     """Transform text within a message that may be a string or ContentPart list."""
     if isinstance(message, str):
         return transform(message)
@@ -95,7 +95,7 @@ def _transform_content_parts(
     return result
 
 
-def _transform_ref(ref_data: Optional[dict], transform: Callable[[str], str]) -> Optional[dict]:
+def _transform_ref(ref_data: dict | None, transform: Callable[[str], str]) -> dict | None:
     """Transform sensitive fields in a TrajectoryRef dict."""
     if ref_data is None:
         return None

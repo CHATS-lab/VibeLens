@@ -9,7 +9,6 @@ import hashlib
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 from cachetools import TTLCache
 
@@ -66,7 +65,7 @@ FRICTION_LOG_DIR = Path("logs/friction")
 _cache: TTLCache = TTLCache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL_SECONDS)
 
 
-def estimate_friction(session_ids: list[str], session_token: Optional[str] = None) -> CostEstimate:
+def estimate_friction(session_ids: list[str], session_token: str | None = None) -> CostEstimate:
     """Pre-flight cost estimate for friction analysis without calling the LLM.
 
     Args:
@@ -103,7 +102,7 @@ def estimate_friction(session_ids: list[str], session_token: Optional[str] = Non
 
 
 async def analyze_friction(
-    session_ids: list[str], session_token: Optional[str] = None
+    session_ids: list[str], session_token: str | None = None
 ) -> FrictionAnalysisResult:
     """Run user-centric friction analysis across specified sessions.
 

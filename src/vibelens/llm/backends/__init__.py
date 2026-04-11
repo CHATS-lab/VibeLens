@@ -6,7 +6,6 @@ CLI backends are registered in _CLI_BACKEND_REGISTRY and lazy-imported.
 """
 
 import importlib
-from typing import Optional
 
 from vibelens.config.llm_config import LLMConfig
 from vibelens.llm.backend import InferenceBackend
@@ -34,7 +33,7 @@ CLI_BACKENDS = frozenset(_CLI_BACKEND_REGISTRY.keys())
 KNOWN_BACKENDS = CLI_BACKENDS | {BackendType.LITELLM, BackendType.DISABLED, BackendType.MOCK}
 
 
-def create_backend_from_llm_config(config: LLMConfig) -> Optional[InferenceBackend]:
+def create_backend_from_llm_config(config: LLMConfig) -> InferenceBackend | None:
     """Factory: create the configured backend from LLMConfig, or None if disabled.
 
     Args:
@@ -110,7 +109,7 @@ def _create_cli_backend(backend_id: BackendType, config: LLMConfig) -> Inference
     return backend
 
 
-def _resolve_cli_model(config_model: str, backend: InferenceBackend) -> Optional[str]:
+def _resolve_cli_model(config_model: str, backend: InferenceBackend) -> str | None:
     """Pick the right model for a CLI backend.
 
     If the user left the model at the litellm default or empty, use the

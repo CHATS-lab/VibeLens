@@ -3,7 +3,6 @@
 import hashlib
 import subprocess
 from pathlib import Path
-from typing import Optional
 
 from vibelens.utils.log import get_logger
 
@@ -15,7 +14,7 @@ GIT_RESOLVE_TIMEOUT_SECONDS = 10
 BUNDLE_TIMEOUT_SECONDS = 300
 
 
-def resolve_git_root(path: Path) -> Optional[Path]:
+def resolve_git_root(path: Path) -> Path | None:
     """Run ``git rev-parse --show-toplevel`` to find the repo root.
 
     Args:

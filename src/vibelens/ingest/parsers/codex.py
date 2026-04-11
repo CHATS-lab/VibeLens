@@ -24,7 +24,7 @@ import re
 import sqlite3
 from collections import OrderedDict
 from pathlib import Path
-from typing import NamedTuple, Optional, Union
+from typing import NamedTuple
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -79,16 +79,16 @@ _TOOL_CALL_TYPES = {"function_call", "custom_tool_call"}
 class _CodexSessionMeta(NamedTuple):
     """Aggregated metadata from a single pass over raw JSONL content."""
 
-    session_id: Optional[str]
-    cli_version: Optional[str]
-    model_name: Optional[str]
-    project_path: Optional[str]
-    source: Optional[str]
-    originator: Optional[str]
-    effort: Optional[str]
-    sandbox_policy: Optional[str]
-    approval_policy: Optional[str]
-    forked_from_id: Optional[str]
+    session_id: str | None
+    cli_version: str | None
+    model_name: str | None
+    project_path: str | None
+    source: str | None
+    originator: str | None
+    effort: str | None
+    sandbox_policy: str | None
+    approval_policy: str | None
+    forked_from_id: str | None
 
 
 class _CodexParseState(BaseModel):
@@ -131,13 +131,13 @@ class CodexParser(BaseParser):
     """
 
     AGENT_TYPE = AgentType.CODEX
-    LOCAL_DATA_DIR: Optional[Path] = Path.home() / ".codex"
+    LOCAL_DATA_DIR: Path | None = Path.home() / ".codex"
 
     def discover_session_files(self, data_dir: Path) -> list[Path]:
         """Find Codex rollout session files."""
         return sorted(f for f in data_dir.rglob("*.jsonl") if f.stem.startswith("rollout-"))
 
-    def parse(self, content: str, source_path: Optional[str] = None) -> list[Trajectory]:
+    def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
         """Parse Codex rollout JSONL content into a Trajectory.
 
         Args:
@@ -225,7 +225,7 @@ class CodexParser(BaseParser):
         logger.info("Codex SQLite index: %d sessions", len(trajectories))
         return trajectories
 
-    def _build_skeleton_from_row(self, row: sqlite3.Row) -> Optional[Trajectory]:
+    def _build_skeleton_from_row(self, row: sqlite3.Row) -> Trajectory | None:
         """Build a skeleton Trajectory from a SQLite threads row.
 
         Args:
@@ -291,7 +291,7 @@ class CodexParser(BaseParser):
 
 
 def _load_rollout_content(
-    content: str, diagnostics: Optional[DiagnosticsCollector] = None
+    content: str, diagnostics: DiagnosticsCollector | None = None
 ) -> list[dict]:
     """Parse JSONL content string into entry dicts."""
     entries = []
@@ -324,16 +324,16 @@ def _scan_session_metadata(entries: list[dict]) -> _CodexSessionMeta:
     Returns:
         Populated _CodexSessionMeta.
     """
-    session_id: Optional[str] = None
-    cli_version: Optional[str] = None
-    model_name: Optional[str] = None
-    project_path: Optional[str] = None
-    source: Optional[str] = None
-    originator: Optional[str] = None
-    effort: Optional[str] = None
-    sandbox_policy: Optional[str] = None
-    approval_policy: Optional[str] = None
-    forked_from_id: Optional[str] = None
+    session_id: str | None = None
+    cli_version: str | None = None
+    model_name: str | None = None
+    project_path: str | None = None
+    source: str | None = None
+    originator: str | None = None
+    effort: str | None = None
+    sandbox_policy: str | None = None
+    approval_policy: str | None = None
+    forked_from_id: str | None = None
     found_session_meta = False
     found_turn_context = False
 
@@ -374,7 +374,7 @@ def _scan_session_metadata(entries: list[dict]) -> _CodexSessionMeta:
     )
 
 
-def _build_session_extra(meta: _CodexSessionMeta) -> Optional[dict]:
+def _build_session_extra(meta: _CodexSessionMeta) -> dict | None:
     """Build trajectory-level extra dict from session metadata.
 
     Args:
@@ -395,7 +395,7 @@ def _build_session_extra(meta: _CodexSessionMeta) -> Optional[dict]:
 
 
 def _collect_tool_outputs(
-    entries: list[dict], diagnostics: Optional[DiagnosticsCollector] = None
+    entries: list[dict], diagnostics: DiagnosticsCollector | None = None
 ) -> OrderedDict[str, dict]:
     """Build a bounded call_id -> result mapping from tool output entries.
 
@@ -426,7 +426,7 @@ def _collect_tool_outputs(
 
 
 def _build_steps(
-    entries: list[dict], session_id: str, diagnostics: Optional[DiagnosticsCollector] = None
+    entries: list[dict], session_id: str, diagnostics: DiagnosticsCollector | None = None
 ) -> list[Step]:
     """Build Step objects from rollout entries.
 
@@ -471,7 +471,7 @@ def _build_steps(
     return steps
 
 
-def _build_step_extra(state: _CodexParseState) -> Optional[dict]:
+def _build_step_extra(state: _CodexParseState) -> dict | None:
     """Build step-level extra dict from current parse state.
 
     Args:
@@ -622,7 +622,7 @@ def _extract_message_text(payload: dict) -> str:
     return "\n".join(parts)
 
 
-def _parse_arguments(arguments: Union[str, dict]) -> Optional[Union[dict, str]]:
+def _parse_arguments(arguments: str | dict) -> dict | str | None:
     """Parse function_call arguments JSON string.
 
     OpenAI serialises function_call arguments as a JSON *string* rather
@@ -640,7 +640,7 @@ def _parse_arguments(arguments: Union[str, dict]) -> Optional[Union[dict, str]]:
         return arguments
 
 
-def _parse_structured_output(raw: str) -> tuple[str, bool, Optional[dict]]:
+def _parse_structured_output(raw: str) -> tuple[str, bool, dict | None]:
     """Parse Codex structured tool output, stripping metadata prefix.
 
     Args:
@@ -662,7 +662,7 @@ def _parse_structured_output(raw: str) -> tuple[str, bool, Optional[dict]]:
     return cleaned, exit_code != 0, metadata
 
 
-def _parse_token_count(payload: dict) -> Optional[Metrics]:
+def _parse_token_count(payload: dict) -> Metrics | None:
     """Parse token_count event_msg payload into Metrics.
 
     Per-turn usage is nested under ``info.last_token_usage``; falls back
@@ -702,7 +702,7 @@ def _parse_token_count(payload: dict) -> Optional[Metrics]:
     )
 
 
-def _extract_final_token_usage(entries: list[dict]) -> Optional[dict]:
+def _extract_final_token_usage(entries: list[dict]) -> dict | None:
     """Extract cumulative total_token_usage from the last token_count event.
 
     Codex includes a ``total_token_usage`` block in token_count events

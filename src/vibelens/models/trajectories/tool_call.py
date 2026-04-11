@@ -1,6 +1,6 @@
 """Tool call model for ATIF trajectories."""
 
-from typing import Any, Optional, Union
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -14,9 +14,9 @@ class ToolCall(BaseModel):
     function_name: str = Field(
         description="Name of the invoked tool (e.g. 'Bash', 'Read', 'Edit').",
     )
-    arguments: Optional[Union[dict, str]] = Field(
+    arguments: dict | str | None = Field(
         default=None, description="Arguments passed to the tool."
     )
-    extra: Optional[dict[str, Any]] = Field(
+    extra: dict[str, Any] | None = Field(
         default=None, description="Custom tool call metadata (e.g. summary, output_digest)."
     )

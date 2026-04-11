@@ -5,7 +5,6 @@ import re
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 from vibelens.deps import get_skill_analysis_store
 from vibelens.llm.backend import InferenceBackend
@@ -64,7 +63,7 @@ SKILL_RETRIEVAL_TIMEOUT_SECONDS = 300
 
 
 def estimate_skill_retrieval(
-    session_ids: list[str], session_token: Optional[str] = None
+    session_ids: list[str], session_token: str | None = None
 ) -> CostEstimate:
     """Pre-flight cost estimate for skill retrieval analysis.
 
@@ -102,7 +101,7 @@ def estimate_skill_retrieval(
 
 
 async def analyze_skill_retrieval(
-    session_ids: list[str], session_token: Optional[str] = None
+    session_ids: list[str], session_token: str | None = None
 ) -> SkillAnalysisResult:
     """Run retrieval-mode skill analysis: recommend existing skills from catalog."""
     cache_key = skill_cache_key(session_ids, SkillMode.RETRIEVAL)
@@ -437,10 +436,10 @@ def _build_skill_retrieval_result(
     loaded_ids: list[str],
     skipped_ids: list[str],
     backend: InferenceBackend,
-    cost_usd: Optional[float],
+    cost_usd: float | None,
     batch_count: int = 1,
-    warnings: Optional[list[str]] = None,
-    duration_seconds: Optional[float] = None,
+    warnings: list[str] | None = None,
+    duration_seconds: float | None = None,
 ) -> SkillAnalysisResult:
     """Build a SkillAnalysisResult for retrieval mode."""
     all_descriptions = _load_skill_descriptions()

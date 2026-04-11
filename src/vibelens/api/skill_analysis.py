@@ -2,7 +2,6 @@
 
 import asyncio
 import secrets
-from typing import Optional
 
 from fastapi import APIRouter, Header, HTTPException
 
@@ -31,8 +30,8 @@ async def _run_skill_analysis(
     job_id: str,
     session_ids: list[str],
     mode: str,
-    token: Optional[str],
-    skill_names: Optional[list[str]] = None,
+    token: str | None,
+    skill_names: list[str] | None = None,
 ) -> None:
     """Background wrapper for skill analysis."""
     try:
@@ -50,7 +49,7 @@ async def _run_skill_analysis(
 
 @router.post("/estimate")
 async def skill_estimate(
-    body: SkillAnalysisRequest, x_session_token: Optional[str] = Header(None)
+    body: SkillAnalysisRequest, x_session_token: str | None = Header(None)
 ) -> CostEstimateResponse:
     """Pre-flight cost estimate for skill analysis.
 
@@ -86,7 +85,7 @@ async def skill_estimate(
 
 @router.post("")
 async def skill_analysis(
-    body: SkillAnalysisRequest, x_session_token: Optional[str] = Header(None)
+    body: SkillAnalysisRequest, x_session_token: str | None = Header(None)
 ) -> AnalysisJobResponse:
     """Run skill analysis on specified sessions.
 

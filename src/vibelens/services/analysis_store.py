@@ -9,7 +9,7 @@ import json
 import secrets
 from collections.abc import Callable
 from pathlib import Path
-from typing import Generic, Optional, TypeVar
+from typing import Generic, TypeVar
 
 from pydantic import BaseModel
 
@@ -66,7 +66,7 @@ class AnalysisStore(Generic[ResultT, MetaT]):
     def _data_path(self, analysis_id: str) -> Path:
         return self._dir / f"{analysis_id}.json"
 
-    def save(self, result: ResultT, analysis_id: Optional[str] = None) -> MetaT:
+    def save(self, result: ResultT, analysis_id: str | None = None) -> MetaT:
         """Persist a result and append metadata to the JSONL index.
 
         Args:
@@ -85,7 +85,7 @@ class AnalysisStore(Generic[ResultT, MetaT]):
         logger.info("Saved analysis %s to %s", analysis_id, self._dir.name)
         return meta
 
-    def load(self, analysis_id: str) -> Optional[ResultT]:
+    def load(self, analysis_id: str) -> ResultT | None:
         """Load a full analysis result by ID."""
         path = self._data_path(analysis_id)
         if not path.exists():

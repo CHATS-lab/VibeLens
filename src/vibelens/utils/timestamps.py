@@ -3,7 +3,6 @@
 import math
 import time
 from datetime import UTC, datetime
-from typing import Optional, Union
 
 # Numeric values above this threshold are treated as millisecond-epoch;
 # below it they are treated as second-epoch.  The boundary corresponds
@@ -17,7 +16,7 @@ MIN_VALID_EPOCH = 1_420_070_400  # 2015-01-01T00:00:00Z
 MAX_VALID_EPOCH = 2_051_222_400  # 2035-01-01T00:00:00Z
 
 
-def _validate_range(dt: datetime) -> Optional[datetime]:
+def _validate_range(dt: datetime) -> datetime | None:
     """Return dt only if it falls within the valid agent-era range.
 
     Args:
@@ -32,7 +31,7 @@ def _validate_range(dt: datetime) -> Optional[datetime]:
     return dt
 
 
-def _is_finite(value: Union[int, float]) -> bool:
+def _is_finite(value: int | float) -> bool:
     """Check whether a numeric value is finite (not inf, -inf, or NaN).
 
     Args:
@@ -44,7 +43,7 @@ def _is_finite(value: Union[int, float]) -> bool:
     return not (math.isinf(value) or math.isnan(value))
 
 
-def parse_iso_timestamp(value: Optional[str]) -> Optional[datetime]:
+def parse_iso_timestamp(value: str | None) -> datetime | None:
     """Parse an ISO-8601 timestamp string to a UTC datetime.
 
     Adds UTC timezone if the parsed datetime is naive.
@@ -66,7 +65,7 @@ def parse_iso_timestamp(value: Optional[str]) -> Optional[datetime]:
         return None
 
 
-def normalize_timestamp(value: Optional[Union[int, float, str]]) -> Optional[datetime]:
+def normalize_timestamp(value: int | float | str | None) -> datetime | None:
     """Auto-detect and parse a timestamp from any common format.
 
     Handles None, ISO-8601 strings, millisecond-epoch, and second-epoch
@@ -96,7 +95,7 @@ def normalize_timestamp(value: Optional[Union[int, float, str]]) -> Optional[dat
         return None
 
 
-def parse_metadata_timestamp(meta: dict) -> Optional[datetime]:
+def parse_metadata_timestamp(meta: dict) -> datetime | None:
     """Extract and parse a timestamp from a metadata dict.
 
     Handles datetime objects directly and delegates string values

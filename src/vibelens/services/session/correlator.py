@@ -6,7 +6,6 @@ capability — it enables cross-agent workflow analysis.
 """
 
 from datetime import timedelta
-from typing import Optional
 
 from vibelens.models.analysis.correlator import CorrelatedGroup, CorrelatedSession
 from vibelens.models.trajectories import Trajectory
@@ -40,7 +39,7 @@ def correlate_sessions(trajectories: list[Trajectory]) -> list[CorrelatedGroup]:
     return groups
 
 
-def _find_overlapping(trajectories: list[Trajectory]) -> Optional[CorrelatedGroup]:
+def _find_overlapping(trajectories: list[Trajectory]) -> CorrelatedGroup | None:
     """Find trajectories with overlapping time intervals within one project.
 
     Args:

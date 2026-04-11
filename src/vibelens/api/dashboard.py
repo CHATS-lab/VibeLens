@@ -1,7 +1,6 @@
 """Dashboard endpoints — aggregate stats, tool usage, session analytics, export."""
 
 from datetime import datetime
-from typing import Optional
 
 from fastapi import APIRouter, Header, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -19,11 +18,11 @@ router = APIRouter(tags=["analysis"])
 
 @router.get("/analysis/dashboard")
 def dashboard_stats(
-    project_path: Optional[str] = None,
-    date_from: Optional[str] = None,
-    date_to: Optional[str] = None,
-    agent_name: Optional[str] = None,
-    x_session_token: Optional[str] = Header(None),
+    project_path: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    agent_name: str | None = None,
+    x_session_token: str | None = Header(None),
 ) -> DashboardStats:
     """Compute aggregate dashboard statistics from full trajectories."""
     return get_dashboard_stats(project_path, date_from, date_to, x_session_token, agent_name)
@@ -31,11 +30,11 @@ def dashboard_stats(
 
 @router.get("/analysis/tool-usage")
 def tool_usage(
-    project_path: Optional[str] = None,
-    date_from: Optional[str] = None,
-    date_to: Optional[str] = None,
-    agent_name: Optional[str] = None,
-    x_session_token: Optional[str] = Header(None),
+    project_path: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    agent_name: str | None = None,
+    x_session_token: str | None = Header(None),
 ) -> list[ToolUsageStat]:
     """Compute per-tool usage statistics (cached)."""
     return get_tool_usage(project_path, date_from, date_to, x_session_token, agent_name)
@@ -43,7 +42,7 @@ def tool_usage(
 
 @router.get("/analysis/sessions/{session_id}/stats")
 def session_analytics(
-    session_id: str, x_session_token: Optional[str] = Header(None)
+    session_id: str, x_session_token: str | None = Header(None)
 ) -> SessionAnalytics:
     """Compute detailed analytics for a single session."""
     result = get_session_analytics(session_id, x_session_token)
@@ -55,11 +54,11 @@ def session_analytics(
 @router.get("/analysis/dashboard/export")
 def export_dashboard(
     format: str = Query("csv", pattern="^(csv|json)$"),
-    project_path: Optional[str] = None,
-    date_from: Optional[str] = None,
-    date_to: Optional[str] = None,
-    agent_name: Optional[str] = None,
-    x_session_token: Optional[str] = Header(None),
+    project_path: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    agent_name: str | None = None,
+    x_session_token: str | None = Header(None),
 ) -> StreamingResponse:
     """Export dashboard data as a downloadable file."""
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")

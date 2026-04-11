@@ -2,7 +2,6 @@
 
 import asyncio
 import secrets
-from typing import Optional
 
 from fastapi import APIRouter, Header, HTTPException
 
@@ -27,7 +26,7 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/analysis", tags=["friction"])
 
 
-async def _run_friction(job_id: str, session_ids: list[str], token: Optional[str]) -> None:
+async def _run_friction(job_id: str, session_ids: list[str], token: str | None) -> None:
     """Background wrapper that runs friction analysis and updates job status."""
     try:
         result = await analyze_friction(session_ids, session_token=token)
@@ -42,7 +41,7 @@ async def _run_friction(job_id: str, session_ids: list[str], token: Optional[str
 
 @router.post("/friction")
 async def friction_analysis(
-    body: FrictionAnalysisRequest, x_session_token: Optional[str] = Header(None)
+    body: FrictionAnalysisRequest, x_session_token: str | None = Header(None)
 ) -> AnalysisJobResponse:
     """Run multi-session friction analysis on specified sessions.
 
@@ -122,7 +121,7 @@ async def friction_job_cancel(job_id: str) -> AnalysisJobStatus:
 
 @router.post("/friction/estimate")
 async def friction_estimate(
-    body: FrictionAnalysisRequest, x_session_token: Optional[str] = Header(None)
+    body: FrictionAnalysisRequest, x_session_token: str | None = Header(None)
 ) -> CostEstimateResponse:
     """Pre-flight cost estimate for friction analysis.
 

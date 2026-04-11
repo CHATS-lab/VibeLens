@@ -4,7 +4,7 @@ Unified model for all trajectory cross-references: continuation,
 subagent delegation, and parent session linkage.
 """
 
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -20,19 +20,19 @@ class TrajectoryRef(BaseModel):
     """
 
     session_id: str = Field(description="Session ID of the referenced trajectory.")
-    trajectory_path: Optional[str] = Field(
+    trajectory_path: str | None = Field(
         default=None,
         description="File path to the referenced trajectory.",
     )
-    step_id: Optional[str] = Field(
+    step_id: str | None = Field(
         default=None,
         description="Step ID in the parent that spawned this sub-agent.",
     )
-    tool_call_id: Optional[str] = Field(
+    tool_call_id: str | None = Field(
         default=None,
         description="Tool call ID that triggered the sub-agent spawn.",
     )
-    extra: Optional[dict[str, Any]] = Field(
+    extra: dict[str, Any] | None = Field(
         default=None,
         description="Custom metadata about the referenced trajectory.",
     )

@@ -8,7 +8,6 @@ across all agents.
 
 import threading
 from pathlib import Path
-from typing import Optional
 
 from vibelens.config import Settings
 from vibelens.ingest.fast_metrics import scan_session_metrics
@@ -59,7 +58,7 @@ class LocalTrajectoryStore(BaseTrajectoryStore):
     from TrajectoryStore. Only overrides initialize, save, and _build_index.
     """
 
-    def __init__(self, settings: Optional[Settings] = None) -> None:
+    def __init__(self, settings: Settings | None = None) -> None:
         super().__init__()
         self._build_lock = threading.Lock()
         self._parsers: list[BaseParser] = [cls() for cls in LOCAL_PARSER_CLASSES]
@@ -79,7 +78,7 @@ class LocalTrajectoryStore(BaseTrajectoryStore):
             if data_dir:
                 self._data_dirs[parser] = data_dir
 
-    def get_data_dir(self, parser: BaseParser) -> Optional[Path]:
+    def get_data_dir(self, parser: BaseParser) -> Path | None:
         """Return the data directory for a parser.
 
         Args:

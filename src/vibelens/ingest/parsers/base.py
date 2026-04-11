@@ -10,7 +10,7 @@ import json
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING, Union
 
 from vibelens.models.enums import AgentType, StepSource
 from vibelens.models.trajectories import (
@@ -41,7 +41,7 @@ ERROR_PREFIX = "[ERROR] "
 ROLE_TO_SOURCE: dict[str, StepSource] = {"user": StepSource.USER, "assistant": StepSource.AGENT}
 
 
-def is_error_content(content: Optional[Union[str, list]]) -> bool:
+def is_error_content(content: str | list | None) -> bool:
     """Check whether an observation result's content indicates an error.
 
     Args:
@@ -55,7 +55,7 @@ def is_error_content(content: Optional[Union[str, list]]) -> bool:
     return content.startswith(ERROR_PREFIX)
 
 
-def mark_error_content(content: Optional[str]) -> str:
+def mark_error_content(content: str | None) -> str:
     """Prefix content with the error marker if not already present.
 
     Args:
@@ -130,9 +130,9 @@ class BaseParser(ABC):
     """
 
     AGENT_TYPE: AgentType
-    LOCAL_DATA_DIR: Optional[Path] = None
+    LOCAL_DATA_DIR: Path | None = None
 
-    def parse_session_index(self, data_dir: Path) -> Optional[list[Trajectory]]:
+    def parse_session_index(self, data_dir: Path) -> list[Trajectory] | None:
         """Build skeleton trajectories from a fast index if available.
 
         Parsers with an external index (history.jsonl, SQLite DB) override
@@ -176,7 +176,7 @@ class BaseParser(ABC):
         return [session_file]
 
     @abstractmethod
-    def parse(self, content: str, source_path: Optional[str] = None) -> list[Trajectory]:
+    def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
         """Parse raw file content into Trajectory objects.
 
         This is the main parsing entry point. Each parser implements
@@ -224,7 +224,7 @@ class BaseParser(ABC):
             return text
         return text[:MAX_FIRST_MESSAGE_LENGTH] + "..."
 
-    def find_first_user_text(self, steps: list[Step]) -> Optional[str]:
+    def find_first_user_text(self, steps: list[Step]) -> str | None:
         """Extract truncated text of the first meaningful user step.
 
         Skips copied context (from ``claude --resume``) and slash commands
@@ -252,7 +252,7 @@ class BaseParser(ABC):
         return None
 
     @staticmethod
-    def build_diagnostics_extra(collector: "DiagnosticsCollector") -> Optional[dict]:
+    def build_diagnostics_extra(collector: "DiagnosticsCollector") -> dict | None:
         """Build trajectory extra dict from diagnostics if there are issues.
 
         Args:
@@ -270,7 +270,7 @@ class BaseParser(ABC):
             return None
         return {"diagnostics": collector.to_diagnostics().model_dump()}
 
-    def build_agent(self, version: Optional[str] = None, model: Optional[str] = None) -> Agent:
+    def build_agent(self, version: str | None = None, model: str | None = None) -> Agent:
         """Create an ATIF Agent model using this parser's AGENT_TYPE.
 
         Args:
@@ -287,10 +287,10 @@ class BaseParser(ABC):
         session_id: str,
         agent: Agent,
         steps: list[Step],
-        project_path: Optional[str] = None,
-        prev_trajectory_ref: Optional[TrajectoryRef] = None,
-        parent_trajectory_ref: Optional[TrajectoryRef] = None,
-        extra: Optional[dict] = None,
+        project_path: str | None = None,
+        prev_trajectory_ref: TrajectoryRef | None = None,
+        parent_trajectory_ref: TrajectoryRef | None = None,
+        extra: dict | None = None,
     ) -> Trajectory:
         """Assemble a Trajectory from parts with auto-computed derived fields.
 
@@ -371,7 +371,7 @@ def _compute_final_metrics(steps: list[Step]) -> FinalMetrics:
     """
     total_prompt = 0
     total_completion = 0
-    total_cost: Optional[float] = None
+    total_cost: float | None = None
     total_cache_write = 0
     total_cache_read = 0
     tool_call_count = 0

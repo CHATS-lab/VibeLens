@@ -1,6 +1,5 @@
 """Session donation — package and send sessions to the donation server."""
 
-from typing import Optional
 
 from vibelens.deps import is_demo_mode
 from vibelens.schemas.session import DonateResult
@@ -12,7 +11,7 @@ logger = get_logger(__name__)
 
 
 async def donate_sessions(
-    session_ids: list[str], session_token: Optional[str] = None
+    session_ids: list[str], session_token: str | None = None
 ) -> DonateResult:
     """Package sessions into a ZIP and send to the donation server.
 
@@ -43,7 +42,7 @@ class _DonatableResult:
 
 
 def _filter_donatable_ids(
-    session_ids: list[str], session_token: Optional[str]
+    session_ids: list[str], session_token: str | None
 ) -> _DonatableResult:
     """Check accessibility and donatability for each session ID.
 

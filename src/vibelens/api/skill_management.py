@@ -4,7 +4,6 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Optional
 
 import httpx
 from cachetools import TTLCache
@@ -244,7 +243,7 @@ _GITHUB_TREE_RE = re.compile(
 )
 
 
-def _source_url_to_raw(source_url: str) -> Optional[str]:
+def _source_url_to_raw(source_url: str) -> str | None:
     """Convert a GitHub tree URL to a raw SKILL.md URL.
 
     Args:

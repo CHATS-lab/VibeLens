@@ -21,7 +21,6 @@ Key differences from Claude Code:
 
 import json
 from pathlib import Path
-from typing import Optional, Union
 from uuid import uuid4
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
@@ -57,7 +56,7 @@ class OpenClawParser(BaseParser):
     """
 
     AGENT_TYPE = AgentType.OPENCLAW
-    LOCAL_DATA_DIR: Optional[Path] = Path.home() / ".openclaw"
+    LOCAL_DATA_DIR: Path | None = Path.home() / ".openclaw"
 
     def discover_session_files(self, data_dir: Path) -> list[Path]:
         """Find OpenClaw session JSONL files across all agent instances.
@@ -86,7 +85,7 @@ class OpenClawParser(BaseParser):
             files.append(jsonl_file)
         return files
 
-    def parse_session_index(self, data_dir: Path) -> Optional[list[Trajectory]]:
+    def parse_session_index(self, data_dir: Path) -> list[Trajectory] | None:
         """Build skeleton trajectories from sessions.json for fast listing.
 
         Args:
@@ -137,7 +136,7 @@ class OpenClawParser(BaseParser):
 
         return trajectories if trajectories else None
 
-    def parse(self, content: str, source_path: Optional[str] = None) -> list[Trajectory]:
+    def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
         """Parse OpenClaw JSONL session content into Trajectory objects.
 
         Args:
@@ -216,7 +215,7 @@ def _extract_session_meta(entries: list[dict]) -> dict:
         Dict with keys: session_id, cwd, model, provider.
     """
     meta: dict = {"session_id": None, "cwd": None, "model": None, "provider": None}
-    first_assistant_model: Optional[str] = None
+    first_assistant_model: str | None = None
 
     for entry in entries:
         event_type = entry.get("type")
@@ -348,7 +347,7 @@ def _collect_tool_results(message_entries: list[dict]) -> dict[str, dict]:
     return results
 
 
-def _decompose_content(raw_content: Union[str, list]) -> tuple[str, Optional[str], list[ToolCall]]:
+def _decompose_content(raw_content: str | list) -> tuple[str, str | None, list[ToolCall]]:
     """Split content blocks into text, reasoning, and tool calls.
 
     Args:
@@ -394,7 +393,7 @@ def _decompose_content(raw_content: Union[str, list]) -> tuple[str, Optional[str
     return (message, reasoning, tool_calls)
 
 
-def _build_metrics(usage: Optional[dict]) -> Optional[Metrics]:
+def _build_metrics(usage: dict | None) -> Metrics | None:
     """Convert OpenClaw usage dict to ATIF Metrics model.
 
     OpenClaw usage field mapping:
@@ -432,7 +431,7 @@ def _build_metrics(usage: Optional[dict]) -> Optional[Metrics]:
 
 def _build_observation(
     tool_calls: list[ToolCall], tool_result_map: dict[str, dict]
-) -> Optional[Observation]:
+) -> Observation | None:
     """Build an Observation from tool calls and their pre-scanned results.
 
     Args:

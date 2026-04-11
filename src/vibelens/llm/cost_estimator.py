@@ -16,7 +16,6 @@ produce max_tokens of output.
 """
 
 from dataclasses import dataclass
-from typing import Optional
 
 from vibelens.llm.pricing import TOKENS_PER_MTOK, lookup_pricing
 from vibelens.llm.tokenizer import count_tokens
@@ -73,7 +72,7 @@ def estimate_analysis_cost(
     max_output_tokens: int,
     synthesis_output_tokens: int,
     synthesis_threshold: int = 1,
-    extra_calls: Optional[list[tuple[int, int]]] = None,
+    extra_calls: list[tuple[int, int]] | None = None,
 ) -> CostEstimate:
     """Estimate cost for an LLM analysis pipeline.
 
@@ -139,7 +138,7 @@ def estimate_analysis_cost(
 
 
 def _compute_cost(
-    pricing: Optional[ModelPricing],
+    pricing: ModelPricing | None,
     total_input_tokens: int,
     total_output_budget: int,
     output_ratio: float,

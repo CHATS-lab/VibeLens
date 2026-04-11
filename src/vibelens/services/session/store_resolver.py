@@ -8,7 +8,6 @@ In demo mode, iterates the user's registered upload stores (from the
 upload registry in deps.py) plus the shared example store.
 """
 
-from typing import Optional
 
 from vibelens.deps import (
     get_all_upload_stores,
@@ -22,7 +21,7 @@ from vibelens.utils import get_logger
 logger = get_logger(__name__)
 
 
-def list_all_metadata(session_token: Optional[str] = None) -> list[dict]:
+def list_all_metadata(session_token: str | None = None) -> list[dict]:
     """Return metadata visible to the given session_token.
 
     In self-use mode, returns metadata from LocalStore + example store.
@@ -77,7 +76,7 @@ def list_all_metadata(session_token: Optional[str] = None) -> list[dict]:
     return metadata
 
 
-def load_from_stores(session_id: str, session_token: Optional[str] = None) -> Optional[list]:
+def load_from_stores(session_id: str, session_token: str | None = None) -> list | None:
     """Load a session from the user's stores, falling back to example store.
 
     Args:
@@ -103,7 +102,7 @@ def load_from_stores(session_id: str, session_token: Optional[str] = None) -> Op
     return get_example_store().load(session_id)
 
 
-def load_from_all_stores(session_id: str) -> Optional[list]:
+def load_from_all_stores(session_id: str) -> list | None:
     """Load a session searching all stores regardless of token.
 
     Used for share resolution where the viewer has no access to
@@ -131,8 +130,8 @@ def load_from_all_stores(session_id: str) -> Optional[list]:
 
 
 def get_metadata_from_stores(
-    session_id: str, session_token: Optional[str] = None
-) -> Optional[dict]:
+    session_id: str, session_token: str | None = None
+) -> dict | None:
     """Get metadata for a session from the user's stores or examples.
 
     Args:

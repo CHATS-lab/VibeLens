@@ -12,7 +12,6 @@ always included in the user prompt regardless of the JSON output envelope.
 """
 
 from pathlib import Path
-from typing import Optional
 
 from vibelens.llm.backends.cli_base import CliBackend
 from vibelens.models.llm.inference import BackendType, InferenceRequest
@@ -32,7 +31,7 @@ GEMINI_CLI_DEFAULT_MODEL = "gemini-2.0-flash"
 class GeminiCliBackend(CliBackend):
     """Run inference via the Gemini CLI."""
 
-    def __init__(self, model: Optional[str] = None, timeout: int = 120):
+    def __init__(self, model: str | None = None, timeout: int = 120):
         """Initialize Gemini CLI backend.
 
         Args:
@@ -40,7 +39,7 @@ class GeminiCliBackend(CliBackend):
             timeout: Request timeout in seconds.
         """
         super().__init__(model=model, timeout=timeout)
-        self._system_prompt_file: Optional[Path] = None
+        self._system_prompt_file: Path | None = None
 
     @property
     def cli_executable(self) -> str:
@@ -55,7 +54,7 @@ class GeminiCliBackend(CliBackend):
         return GEMINI_CLI_MODELS
 
     @property
-    def default_model(self) -> Optional[str]:
+    def default_model(self) -> str | None:
         return GEMINI_CLI_DEFAULT_MODEL
 
     @property

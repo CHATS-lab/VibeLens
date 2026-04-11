@@ -11,7 +11,6 @@ identity.  Phase segment indices still refer to the original (full)
 step list so the frontend can map segments to steps directly.
 """
 
-from typing import Optional
 
 from vibelens.ingest.parsers.base import is_error_content
 from vibelens.models.analysis.phase import PhaseSegment
@@ -225,7 +224,7 @@ def _make_segment(
     start: int,
     end: int,
     phase: SessionPhase,
-    agent_range: Optional[tuple[int, int]] = None,
+    agent_range: tuple[int, int] | None = None,
 ) -> PhaseSegment:
     """Build a PhaseSegment from a step range.
 

@@ -4,7 +4,6 @@ Bridges per-step token metrics with the pricing table in llm/pricing
 to produce USD cost estimates.
 """
 
-from typing import Optional
 
 from vibelens.llm.pricing import TOKENS_PER_MTOK, lookup_pricing
 from vibelens.models.trajectories.step import Step
@@ -17,7 +16,7 @@ def compute_cost_from_tokens(
     output_tokens: int,
     cache_read_tokens: int = 0,
     cache_creation_tokens: int = 0,
-) -> Optional[float]:
+) -> float | None:
     """Compute estimated USD cost from aggregate token counts.
 
     Used by metadata-based dashboard stats to estimate cost without
@@ -46,7 +45,7 @@ def compute_cost_from_tokens(
     return cost
 
 
-def compute_step_cost(step: Step, session_model: Optional[str] = None) -> Optional[float]:
+def compute_step_cost(step: Step, session_model: str | None = None) -> float | None:
     """Compute the estimated USD cost for a single step.
 
     Uses step.model_name with fallback to session_model for pricing
@@ -85,7 +84,7 @@ def compute_step_cost(step: Step, session_model: Optional[str] = None) -> Option
     return cost
 
 
-def compute_trajectory_cost(trajectory: Trajectory) -> Optional[float]:
+def compute_trajectory_cost(trajectory: Trajectory) -> float | None:
     """Compute the total estimated USD cost for a trajectory.
 
     Sums compute_step_cost() across all steps. Returns None if no

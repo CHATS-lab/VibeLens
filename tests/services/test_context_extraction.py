@@ -5,7 +5,6 @@ tool arg summarization, and non-compaction fallback.
 """
 
 from datetime import UTC, datetime
-from typing import Optional
 
 from vibelens.models.analysis.step_ref import StepRef
 from vibelens.models.context import SessionContextBatch
@@ -21,7 +20,7 @@ from vibelens.services.context_extraction import (
 from vibelens.services.context_params import PRESET_DETAIL
 
 
-def _make_step(step_id: str, source: str, message: str, tool_calls: Optional[list] = None) -> Step:
+def _make_step(step_id: str, source: str, message: str, tool_calls: list | None = None) -> Step:
     """Build a minimal Step for testing."""
     return Step(step_id=step_id, source=source, message=message, tool_calls=tool_calls or [])
 
@@ -29,10 +28,10 @@ def _make_step(step_id: str, source: str, message: str, tool_calls: Optional[lis
 def _make_trajectory(
     session_id: str,
     steps: list[Step],
-    project_path: Optional[str] = None,
-    parent_ref: Optional[TrajectoryRef] = None,
-    timestamp: Optional[datetime] = None,
-    extra: Optional[dict] = None,
+    project_path: str | None = None,
+    parent_ref: TrajectoryRef | None = None,
+    timestamp: datetime | None = None,
+    extra: dict | None = None,
 ) -> Trajectory:
     """Build a minimal Trajectory for testing."""
     return Trajectory(

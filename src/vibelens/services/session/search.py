@@ -15,7 +15,6 @@ and first_message matches work immediately.
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import Optional, Union
 
 from vibelens.models.enums import StepSource
 from vibelens.models.trajectories import Trajectory
@@ -77,7 +76,7 @@ class _SearchIndex:
                 matches.append(entry.session_id)
         return matches
 
-    def build_from_metadata(self, session_token: Optional[str]) -> None:
+    def build_from_metadata(self, session_token: str | None) -> None:
         """Build Tier 1 from list_all_metadata() — fast, no disk I/O.
 
         Populates user_prompts with first_message text. Other fields
@@ -106,7 +105,7 @@ class _SearchIndex:
 
         logger.info("Search index Tier 1 built: %d entries from metadata", len(new_entries))
 
-    def build_full(self, session_token: Optional[str]) -> None:
+    def build_full(self, session_token: str | None) -> None:
         """Build Tier 2 by loading all trajectories in parallel.
 
         Uses ThreadPoolExecutor to load sessions concurrently. Results
@@ -143,7 +142,7 @@ class _SearchIndex:
         finally:
             self._full_building = False
 
-    def add_sessions(self, session_ids: list[str], session_token: Optional[str]) -> None:
+    def add_sessions(self, session_ids: list[str], session_token: str | None) -> None:
         """Incrementally add new sessions to both tiers.
 
         Args:
@@ -184,7 +183,7 @@ class _SearchIndex:
 
         logger.info("Incrementally added %d sessions to search index", len(session_ids))
 
-    def refresh(self, session_token: Optional[str]) -> None:
+    def refresh(self, session_token: str | None) -> None:
         """Incremental diff-based refresh: add new, remove stale sessions.
 
         Compares current metadata session IDs against the full index
@@ -238,18 +237,18 @@ class _SearchIndex:
 _index = _SearchIndex()
 
 
-def build_search_index(session_token: Optional[str] = None) -> None:
+def build_search_index(session_token: str | None = None) -> None:
     """Build Tier 1 (metadata) search index. Fast, for startup."""
     _index.build_from_metadata(session_token)
 
 
-def build_full_search_index(session_token: Optional[str] = None) -> None:
+def build_full_search_index(session_token: str | None = None) -> None:
     """Build Tier 2 (full text) search index. Slow, for background."""
     _index.build_full(session_token)
 
 
 def search_sessions(
-    query: str, sources: list[str], session_token: Optional[str] = None
+    query: str, sources: list[str], session_token: str | None = None
 ) -> list[str]:
     """Search sessions by query across selected text sources.
 
@@ -272,7 +271,7 @@ def invalidate_search_index() -> None:
     _index.invalidate()
 
 
-def add_sessions_to_index(session_ids: list[str], session_token: Optional[str] = None) -> None:
+def add_sessions_to_index(session_ids: list[str], session_token: str | None = None) -> None:
     """Incrementally add new sessions to the search index after upload.
 
     Args:
@@ -282,7 +281,7 @@ def add_sessions_to_index(session_ids: list[str], session_token: Optional[str] =
     _index.add_sessions(session_ids, session_token)
 
 
-def refresh_search_index(session_token: Optional[str] = None) -> None:
+def refresh_search_index(session_token: str | None = None) -> None:
     """Incremental diff-based refresh for periodic background task.
 
     Args:
@@ -291,7 +290,7 @@ def refresh_search_index(session_token: Optional[str] = None) -> None:
     _index.refresh(session_token)
 
 
-def _load_session_entry(session_id: str, session_token: Optional[str]) -> Optional[_SearchEntry]:
+def _load_session_entry(session_id: str, session_token: str | None) -> _SearchEntry | None:
     """Load a single session's trajectories and extract searchable text.
 
     Called by ThreadPoolExecutor workers during parallel index builds.
@@ -381,7 +380,7 @@ def _extract_tool_calls(trajectories: list[Trajectory]) -> str:
     return " ".join(parts).lower()
 
 
-def _extract_message_text(message: Optional[Union[str, list[ContentPart]]]) -> str:
+def _extract_message_text(message: str | list[ContentPart] | None) -> str:
     """Extract plain text from a string or ContentPart list."""
     if message is None:
         return ""
@@ -395,7 +394,7 @@ def _extract_message_text(message: Optional[Union[str, list[ContentPart]]]) -> s
     return " ".join(texts)
 
 
-def _extract_readable_args(arguments: Optional[Union[dict, str]]) -> str:
+def _extract_readable_args(arguments: dict | str | None) -> str:
     """Extract string values from tool call arguments."""
     if arguments is None:
         return ""

@@ -17,7 +17,6 @@ import zipfile
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 import httpx
 
@@ -50,7 +49,7 @@ HTTP_TIMEOUT_SECONDS = 120
 
 
 async def send_donation(
-    session_ids: list[str], session_token: Optional[str] = None
+    session_ids: list[str], session_token: str | None = None
 ) -> DonateResult:
     """Package selected sessions into a ZIP and send to the donation server.
 
@@ -121,10 +120,10 @@ class _SessionData:
         parsed_json: str,
         trajectory_count: int,
         step_count: int,
-        source_upload_id: Optional[str] = None,
-        project_path: Optional[str] = None,
-        repo_hash: Optional[str] = None,
-        git_branch: Optional[str] = None,
+        source_upload_id: str | None = None,
+        project_path: str | None = None,
+        repo_hash: str | None = None,
+        git_branch: str | None = None,
     ) -> None:
         self.session_id = session_id
         self.agent_type = agent_type
@@ -150,7 +149,7 @@ class _RepoBundle:
     session_ids: list[str] = field(default_factory=list)
 
 
-def _active_stores(session_token: Optional[str] = None) -> list[
+def _active_stores(session_token: str | None = None) -> list[
     BaseTrajectoryStore
 ]:
     """Return all active trajectory stores visible to the given token.
@@ -173,7 +172,7 @@ def _active_stores(session_token: Optional[str] = None) -> list[
 
 def _find_session_in_stores(
     stores: list[BaseTrajectoryStore], session_id: str
-) -> Optional[tuple[BaseTrajectoryStore, tuple]]:
+) -> tuple[BaseTrajectoryStore, tuple] | None:
     """Find a session across multiple stores.
 
     Args:
@@ -193,7 +192,7 @@ def _find_session_in_stores(
 def _collect_sessions(
     stores: list[BaseTrajectoryStore],
     session_ids: list[str],
-    session_token: Optional[str] = None,
+    session_token: str | None = None,
 ) -> _SessionCollectionResult:
     """Gather raw files and parsed data for each session.
 
@@ -225,7 +224,7 @@ def _collect_sessions(
 def _collect_single_session(
     stores: list[BaseTrajectoryStore],
     session_id: str,
-    session_token: Optional[str],
+    session_token: str | None,
     result: _SessionCollectionResult,
 ) -> None:
     """Collect data for a single session, appending to *result*.
@@ -307,7 +306,7 @@ def _resolve_raw_files(
     store: BaseTrajectoryStore,
     filepath: Path,
     parser: BaseParser,
-    source_upload_id: Optional[str] = None,
+    source_upload_id: str | None = None,
 ) -> list[tuple[Path, str]]:
     """Resolve raw session files and compute their relative ZIP paths.
 
@@ -352,7 +351,7 @@ def _resolve_raw_files(
     return raw_files
 
 
-def _locate_upload_zip(upload_id: str) -> Optional[Path]:
+def _locate_upload_zip(upload_id: str) -> Path | None:
     """Find the original upload ZIP on disk.
 
     Args:
@@ -368,7 +367,7 @@ def _locate_upload_zip(upload_id: str) -> Optional[Path]:
     return None
 
 
-def _find_main_trajectory(trajectories: list[Trajectory]) -> Optional[Trajectory]:
+def _find_main_trajectory(trajectories: list[Trajectory]) -> Trajectory | None:
     """Return the main (non-sub-agent) trajectory from a group.
 
     The main trajectory has no ``parent_trajectory_ref``.  Falls back to the
@@ -388,7 +387,7 @@ def _find_main_trajectory(trajectories: list[Trajectory]) -> Optional[Trajectory
     return trajectories[0]
 
 
-def _extract_git_branch(trajectory: Trajectory) -> Optional[str]:
+def _extract_git_branch(trajectory: Trajectory) -> str | None:
     """Extract the primary git branch from trajectory extra metadata.
 
     Args:
@@ -423,7 +422,7 @@ def _resolve_repo_bundles(
         ``{session_id: repo_hash}`` for sessions that matched a repo.
     """
     # Cache resolve_git_root results by project_path string
-    path_to_root: dict[str, Optional[Path]] = {}
+    path_to_root: dict[str, Path | None] = {}
     root_to_hash: dict[Path, str] = {}
     root_to_session_ids: dict[Path, list[str]] = {}
 
@@ -473,7 +472,7 @@ def _resolve_repo_bundles(
 def _create_donation_zip(
     sessions_data: _SessionCollectionResult,
     donation_id: str,
-    repo_bundles: Optional[list[_RepoBundle]] = None,
+    repo_bundles: list[_RepoBundle] | None = None,
 ) -> Path:
     """Create a ZIP archive containing raw files, parsed JSON, git bundles, and a manifest.
 

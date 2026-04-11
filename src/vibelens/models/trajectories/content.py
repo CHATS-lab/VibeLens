@@ -4,7 +4,6 @@ Added in ATIF v1.6 to support multimodal content (images, PDFs, etc.)
 in trajectories.
 """
 
-from typing import Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -46,10 +45,10 @@ class ContentPart(BaseModel):
     """
 
     type: ContentType = Field(description="The type of content.")
-    text: Optional[str] = Field(
+    text: str | None = Field(
         default=None, description="Text content. Required when type='text'."
     )
-    source: Optional[Base64Source] = Field(
+    source: Base64Source | None = Field(
         default=None, description="Content source reference. Required when type is not 'text'."
     )
 

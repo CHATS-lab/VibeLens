@@ -19,9 +19,8 @@ import sys
 from contextvars import ContextVar
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Optional, Union
 
-_analysis_id_var: ContextVar[Optional[str]] = ContextVar("analysis_id", default=None)
+_analysis_id_var: ContextVar[str | None] = ContextVar("analysis_id", default=None)
 
 # Format string for all log handlers (timestamp | module:line | level | message)
 LOG_FORMAT = "%(asctime)s | %(name)s:%(lineno)d | %(levelname)s | %(message)s"
@@ -122,7 +121,7 @@ def _ensure_root_logger(log_dir: Path) -> None:
     _root_configured = True
 
 
-def _resolve_category_log(name: str) -> Optional[str]:
+def _resolve_category_log(name: str) -> str | None:
     """Find the category log filename for a logger name, if any."""
     for prefix, filename in CATEGORY_LOG_FILES.items():
         if name.startswith(prefix):
@@ -174,7 +173,7 @@ def _module_name_from_path(filepath: str) -> str:
 
 
 def get_logger(
-    name: str, filepath: Optional[str] = None, log_dir: Optional[Union[str, Path]] = None
+    name: str, filepath: str | None = None, log_dir: str | Path | None = None
 ) -> logging.Logger:
     """Create a named logger under the ``vibelens`` hierarchy.
 

@@ -5,7 +5,6 @@ from trajectory message and observation fields.
 """
 
 import json
-from typing import Optional, Union
 
 # Default cap for summarize_args total output length
 DEFAULT_MAX_TOTAL_CHARS = 200
@@ -15,7 +14,7 @@ DEFAULT_MAX_VALUE_CHARS = 60
 ERROR_SIGNALS = ("error:", "traceback", "exception", "failed", "fatal")
 
 
-def coerce_to_string(value: Optional[Union[str, list, dict, int, float, bool]]) -> str:
+def coerce_to_string(value: str | list | dict | int | float | bool | None) -> str:
     """Coerce any content value to a plain string.
 
     Handles the polymorphic content fields found across agent formats:

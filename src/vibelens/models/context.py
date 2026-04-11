@@ -8,7 +8,6 @@ trajectory aggregation, and optional batching metadata for LLM calls.
 import re
 from datetime import datetime
 from functools import cached_property
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -27,27 +26,27 @@ class SessionContext(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     session_id: str = Field(description="Real session UUID.")
-    session_index: Optional[int] = Field(
+    session_index: int | None = Field(
         default=None, description="0-based position in the analysis batch."
     )
-    project_path: Optional[str] = Field(default=None, description="Project directory path.")
+    project_path: str | None = Field(default=None, description="Project directory path.")
     context_text: str = Field(description="Compressed LLM-ready text representation.")
     trajectory_group: list[Trajectory] = Field(
         default_factory=list,
         description="Raw trajectories for validation and cost computation.",
     )
-    prev_trajectory_ref_id: Optional[str] = Field(
+    prev_trajectory_ref_id: str | None = Field(
         default=None, description="Previous session ID in continuation chain."
     )
-    next_trajectory_ref_id: Optional[str] = Field(
+    next_trajectory_ref_id: str | None = Field(
         default=None, description="Next session ID in continuation chain."
     )
-    timestamp: Optional[datetime] = Field(default=None, description="Session start timestamp.")
+    timestamp: datetime | None = Field(default=None, description="Session start timestamp.")
     step_index2id: dict[int, str] = Field(
         default_factory=dict, description="0-based step index to real step UUID mapping."
     )
 
-    def resolve_step_ref(self, ref: StepRef) -> Optional[StepRef]:
+    def resolve_step_ref(self, ref: StepRef) -> StepRef | None:
         """Resolve 0-indexed step indices to real UUIDs and validate against trajectory steps.
 
         Combines index resolution (via step_index2id) and validation
@@ -114,7 +113,7 @@ class SessionContext(BaseModel):
             )
         self.session_index = new_index
 
-    def _resolve_index(self, step_id: str) -> Optional[str]:
+    def _resolve_index(self, step_id: str) -> str | None:
         """Resolve a step ID: map int-like strings via step_index2id, pass through UUIDs."""
         try:
             return self.step_index2id.get(int(step_id))
@@ -141,7 +140,7 @@ class SessionContextBatch(BaseModel):
     skipped_session_ids: list[str] = Field(
         default_factory=list, description="Session IDs that were skipped during loading."
     )
-    batch_id: Optional[str] = Field(
+    batch_id: str | None = Field(
         default=None, description="Batch identifier, set when used as an LLM-sized batch."
     )
     total_tokens: int = Field(
@@ -159,7 +158,7 @@ class SessionContextBatch(BaseModel):
             result.extend(ctx.trajectory_group)
         return result
 
-    def resolve_step_ref(self, ref: StepRef) -> Optional[StepRef]:
+    def resolve_step_ref(self, ref: StepRef) -> StepRef | None:
         """Resolve and validate a step ref by delegating to the matching SessionContext.
 
         Handles LLM outputs that use the batch index (e.g. '12') instead of
@@ -194,7 +193,7 @@ class SessionContextBatch(BaseModel):
         """Batch index to SessionContext mapping for resolving LLM index refs."""
         return {ctx.session_index: ctx for ctx in self.contexts if ctx.session_index is not None}
 
-    def _resolve_session_index(self, session_id: str) -> Optional[SessionContext]:
+    def _resolve_session_index(self, session_id: str) -> SessionContext | None:
         """Try to resolve a numeric session_id string as a batch index."""
         try:
             return self._index_lookup.get(int(session_id))

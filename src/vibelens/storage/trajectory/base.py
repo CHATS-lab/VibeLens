@@ -12,7 +12,6 @@ _build_index().
 from abc import ABC, abstractmethod
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 from vibelens.ingest.parsers.base import BaseParser
 from vibelens.models.trajectories import Trajectory
@@ -36,7 +35,7 @@ class BaseTrajectoryStore(ABC):
 
     def __init__(self) -> None:
         self._index: dict[str, tuple[Path, BaseParser]] = {}
-        self._metadata_cache: Optional[dict[str, dict]] = None
+        self._metadata_cache: dict[str, dict] | None = None
 
     @abstractmethod
     def initialize(self) -> None:
@@ -60,7 +59,7 @@ class BaseTrajectoryStore(ABC):
         index = self._ensure_index()
         return sorted({m.get("project_path") for m in index.values() if m.get("project_path")})
 
-    def get_session_source(self, session_id: str) -> Optional[tuple[Path, BaseParser]]:
+    def get_session_source(self, session_id: str) -> tuple[Path, BaseParser] | None:
         """Return the file path and parser for a session.
 
         Args:
@@ -72,7 +71,7 @@ class BaseTrajectoryStore(ABC):
         self._ensure_index()
         return self._index.get(session_id)
 
-    def load(self, session_id: str) -> Optional[list[Trajectory]]:
+    def load(self, session_id: str) -> list[Trajectory] | None:
         """Load a full trajectory group by session ID.
 
         Delegates to the parser associated with the session in _index.
@@ -155,7 +154,7 @@ class BaseTrajectoryStore(ABC):
         """
         return len(self._ensure_index())
 
-    def get_metadata(self, session_id: str) -> Optional[dict]:
+    def get_metadata(self, session_id: str) -> dict | None:
         """Return the cached metadata dict for a single session.
 
         Args:

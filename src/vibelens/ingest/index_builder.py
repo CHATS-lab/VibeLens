@@ -6,7 +6,6 @@ plus deduplication/validation and continuation chain enrichment.
 
 import re
 from pathlib import Path
-from typing import Optional
 
 from vibelens.ingest.parsers.base import BaseParser
 from vibelens.models.enums import AgentType
@@ -290,7 +289,7 @@ def _enrich_continuation_refs(
 _SESSION_ID_PATTERN = re.compile(r'"sessionId"\s*:\s*"([^"]+)"')
 
 
-def _scan_continuation_session_id(filepath: Path, expected_id: str) -> Optional[str]:
+def _scan_continuation_session_id(filepath: Path, expected_id: str) -> str | None:
     """Check if a JSONL file contains entries from multiple sessions.
 
     Claude Code continuation sessions embed the tail of the previous

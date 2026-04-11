@@ -8,7 +8,6 @@ The system prompt is passed via ``--system`` to properly separate system
 and user prompts, avoiding duplication in stdin.
 """
 
-from typing import Optional
 
 from vibelens.llm.backends.cli_base import CliBackend
 from vibelens.models.llm.inference import BackendType, InferenceRequest
@@ -42,7 +41,7 @@ class OpenCodeCliBackend(CliBackend):
         return OPENCODE_CLI_MODELS
 
     @property
-    def default_model(self) -> Optional[str]:
+    def default_model(self) -> str | None:
         return OPENCODE_CLI_DEFAULT_MODEL
 
     @property

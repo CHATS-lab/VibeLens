@@ -2,7 +2,6 @@
 
 import json
 from pathlib import Path
-from typing import Optional
 
 from vibelens.ingest.parsers.base import is_error_content
 from vibelens.ingest.parsers.codex import CodexParser, _parse_structured_output
@@ -23,9 +22,9 @@ def _meta_entry(
     session_id: str = "sess-1",
     cwd: str = "/home/user/project",
     timestamp: str = "2025-01-15T10:00:00Z",
-    cli_version: Optional[str] = None,
-    source: Optional[str] = None,
-    originator: Optional[str] = None,
+    cli_version: str | None = None,
+    source: str | None = None,
+    originator: str | None = None,
 ) -> dict:
     """Build a session_meta rollout entry."""
     payload: dict = {"id": session_id, "cwd": cwd, "timestamp": timestamp}
@@ -41,10 +40,10 @@ def _meta_entry(
 def _turn_context_entry(
     model: str = "gpt-5.4",
     timestamp: str = "2025-01-15T10:00:01Z",
-    reasoning_effort: Optional[str] = None,
-    sandbox: Optional[str] = None,
-    approval_policy: Optional[str] = None,
-    cwd: Optional[str] = None,
+    reasoning_effort: str | None = None,
+    sandbox: str | None = None,
+    approval_policy: str | None = None,
+    cwd: str | None = None,
 ) -> dict:
     """Build a turn_context rollout entry."""
     payload: dict = {"model": model}
@@ -141,7 +140,7 @@ def _token_count_entry(
     cached_input_tokens: int = 100,
     reasoning_output_tokens: int = 0,
     timestamp: str = "2025-01-15T10:00:06Z",
-    total_token_usage: Optional[dict] = None,
+    total_token_usage: dict | None = None,
 ) -> dict:
     """Build a token_count event_msg entry."""
     info: dict = {

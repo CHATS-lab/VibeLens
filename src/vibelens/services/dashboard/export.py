@@ -3,7 +3,6 @@
 import csv
 import io
 import json
-from typing import Optional
 
 from fastapi.responses import StreamingResponse
 
@@ -35,12 +34,12 @@ CSV_COLUMNS = [
 
 
 def export_dashboard_csv(
-    project_path: Optional[str],
-    date_from: Optional[str],
-    date_to: Optional[str],
-    session_token: Optional[str],
+    project_path: str | None,
+    date_from: str | None,
+    date_to: str | None,
+    session_token: str | None,
     timestamp: str,
-    agent_name: Optional[str] = None,
+    agent_name: str | None = None,
 ) -> StreamingResponse:
     """Build CSV export from filtered trajectories.
 
@@ -77,12 +76,12 @@ def export_dashboard_csv(
 
 
 def export_dashboard_json(
-    project_path: Optional[str],
-    date_from: Optional[str],
-    date_to: Optional[str],
-    session_token: Optional[str],
+    project_path: str | None,
+    date_from: str | None,
+    date_to: str | None,
+    session_token: str | None,
     timestamp: str,
-    agent_name: Optional[str] = None,
+    agent_name: str | None = None,
 ) -> StreamingResponse:
     """Build JSON export with dashboard stats.
 

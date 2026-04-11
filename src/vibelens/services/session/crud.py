@@ -1,6 +1,5 @@
 """Session retrieval and export business logic."""
 
-from typing import Optional
 
 from vibelens.deps import get_example_store, get_trajectory_store, get_upload_stores, is_demo_mode
 from vibelens.models.trajectories import Trajectory
@@ -15,10 +14,10 @@ logger = get_logger(__name__)
 
 
 def list_sessions(
-    project_name: Optional[str],
+    project_name: str | None,
     limit: int,
     offset: int,
-    session_token: Optional[str] = None,
+    session_token: str | None = None,
     refresh: bool = False,
 ) -> list[dict]:
     """Return trajectory summaries from the active store.
@@ -49,7 +48,7 @@ def list_sessions(
     return summaries[offset:] if offset else summaries
 
 
-def get_session(session_id: str, session_token: Optional[str] = None) -> Optional[list[Trajectory]]:
+def get_session(session_id: str, session_token: str | None = None) -> list[Trajectory] | None:
     """Load a trajectory group by session ID.
 
     Access is gated by store_resolver: if the session is not in any store
@@ -67,7 +66,7 @@ def get_session(session_id: str, session_token: Optional[str] = None) -> Optiona
     return load_from_stores(session_id, session_token)
 
 
-def list_projects(session_token: Optional[str] = None) -> list[str]:
+def list_projects(session_token: str | None = None) -> list[str]:
     """List all known project paths from stores accessible to this token.
 
     Args:
