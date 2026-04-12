@@ -464,3 +464,44 @@ export const TOOL_TYPE_COLORS: Record<ToolType, string> = {
   think: "bg-gray-400",
   other: "bg-gray-300",
 };
+
+export interface UserProfile {
+  domains: string[];
+  languages: string[];
+  frameworks: string[];
+  agent_platforms: string[];
+  bottlenecks: string[];
+  workflow_style: string;
+  search_keywords: string[];
+}
+
+export interface CatalogRecommendation {
+  item_id: string;
+  item_type: string;
+  user_label: string;
+  name: string;
+  description: string;
+  rationale: string;
+  confidence: number;
+  quality_score: number;
+  score: number;
+  install_method: string | null;
+  install_command: string | null;
+  has_content: boolean;
+  source_url: string | null;
+}
+
+export interface RecommendationResult {
+  analysis_id: string;
+  title: string;
+  summary: string;
+  user_profile: UserProfile;
+  recommendations: CatalogRecommendation[];
+  session_ids: string[];
+  skipped_session_ids: string[];
+  model: string;
+  created_at: string;
+  duration_seconds: number | null;
+  metrics: { cost_usd: number | null };
+  catalog_version: string;
+}
