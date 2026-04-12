@@ -1,6 +1,6 @@
 """Pydantic domain models for VibeLens."""
 
-from vibelens.models.analysis import (
+from vibelens.models.dashboard.dashboard import (
     AgentBehaviorResult,
     DailyStat,
     DashboardStats,
