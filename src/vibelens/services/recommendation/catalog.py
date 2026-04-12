@@ -7,15 +7,17 @@ version, and supports background update checks.
 import json
 from pathlib import Path
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
 from vibelens.models.recommendation.catalog import CatalogItem
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
 
-# Bundled catalog shipped with VibeLens releases
-BUNDLED_CATALOG_PATH = Path(__file__).resolve().parents[4] / "catalog.json"
+# Bundled catalog shipped with VibeLens releases (inside package data)
+# parent chain: recommendation/ → services/ → vibelens/
+_VIBELENS_PACKAGE_DIR = Path(__file__).resolve().parent.parent.parent
+BUNDLED_CATALOG_PATH = _VIBELENS_PACKAGE_DIR / "data" / "catalog.json"
 # User-cached catalog downloaded from update URL
 USER_CATALOG_DIR = Path.home() / ".vibelens" / "catalog"
 
@@ -26,7 +28,7 @@ class CatalogSnapshot(BaseModel):
     version: str = Field(description="Catalog version date string (e.g. 2026-04-10).")
     schema_version: int = Field(default=1, description="Catalog schema version.")
     items: list[CatalogItem] = Field(default_factory=list, description="All catalog items.")
-    _index: dict[str, CatalogItem] = {}
+    _index: dict[str, CatalogItem] = PrivateAttr(default_factory=dict)
 
     def model_post_init(self, __context: object) -> None:
         """Build item lookup index after loading."""

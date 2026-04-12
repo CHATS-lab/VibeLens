@@ -14,6 +14,7 @@ from pathlib import Path
 
 from cachetools import TTLCache
 
+from vibelens.deps import get_recommendation_store
 from vibelens.llm.backend import InferenceBackend
 from vibelens.llm.cost_estimator import CostEstimate, estimate_analysis_cost
 from vibelens.llm.tokenizer import count_tokens
@@ -150,6 +151,7 @@ async def analyze_recommendation(
         clear_analysis_id()
 
     result.duration_seconds = round(time.monotonic() - start_time, 2)
+    get_recommendation_store().save(result, analysis_id)
     _cache[cache_key] = result
     return result
 

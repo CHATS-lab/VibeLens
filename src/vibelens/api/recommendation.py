@@ -98,6 +98,7 @@ async def recommendation_analyze(
 
     if is_test_mode() or is_demo_mode():
         result = build_mock_recommendation_result(body.session_ids)
+        get_recommendation_store().save(result, result.analysis_id)
         return AnalysisJobResponse(
             job_id="mock", status="completed", analysis_id=result.analysis_id
         )
