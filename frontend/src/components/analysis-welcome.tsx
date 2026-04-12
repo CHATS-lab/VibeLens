@@ -109,15 +109,15 @@ export function AnalysisWelcomePage({
         <div className="max-w-md w-full px-6">
           <button
             onClick={() => setView("intro")}
-            className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition mb-6"
+            className="flex items-center gap-1.5 text-xs text-dimmed hover:text-secondary transition mb-6"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             Back
           </button>
-          <h3 className="text-lg font-semibold text-zinc-200 mb-2">
+          <h3 className="text-lg font-semibold text-secondary mb-2">
             Configure LLM Backend
           </h3>
-          <p className="text-xs text-zinc-400 mb-5">
+          <p className="text-xs text-muted mb-5">
             Provide an API key and model to enable LLM-powered analysis.
           </p>
           <LLMConfigForm
@@ -138,8 +138,8 @@ export function AnalysisWelcomePage({
     <div className="flex items-center justify-center h-full">
       <div className="text-center max-w-md px-6">
         <div className="flex justify-center mb-4">{icon}</div>
-        <h3 className="text-lg font-semibold text-zinc-200 mb-2">{title}</h3>
-        <p className="text-sm text-zinc-400 mb-6 leading-relaxed">
+        <h3 className="text-lg font-semibold text-secondary mb-2">{title}</h3>
+        <p className="text-sm text-muted mb-6 leading-relaxed">
           {description}
         </p>
 
@@ -149,7 +149,7 @@ export function AnalysisWelcomePage({
         {!isMock && (
           <div className="mb-6">
             {isConnected ? (
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-zinc-800/60 border border-zinc-700/50 rounded-lg text-xs text-zinc-400">
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-control/60 border border-card rounded-lg text-xs text-muted">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                 <span>{llmStatus.backend_id} / {llmStatus.model}</span>
                 <button
@@ -162,7 +162,7 @@ export function AnalysisWelcomePage({
             ) : (
               <button
                 onClick={() => setView("config")}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700/50 rounded-lg transition"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted hover:text-secondary bg-control hover:bg-control-hover border border-card rounded-lg transition"
               >
                 <Settings className="w-3.5 h-3.5" />
                 Configure LLM
@@ -178,7 +178,7 @@ export function AnalysisWelcomePage({
         )}
 
         {error && (
-          <div className="mb-4 px-4 py-2.5 bg-rose-900/20 border border-rose-800/50 rounded-lg text-xs text-rose-300 text-left">
+          <div className="mb-4 px-4 py-2.5 bg-accent-rose-subtle border border-accent-rose rounded-lg text-xs text-accent-rose text-left">
             {error}
           </div>
         )}

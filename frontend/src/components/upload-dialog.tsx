@@ -195,29 +195,29 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        className="absolute inset-0 bg-overlay backdrop-blur-sm"
         onClick={uploading ? undefined : onClose}
       />
-      <div className="relative bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl w-full max-w-lg mx-4">
+      <div className="relative bg-panel border border-card rounded-lg shadow-2xl w-full max-w-lg mx-4">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-default">
           <div className="flex items-center gap-2">
             {(step === "upload" || step === "confirm") && !uploading && (
               <button
                 onClick={() => setStep(step === "confirm" ? "upload" : "select")}
-                className="text-zinc-500 hover:text-zinc-300 transition"
+                className="text-dimmed hover:text-secondary transition"
               >
                 <ArrowLeft className="w-4 h-4" />
               </button>
             )}
-            <h2 className="text-sm font-semibold text-zinc-100">
+            <h2 className="text-sm font-semibold text-primary">
               Upload Conversation Data
             </h2>
           </div>
           <button
             onClick={onClose}
             disabled={uploading}
-            className="text-zinc-500 hover:text-zinc-300 transition disabled:opacity-50"
+            className="text-dimmed hover:text-secondary transition disabled:opacity-50"
           >
             <X className="w-4 h-4" />
           </button>
@@ -226,7 +226,7 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
         <div className="px-5 py-5">
           {step === "select" && (
             <div className="space-y-5">
-              <p className="text-sm text-zinc-300">
+              <p className="text-sm text-secondary">
                 {isWebExport
                   ? "Which data source are you uploading from?"
                   : "Which agent and OS are you using?"}
@@ -275,16 +275,16 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
                 <WebExportInstructions />
               ) : (
                 <div className="space-y-1.5">
-                  <p className="text-sm text-zinc-300">
+                  <p className="text-sm text-secondary">
                     Run this command in your terminal, then upload the zip.
                   </p>
                   {commandLoading ? (
-                    <div className="flex items-center justify-center py-4 bg-zinc-950 border border-zinc-800 rounded-lg">
-                      <Loader2 className="w-4 h-4 text-zinc-500 animate-spin" />
+                    <div className="flex items-center justify-center py-4 bg-canvas border border-default rounded-lg">
+                      <Loader2 className="w-4 h-4 text-dimmed animate-spin" />
                     </div>
                   ) : (
                     <div className="relative">
-                      <pre className="bg-zinc-950 border border-zinc-800 rounded-lg p-3 pr-10 text-xs text-cyan-300 font-mono overflow-x-auto whitespace-pre-wrap break-all">
+                      <pre className="bg-canvas border border-default rounded-lg p-3 pr-10 text-xs text-accent-cyan font-mono overflow-x-auto whitespace-pre-wrap break-all">
                         {commands?.command ?? ""}
                       </pre>
                       {commands && (
@@ -295,7 +295,7 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
                     </div>
                   )}
                   {commands?.description && (
-                    <p className="text-sm text-zinc-300">{commands.description}</p>
+                    <p className="text-sm text-secondary">{commands.description}</p>
                   )}
                 </div>
               )}
@@ -312,14 +312,14 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
                 className={`flex flex-col items-center justify-center gap-2 p-6 border-2 border-dashed rounded-lg cursor-pointer transition ${
                   dragOver
                     ? "border-violet-400 bg-violet-500/10"
-                    : "border-zinc-700 hover:border-zinc-500 bg-zinc-800/30"
+                    : "border-card hover:border-zinc-500 bg-subtle"
                 }`}
               >
                 <FileArchive
-                  className={`w-7 h-7 ${dragOver ? "text-violet-400" : "text-zinc-500"}`}
+                  className={`w-7 h-7 ${dragOver ? "text-violet-400" : "text-dimmed"}`}
                 />
-                <p className="text-sm text-zinc-300">Drop .zip file here</p>
-                <p className="text-xs text-zinc-500">or click to browse (max {maxZipMB} MB)</p>
+                <p className="text-sm text-secondary">Drop .zip file here</p>
+                <p className="text-xs text-dimmed">or click to browse (max {maxZipMB} MB)</p>
                 <input
                   ref={inputRef}
                   type="file"
@@ -332,10 +332,10 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
               {/* Selected file + action button */}
               {file && (
                 <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 text-xs text-zinc-300 truncate min-w-0">
+                  <div className="flex items-center gap-2 text-xs text-secondary truncate min-w-0">
                     <FileArchive className="w-3.5 h-3.5 text-violet-400 shrink-0" />
                     <span className="truncate">{file.name}</span>
-                    <span className={`shrink-0 ${fileTooLarge ? "text-rose-400" : "text-zinc-500"}`}>
+                    <span className={`shrink-0 ${fileTooLarge ? "text-rose-400" : "text-dimmed"}`}>
                       ({(file.size / (1024 * 1024)).toFixed(1)} MB)
                     </span>
                     <button
@@ -344,7 +344,7 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
                         setFile(null);
                         setResult(null);
                       }}
-                      className="text-zinc-500 hover:text-rose-400 transition shrink-0"
+                      className="text-dimmed hover:text-rose-400 transition shrink-0"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -371,16 +371,16 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
 
           {step === "confirm" && file && (
             <div className="space-y-5">
-              <p className="text-sm text-zinc-300">
+              <p className="text-sm text-secondary">
                 Ready to upload? Please confirm the details below.
               </p>
 
-              <div className="bg-zinc-800/50 border border-zinc-700 rounded-lg p-4 space-y-2.5">
-                <div className="flex items-center gap-2 text-sm text-zinc-200">
+              <div className="bg-subtle border border-card rounded-lg p-4 space-y-2.5">
+                <div className="flex items-center gap-2 text-sm text-secondary">
                   <FileArchive className="w-4 h-4 text-violet-400 shrink-0" />
                   <span className="truncate">{file.name}</span>
                 </div>
-                <div className="flex items-center gap-4 text-xs text-zinc-400">
+                <div className="flex items-center gap-4 text-xs text-muted">
                   <span>{(file.size / (1024 * 1024)).toFixed(1)} MB</span>
                   <span>{AGENT_LABELS[agentType]}</span>
                 </div>
@@ -389,7 +389,7 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
               <div className="flex justify-end gap-2">
                 <button
                   onClick={() => setStep("upload")}
-                  className="px-4 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 border border-zinc-700 hover:border-zinc-500 rounded transition"
+                  className="px-4 py-1.5 text-xs text-muted hover:text-secondary border border-card hover:border-zinc-500 rounded transition"
                 >
                   Back
                 </button>
@@ -415,10 +415,10 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
                       </div>
                     </div>
                     <div className="text-center">
-                      <p className="text-sm font-semibold text-zinc-100">
+                      <p className="text-sm font-semibold text-primary">
                         {uploadPhase === "sending" ? "Uploading your data" : "Processing sessions"}
                       </p>
-                      <p className="text-xs text-zinc-400 mt-1">
+                      <p className="text-xs text-muted mt-1">
                         {uploadPhase === "sending"
                           ? "Sending your file to the server"
                           : "Extracting, parsing, and scrubbing sensitive data"}
@@ -426,7 +426,7 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <div className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden">
+                    <div className="w-full h-2 bg-control rounded-full overflow-hidden">
                       {uploadPhase === "sending" ? (
                         <div
                           className="h-full bg-gradient-to-r from-violet-600 to-violet-400 rounded-full transition-all duration-300"
@@ -436,7 +436,7 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
                         <div className="h-full bg-gradient-to-r from-violet-600 to-violet-400 rounded-full animate-pulse w-full" />
                       )}
                     </div>
-                    <p className="text-xs text-zinc-400 text-center">
+                    <p className="text-xs text-muted text-center">
                       {uploadPhase === "sending"
                         ? `${uploadProgress}% of ${((file?.size ?? 0) / (1024 * 1024)).toFixed(1)} MB uploaded`
                         : "This may take a moment for large archives"}
@@ -451,7 +451,7 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
                         <AlertCircle className="w-7 h-7 text-rose-400" />
                       </div>
                       <p className="text-base font-semibold text-rose-300">Upload failed</p>
-                      <p className="text-xs text-zinc-400">No sessions could be imported from this file.</p>
+                      <p className="text-xs text-muted">No sessions could be imported from this file.</p>
                     </div>
                   ) : (
                     <div className="flex flex-col items-center gap-3 py-4">
@@ -459,8 +459,8 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
                         <CheckCircle2 className="w-7 h-7 text-emerald-400" />
                       </div>
                       <div className="text-center">
-                        <p className="text-base font-semibold text-zinc-100">Upload complete</p>
-                        <p className="text-sm text-zinc-400 mt-0.5">
+                        <p className="text-base font-semibold text-primary">Upload complete</p>
+                        <p className="text-sm text-muted mt-0.5">
                           {result.sessions_parsed} {result.sessions_parsed === 1 ? "session" : "sessions"} imported with {result.steps_stored.toLocaleString()} steps
                         </p>
                       </div>
@@ -495,16 +495,16 @@ const WEB_EXPORT_STEPS = [
 function WebExportInstructions() {
   return (
     <div className="space-y-2">
-      <p className="text-sm text-zinc-300">
+      <p className="text-sm text-secondary">
         Export your data from claude.ai, then upload the zip.
       </p>
-      <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-3 space-y-2">
+      <div className="bg-canvas border border-default rounded-lg p-3 space-y-2">
         {WEB_EXPORT_STEPS.map((s) => (
           <div key={s.num} className="flex items-start gap-2.5">
             <span className="flex items-center justify-center w-5 h-5 rounded-full bg-violet-600/20 text-violet-400 text-[10px] font-bold shrink-0 mt-px">
               {s.num}
             </span>
-            <span className="text-xs text-zinc-300">{s.text}</span>
+            <span className="text-xs text-secondary">{s.text}</span>
           </div>
         ))}
       </div>
@@ -534,7 +534,7 @@ function SelectorRow({
 }) {
   return (
     <div className="flex items-center gap-3">
-      <span className="text-xs text-zinc-400 w-14 shrink-0">{label}</span>
+      <span className="text-xs text-muted w-14 shrink-0">{label}</span>
       <div className="flex gap-1.5">
         {options.map((opt) => (
           <button
@@ -543,7 +543,7 @@ function SelectorRow({
             className={`px-3 py-1 text-xs rounded-full transition ${
               selected === opt.value
                 ? "bg-violet-600 text-white"
-                : "bg-zinc-800 text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200"
+                : "bg-control text-muted border border-card hover:border-zinc-500 hover:text-secondary"
             }`}
           >
             {opt.label}
@@ -562,10 +562,10 @@ function ResultStats({ result }: { result: UploadResult }) {
     <div className="space-y-3">
       {/* Import stats */}
       {/* Import stats */}
-      <div className="rounded-lg border border-zinc-700/40 bg-zinc-800/30">
+      <div className="rounded-lg border border-card bg-subtle">
         <div className="grid grid-cols-3 divide-x divide-zinc-700/30">
           <StatBox icon={<MessageSquare className="w-3.5 h-3.5 text-violet-400" />} label="Sessions" value={result.sessions_parsed} />
-          <StatBox icon={<Zap className="w-3.5 h-3.5 text-cyan-400" />} label="Steps" value={result.steps_stored} />
+          <StatBox icon={<Zap className="w-3.5 h-3.5 text-accent-cyan" />} label="Steps" value={result.steps_stored} />
           <StatBox label="Skipped" value={result.skipped} />
         </div>
       </div>
@@ -575,9 +575,9 @@ function ResultStats({ result }: { result: UploadResult }) {
         <div className="rounded-lg border border-emerald-700/30 bg-emerald-950/10 px-4 py-3">
           <div className="flex items-center gap-2 mb-2.5">
             <Shield className="w-4 h-4 text-emerald-400" />
-            <span className="text-sm font-semibold text-zinc-100">Privacy Protection</span>
+            <span className="text-sm font-semibold text-primary">Privacy Protection</span>
           </div>
-          <p className="text-xs text-zinc-300 mb-2">
+          <p className="text-xs text-secondary mb-2">
             Your data was automatically cleaned before storage. The following sensitive items were removed:
           </p>
           <div className="grid grid-cols-3 gap-2">
@@ -604,7 +604,7 @@ function ResultStats({ result }: { result: UploadResult }) {
       )}
 
       {hasErrors && (
-        <div className="p-3 bg-rose-900/20 border border-rose-800/50 rounded-lg text-xs text-rose-300 space-y-1">
+        <div className="p-3 bg-accent-rose-subtle border border-accent-rose rounded-lg text-xs text-accent-rose space-y-1">
           <p className="font-semibold text-rose-200">
             {result.sessions_parsed > 0 ? "Some files had errors:" : "Errors:"}
           </p>
@@ -625,9 +625,9 @@ function StatBox({ icon, label, value }: { icon?: React.ReactNode; label: string
     <div className="px-3 py-2.5 text-center">
       <div className="flex items-center justify-center gap-1.5 mb-1">
         {icon}
-        <p className="text-xs text-zinc-400">{label}</p>
+        <p className="text-xs text-muted">{label}</p>
       </div>
-      <p className="text-zinc-100 font-mono text-lg font-semibold">{value.toLocaleString()}</p>
+      <p className="text-primary font-mono text-lg font-semibold">{value.toLocaleString()}</p>
     </div>
   );
 }

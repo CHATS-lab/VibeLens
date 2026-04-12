@@ -20,14 +20,14 @@ const RESIZE_DEBOUNCE_MS = 150;
 const TRANSITION_DURATION = "0.3s";
 
 const ICON_MAP: Record<string, React.ReactNode> = {
-  eye: <Eye className="w-5 h-5 text-cyan-400" />,
-  list: <List className="w-5 h-5 text-cyan-400" />,
+  eye: <Eye className="w-5 h-5 text-accent-cyan" />,
+  list: <List className="w-5 h-5 text-accent-cyan" />,
   message: <MessageSquare className="w-5 h-5 text-indigo-400" />,
-  layout: <LayoutGrid className="w-5 h-5 text-cyan-400" />,
-  "bar-chart": <BarChart3 className="w-5 h-5 text-cyan-400" />,
+  layout: <LayoutGrid className="w-5 h-5 text-accent-cyan" />,
+  "bar-chart": <BarChart3 className="w-5 h-5 text-accent-cyan" />,
   lightbulb: <Lightbulb className="w-5 h-5 text-amber-400" />,
   wand: <Wand2 className="w-5 h-5 text-teal-400" />,
-  upload: <Upload className="w-5 h-5 text-violet-400" />,
+  upload: <Upload className="w-5 h-5 text-accent-violet" />,
 };
 
 interface SpotlightTourProps {
@@ -229,7 +229,7 @@ export function SpotlightTour({ onComplete, appMode }: SpotlightTourProps) {
       {/* Tooltip card */}
       <div
         style={tooltipStyle}
-        className="w-80 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl p-4"
+        className="w-80 bg-panel border border-card rounded-xl shadow-2xl p-4"
       >
         {/* Icon + Title */}
         <div className="flex items-center gap-2.5 mb-2">
@@ -238,7 +238,7 @@ export function SpotlightTour({ onComplete, appMode }: SpotlightTourProps) {
         </div>
 
         {/* Content */}
-        <p className="text-sm text-zinc-300 leading-relaxed mb-4">
+        <p className="text-sm text-secondary leading-relaxed mb-4">
           {currentStep.content}
         </p>
 
@@ -262,14 +262,14 @@ export function SpotlightTour({ onComplete, appMode }: SpotlightTourProps) {
           <div className="flex items-center gap-2">
             <button
               onClick={handleSkip}
-              className="px-2.5 py-1 text-xs text-zinc-500 hover:text-zinc-300 transition"
+              className="px-2.5 py-1 text-xs text-dimmed hover:text-secondary transition"
             >
               Skip
             </button>
             {currentIdx > 0 && (
               <button
                 onClick={handleBack}
-                className="flex items-center gap-1 px-2.5 py-1 text-xs text-zinc-400 hover:text-zinc-200 border border-zinc-700 hover:border-zinc-600 rounded transition"
+                className="flex items-center gap-1 px-2.5 py-1 text-xs text-muted hover:text-secondary border border-card hover:border-hover rounded transition"
               >
                 <ChevronLeft className="w-3 h-3" />
                 Back

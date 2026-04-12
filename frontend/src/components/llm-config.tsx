@@ -70,7 +70,7 @@ function formatPrice(price: number): string {
 
 function PricingLine({ inputPrice, outputPrice }: { inputPrice: number; outputPrice: number }) {
   return (
-    <p className="text-xs text-zinc-500 mt-1">
+    <p className="text-xs text-dimmed mt-1">
       ${formatPrice(inputPrice)} / ${formatPrice(outputPrice)} per MTok (in / out)
     </p>
   );
@@ -117,7 +117,7 @@ function ModelCombobox({
             setOpen(true);
           }}
           placeholder="Type or select a model..."
-          className={`w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none ${accent.focus} pr-8`}
+          className={`w-full px-3 py-2 bg-control border border-card rounded-lg text-sm text-secondary placeholder-zinc-500 focus:outline-none ${accent.focus} pr-8`}
         />
         <button
           type="button"
@@ -125,7 +125,7 @@ function ModelCombobox({
             updateDropDirection();
             setOpen((v) => !v);
           }}
-          className="absolute right-0 inset-y-0 px-2 flex items-center text-zinc-500 hover:text-zinc-300"
+          className="absolute right-0 inset-y-0 px-2 flex items-center text-dimmed hover:text-secondary"
         >
           <ChevronDown className={`w-3.5 h-3.5 transition ${open ? "rotate-180" : ""}`} />
         </button>
@@ -134,7 +134,7 @@ function ModelCombobox({
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
           <ul
-            className={`absolute z-20 w-full max-h-48 overflow-y-auto bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl ${
+            className={`absolute z-20 w-full max-h-48 overflow-y-auto bg-control border border-card rounded-lg shadow-xl ${
               dropUp ? "bottom-full mb-1" : "top-full mt-1"
             }`}
           >
@@ -146,8 +146,8 @@ function ModelCombobox({
                     onChange(preset);
                     setOpen(false);
                   }}
-                  className={`w-full text-left px-3 py-2 text-sm hover:bg-zinc-700 transition ${
-                    value === preset ? accent.selected : "text-zinc-200"
+                  className={`w-full text-left px-3 py-2 text-sm hover:bg-control-hover transition ${
+                    value === preset ? accent.selected : "text-secondary"
                   }`}
                 >
                   {preset}
@@ -180,7 +180,7 @@ function CliModelSelector({
 
   if (!meta || meta.models.length === 0) {
     return (
-      <p className="text-xs text-zinc-500">
+      <p className="text-xs text-dimmed">
         No model selection available for this backend.
       </p>
     );
@@ -199,12 +199,12 @@ function CliModelSelector({
               onChange={(e) => onChange(e.target.value)}
               onFocus={() => setOpen(true)}
               placeholder={meta.default_model ?? "model name"}
-              className={`w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none ${accent.focus} pr-8`}
+              className={`w-full px-3 py-2 bg-control border border-card rounded-lg text-sm text-secondary placeholder-zinc-500 focus:outline-none ${accent.focus} pr-8`}
             />
             <button
               type="button"
               onClick={() => setOpen((v) => !v)}
-              className="absolute right-0 inset-y-0 px-2 flex items-center text-zinc-500 hover:text-zinc-300"
+              className="absolute right-0 inset-y-0 px-2 flex items-center text-dimmed hover:text-secondary"
             >
               <ChevronDown className="w-3.5 h-3.5" />
             </button>
@@ -212,19 +212,19 @@ function CliModelSelector({
           {open && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-              <ul className="absolute z-20 mt-1 w-full max-h-64 overflow-y-auto bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl">
+              <ul className="absolute z-20 mt-1 w-full max-h-64 overflow-y-auto bg-control border border-card rounded-lg shadow-xl">
                 {meta.models.map((m) => (
                   <li key={m.name}>
                     <button
                       type="button"
                       onClick={() => { onChange(m.name); setOpen(false); }}
-                      className={`w-full text-left px-3 py-2 text-sm hover:bg-zinc-700 transition flex justify-between ${
-                        value === m.name ? accent.selected : "text-zinc-200"
+                      className={`w-full text-left px-3 py-2 text-sm hover:bg-control-hover transition flex justify-between ${
+                        value === m.name ? accent.selected : "text-secondary"
                       }`}
                     >
                       <span>{m.name}</span>
                       {m.input_per_mtok != null && (
-                        <span className="text-zinc-500 text-xs">${formatPrice(m.input_per_mtok)} / ${formatPrice(m.output_per_mtok!)}</span>
+                        <span className="text-dimmed text-xs">${formatPrice(m.input_per_mtok)} / ${formatPrice(m.output_per_mtok!)}</span>
                       )}
                     </button>
                   </li>
@@ -246,27 +246,27 @@ function CliModelSelector({
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className={`w-full flex items-center justify-between px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-200 focus:outline-none ${accent.focus} transition`}
+          className={`w-full flex items-center justify-between px-3 py-2 bg-control border border-card rounded-lg text-sm text-secondary focus:outline-none ${accent.focus} transition`}
         >
           <span>{value || meta.default_model || "Select model"}</span>
-          <ChevronDown className={`w-3.5 h-3.5 text-zinc-500 transition ${open ? "rotate-180" : ""}`} />
+          <ChevronDown className={`w-3.5 h-3.5 text-dimmed transition ${open ? "rotate-180" : ""}`} />
         </button>
         {open && (
           <>
             <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-            <ul className="absolute z-20 mt-1 w-full max-h-64 overflow-y-auto bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl">
+            <ul className="absolute z-20 mt-1 w-full max-h-64 overflow-y-auto bg-control border border-card rounded-lg shadow-xl">
               {meta.models.map((m) => (
                 <li key={m.name}>
                   <button
                     type="button"
                     onClick={() => { onChange(m.name); setOpen(false); }}
-                    className={`w-full text-left px-3 py-2 text-sm hover:bg-zinc-700 transition flex justify-between ${
-                      value === m.name ? accent.selected : "text-zinc-200"
+                    className={`w-full text-left px-3 py-2 text-sm hover:bg-control-hover transition flex justify-between ${
+                      value === m.name ? accent.selected : "text-secondary"
                     }`}
                   >
                     <span>{m.name}</span>
                     {m.input_per_mtok != null && (
-                      <span className="text-zinc-500 text-xs">${formatPrice(m.input_per_mtok)} / ${formatPrice(m.output_per_mtok!)}</span>
+                      <span className="text-dimmed text-xs">${formatPrice(m.input_per_mtok)} / ${formatPrice(m.output_per_mtok!)}</span>
                     )}
                   </button>
                 </li>
@@ -300,15 +300,15 @@ function BackendDropdown({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className={`w-full flex items-center justify-between px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-200 focus:outline-none ${accent.focus} transition`}
+        className={`w-full flex items-center justify-between px-3 py-2 bg-control border border-card rounded-lg text-sm text-secondary focus:outline-none ${accent.focus} transition`}
       >
         <span>{selected?.label ?? value}</span>
-        <ChevronDown className={`w-3.5 h-3.5 text-zinc-500 transition ${open ? "rotate-180" : ""}`} />
+        <ChevronDown className={`w-3.5 h-3.5 text-dimmed transition ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <ul className="absolute z-20 mt-1 w-full max-h-64 overflow-y-auto bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl">
+          <ul className="absolute z-20 mt-1 w-full max-h-64 overflow-y-auto bg-control border border-card rounded-lg shadow-xl">
             {BACKEND_OPTIONS.map((opt) => (
               <li key={opt.value}>
                 <button
@@ -317,8 +317,8 @@ function BackendDropdown({
                     onChange(opt.value);
                     setOpen(false);
                   }}
-                  className={`w-full text-left px-3 py-2 text-sm hover:bg-zinc-700 transition ${
-                    value === opt.value ? accent.selected : "text-zinc-200"
+                  className={`w-full text-left px-3 py-2 text-sm hover:bg-control-hover transition ${
+                    value === opt.value ? accent.selected : "text-secondary"
                   }`}
                 >
                   {opt.label}
@@ -419,22 +419,22 @@ export function LLMConfigForm({
   return (
     <div className="space-y-3">
       <div>
-        <label className="block text-xs font-medium text-zinc-300 mb-1">Backend</label>
+        <label className="block text-xs font-medium text-secondary mb-1">Backend</label>
         <BackendDropdown value={backend} onChange={setBackend} accentColor={accentColor} />
       </div>
 
       {!isCliBackend && backend !== "disabled" && (
         <div>
-          <label className="block text-xs font-medium text-zinc-300 mb-1">API Key</label>
+          <label className="block text-xs font-medium text-secondary mb-1">API Key</label>
           <input
             type="password"
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
             placeholder={llmStatus?.api_key_masked ? `Keep existing (${llmStatus.api_key_masked})` : "sk-ant-..."}
-            className={`w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none ${accent.focus}`}
+            className={`w-full px-3 py-2 bg-control border border-card rounded-lg text-sm text-secondary placeholder-zinc-500 focus:outline-none ${accent.focus}`}
           />
           {llmStatus?.api_key_masked && !apiKey && (
-            <p className="mt-1 text-xs text-zinc-400">
+            <p className="mt-1 text-xs text-muted">
               Key configured: {llmStatus.api_key_masked}. Leave empty to keep it.
             </p>
           )}
@@ -443,14 +443,14 @@ export function LLMConfigForm({
 
       {!isCliBackend && backend !== "disabled" && (
         <div>
-          <label className="block text-xs font-medium text-zinc-300 mb-1">Model</label>
+          <label className="block text-xs font-medium text-secondary mb-1">Model</label>
           <ModelCombobox value={model} onChange={setModel} accentColor={accentColor} />
         </div>
       )}
 
       {isCliBackend && hasCliModels && (
         <div>
-          <label className="block text-xs font-medium text-zinc-300 mb-1">Model</label>
+          <label className="block text-xs font-medium text-secondary mb-1">Model</label>
           <CliModelSelector
             backendId={backend}
             value={cliModel}
@@ -462,7 +462,7 @@ export function LLMConfigForm({
       )}
 
       {isCliBackend && !hasCliModels && (
-        <p className="text-xs text-zinc-400">
+        <p className="text-xs text-muted">
           Uses your local {BACKEND_OPTIONS.find((o) => o.value === backend)?.label ?? backend} installation. No model selection available.
         </p>
       )}
@@ -471,7 +471,7 @@ export function LLMConfigForm({
         <button
           type="button"
           onClick={() => setShowAdvanced((v) => !v)}
-          className="flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-200 transition"
+          className="flex items-center gap-1 text-xs text-muted hover:text-secondary transition"
         >
           {showAdvanced ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
           Advanced
@@ -479,40 +479,40 @@ export function LLMConfigForm({
       )}
 
       {showAdvanced && !isCliBackend && backend !== "disabled" && (
-        <div className="space-y-3 pl-3 border-l-2 border-zinc-700/50">
+        <div className="space-y-3 pl-3 border-l-2 border-card">
           <div>
-            <label className="block text-xs font-medium text-zinc-300 mb-1">
-              Base URL <span className="text-zinc-500">(auto-resolved if empty)</span>
+            <label className="block text-xs font-medium text-secondary mb-1">
+              Base URL <span className="text-dimmed">(auto-resolved if empty)</span>
             </label>
             <input
               type="text"
               value={baseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
               placeholder="https://api.anthropic.com"
-              className={`w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none ${accent.focus}`}
+              className={`w-full px-3 py-2 bg-control border border-card rounded-lg text-sm text-secondary placeholder-zinc-500 focus:outline-none ${accent.focus}`}
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-zinc-300 mb-1">Timeout (s)</label>
+              <label className="block text-xs font-medium text-secondary mb-1">Timeout (s)</label>
               <input
                 type="number"
                 value={timeout}
                 onChange={(e) => setTimeout_(parseInt(e.target.value) || 120)}
                 min={10}
                 max={600}
-                className={`w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-200 focus:outline-none ${accent.focus}`}
+                className={`w-full px-3 py-2 bg-control border border-card rounded-lg text-sm text-secondary focus:outline-none ${accent.focus}`}
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-zinc-300 mb-1">Max Tokens</label>
+              <label className="block text-xs font-medium text-secondary mb-1">Max Tokens</label>
               <input
                 type="number"
                 value={maxTokens}
                 onChange={(e) => setMaxTokens(parseInt(e.target.value) || 4096)}
                 min={256}
                 max={32768}
-                className={`w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-200 focus:outline-none ${accent.focus}`}
+                className={`w-full px-3 py-2 bg-control border border-card rounded-lg text-sm text-secondary focus:outline-none ${accent.focus}`}
               />
             </div>
           </div>
@@ -520,7 +520,7 @@ export function LLMConfigForm({
       )}
 
       {configError && (
-        <div className="px-3 py-2 bg-rose-900/20 border border-rose-800/50 rounded-lg text-xs text-rose-300">
+        <div className="px-3 py-2 bg-accent-rose-subtle border border-accent-rose rounded-lg text-xs text-accent-rose">
           {configError}
         </div>
       )}
@@ -556,21 +556,21 @@ export function LLMConfigSection({
   if (isConnected && !showForm) {
     const pricing = llmStatus.pricing;
     return (
-      <div className="flex items-center justify-between px-4 py-2.5 bg-zinc-800/60 border border-zinc-700/50 rounded-lg mb-6">
+      <div className="flex items-center justify-between px-4 py-2.5 bg-control/60 border border-card rounded-lg mb-6">
         <div>
-          <span className="text-xs text-zinc-400">
+          <span className="text-xs text-muted">
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5 align-middle" />
             {llmStatus.backend_id} / {llmStatus.model}
           </span>
           {pricing && (
-            <span className="text-xs text-zinc-500 ml-2">
+            <span className="text-xs text-dimmed ml-2">
               (${formatPrice(pricing.input_per_mtok)} / ${formatPrice(pricing.output_per_mtok)} per MTok)
             </span>
           )}
         </div>
         <button
           onClick={() => setShowForm(true)}
-          className="inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300 transition"
+          className="inline-flex items-center gap-1 text-xs text-dimmed hover:text-secondary transition"
         >
           <Pencil className="w-3 h-3" />
           Change
@@ -580,11 +580,11 @@ export function LLMConfigSection({
   }
 
   return (
-    <div className="bg-zinc-900/80 border border-zinc-700/60 rounded-xl p-5 mb-6">
-      <h4 className="text-sm font-semibold text-zinc-200 mb-3">
+    <div className="bg-panel/80 border border-card rounded-xl p-5 mb-6">
+      <h4 className="text-sm font-semibold text-secondary mb-3">
         {isConnected ? "Update LLM Configuration" : "Configure LLM Backend"}
       </h4>
-      <p className="text-xs text-zinc-400 mb-4">
+      <p className="text-xs text-muted mb-4">
         Provide an API key and model to enable LLM-powered analysis.
       </p>
       <LLMConfigForm
@@ -599,7 +599,7 @@ export function LLMConfigSection({
       {isConnected && (
         <button
           onClick={() => setShowForm(false)}
-          className="mt-2 text-xs text-zinc-500 hover:text-zinc-300 transition"
+          className="mt-2 text-xs text-dimmed hover:text-secondary transition"
         >
           Cancel
         </button>

@@ -16,24 +16,24 @@ export function CostEstimateDialog({
   return (
     <Modal onClose={onCancel} maxWidth="max-w-md">
       <ModalHeader onClose={onCancel}>
-        <h2 className="text-base font-semibold text-zinc-100">Confirm Analysis</h2>
+        <h2 className="text-base font-semibold text-primary">Confirm Analysis</h2>
       </ModalHeader>
       <ModalBody>
         <div className="space-y-4">
-          <div className="flex items-center gap-4 px-4 py-3 bg-zinc-800/50 rounded-lg">
+          <div className="flex items-center gap-4 px-4 py-3 bg-subtle rounded-lg">
             <div className="flex items-center gap-2.5">
               <Layers className="w-4 h-4 text-violet-400" />
               <div className="flex flex-col">
-                <span className="text-[10px] text-zinc-500">Sessions</span>
-                <span className="text-sm font-semibold text-zinc-100">{sessionCount}</span>
+                <span className="text-[10px] text-dimmed">Sessions</span>
+                <span className="text-sm font-semibold text-primary">{sessionCount}</span>
               </div>
             </div>
-            <div className="w-px h-8 bg-zinc-700" />
+            <div className="w-px h-8 bg-control-hover" />
             <div className="flex items-center gap-2.5">
               <Sparkles className="w-4 h-4 text-amber-400" />
               <div className="flex flex-col">
-                <span className="text-[10px] text-zinc-500">Model</span>
-                <span className="text-sm font-medium text-zinc-200">{estimate.model}</span>
+                <span className="text-[10px] text-dimmed">Model</span>
+                <span className="text-sm font-medium text-secondary">{estimate.model}</span>
               </div>
             </div>
           </div>
@@ -55,7 +55,7 @@ export function CostEstimateDialog({
       <ModalFooter>
         <button
           onClick={onCancel}
-          className="px-4 py-2 text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 border border-zinc-700 rounded-md transition"
+          className="px-4 py-2 text-xs text-muted hover:text-secondary hover:bg-control border border-card rounded-md transition"
         >
           Cancel
         </button>

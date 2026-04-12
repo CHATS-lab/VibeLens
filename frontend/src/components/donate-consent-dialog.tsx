@@ -49,21 +49,21 @@ export function DonateConsentDialog({
             <h2 className="text-lg font-bold text-white">
               Donate {sessionCount} Session{sessionCount !== 1 ? "s" : ""}
             </h2>
-            <p className="text-xs text-zinc-400">Support open research on coding agents</p>
+            <p className="text-xs text-muted">Support open research on coding agents</p>
           </div>
         </div>
       </ModalHeader>
 
       <ModalBody>
         <div className="space-y-5">
-          <div className="rounded-lg border border-cyan-700/30 bg-cyan-950/10 px-4 py-3">
-            <p className="text-sm text-zinc-200 leading-relaxed">
+          <div className="rounded-lg border border-accent-cyan bg-cyan-950/10 px-4 py-3">
+            <p className="text-sm text-secondary leading-relaxed">
               Your sessions will be donated to{" "}
               <a
                 href="https://github.com/CHATS-lab"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-cyan-400 hover:text-cyan-300 underline font-medium"
+                className="text-accent-cyan hover:text-cyan-300 underline font-medium"
               >
                 CHATS-Lab
               </a>{" "}
@@ -74,30 +74,30 @@ export function DonateConsentDialog({
           </div>
 
           <div>
-            <p className="text-sm font-semibold text-zinc-100 mb-3">
+            <p className="text-sm font-semibold text-primary mb-3">
               By donating, you acknowledge that:
             </p>
             <div className="space-y-2.5">
               {CONSENT_ITEMS.map((item, i) => (
                 <div
                   key={i}
-                  className="flex items-start gap-3 rounded-md bg-zinc-800/40 border border-zinc-700/30 px-3.5 py-2.5"
+                  className="flex items-start gap-3 rounded-md bg-control/40 border border-card px-3.5 py-2.5"
                 >
                   {item.icon}
-                  <span className="text-sm text-zinc-300 leading-relaxed">{item.text}</span>
+                  <span className="text-sm text-secondary leading-relaxed">{item.text}</span>
                 </div>
               ))}
             </div>
           </div>
 
-          <label className="flex items-center gap-3 cursor-pointer group rounded-lg border border-zinc-600/50 bg-zinc-800/60 px-4 py-3 hover:border-rose-600/40 hover:bg-zinc-800/80 transition">
+          <label className="flex items-center gap-3 cursor-pointer group rounded-lg border border-hover bg-control/60 px-4 py-3 hover:border-rose-600/40 hover:bg-control/80 transition">
             <input
               type="checkbox"
               checked={agreed}
               onChange={(e) => setAgreed(e.target.checked)}
-              className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-rose-500 focus:ring-rose-500 focus:ring-offset-0 cursor-pointer"
+              className="w-4 h-4 rounded border-hover bg-control text-rose-500 focus:ring-rose-500 focus:ring-offset-0 cursor-pointer"
             />
-            <span className="text-sm font-medium text-zinc-100 group-hover:text-white transition select-none">
+            <span className="text-sm font-medium text-primary group-hover:text-white transition select-none">
               I have read and agree to the above terms
             </span>
           </label>
@@ -107,7 +107,7 @@ export function DonateConsentDialog({
       <ModalFooter>
         <button
           onClick={onCancel}
-          className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 border border-zinc-700 hover:border-zinc-600 rounded-lg transition"
+          className="px-4 py-2 text-sm text-muted hover:text-secondary border border-card hover:border-hover rounded-lg transition"
         >
           Cancel
         </button>
