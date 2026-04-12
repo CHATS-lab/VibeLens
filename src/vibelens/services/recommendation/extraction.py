@@ -72,8 +72,8 @@ def extract_lightweight_digest(
     return digest, total_sessions, signal_count
 
 
-def _read_compaction_summary(filepath: str) -> str | None:
-    """Read the most recent compaction summary for a session.
+def find_compaction_files(filepath: str) -> list[Path]:
+    """Find compaction agent JSONL files for a session.
 
     Claude Code layout: {uuid}/subagents/agent-acompact-*.jsonl
     Derives compaction path from the main session filepath.
@@ -82,23 +82,33 @@ def _read_compaction_summary(filepath: str) -> str | None:
         filepath: Path to the main session JSONL file.
 
     Returns:
-        Summary text from the compaction agent, or None if unavailable.
+        Sorted list of compaction file paths (empty if none found).
     """
     if not filepath:
-        return None
+        return []
 
     session_path = Path(filepath)
     compaction_dir = session_path.parent / session_path.stem / "subagents"
     if not compaction_dir.is_dir():
-        return None
+        return []
 
-    compaction_files = sorted(compaction_dir.glob("agent-acompact-*.jsonl"))
+    return sorted(compaction_dir.glob("agent-acompact-*.jsonl"))
+
+
+def _read_compaction_summary(filepath: str) -> str | None:
+    """Read the most recent compaction summary for a session.
+
+    Args:
+        filepath: Path to the main session JSONL file.
+
+    Returns:
+        Summary text from the compaction agent, or None if unavailable.
+    """
+    compaction_files = find_compaction_files(filepath)
     if not compaction_files:
         return None
 
-    # Read the most recent compaction file (last in sorted order)
-    latest = compaction_files[-1]
-    return _extract_summary_from_jsonl(latest)
+    return _extract_summary_from_jsonl(compaction_files[-1])
 
 
 def _extract_summary_from_jsonl(jsonl_path: Path) -> str | None:

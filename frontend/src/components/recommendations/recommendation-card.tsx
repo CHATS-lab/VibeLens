@@ -1,5 +1,6 @@
 import { ExternalLink, Download } from "lucide-react";
 import type { CatalogRecommendation } from "../../types";
+import { Tooltip } from "../tooltip";
 import { ITEM_TYPE_COLORS, ITEM_TYPE_LABELS, scoreColor } from "./recommendation-constants";
 
 interface RecommendationCardProps {
@@ -31,24 +32,26 @@ export function RecommendationCard({ recommendation: rec, rank, onInstall }: Rec
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           {rec.source_url && (
-            <a
-              href={rec.source_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
-              title="View on GitHub"
-            >
-              <ExternalLink className="w-4 h-4" />
-            </a>
+            <Tooltip text="View on GitHub">
+              <a
+                href={rec.source_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+              >
+                <ExternalLink className="w-4 h-4" />
+              </a>
+            </Tooltip>
           )}
           {(rec.has_content || rec.install_command) && (
-            <button
-              onClick={() => onInstall(rec)}
-              className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
-              title="Install"
-            >
-              <Download className="w-4 h-4" />
-            </button>
+            <Tooltip text="Install">
+              <button
+                onClick={() => onInstall(rec)}
+                className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+              >
+                <Download className="w-4 h-4" />
+              </button>
+            </Tooltip>
           )}
         </div>
       </div>

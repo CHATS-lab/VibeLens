@@ -150,6 +150,7 @@ def recommend(
 ) -> None:
     """Run the recommendation pipeline on all local sessions."""
     from vibelens.deps import get_llm_config, get_settings, set_llm_config
+    from vibelens.llm.backend import InferenceError
     from vibelens.models.llm.inference import BackendType
     from vibelens.services.recommendation.engine import analyze_recommendation
 
@@ -181,15 +182,17 @@ def recommend(
         )
         raise typer.Exit(code=1)
 
+    from vibelens.services.recommendation.extraction import find_compaction_files
+
     compaction_count = sum(
-        1 for m in all_metadata if _has_compaction_files(m.get("filepath", ""))
+        1 for m in all_metadata if find_compaction_files(m.get("filepath") or "")
     )
     typer.echo(f" {len(all_metadata)} found ({compaction_count} with summaries)")
 
     typer.echo("Running recommendation pipeline...")
     try:
         result = asyncio.run(analyze_recommendation(session_ids=None, session_token=None))
-    except Exception as exc:
+    except (ValueError, OSError, InferenceError) as exc:
         typer.echo(f"\nError: {exc}")
         raise typer.Exit(code=1) from None
 
@@ -222,21 +225,3 @@ def recommend(
             port=bind_port,
             reload=False,
         )
-
-
-def _has_compaction_files(filepath: str) -> bool:
-    """Check if a session has compaction agent files without loading it.
-
-    Args:
-        filepath: Path to the session JSONL file.
-
-    Returns:
-        True if compaction subagent files exist alongside the session.
-    """
-    if not filepath:
-        return False
-    session_path = Path(filepath)
-    compaction_dir = session_path.parent / session_path.stem / "subagents"
-    if not compaction_dir.is_dir():
-        return False
-    return any(compaction_dir.glob("agent-acompact-*.jsonl"))
