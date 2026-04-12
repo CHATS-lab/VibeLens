@@ -19,7 +19,7 @@ AGENT_SKILL_REGISTRY: dict[SkillSourceType, Path] = {
     SkillSourceType.CURSOR: Path.home() / ".cursor" / "skills",
     SkillSourceType.OPENCODE: Path.home() / ".config" / "opencode" / "skills",
     SkillSourceType.ANTIGRAVITY: Path.home() / ".gemini" / "antigravity" / "global_skills",
-    SkillSourceType.KIMI_CLI: Path.home() / ".config" / "agents" / "skills",
+    SkillSourceType.KIMI: Path.home() / ".config" / "agents" / "skills",
     SkillSourceType.OPENCLAW: Path.home() / ".openclaw" / "skills",
     SkillSourceType.OPENHANDS: Path.home() / ".openhands" / "skills",
     SkillSourceType.QWEN_CODE: Path.home() / ".qwen" / "skills",

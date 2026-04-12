@@ -34,7 +34,7 @@ class OpenCodeCliBackend(CliBackend):
 
     @property
     def backend_id(self) -> BackendType:
-        return BackendType.OPENCODE_CLI
+        return BackendType.OPENCODE
 
     @property
     def available_models(self) -> list[str]:

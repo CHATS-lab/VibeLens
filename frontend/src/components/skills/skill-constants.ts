@@ -1,18 +1,18 @@
 /** Color classes for skill source badges (agent interfaces). */
 export const SOURCE_COLORS: Record<string, string> = {
-  claude_code: "bg-sky-900/30 text-sky-400 border-sky-700/30",
-  codex: "bg-emerald-900/30 text-emerald-400 border-emerald-700/30",
-  central: "bg-teal-900/30 text-teal-400 border-teal-700/30",
-  gemini: "bg-amber-900/30 text-amber-400 border-amber-700/30",
-  gemini_cli: "bg-amber-900/30 text-amber-400 border-amber-700/30",
-  copilot: "bg-violet-900/30 text-violet-400 border-violet-700/30",
-  openclaw: "bg-rose-900/30 text-rose-400 border-rose-700/30",
-  cursor: "bg-blue-900/30 text-blue-400 border-blue-700/30",
-  opencode: "bg-cyan-900/30 text-cyan-400 border-cyan-700/30",
-  antigravity: "bg-purple-900/30 text-purple-400 border-purple-700/30",
-  kimi_cli: "bg-orange-900/30 text-orange-400 border-orange-700/30",
-  openhands: "bg-lime-900/30 text-lime-400 border-lime-700/30",
-  qwen_code: "bg-indigo-900/30 text-indigo-400 border-indigo-700/30",
+  claude_code: "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-900/30 dark:text-sky-400 dark:border-sky-700/30",
+  codex: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-700/30",
+  central: "bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/30 dark:text-teal-400 dark:border-teal-700/30",
+  gemini: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700/30",
+  gemini_cli: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700/30",
+  copilot: "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-900/30 dark:text-violet-400 dark:border-violet-700/30",
+  openclaw: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-900/30 dark:text-rose-400 dark:border-rose-700/30",
+  cursor: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-700/30",
+  opencode: "bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-400 dark:border-cyan-700/30",
+  antigravity: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-700/30",
+  kimi: "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:border-orange-700/30",
+  openhands: "bg-lime-50 text-lime-700 border-lime-200 dark:bg-lime-900/30 dark:text-lime-400 dark:border-lime-700/30",
+  qwen_code: "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400 dark:border-indigo-700/30",
 };
 
 /** Human-readable labels for agent interface source types. */
@@ -82,8 +82,8 @@ export const ALL_SYNC_TARGETS: { key: string; label: string }[] = [
 
 /** Color classes for featured skill categories. */
 export const CATEGORY_COLORS: Record<string, string> = {
-  "ai-assistant": "bg-indigo-900/30 text-indigo-400 border-indigo-700/30",
-  development: "bg-teal-900/30 text-teal-400 border-teal-700/30",
+  "ai-assistant": "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400 dark:border-indigo-700/30",
+  development: "bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/30 dark:text-teal-400 dark:border-teal-700/30",
 };
 
 /** Human-readable labels for featured skill categories. */

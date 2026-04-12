@@ -36,7 +36,7 @@ class KimiCliBackend(CliBackend):
 
     @property
     def backend_id(self) -> BackendType:
-        return BackendType.KIMI_CLI
+        return BackendType.KIMI
 
     @property
     def available_models(self) -> list[str]:

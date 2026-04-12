@@ -59,10 +59,19 @@ API_KEY_MASK_SUFFIX_LEN = 4
 # Characters replacing the hidden portion of an API key
 API_KEY_MASK = "***"
 
-# Old backend names that map to current litellm backend
+# Old backend names that map to current values
 LEGACY_BACKEND_ALIASES: dict[str, str] = {
     "anthropic-api": "litellm",
     "openai-api": "litellm",
+    "claude-cli": "claude_code",
+    "codex-cli": "codex",
+    "gemini-cli": "gemini",
+    "cursor-cli": "cursor",
+    "kimi-cli": "kimi",
+    "openclaw-cli": "openclaw",
+    "opencode-cli": "opencode",
+    "aider-cli": "aider",
+    "amp-cli": "amp",
 }
 
 
@@ -72,8 +81,8 @@ class LLMConfig(BaseModel):
     backend: BackendType = Field(
         default=BackendType.DISABLED,
         description=(
-            "Backend: 'litellm', 'claude-cli', 'codex-cli', 'gemini-cli', 'cursor-cli', "
-            "'kimi-cli', 'openclaw-cli', 'opencode-cli', 'aider-cli', 'amp-cli', 'disabled'."
+            "Backend: 'litellm', 'claude_code', 'codex', 'gemini', 'cursor', "
+            "'kimi', 'openclaw', 'opencode', 'aider', 'amp', 'disabled'."
         ),
     )
     api_key: str = Field(default="", description="API key for the LLM provider.")

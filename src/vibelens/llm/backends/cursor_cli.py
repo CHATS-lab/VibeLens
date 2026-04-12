@@ -38,7 +38,7 @@ class CursorCliBackend(CliBackend):
 
     @property
     def backend_id(self) -> BackendType:
-        return BackendType.CURSOR_CLI
+        return BackendType.CURSOR
 
     @property
     def available_models(self) -> list[str]:

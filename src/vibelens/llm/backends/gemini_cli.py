@@ -47,7 +47,7 @@ class GeminiCliBackend(CliBackend):
 
     @property
     def backend_id(self) -> BackendType:
-        return BackendType.GEMINI_CLI
+        return BackendType.GEMINI
 
     @property
     def available_models(self) -> list[str]:

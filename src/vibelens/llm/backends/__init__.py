@@ -16,15 +16,15 @@ logger = get_logger(__name__)
 
 # Registry mapping BackendType → (module_path, class_name)
 _CLI_BACKEND_REGISTRY: dict[BackendType, tuple[str, str]] = {
-    BackendType.CLAUDE_CLI: ("vibelens.llm.backends.claude_cli", "ClaudeCliBackend"),
-    BackendType.CODEX_CLI: ("vibelens.llm.backends.codex_cli", "CodexCliBackend"),
-    BackendType.GEMINI_CLI: ("vibelens.llm.backends.gemini_cli", "GeminiCliBackend"),
-    BackendType.CURSOR_CLI: ("vibelens.llm.backends.cursor_cli", "CursorCliBackend"),
-    BackendType.KIMI_CLI: ("vibelens.llm.backends.kimi_cli", "KimiCliBackend"),
-    BackendType.OPENCLAW_CLI: ("vibelens.llm.backends.openclaw_cli", "OpenClawCliBackend"),
-    BackendType.OPENCODE_CLI: ("vibelens.llm.backends.opencode_cli", "OpenCodeCliBackend"),
-    BackendType.AIDER_CLI: ("vibelens.llm.backends.aider_cli", "AiderCliBackend"),
-    BackendType.AMP_CLI: ("vibelens.llm.backends.amp_cli", "AmpCliBackend"),
+    BackendType.AIDER: ("vibelens.llm.backends.aider_cli", "AiderCliBackend"),
+    BackendType.AMP: ("vibelens.llm.backends.amp_cli", "AmpCliBackend"),
+    BackendType.CLAUDE_CODE: ("vibelens.llm.backends.claude_cli", "ClaudeCliBackend"),
+    BackendType.CODEX: ("vibelens.llm.backends.codex_cli", "CodexCliBackend"),
+    BackendType.CURSOR: ("vibelens.llm.backends.cursor_cli", "CursorCliBackend"),
+    BackendType.GEMINI: ("vibelens.llm.backends.gemini_cli", "GeminiCliBackend"),
+    BackendType.KIMI: ("vibelens.llm.backends.kimi_cli", "KimiCliBackend"),
+    BackendType.OPENCODE: ("vibelens.llm.backends.opencode_cli", "OpenCodeCliBackend"),
+    BackendType.OPENCLAW: ("vibelens.llm.backends.openclaw_cli", "OpenClawCliBackend"),
 }
 
 # All CLI backends that run as subprocesses

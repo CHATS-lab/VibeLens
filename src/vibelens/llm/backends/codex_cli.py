@@ -49,7 +49,7 @@ class CodexCliBackend(CliBackend):
 
     @property
     def backend_id(self) -> BackendType:
-        return BackendType.CODEX_CLI
+        return BackendType.CODEX
 
     @property
     def available_models(self) -> list[str]:

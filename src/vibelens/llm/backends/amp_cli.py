@@ -28,7 +28,7 @@ class AmpCliBackend(CliBackend):
 
     @property
     def backend_id(self) -> BackendType:
-        return BackendType.AMP_CLI
+        return BackendType.AMP
 
     def _build_command(self, request: InferenceRequest) -> list[str]:
         """Build amp CLI command.

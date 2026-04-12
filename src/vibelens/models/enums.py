@@ -10,21 +10,23 @@ class AgentType(StrEnum):
     and skill-only agents (cursor, opencode, etc.) that we scan for installed skills.
     """
 
+    AIDER = "aider"
+    AMP = "amp"
+    ANTIGRAVITY = "antigravity"
     CLAUDE_CODE = "claude_code"
     CLAUDE_CODE_WEB = "claude_code_web"
     CODEX = "codex"
-    GEMINI = "gemini"
-    DATACLAW = "dataclaw"
-    PARSED = "parsed"
+    COPILOT = "copilot"
     CURSOR = "cursor"
+    DATACLAW = "dataclaw"
+    GEMINI = "gemini"
+    GEMINI_CLI = "gemini_cli"
+    KIMI = "kimi"
     OPENCODE = "opencode"
-    ANTIGRAVITY = "antigravity"
-    KIMI_CLI = "kimi_cli"
     OPENCLAW = "openclaw"
     OPENHANDS = "openhands"
+    PARSED = "parsed"
     QWEN_CODE = "qwen_code"
-    GEMINI_CLI = "gemini_cli"
-    COPILOT = "copilot"
 
 
 class StepSource(StrEnum):

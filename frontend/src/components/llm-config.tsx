@@ -20,28 +20,28 @@ const MODEL_PRESETS = [
 
 const BACKEND_OPTIONS = [
   { value: "litellm", label: "LiteLLM (recommended)" },
-  { value: "claude-cli", label: "Claude Code" },
-  { value: "codex-cli", label: "Codex" },
-  { value: "gemini-cli", label: "Gemini CLI" },
-  { value: "cursor-cli", label: "Cursor" },
-  { value: "kimi-cli", label: "Kimi" },
-  { value: "openclaw-cli", label: "OpenClaw" },
-  { value: "opencode-cli", label: "OpenCode" },
-  { value: "aider-cli", label: "Aider" },
-  { value: "amp-cli", label: "Amp" },
+  { value: "aider", label: "Aider" },
+  { value: "amp", label: "Amp" },
+  { value: "claude_code", label: "Claude Code" },
+  { value: "codex", label: "Codex" },
+  { value: "cursor", label: "Cursor" },
+  { value: "gemini", label: "Gemini CLI" },
+  { value: "kimi", label: "Kimi" },
+  { value: "opencode", label: "OpenCode" },
+  { value: "openclaw", label: "OpenClaw" },
   { value: "disabled", label: "Disabled" },
 ];
 
 const CLI_BACKENDS = new Set([
-  "claude-cli",
-  "codex-cli",
-  "gemini-cli",
-  "cursor-cli",
-  "kimi-cli",
-  "openclaw-cli",
-  "opencode-cli",
-  "aider-cli",
-  "amp-cli",
+  "aider",
+  "amp",
+  "claude_code",
+  "codex",
+  "cursor",
+  "gemini",
+  "kimi",
+  "opencode",
+  "openclaw",
 ]);
 
 type AccentColor = "amber" | "teal" | "cyan";
@@ -50,17 +50,17 @@ const ACCENT_STYLES: Record<AccentColor, { focus: string; button: string; select
   amber: {
     focus: "focus:border-amber-600",
     button: "bg-amber-600 hover:bg-amber-500",
-    selected: "text-amber-400",
+    selected: "text-amber-700 dark:text-amber-400",
   },
   teal: {
     focus: "focus:border-teal-600",
     button: "bg-teal-600 hover:bg-teal-500",
-    selected: "text-teal-400",
+    selected: "text-teal-700 dark:text-teal-400",
   },
   cyan: {
     focus: "focus:border-cyan-600",
     button: "bg-cyan-600 hover:bg-cyan-500",
-    selected: "text-cyan-400",
+    selected: "text-cyan-700 dark:text-cyan-400",
   },
 };
 

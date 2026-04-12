@@ -44,7 +44,7 @@ class AiderCliBackend(CliBackend):
 
     @property
     def backend_id(self) -> BackendType:
-        return BackendType.AIDER_CLI
+        return BackendType.AIDER
 
     @property
     def available_models(self) -> list[str]:

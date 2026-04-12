@@ -35,7 +35,7 @@ class ClaudeCliBackend(CliBackend):
 
     @property
     def backend_id(self) -> BackendType:
-        return BackendType.CLAUDE_CLI
+        return BackendType.CLAUDE_CODE
 
     @property
     def available_models(self) -> list[str]:
