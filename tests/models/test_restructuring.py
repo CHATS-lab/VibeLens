@@ -202,3 +202,39 @@ class TestRecommendationPackage:
         from vibelens.models.recommendation.results import RecommendationResult
 
         assert RecommendationResult is not None
+
+
+class TestCreationPackage:
+    """Verify models/creation/ package with new generalized models."""
+
+    def test_element_creation(self):
+        from vibelens.models.creation.models import ElementCreation
+
+        creation = ElementCreation(
+            element_type="skill",
+            name="test-runner",
+            description="Runs tests automatically",
+            file_content="# Test Runner\n...",
+            target_path="~/.claude/commands/test-runner.md",
+            rationale="Automates repetitive test runs",
+            confidence=0.85,
+        )
+        assert creation.element_type == "skill"
+        assert creation.tools_used == []
+
+    def test_element_creation_proposal(self):
+        from vibelens.models.creation.models import ElementCreationProposal
+
+        proposal = ElementCreationProposal(
+            element_type="command",
+            name="deploy",
+            description="Deploys to staging",
+            rationale="Reduces manual deployment steps",
+        )
+        assert proposal.confidence == 0.0
+        assert proposal.relevant_session_indices == []
+
+    def test_creation_result(self):
+        from vibelens.models.creation.results import CreationResult
+
+        assert CreationResult is not None
