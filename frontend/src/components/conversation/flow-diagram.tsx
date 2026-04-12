@@ -141,9 +141,9 @@ function SectionDivider() {
   return (
     <div className="flex items-center pl-6 py-1">
       <div className="flex flex-col items-center">
-        <div className="w-px h-2 bg-zinc-700/30" />
-        <div className="w-1 h-1 rounded-full bg-zinc-600/40" />
-        <div className="w-px h-2 bg-zinc-700/30" />
+        <div className="w-px h-2 bg-card/30" />
+        <div className="w-1 h-1 rounded-full bg-hover/40" />
+        <div className="w-px h-2 bg-card/30" />
       </div>
     </div>
   );
@@ -195,7 +195,7 @@ function UserAnchor({
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 mb-0.5">
-            <span className={`font-mono text-[11px] font-semibold px-1.5 py-0.5 rounded ${indexText} bg-zinc-700/50`}>
+            <span className={`font-mono text-[11px] font-semibold px-1.5 py-0.5 rounded ${indexText} bg-control-hover/50`}>
               User #{data.promptIndex}
             </span>
             {isAuto && (
@@ -231,7 +231,7 @@ function PhaseSection({
           <span className={`text-[11px] font-bold uppercase tracking-[0.14em] ${style.label}`}>
             {phase.phase}
           </span>
-          <span className="text-[10px] text-zinc-300 font-medium">
+          <span className="text-[10px] text-secondary font-medium">
             {phase.cards.length} step{phase.cards.length !== 1 ? "s" : ""}
           </span>
         </div>
@@ -245,9 +245,9 @@ function Connector() {
   return (
     <div className="flex items-center justify-center py-1.5">
       <div className="flex flex-col items-center">
-        <div className="w-px h-2.5 bg-zinc-700/40" />
-        <div className="w-[5px] h-[5px] rounded-full border border-zinc-600/60 bg-zinc-800" />
-        <div className="w-px h-2.5 bg-zinc-700/40" />
+        <div className="w-px h-2.5 bg-card/40" />
+        <div className="w-[5px] h-[5px] rounded-full border border-hover/60 bg-control" />
+        <div className="w-px h-2.5 bg-card/40" />
       </div>
     </div>
   );
@@ -317,10 +317,10 @@ function AgentCard({
         <div className="border-t border-cyan-500/10 mx-3 px-1 py-2.5">
           {/* Header with count and category breakdown */}
           <div className="flex items-center gap-1.5 mb-2 px-1">
-            <span className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">
+            <span className="text-[10px] font-semibold text-muted uppercase tracking-wider">
               {tools.length} tool{tools.length !== 1 ? "s" : ""}
             </span>
-            <span className="text-zinc-700 text-[10px]">{"·"}</span>
+            <span className="text-faint text-[10px]">{"·"}</span>
             <div className="flex gap-1.5">
               {grouped.map(([cat, items]) => {
                 const catStyle = CATEGORY_STYLE[cat] || CATEGORY_STYLE.other;
@@ -396,7 +396,7 @@ function ToolChip({
     return (
       <div>
         <div className="font-mono text-[12px] font-semibold text-cyan-300 mb-1.5">{toolName}</div>
-        <pre className="font-mono text-[11px] text-zinc-300 leading-snug whitespace-pre-wrap break-all m-0">
+        <pre className="font-mono text-[11px] text-secondary leading-snug whitespace-pre-wrap break-all m-0">
           {argsText}
         </pre>
       </div>
@@ -425,7 +425,7 @@ function ToolChip({
     >
       {tool.name}
       {depLabel && (
-        <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-1.5 py-px rounded-full text-[8px] font-sans font-bold bg-zinc-900 border border-zinc-500 text-zinc-200 whitespace-nowrap shadow-lg">
+        <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-1.5 py-px rounded-full text-[8px] font-sans font-bold bg-panel border border-dimmed text-secondary whitespace-nowrap shadow-lg">
           {depLabel}
         </span>
       )}

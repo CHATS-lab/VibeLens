@@ -69,7 +69,7 @@ function UserStep({ step }: { step: Step }) {
 
   return (
     <div className="flex justify-end">
-      <div className="max-w-[85%] bg-gradient-to-br from-slate-600/70 to-slate-700/60 text-zinc-100 rounded-2xl rounded-br-md px-4 py-2.5 text-sm overflow-hidden break-words">
+      <div className="max-w-[85%] bg-gradient-to-br from-slate-600/70 to-slate-700/60 text-primary rounded-2xl rounded-br-md px-4 py-2.5 text-sm overflow-hidden break-words">
         {!expanded ? (
           <>
             <div className="line-clamp-4">
@@ -77,7 +77,7 @@ function UserStep({ step }: { step: Step }) {
             </div>
             <button
               onClick={() => setExpanded(true)}
-              className="mt-1.5 text-xs text-cyan-400 hover:text-cyan-300 transition"
+              className="mt-1.5 text-xs text-accent-cyan hover:text-accent-cyan transition"
             >
               Show full prompt ({lineCount} lines)
             </button>
@@ -88,7 +88,7 @@ function UserStep({ step }: { step: Step }) {
             {isLong && (
               <button
                 onClick={() => setExpanded(false)}
-                className="mt-1.5 text-xs text-cyan-400 hover:text-cyan-300 transition"
+                className="mt-1.5 text-xs text-accent-cyan hover:text-accent-cyan transition"
               >
                 Collapse
               </button>
@@ -110,18 +110,18 @@ function SystemStep({ step }: { step: Step }) {
     <div className="max-w-[85%]">
       <button
         onClick={() => setOpen(!open)}
-        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-sm border transition-colors bg-zinc-800/50 hover:bg-zinc-800/80 text-zinc-400 border-zinc-600"
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-sm border transition-colors bg-subtle hover:bg-control/80 text-muted border-hover"
       >
         {open ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
         <Monitor className="w-4 h-4" />
         <span className="font-medium">System</span>
         {!open && (
-          <span className="text-zinc-500 truncate max-w-[250px] ml-0.5">{previewSnippet}</span>
+          <span className="text-dimmed truncate max-w-[250px] ml-0.5">{previewSnippet}</span>
         )}
       </button>
       {open && (
-        <div className="mt-1 bg-zinc-900/60 border border-zinc-700 rounded-lg p-3">
-          <pre className="text-xs text-zinc-500 whitespace-pre-wrap break-words overflow-x-auto max-h-96 overflow-y-auto">
+        <div className="mt-1 bg-panel/60 border border-card rounded-lg p-3">
+          <pre className="text-xs text-dimmed whitespace-pre-wrap break-words overflow-x-auto max-h-96 overflow-y-auto">
             {text}
           </pre>
         </div>
@@ -276,7 +276,7 @@ function ConcurrentToolsBlock({
         <Layers className="w-4 h-4" />
         <span className="font-medium">{toolCalls.length} parallel calls</span>
         {!open && (
-          <span className="text-zinc-500 truncate ml-1">{preview}</span>
+          <span className="text-dimmed truncate ml-1">{preview}</span>
         )}
       </button>
       {open && (
@@ -303,13 +303,13 @@ function TextBlock({ content }: { content: string | ContentPart[] }) {
     const cleaned = sanitizeText(content);
     if (!cleaned) return null;
     return (
-      <div className="max-w-[85%] text-zinc-100 text-sm break-words overflow-hidden">
+      <div className="max-w-[85%] text-primary text-sm break-words overflow-hidden">
         <MarkdownRenderer content={cleaned} />
       </div>
     );
   }
   return (
-    <div className="max-w-[85%] text-zinc-100 text-sm break-words overflow-hidden">
+    <div className="max-w-[85%] text-primary text-sm break-words overflow-hidden">
       <ContentRenderer content={content} />
     </div>
   );
@@ -329,7 +329,7 @@ function ThinkingBlock({ text }: { text: string }) {
         <span className="font-medium">Thinking</span>
       </button>
       {open && (
-        <div className="mt-1 bg-zinc-900/80 border border-zinc-800 rounded-lg p-3">
+        <div className="mt-1 bg-panel/80 border border-default rounded-lg p-3">
           <pre className="text-xs text-amber-200/80 whitespace-pre-wrap overflow-x-auto">
             {text}
           </pre>
@@ -355,7 +355,7 @@ function ToolUseBlock({ toolCall }: { toolCall: ToolCall }) {
         {icon}
         <span className="font-medium">{name}</span>
         {!open && preview && (
-          <span className="text-zinc-400 truncate max-w-[200px] ml-0.5">{preview}</span>
+          <span className="text-muted truncate max-w-[200px] ml-0.5">{preview}</span>
         )}
       </button>
       {open && (
@@ -376,7 +376,7 @@ function ToolResultBlock({ result }: { result: ObservationResult }) {
   // Handle multimodal content (images in tool results)
   if (Array.isArray(rawContent)) {
     return (
-      <div className="max-w-[85%] mt-1 bg-zinc-900/60 border border-zinc-800 rounded-lg overflow-hidden p-3">
+      <div className="max-w-[85%] mt-1 bg-panel/60 border border-default rounded-lg overflow-hidden p-3">
         <ContentRenderer content={rawContent} />
       </div>
     );
@@ -392,7 +392,7 @@ function ToolResultBlock({ result }: { result: ObservationResult }) {
 
   if (isShort) {
     return (
-      <div className="max-w-[85%] mt-1 bg-zinc-900/60 border border-zinc-800 rounded-lg overflow-hidden">
+      <div className="max-w-[85%] mt-1 bg-panel/60 border border-default rounded-lg overflow-hidden">
         <ToolOutput text={content} isError={isError} />
       </div>
     );
@@ -414,11 +414,11 @@ function ToolResultBlock({ result }: { result: ObservationResult }) {
         {isError ? <X className="w-4 h-4" /> : <Check className="w-4 h-4" />}
         <span className="font-medium">{isError ? "Error" : "Result"}</span>
         {!open && (
-          <span className="text-zinc-400 truncate max-w-[250px] ml-0.5">{previewSnippet}</span>
+          <span className="text-muted truncate max-w-[250px] ml-0.5">{previewSnippet}</span>
         )}
       </button>
       {open && (
-        <div className="mt-1 bg-zinc-900/60 border border-zinc-800 rounded-lg overflow-hidden">
+        <div className="mt-1 bg-panel/60 border border-default rounded-lg overflow-hidden">
           <ToolOutput text={content} isError={isError} />
         </div>
       )}
@@ -465,12 +465,12 @@ function ToolInputRenderer({
     const filePath = String(data.file_path || "");
     const lang = filePath.split(".").pop() || "";
     return (
-      <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg overflow-hidden">
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800/60 border-b border-zinc-700/40">
+      <div className="bg-panel/60 border border-default rounded-lg overflow-hidden">
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-control/60 border-b border-card">
           <FileCode className="w-3.5 h-3.5 text-sky-400" />
-          <span className="text-[11px] font-mono text-zinc-300 truncate flex-1">{filePath}</span>
+          <span className="text-[11px] font-mono text-secondary truncate flex-1">{filePath}</span>
           {lang && (
-            <span className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-700/60 text-zinc-400 uppercase">{lang}</span>
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-control-hover/60 text-muted uppercase">{lang}</span>
           )}
           <CopyButton text={filePath} />
         </div>
@@ -480,12 +480,12 @@ function ToolInputRenderer({
 
   if (n === "grep") {
     return (
-      <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg overflow-hidden">
-        <div className="flex items-center gap-2 px-3 py-2 bg-zinc-800/60">
+      <div className="bg-panel/60 border border-default rounded-lg overflow-hidden">
+        <div className="flex items-center gap-2 px-3 py-2 bg-control/60">
           <Search className="w-3.5 h-3.5 text-amber-400" />
-          <span className="text-[11px] font-mono text-zinc-300">
+          <span className="text-[11px] font-mono text-secondary">
             {Boolean(data.pattern) && <span className="text-amber-300">{String(data.pattern)}</span>}
-            {Boolean(data.path) && <span className="text-zinc-500 ml-2">in {String(data.path)}</span>}
+            {Boolean(data.path) && <span className="text-dimmed ml-2">in {String(data.path)}</span>}
           </span>
         </div>
       </div>
@@ -494,12 +494,12 @@ function ToolInputRenderer({
 
   if (n === "glob") {
     return (
-      <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg overflow-hidden">
-        <div className="flex items-center gap-2 px-3 py-2 bg-zinc-800/60">
+      <div className="bg-panel/60 border border-default rounded-lg overflow-hidden">
+        <div className="flex items-center gap-2 px-3 py-2 bg-control/60">
           <FolderOpen className="w-3.5 h-3.5 text-cyan-400" />
-          <span className="text-[11px] font-mono text-zinc-300">
+          <span className="text-[11px] font-mono text-secondary">
             {Boolean(data.pattern) && <span className="text-cyan-300">{String(data.pattern)}</span>}
-            {Boolean(data.path) && <span className="text-zinc-500 ml-2">in {String(data.path)}</span>}
+            {Boolean(data.path) && <span className="text-dimmed ml-2">in {String(data.path)}</span>}
           </span>
         </div>
       </div>
@@ -508,7 +508,7 @@ function ToolInputRenderer({
 
   const jsonStr = JSON.stringify(data, null, 2);
   return (
-    <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg overflow-hidden">
+    <div className="bg-panel/60 border border-default rounded-lg overflow-hidden">
       <MarkdownRenderer
         content={`\`\`\`json\n${jsonStr}\n\`\`\``}
         className="[&>div]:my-0 [&>div]:border-0 [&>div]:rounded-none"
@@ -519,16 +519,16 @@ function ToolInputRenderer({
 
 function BashRenderer({ command }: { command: string }) {
   return (
-    <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg overflow-hidden">
-      <div className="flex items-center justify-between px-3 py-1.5 bg-zinc-800/60 border-b border-zinc-700/40">
+    <div className="bg-panel/60 border border-default rounded-lg overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-control/60 border-b border-card">
         <div className="flex items-center gap-1.5">
           <Terminal className="w-3.5 h-3.5 text-green-400" />
-          <span className="text-[10px] font-medium text-zinc-400 uppercase tracking-wider">Command</span>
+          <span className="text-[10px] font-medium text-muted uppercase tracking-wider">Command</span>
         </div>
         <CopyButton text={command} />
       </div>
       <pre className="p-3 overflow-x-auto text-[12px] font-mono text-green-300 leading-relaxed">
-        <span className="text-zinc-500">$ </span>{command}
+        <span className="text-dimmed">$ </span>{command}
       </pre>
     </div>
   );
@@ -556,10 +556,10 @@ function EditRenderer({
   }
 
   return (
-    <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800/60 border-b border-zinc-700/40">
+    <div className="bg-panel/60 border border-default rounded-lg overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-1.5 bg-control/60 border-b border-card">
         <Pencil className="w-3.5 h-3.5 text-blue-400" />
-        <span className="text-[11px] font-mono text-zinc-300 truncate flex-1">{filePath}</span>
+        <span className="text-[11px] font-mono text-secondary truncate flex-1">{filePath}</span>
         {addCount > 0 && (
           <span className="text-[10px] text-emerald-400 font-mono" title={`${addCount} line${addCount !== 1 ? "s" : ""} added`}>+{addCount}</span>
         )}
@@ -595,12 +595,12 @@ function DiffLine({ line }: { line: string }) {
   }
   if (line.startsWith("@@")) {
     return (
-      <div className="px-3 text-zinc-500 bg-zinc-800/40">
+      <div className="px-3 text-dimmed bg-control/40">
         {line}
       </div>
     );
   }
-  return <div className="px-3 text-zinc-400">{line}</div>;
+  return <div className="px-3 text-muted">{line}</div>;
 }
 
 function WriteRenderer({
@@ -617,14 +617,14 @@ function WriteRenderer({
       : content;
 
   return (
-    <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800/60 border-b border-zinc-700/40">
+    <div className="bg-panel/60 border border-default rounded-lg overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-1.5 bg-control/60 border-b border-card">
         <FilePlus2 className="w-3.5 h-3.5 text-emerald-400" />
-        <span className="text-[11px] font-mono text-zinc-300 truncate flex-1">{filePath}</span>
-        <span className="text-[10px] text-zinc-500">{lineCount} lines</span>
+        <span className="text-[11px] font-mono text-secondary truncate flex-1">{filePath}</span>
+        <span className="text-[10px] text-dimmed">{lineCount} lines</span>
       </div>
       {content && (
-        <pre className="p-3 overflow-x-auto text-[11px] font-mono text-zinc-400 max-h-48 overflow-y-auto leading-relaxed">
+        <pre className="p-3 overflow-x-auto text-[11px] font-mono text-muted max-h-48 overflow-y-auto leading-relaxed">
           {previewContent}
         </pre>
       )}
@@ -657,8 +657,8 @@ function ToolOutput({ text, isError }: { text: string; isError: boolean }) {
   if (formattedJson) {
     return (
       <div className="relative">
-        <div className="flex items-center justify-between px-3 py-1 bg-zinc-800/60 border-b border-zinc-700/40">
-          <span className="text-[10px] font-medium text-zinc-500 uppercase tracking-wider">json</span>
+        <div className="flex items-center justify-between px-3 py-1 bg-control/60 border-b border-card">
+          <span className="text-[10px] font-medium text-dimmed uppercase tracking-wider">json</span>
           <CopyButton text={formattedJson} />
         </div>
         <MarkdownRenderer
@@ -668,7 +668,7 @@ function ToolOutput({ text, isError }: { text: string; isError: boolean }) {
         {shouldTruncate && !expanded && (
           <button
             onClick={() => setExpanded(true)}
-            className="text-[10px] text-zinc-400 hover:text-zinc-200 px-3 pb-2"
+            className="text-[10px] text-muted hover:text-secondary px-3 pb-2"
           >
             Show all ({lines.length} lines)
           </button>
@@ -689,7 +689,7 @@ function ToolOutput({ text, isError }: { text: string; isError: boolean }) {
       {shouldTruncate && !expanded && (
         <button
           onClick={() => setExpanded(true)}
-          className="text-[10px] text-zinc-400 hover:text-zinc-200 px-3 pb-2"
+          className="text-[10px] text-muted hover:text-secondary px-3 pb-2"
         >
           Show all ({lines.length} lines)
         </button>
@@ -743,7 +743,7 @@ function getToolIconAndColor(name: string): { icon: React.ReactNode; color: stri
     };
   }
   return {
-    icon: <Wrench className="w-4 h-4 text-zinc-400" />,
+    icon: <Wrench className="w-4 h-4 text-muted" />,
     color: "bg-slate-500/10 hover:bg-slate-500/15 text-slate-300 border-slate-500/20",
   };
 }

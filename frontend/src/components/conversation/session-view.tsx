@@ -411,7 +411,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
     <>
     <div className="h-full flex flex-col overflow-hidden">
       {/* Session Header */}
-      <div className="shrink-0 bg-gradient-to-b from-zinc-900 to-zinc-900/80 border-b border-zinc-800 px-4 py-2">
+      <div className="shrink-0 bg-gradient-to-b from-panel to-panel/80 border-b border-default px-4 py-2">
         <div className="max-w-7xl mx-auto">
           {/* Row 1: Detail toggle + Session ID + Title + Actions */}
           <div className="flex items-center justify-between mb-1 gap-3">
@@ -420,7 +420,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
               onClick={() => setHeaderExpanded((v) => !v)}
             >
               <button
-                className="flex items-center gap-0.5 shrink-0 text-xs text-zinc-500 hover:text-zinc-300 transition"
+                className="flex items-center gap-0.5 shrink-0 text-xs text-dimmed hover:text-secondary transition"
               >
                 {headerExpanded
                   ? <ChevronDown className="w-3.5 h-3.5" />
@@ -429,26 +429,26 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
               <MetaPill
                 icon={<Hash className="w-3 h-3" />}
                 label={main.session_id.slice(0, SESSION_ID_SHORT)}
-                color="text-cyan-300"
-                bg="bg-cyan-950/50 border border-cyan-800/30"
+                color="text-accent-cyan"
+                bg="bg-accent-cyan-muted border border-accent-cyan"
                 tooltip={`Session ID: ${main.session_id}`}
               />
               <Tooltip text={main.first_message || "Session"} className="min-w-0">
-                <h2 className="text-lg font-semibold text-zinc-100 truncate">
+                <h2 className="text-lg font-semibold text-primary truncate">
                   {main.first_message || "Session"}
                 </h2>
               </Tooltip>
             </div>
             <div className="flex items-center gap-1 shrink-0 ml-3">
               {/* View mode toggle */}
-              <div data-tour="view-modes" className="flex rounded-md border border-cyan-700/40 bg-zinc-800/60 mr-2 w-[280px]">
+              <div data-tour="view-modes" className="flex rounded-md border border-accent-cyan bg-control/60 mr-2 w-[280px]">
                 <Tooltip text="Messages only, tool calls hidden" className="flex-1">
                   <button
                     onClick={() => setViewMode("concise")}
                     className={`w-full flex items-center justify-center gap-1 px-2.5 py-1.5 text-xs rounded-l-md transition ${
                       viewMode === "concise"
-                        ? "bg-cyan-900/50 text-cyan-200 font-semibold"
-                        : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/40"
+                        ? "bg-accent-cyan-muted text-accent-cyan font-semibold"
+                        : "text-dimmed hover:text-secondary hover:bg-control-hover/40"
                     }`}
                   >
                     <AlignLeft className="w-3 h-3" />
@@ -460,8 +460,8 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
                     onClick={() => setViewMode("detail")}
                     className={`w-full flex items-center justify-center gap-1 px-2.5 py-1.5 text-xs transition ${
                       viewMode === "detail"
-                        ? "bg-cyan-900/50 text-cyan-200 font-semibold"
-                        : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/40"
+                        ? "bg-accent-cyan-muted text-accent-cyan font-semibold"
+                        : "text-dimmed hover:text-secondary hover:bg-control-hover/40"
                     }`}
                   >
                     <List className="w-3 h-3" />
@@ -473,8 +473,8 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
                     onClick={() => setViewMode("workflow")}
                     className={`w-full flex items-center justify-center gap-1 px-2.5 py-1.5 text-xs rounded-r-md transition ${
                       viewMode === "workflow"
-                        ? "bg-cyan-900/50 text-cyan-200 font-semibold"
-                        : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/40"
+                        ? "bg-accent-cyan-muted text-accent-cyan font-semibold"
+                        : "text-dimmed hover:text-secondary hover:bg-control-hover/40"
                     }`}
                   >
                     <GitBranch className="w-3 h-3" />
@@ -482,13 +482,13 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
                   </button>
                 </Tooltip>
               </div>
-              <div className="w-px h-6 bg-zinc-600/50 mx-1" />
+              <div className="w-px h-6 bg-hover/50 mx-1" />
               {!isSharedView && (
                 <Tooltip text="Share session link">
                   <button
                     onClick={handleShare}
                     disabled={shareDialog.kind === "sharing"}
-                    className="p-2 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded transition text-xs disabled:opacity-50"
+                    className="p-2 text-muted hover:text-secondary hover:bg-control rounded transition text-xs disabled:opacity-50"
                   >
                     {shareDialog.kind === "sharing" ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -518,7 +518,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
                       console.error("Session download failed:", err);
                     }
                   }}
-                  className="p-2 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded transition text-xs"
+                  className="p-2 text-muted hover:text-secondary hover:bg-control rounded transition text-xs"
                 >
                   <Download className="w-4 h-4" />
                 </button>
@@ -533,7 +533,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
               <MetaPill
                 icon={<Cpu className="w-3 h-3" />}
                 label={`${main.agent.name}@${main.agent.model_name}`}
-                color="text-amber-300"
+                color="text-accent-amber"
                 tooltip="Agent model used for this session"
               />
             )}
@@ -541,7 +541,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
               <MetaPill
                 icon={<Calendar className="w-3 h-3" />}
                 label={formatCreatedTime(main.timestamp)}
-                color="text-zinc-200"
+                color="text-secondary"
                 tooltip="Session start time"
               />
             )}
@@ -549,21 +549,21 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
               <MetaPill
                 icon={<Clock className="w-3 h-3" />}
                 label={formatDuration(metrics.duration)}
-                color="text-cyan-400"
+                color="text-accent-cyan"
                 tooltip="Total wall-clock duration of this session"
               />
             )}
             <MetaPill
               icon={<MessageSquare className="w-3 h-3" />}
               label={`${promptCount} prompt${promptCount !== 1 ? "s" : ""}`}
-              color="text-blue-400"
+              color="text-accent-blue"
               tooltip="User prompts — messages typed by the human operator"
             />
             {skillCount > 0 && (
               <MetaPill
                 icon={<Zap className="w-3 h-3" />}
                 label={`${skillCount} skill${skillCount !== 1 ? "s" : ""}`}
-                color="text-amber-300"
+                color="text-accent-amber"
                 tooltip="Skill invocations — reusable prompts auto-injected by the agent"
               />
             )}
@@ -572,14 +572,14 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
                 <MetaPill
                   icon={<Wrench className="w-3 h-3" />}
                   label={`${metrics.tool_call_count} tools`}
-                  color="text-amber-400"
+                  color="text-accent-amber"
                   tooltip="Total tool calls made by the agent (Bash, Read, Edit, etc.)"
                 />
                 {metrics.total_steps && (
                   <MetaPill
                     icon={<Layers className="w-3 h-3" />}
                     label={`${metrics.total_steps} steps`}
-                    color="text-zinc-200"
+                    color="text-secondary"
                     tooltip="Total conversation steps including user, agent, and system turns"
                   />
                 )}
@@ -589,7 +589,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
               <MetaPill
                 icon={<Bot className="w-3 h-3" />}
                 label={`${subAgents.length} sub-agent${subAgents.length !== 1 ? "s" : ""}`}
-                color="text-violet-400"
+                color="text-accent-violet"
                 tooltip="Sub-agent tasks spawned during this session"
               />
             )}
@@ -597,7 +597,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
               <MetaPill
                 icon={<FolderOpen className="w-3 h-3" />}
                 label={baseProjectName(main.project_path)}
-                color="text-zinc-200"
+                color="text-secondary"
                 tooltip={main.project_path}
               />
             )}
@@ -605,7 +605,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
               <MetaPill
                 icon={<Shield className="w-3 h-3" />}
                 label="Redacted"
-                color="text-emerald-400"
+                color="text-accent-emerald"
                 tooltip={`Anonymized: ${(main.extra?._anonymize_stats as Record<string, number> | undefined)?.secrets_redacted ?? 0} secrets, ${(main.extra?._anonymize_stats as Record<string, number> | undefined)?.paths_anonymized ?? 0} paths, ${(main.extra?._anonymize_stats as Record<string, number> | undefined)?.pii_redacted ?? 0} PII`}
               />
             )}
@@ -617,12 +617,12 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
               {main.parent_trajectory_ref && onNavigateSession && (
                 <button
                   onClick={() => onNavigateSession(main.parent_trajectory_ref!.session_id)}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-violet-900/30 border border-violet-700/40 text-xs text-violet-300 hover:bg-violet-800/40 hover:border-violet-600/50 transition-colors"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent-violet-subtle border border-accent-violet text-xs text-accent-violet hover:bg-violet-800/40 hover:border-violet-600/50 transition-colors"
                   title={`Navigate to parent session: ${main.parent_trajectory_ref.session_id}`}
                 >
                   <Link2 className="w-3 h-3" />
                   <span>Spawned by</span>
-                  <span className="text-violet-400 font-medium truncate max-w-[200px]">
+                  <span className="text-accent-violet font-medium truncate max-w-[200px]">
                     {_lookupFirstMessage(main.parent_trajectory_ref.session_id, allSessions)}
                   </span>
                 </button>
@@ -630,12 +630,12 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
               {main.last_trajectory_ref && onNavigateSession && (
                 <button
                   onClick={() => onNavigateSession(main.last_trajectory_ref!.session_id)}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-violet-900/30 border border-violet-700/40 text-xs text-violet-300 hover:bg-violet-800/40 hover:border-violet-600/50 transition-colors"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent-violet-subtle border border-accent-violet text-xs text-accent-violet hover:bg-violet-800/40 hover:border-violet-600/50 transition-colors"
                   title={`Navigate to previous session: ${main.last_trajectory_ref.session_id}`}
                 >
                   <ArrowUpRight className="w-3 h-3" />
                   <span>Continued from</span>
-                  <span className="text-violet-400 font-medium truncate max-w-[200px]">
+                  <span className="text-accent-violet font-medium truncate max-w-[200px]">
                     {_lookupFirstMessage(main.last_trajectory_ref.session_id, allSessions)}
                   </span>
                 </button>
@@ -643,12 +643,12 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
               {main.continued_trajectory_ref && onNavigateSession && (
                 <button
                   onClick={() => onNavigateSession(main.continued_trajectory_ref!.session_id)}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-violet-900/30 border border-violet-700/40 text-xs text-violet-300 hover:bg-violet-800/40 hover:border-violet-600/50 transition-colors"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent-violet-subtle border border-accent-violet text-xs text-accent-violet hover:bg-violet-800/40 hover:border-violet-600/50 transition-colors"
                   title={`Navigate to next session: ${main.continued_trajectory_ref.session_id}`}
                 >
                   <ArrowDownRight className="w-3 h-3" />
                   <span>Continues in</span>
-                  <span className="text-violet-400 font-medium truncate max-w-[200px]">
+                  <span className="text-accent-violet font-medium truncate max-w-[200px]">
                     {_lookupFirstMessage(main.continued_trajectory_ref.session_id, allSessions)}
                   </span>
                 </button>
@@ -659,11 +659,11 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
           {/* Row 3: Token Stats */}
           {metrics && (metrics.total_prompt_tokens != null || metrics.total_completion_tokens != null) && (
             <div className={`grid ${sessionCost != null ? "grid-cols-6" : "grid-cols-5"} gap-2 text-xs`}>
-              <TokenStat icon={<ArrowUpRight className="w-3 h-3" />} label="Input" value={metrics.total_prompt_tokens || 0} color="text-cyan-300" tooltip="Prompt tokens sent to the model" />
-              <TokenStat icon={<ArrowDownRight className="w-3 h-3" />} label="Output" value={metrics.total_completion_tokens || 0} color="text-cyan-300" tooltip="Completion tokens generated by the model" />
+              <TokenStat icon={<ArrowUpRight className="w-3 h-3" />} label="Input" value={metrics.total_prompt_tokens || 0} color="text-accent-cyan" tooltip="Prompt tokens sent to the model" />
+              <TokenStat icon={<ArrowDownRight className="w-3 h-3" />} label="Output" value={metrics.total_completion_tokens || 0} color="text-accent-cyan" tooltip="Completion tokens generated by the model" />
               <TokenStat icon={<Database className="w-3 h-3" />} label="Cache Read" value={metrics.total_cache_read || 0} color="text-green-300" tooltip="Tokens served from prompt cache (reduced cost)" />
-              <TokenStat icon={<HardDrive className="w-3 h-3" />} label="Cache Write" value={metrics.total_cache_write || 0} color="text-violet-300" tooltip="Tokens written to prompt cache for future reuse" />
-              <TokenStat icon={<BarChart3 className="w-3 h-3" />} label="Total" value={totalTokens} color="text-amber-300" tooltip="Total tokens (input + output)" />
+              <TokenStat icon={<HardDrive className="w-3 h-3" />} label="Cache Write" value={metrics.total_cache_write || 0} color="text-accent-violet" tooltip="Tokens written to prompt cache for future reuse" />
+              <TokenStat icon={<BarChart3 className="w-3 h-3" />} label="Total" value={totalTokens} color="text-accent-amber" tooltip="Total tokens (input + output)" />
               {sessionCost != null && (
                 <CostStat value={sessionCost} />
               )}
@@ -680,7 +680,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
           {viewMode === "detail" || viewMode === "concise" ? (
             <div className="max-w-5xl mx-auto px-4 py-6 space-y-3">
               {steps.length === 0 ? (
-                <div className="text-center text-zinc-500 text-sm py-8">
+                <div className="text-center text-dimmed text-sm py-8">
                   <BarChart3 className="w-8 h-8 mx-auto mb-2 opacity-50" />
                   <p>No steps to display</p>
                 </div>
@@ -743,7 +743,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
             </div>
           ) : (
             <div className="flex items-center justify-center h-full">
-              <p className="text-sm text-zinc-500">Flow data unavailable</p>
+              <p className="text-sm text-dimmed">Flow data unavailable</p>
             </div>
           )}
         </div>
@@ -774,12 +774,12 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
       <Modal onClose={() => setShareDialog({ kind: "hidden" })} maxWidth="max-w-lg">
         <ModalHeader onClose={() => setShareDialog({ kind: "hidden" })}>
           <div className="flex items-center gap-2.5">
-            <div className="p-1.5 rounded-md bg-cyan-900/30 border border-cyan-700/30">
-              <Share2 className="w-4 h-4 text-cyan-400" />
+            <div className="p-1.5 rounded-md bg-accent-cyan-muted border border-accent-cyan">
+              <Share2 className="w-4 h-4 text-accent-cyan" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-zinc-100">Share session</h2>
-              <p className="text-xs text-zinc-500 mt-0.5">Anyone with this link can view the session</p>
+              <h2 className="text-sm font-semibold text-primary">Share session</h2>
+              <p className="text-xs text-dimmed mt-0.5">Anyone with this link can view the session</p>
             </div>
           </div>
         </ModalHeader>
@@ -789,7 +789,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
               readOnly
               value={shareDialog.url}
               onFocus={(e) => e.target.select()}
-              className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-zinc-200 font-mono select-all focus:outline-none focus:border-cyan-600 transition"
+              className="flex-1 bg-control border border-card rounded-lg px-3 py-2.5 text-sm text-secondary font-mono select-all focus:outline-none focus:border-accent-cyan-focus transition"
             />
             <button
               onClick={() => handleCopyShareUrl(shareDialog.url)}
@@ -846,7 +846,7 @@ function MetaPill({
   bg?: string;
   tooltip?: string;
 }) {
-  const bgClass = bg ?? "bg-zinc-800 border border-zinc-700/50";
+  const bgClass = bg ?? "bg-control border border-card";
 
   const pill = (
     <span
@@ -879,14 +879,14 @@ function TokenStat({
 
   return (
     <div
-      className="relative bg-zinc-800/50 rounded px-2 py-1.5"
+      className="relative bg-subtle rounded px-2 py-1.5"
       onMouseEnter={() => setShow(true)}
       onMouseLeave={() => setShow(false)}
     >
       <p className={`${METRIC_LABEL} flex items-center gap-1`}>{icon}{label}</p>
       <p className={`${color} font-mono`}>{formatTokens(value)}</p>
       {tooltip && show && (
-        <span className="absolute left-1/2 -translate-x-1/2 top-full mt-1 z-[100] px-2.5 py-1.5 rounded-md bg-zinc-950 border border-zinc-700 text-[11px] text-zinc-300 whitespace-nowrap shadow-lg pointer-events-none">
+        <span className="absolute left-1/2 -translate-x-1/2 top-full mt-1 z-[100] px-2.5 py-1.5 rounded-md bg-canvas border border-card text-[11px] text-secondary whitespace-nowrap shadow-lg pointer-events-none">
           {tooltip}
         </span>
       )}
@@ -899,14 +899,14 @@ function CostStat({ value }: { value: number }) {
 
   return (
     <div
-      className="relative bg-zinc-800/50 rounded px-2 py-1.5"
+      className="relative bg-subtle rounded px-2 py-1.5"
       onMouseEnter={() => setShow(true)}
       onMouseLeave={() => setShow(false)}
     >
       <p className={`${METRIC_LABEL} flex items-center gap-1`}><DollarSign className="w-3 h-3" />Est. Cost</p>
       <p className="text-emerald-300 font-mono">{formatCost(value)}</p>
       {show && (
-        <span className="absolute left-1/2 -translate-x-1/2 top-full mt-1 z-[100] px-2.5 py-1.5 rounded-md bg-zinc-950 border border-zinc-700 text-[11px] text-zinc-300 whitespace-nowrap shadow-lg pointer-events-none">
+        <span className="absolute left-1/2 -translate-x-1/2 top-full mt-1 z-[100] px-2.5 py-1.5 rounded-md bg-canvas border border-card text-[11px] text-secondary whitespace-nowrap shadow-lg pointer-events-none">
           Estimated cost based on API pricing
         </span>
       )}

@@ -63,7 +63,7 @@ export function StepTimeline({
               ? "bg-amber-500"
               : "bg-indigo-500"
             : entry.step.source === "system"
-              ? "bg-zinc-500"
+              ? "bg-dimmed"
               : "bg-cyan-500";
 
         const actualTime = entry.step.timestamp
@@ -81,18 +81,18 @@ export function StepTimeline({
                 className={`w-2 h-2 rounded-full ${dotColor} mt-[7px] shrink-0`}
               />
               {hasNext && (
-                <div className="w-0.5 flex-1 bg-zinc-600 min-h-[16px]" />
+                <div className="w-0.5 flex-1 bg-hover min-h-[16px]" />
               )}
             </div>
 
             {/* Content with inline time header */}
             <div
-              className={`flex-1 min-w-0 pb-5 ${!isFirst ? "border-t border-zinc-600 pt-3" : ""}`}
+              className={`flex-1 min-w-0 pb-5 ${!isFirst ? "border-t border-hover pt-3" : ""}`}
             >
               <div className="flex items-baseline gap-1.5 mb-1.5 cursor-default">
                 {elapsedSeconds != null && (
                   <span
-                    className="text-xs font-mono text-zinc-300"
+                    className="text-xs font-mono text-secondary"
                     onMouseEnter={(e) => show(e, fullDateTime)}
                     onMouseMove={move}
                     onMouseLeave={hide}
@@ -102,9 +102,9 @@ export function StepTimeline({
                 )}
                 {actualTime && (
                   <>
-                    <span className="text-zinc-500 text-[11px]">&middot;</span>
+                    <span className="text-dimmed text-[11px]">&middot;</span>
                     <span
-                      className="text-[11px] font-mono text-zinc-400"
+                      className="text-[11px] font-mono text-muted"
                       onMouseEnter={(e) => show(e, fullDateTime)}
                       onMouseMove={move}
                       onMouseLeave={hide}
@@ -115,7 +115,7 @@ export function StepTimeline({
                 )}
                 {gapSeconds != null && gapSeconds > 0 && (
                   <span
-                    className="text-[10px] font-mono text-zinc-400 ml-auto"
+                    className="text-[10px] font-mono text-muted ml-auto"
                     onMouseEnter={(e) =>
                       show(e, `+${formatElapsed(gapSeconds)} since previous step`)
                     }

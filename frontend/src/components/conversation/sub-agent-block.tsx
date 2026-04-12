@@ -66,7 +66,7 @@ export function SubAgentBlock({ trajectory, allTrajectories, concise, index }: S
           })
           .map((step, i) => (
             <div key={step.step_id}>
-              {i > 0 && <hr className="border-zinc-600/50 my-2" />}
+              {i > 0 && <hr className="border-hover/50 my-2" />}
               <StepBlock step={step} concise={concise} />
             </div>
           ))}

@@ -49,7 +49,7 @@ function InlineImage({ source }: { source: NonNullable<ContentPart["source"]> })
       <img
         src={dataUrl}
         alt="Embedded image"
-        className="my-2 max-w-full max-h-80 rounded-lg border border-zinc-700/60 cursor-pointer hover:border-zinc-500 transition-colors"
+        className="my-2 max-w-full max-h-80 rounded-lg border border-card cursor-pointer hover:border-dimmed transition-colors"
         onClick={() => setExpanded(true)}
       />
       {expanded && (
