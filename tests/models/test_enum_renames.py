@@ -15,6 +15,12 @@ def test_agent_type_kimi_renamed():
     assert not hasattr(AgentType, "KIMI_CLI")
 
 
+def test_agent_type_gemini_cli_removed():
+    """GEMINI_CLI merged into GEMINI."""
+    assert AgentType.GEMINI == "gemini"
+    assert not hasattr(AgentType, "GEMINI_CLI")
+
+
 def test_backend_type_uses_underscores():
     """BackendType string values use underscores, not hyphens."""
     assert BackendType.CLAUDE_CODE == "claude_code"
