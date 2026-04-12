@@ -33,7 +33,7 @@ import {
   SkillSearchBar,
   SourceFilterBar,
 } from "./skill-shared";
-import type { SkillTab } from "./skill-analysis-views";
+import type { SkillTab } from "./skill-analysis-view";
 
 export function ExploreSkillsTab({ onSwitchTab }: { onSwitchTab?: (tab: SkillTab) => void }) {
   const { fetchWithToken } = useAppContext();

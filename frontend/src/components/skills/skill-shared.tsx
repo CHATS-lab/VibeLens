@@ -1,4 +1,5 @@
 import { Filter, Search, X } from "lucide-react";
+import { Tooltip } from "../tooltip";
 import { SOURCE_COLORS, SOURCE_LABELS } from "./skill-constants";
 
 /** Search input with icon and clear button. */
@@ -105,5 +106,56 @@ export function SkillCount({ filtered, total }: { filtered: number; total: numbe
     <div className="text-sm text-secondary mb-3">
       {filtered} of {total} skill{total !== 1 ? "s" : ""}
     </div>
+  );
+}
+
+const CONFIDENCE_THRESHOLDS = { HIGH: 0.75, MEDIUM: 0.5 } as const;
+
+/** Horizontal confidence bar with percentage label. accentColor controls the high-confidence color. */
+export function ConfidenceBar({ confidence, accentColor = "emerald" }: { confidence: number; accentColor?: "emerald" | "amber" | "teal" }) {
+  const pct = Math.round(confidence * 100);
+  const isHigh = confidence >= CONFIDENCE_THRESHOLDS.HIGH;
+  const isMedium = confidence >= CONFIDENCE_THRESHOLDS.MEDIUM;
+
+  const HIGH_COLORS: Record<string, { bar: string; text: string }> = {
+    emerald: { bar: "bg-emerald-500", text: "text-accent-emerald" },
+    amber: { bar: "bg-amber-500", text: "text-amber-700 dark:text-amber-400" },
+    teal: { bar: "bg-teal-500", text: "text-accent-teal" },
+  };
+  const high = HIGH_COLORS[accentColor];
+  const barColor = isHigh ? high.bar : isMedium ? "bg-amber-500" : "bg-zinc-600";
+  const textColor = isHigh ? high.text : isMedium ? "text-amber-700 dark:text-amber-400" : "text-dimmed";
+
+  return (
+    <Tooltip text={`${pct}% confidence`}>
+      <div className="flex items-center gap-2 cursor-help">
+        <div className="w-16 h-1.5 rounded-full bg-control-hover/60 overflow-hidden">
+          <div className={`h-full rounded-full ${barColor} transition-all`} style={{ width: `${pct}%` }} />
+        </div>
+        <span className={`text-xs font-semibold ${textColor} tabular-nums`}>{pct}%</span>
+      </div>
+    </Tooltip>
+  );
+}
+
+/** Section header with icon, title, and hover tooltip. */
+export function SectionHeader({
+  icon,
+  title,
+  tooltip,
+  accentColor = "text-accent-teal",
+}: {
+  icon: React.ReactNode;
+  title: string;
+  tooltip: string;
+  accentColor?: string;
+}) {
+  return (
+    <Tooltip text={tooltip}>
+      <div className="flex items-center gap-2 mb-3 cursor-help">
+        <span className={accentColor}>{icon}</span>
+        <h3 className="text-lg font-semibold text-primary">{title}</h3>
+      </div>
+    </Tooltip>
   );
 }

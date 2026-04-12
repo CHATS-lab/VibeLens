@@ -13,7 +13,7 @@ import {
   AnalysisLoadingState,
   AnalysisResultView,
   type SkillTab,
-} from "./skill-analysis-views";
+} from "./skill-analysis-view";
 import { SkillsHistory } from "./skills-history";
 
 const TAB_CONFIG: { id: SkillTab; label: string; tooltip: string }[] = [
