@@ -238,3 +238,46 @@ class TestCreationPackage:
         from vibelens.models.creation.results import CreationResult
 
         assert CreationResult is not None
+
+
+class TestEvolutionPackage:
+    """Verify models/evolution/ package with new generalized models."""
+
+    def test_element_edit(self):
+        from vibelens.models.evolution.models import ElementEdit
+
+        edit = ElementEdit(
+            old_string="original text",
+            new_string="improved text",
+        )
+        assert edit.replace_all is False
+
+    def test_element_evolution(self):
+        from vibelens.models.evolution.models import ElementEvolution
+
+        evo = ElementEvolution(
+            element_type="skill",
+            element_name="test-runner",
+            description="Add parallel test execution",
+            edits=[],
+            rationale="Speed up test runs",
+            confidence=0.75,
+        )
+        assert evo.addressed_patterns == []
+
+    def test_element_evolution_proposal(self):
+        from vibelens.models.evolution.models import ElementEvolutionProposal
+
+        proposal = ElementEvolutionProposal(
+            element_type="subagent",
+            element_name="security-review",
+            description="Add OWASP checks",
+            rationale="Catches more vulnerabilities",
+        )
+        assert proposal.suggested_changes == ""
+        assert proposal.confidence == 0.0
+
+    def test_evolution_result(self):
+        from vibelens.models.evolution.results import EvolutionResult
+
+        assert EvolutionResult is not None
