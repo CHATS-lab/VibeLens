@@ -273,20 +273,20 @@ export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: Fricti
         <>
           <div
             onMouseDown={handleDragStart}
-            className="w-1 shrink-0 cursor-col-resize bg-zinc-800 hover:bg-zinc-600 transition-colors"
+            className="w-1 shrink-0 cursor-col-resize bg-control hover:bg-control-hover transition-colors"
           />
           <div
-            className="shrink-0 border-l border-zinc-800 bg-zinc-900/50 flex flex-col"
+            className="shrink-0 border-l border-default bg-panel/50 flex flex-col"
             style={{ width: sidebarWidth }}
           >
             <div className="shrink-0 flex items-center justify-between px-3 pt-3 pb-1">
               <div className="flex items-center gap-1.5">
-                <History className="w-3.5 h-3.5 text-zinc-500" />
-                <span className="text-xs font-medium text-zinc-400">History</span>
+                <History className="w-3.5 h-3.5 text-dimmed" />
+                <span className="text-xs font-medium text-muted">History</span>
               </div>
               <button
                 onClick={() => setShowSidebar(false)}
-                className="p-0.5 text-zinc-500 hover:text-zinc-300 transition"
+                className="p-0.5 text-dimmed hover:text-secondary transition"
                 title="Hide history"
               >
                 <PanelRightClose className="w-3.5 h-3.5" />
@@ -299,10 +299,10 @@ export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: Fricti
         </>
       )}
       {!showSidebar && (
-        <div className="shrink-0 border-l border-zinc-800 bg-zinc-900/50 flex flex-col items-center pt-3 px-1">
+        <div className="shrink-0 border-l border-default bg-panel/50 flex flex-col items-center pt-3 px-1">
           <button
             onClick={() => setShowSidebar(true)}
-            className="p-1 text-zinc-500 hover:text-zinc-300 transition"
+            className="p-1 text-dimmed hover:text-secondary transition"
             title="Show history"
           >
             <PanelRightOpen className="w-4 h-4" />
@@ -331,7 +331,7 @@ export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: Fricti
               <p className="text-base font-semibold text-white">
                 Analyzing {checkedIds.size} session{checkedIds.size !== 1 ? "s" : ""} for friction
               </p>
-              <p className="text-sm text-zinc-300">Identifying patterns that slow you down</p>
+              <p className="text-sm text-secondary">Identifying patterns that slow you down</p>
             </div>
             <TutorialBanner tutorial={FRICTION_TUTORIAL} accentColor="cyan" />
             <div className="flex flex-col items-center gap-3 mt-1">
@@ -342,8 +342,8 @@ export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: Fricti
                 Stop
               </button>
               <div className="text-center space-y-1">
-                <p className="text-sm text-zinc-400">Usually takes 2-5 minutes</p>
-                <p className="text-sm text-zinc-400">Running in background — you can switch tabs</p>
+                <p className="text-sm text-muted">Usually takes 2-5 minutes</p>
+                <p className="text-sm text-muted">Running in background — you can switch tabs</p>
               </div>
             </div>
           </div>
@@ -368,7 +368,7 @@ export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: Fricti
       <div className="h-full flex">
         <div className="flex-1">
           <AnalysisWelcomePage
-            icon={<Sparkles className="w-12 h-12 text-amber-400/50" />}
+            icon={<Sparkles className="w-12 h-12 text-accent-amber/50" />}
             title="Productivity Tips"
             description="Identify patterns that slow you down. Select sessions and run analysis to detect wasted effort, recurring mistakes, and get concrete improvement suggestions."
             accentColor="amber"
@@ -427,22 +427,22 @@ function ResultHeader({
   return (
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-3">
-        <Activity className="w-6 h-6 text-amber-400" />
+        <Activity className="w-6 h-6 text-accent-amber" />
         <div>
           <div className="flex items-center gap-2.5">
             {(result.is_example || result.backend_id === "mock") && (
-              <span className="px-2 py-0.5 rounded border text-[11px] font-semibold bg-amber-900/30 border-amber-700/30 text-amber-400">
+              <span className="px-2 py-0.5 rounded border text-[11px] font-semibold bg-accent-amber-subtle border-accent-amber text-accent-amber">
                 Example
               </span>
             )}
-            <h2 className="text-xl font-bold text-zinc-100">
+            <h2 className="text-xl font-bold text-primary">
               {result.title || "Productivity Tips"}
             </h2>
           </div>
-          <p className="text-sm text-zinc-400">
+          <p className="text-sm text-muted">
             {tipCount} productivity tip{tipCount !== 1 ? "s" : ""} across {sessionCount} session{sessionCount !== 1 ? "s" : ""}
             {result.skipped_session_ids.length > 0 && (
-              <span className="text-zinc-500">
+              <span className="text-dimmed">
                 {" "}&middot; {result.skipped_session_ids.length} skipped
               </span>
             )}
@@ -452,7 +452,7 @@ function ResultHeader({
       <Tooltip text="Analyze your own sessions">
         <button
           onClick={onNew}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-200 hover:text-white bg-amber-600/20 hover:bg-amber-600/40 border border-amber-500/40 rounded-lg transition"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-accent-amber hover:text-white bg-accent-amber-subtle hover:bg-amber-600/40 border border-accent-amber rounded-lg transition"
         >
           <Plus className="w-3.5 h-3.5" />
           New
@@ -474,8 +474,8 @@ function SectionHeader({
   return (
     <Tooltip text={tooltip}>
       <div className="flex items-center gap-2 mb-3 cursor-help">
-        <span className="text-amber-400">{icon}</span>
-        <h3 className="text-lg font-semibold text-zinc-100">{title}</h3>
+        <span className="text-accent-amber">{icon}</span>
+        <h3 className="text-lg font-semibold text-primary">{title}</h3>
       </div>
     </Tooltip>
   );
@@ -503,13 +503,13 @@ function MitigationsSection({ mitigations, frictionTypes }: { mitigations: Mitig
 function ConfidenceBar({ confidence }: { confidence: number }) {
   const pct = Math.round(confidence * 100);
   const level = confidenceLevel(confidence);
-  const barColor = level === "high" ? "bg-amber-500" : level === "medium" ? "bg-amber-500" : "bg-zinc-600";
-  const textColor = level === "high" ? "text-amber-400" : level === "medium" ? "text-amber-400" : "text-zinc-500";
+  const barColor = level === "high" ? "bg-amber-500" : level === "medium" ? "bg-amber-500" : "bg-control-hover";
+  const textColor = level === "high" ? "text-accent-amber" : level === "medium" ? "text-accent-amber" : "text-dimmed";
 
   return (
     <Tooltip text={`${pct}% confidence`}>
       <div className="flex items-center gap-2 cursor-help">
-        <div className="w-16 h-1.5 rounded-full bg-zinc-700/60 overflow-hidden">
+        <div className="w-16 h-1.5 rounded-full bg-control-hover/60 overflow-hidden">
           <div className={`h-full rounded-full ${barColor} transition-all`} style={{ width: `${pct}%` }} />
         </div>
         <span className={`text-xs font-semibold ${textColor} tabular-nums`}>{pct}%</span>
@@ -528,60 +528,60 @@ function MitigationCard({ mitigation, frictionTypes }: { mitigation: Mitigation;
   );
 
   return (
-    <div className="border border-amber-700/30 rounded-xl bg-amber-950/10 overflow-hidden">
+    <div className="border border-accent-amber rounded-xl bg-amber-950/10 overflow-hidden">
       {/* Header: Title + Confidence */}
       <div className="px-5 pt-4 pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <span className="text-base font-bold text-zinc-100">{mitigation.title}</span>
+            <span className="text-base font-bold text-primary">{mitigation.title}</span>
             {mitigation.confidence > 0 && <ConfidenceBar confidence={mitigation.confidence} />}
             <CopyButton text={mitigation.action} />
           </div>
         </div>
-        <BulletText text={mitigation.action} className="text-sm text-zinc-300 leading-relaxed mt-1.5" />
+        <BulletText text={mitigation.action} className="text-sm text-secondary leading-relaxed mt-1.5" />
       </div>
 
       {/* Rationale */}
       {mitigation.rationale && (
-        <div className="px-5 py-3 border-t border-amber-700/20">
+        <div className="px-5 py-3 border-t border-accent-amber/20">
           <button
             onClick={() => setRationaleExpanded(!rationaleExpanded)}
             className="flex items-center gap-1.5 text-xs hover:opacity-80 transition"
           >
             {rationaleExpanded
-              ? <ChevronDown className="w-3.5 h-3.5 text-amber-400" />
-              : <ChevronRight className="w-3.5 h-3.5 text-amber-400" />}
-            <Lightbulb className="w-3.5 h-3.5 text-amber-400" />
-            <span className="text-sm font-semibold text-amber-300 uppercase tracking-wide">Why this helps</span>
+              ? <ChevronDown className="w-3.5 h-3.5 text-accent-amber" />
+              : <ChevronRight className="w-3.5 h-3.5 text-accent-amber" />}
+            <Lightbulb className="w-3.5 h-3.5 text-accent-amber" />
+            <span className="text-sm font-semibold text-accent-amber uppercase tracking-wide">Why this helps</span>
           </button>
           {rationaleExpanded && (
-            <BulletText text={mitigation.rationale} className="text-sm text-zinc-200 leading-relaxed mt-1.5" />
+            <BulletText text={mitigation.rationale} className="text-sm text-secondary leading-relaxed mt-1.5" />
           )}
         </div>
       )}
 
       {/* Addressed Friction Types */}
       {matchedTypes.length > 0 && (
-        <div className="px-5 py-3 border-t border-amber-700/20">
+        <div className="px-5 py-3 border-t border-accent-amber/20">
           <button
             onClick={() => setTypesExpanded(!typesExpanded)}
             className="flex items-center gap-1.5 text-xs hover:opacity-80 transition"
           >
             {typesExpanded
-              ? <ChevronDown className="w-3.5 h-3.5 text-amber-400" />
-              : <ChevronRight className="w-3.5 h-3.5 text-amber-400" />}
-            <Target className="w-3.5 h-3.5 text-amber-400" />
-            <span className="text-sm font-semibold text-amber-300 uppercase tracking-wide">What this fixes</span>
-            <span className="text-zinc-500">({matchedTypes.length})</span>
+              ? <ChevronDown className="w-3.5 h-3.5 text-accent-amber" />
+              : <ChevronRight className="w-3.5 h-3.5 text-accent-amber" />}
+            <Target className="w-3.5 h-3.5 text-accent-amber" />
+            <span className="text-sm font-semibold text-accent-amber uppercase tracking-wide">What this fixes</span>
+            <span className="text-dimmed">({matchedTypes.length})</span>
           </button>
           {typesExpanded && (
             <div className="mt-2.5 space-y-3">
               {matchedTypes.map((ft) => (
-                <div key={ft.type_name} className="border-l-2 border-amber-700/30 pl-3 space-y-1.5">
-                  <h6 className="text-base font-semibold text-zinc-100">
+                <div key={ft.type_name} className="border-l-2 border-accent-amber pl-3 space-y-1.5">
+                  <h6 className="text-base font-semibold text-primary">
                     {frictionTypeLabel(ft.type_name)}
                   </h6>
-                  <BulletText text={ft.description} className="text-sm text-zinc-300 leading-relaxed" />
+                  <BulletText text={ft.description} className="text-sm text-secondary leading-relaxed" />
                   <FrictionRefList refs={ft.example_refs} />
                 </div>
               ))}
@@ -619,22 +619,22 @@ function FrictionTypeCard({ frictionType }: { frictionType: FrictionType }) {
   return (
     <div
       onClick={() => setExpanded((v) => !v)}
-      className="border border-zinc-700/60 rounded-xl overflow-hidden cursor-pointer hover:border-zinc-600/60 transition-all"
+      className="border border-card rounded-xl overflow-hidden cursor-pointer hover:border-hover transition-all"
     >
       <div className="px-4 py-3 space-y-2.5">
         <div className="flex items-center gap-2.5 flex-wrap">
           <SeverityBadge severity={frictionType.severity} />
-          <h6 className="text-base font-semibold text-zinc-100">{label}</h6>
+          <h6 className="text-base font-semibold text-primary">{label}</h6>
           <div className="ml-auto shrink-0">
             {expanded
-              ? <ChevronDown className="w-4 h-4 text-zinc-500" />
-              : <ChevronRight className="w-4 h-4 text-zinc-500" />}
+              ? <ChevronDown className="w-4 h-4 text-dimmed" />
+              : <ChevronRight className="w-4 h-4 text-dimmed" />}
           </div>
         </div>
-        <BulletText text={frictionType.description} className="text-sm text-zinc-300 leading-relaxed" />
+        <BulletText text={frictionType.description} className="text-sm text-secondary leading-relaxed" />
       </div>
       {expanded && (
-        <div className="px-4 pb-3.5 space-y-2.5 border-t border-zinc-700/30 pt-3 mx-3 mb-1">
+        <div className="px-4 pb-3.5 space-y-2.5 border-t border-card pt-3 mx-3 mb-1">
           <CostBadges cost={frictionType.friction_cost} />
           <FrictionRefList refs={frictionType.example_refs} />
         </div>
@@ -648,8 +648,8 @@ function FrictionRefList({ refs }: { refs: FrictionType["example_refs"] }) {
   return (
     <div className="flex items-center gap-2 flex-wrap">
       <div className="flex items-center gap-1.5 text-sm">
-        <BookOpen className="w-4 h-4 text-cyan-400" />
-        <span className="font-semibold text-cyan-400">Reference:</span>
+        <BookOpen className="w-4 h-4 text-accent-cyan" />
+        <span className="font-semibold text-accent-cyan">Reference:</span>
       </div>
       {refs.map((ref, i) => (
         <FrictionStepButton key={`${ref.session_id}-${ref.start_step_id}-${i}`} ref_={ref} />
@@ -672,7 +672,7 @@ function FrictionStepButton({ ref_ }: { ref_: FrictionType["example_refs"][numbe
     <Tooltip text="Open step in session viewer">
       <button
         onClick={handleClick}
-        className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-zinc-700/50 text-zinc-300 hover:bg-amber-900/40 hover:text-amber-300 transition font-mono border border-zinc-600/30 hover:border-amber-700/30"
+        className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-control-hover/50 text-secondary hover:bg-amber-900/40 hover:text-accent-amber transition font-mono border border-hover/30 hover:border-accent-amber"
       >
         {ref_.start_step_id.slice(0, 8)}
         <ArrowUpRight className="w-3 h-3" />
@@ -685,18 +685,18 @@ function CostBadges({ cost }: { cost: FrictionCost }) {
   return (
     <div className="flex flex-wrap items-center gap-3">
       <div className="flex items-center gap-1.5 text-sm">
-        <Zap className="w-4 h-4 text-amber-400" />
-        <span className="font-semibold text-amber-400">Impact:</span>
+        <Zap className="w-4 h-4 text-accent-amber" />
+        <span className="font-semibold text-accent-amber">Impact:</span>
       </div>
       <Tooltip text="Steps affected by this issue">
-        <span className="inline-flex items-center gap-1.5 text-sm text-zinc-400 cursor-help">
+        <span className="inline-flex items-center gap-1.5 text-sm text-muted cursor-help">
           <Footprints className="w-4 h-4 text-rose-400" />
           {cost.affected_steps} step{cost.affected_steps !== 1 ? "s" : ""}
         </span>
       </Tooltip>
       {cost.affected_time_seconds != null && (
         <Tooltip text="Duration affected">
-          <span className="inline-flex items-center gap-1.5 text-sm text-zinc-400 cursor-help">
+          <span className="inline-flex items-center gap-1.5 text-sm text-muted cursor-help">
             <Clock className="w-4 h-4 text-sky-400" />
             {formatDuration(cost.affected_time_seconds)}
           </span>
@@ -704,8 +704,8 @@ function CostBadges({ cost }: { cost: FrictionCost }) {
       )}
       {cost.affected_tokens != null && (
         <Tooltip text="Tokens affected">
-          <span className="inline-flex items-center gap-1.5 text-sm text-zinc-400 cursor-help">
-            <Coins className="w-4 h-4 text-amber-400" />
+          <span className="inline-flex items-center gap-1.5 text-sm text-muted cursor-help">
+            <Coins className="w-4 h-4 text-accent-amber" />
             {formatTokens(cost.affected_tokens)}
           </span>
         </Tooltip>
@@ -738,16 +738,16 @@ function AnalysisMeta({ result }: { result: FrictionAnalysisResult }) {
 
   return (
     <Tooltip text="Inference backend, model, and estimated API cost for this analysis run">
-      <div className="border-t border-zinc-800 pt-4 text-xs text-zinc-500 flex items-center justify-between gap-4">
+      <div className="border-t border-default pt-4 text-xs text-dimmed flex items-center justify-between gap-4">
         <div className="flex items-center gap-2 flex-wrap">
           <span>{result.backend_id}/{result.model}</span>
           {result.metrics.cost_usd != null && (
-            <span className="border-l border-zinc-700 pl-2">
+            <span className="border-l border-card pl-2">
               {formatCost(result.metrics.cost_usd)}
             </span>
           )}
           {result.batch_count > 1 && (
-            <span className="border-l border-zinc-700 pl-2">
+            <span className="border-l border-card pl-2">
               {result.batch_count} batches
             </span>
           )}
