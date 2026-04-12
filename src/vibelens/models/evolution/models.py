@@ -31,8 +31,7 @@ class ElementEvolutionProposal(BaseModel):
     description: str = Field(description="Proposed improvement. Max 30 words.")
     rationale: str = Field(
         description=(
-            "One sentence (max 15 words), then 1-3 bullets "
-            "starting with '\\n- ' (max 10 words each)."
+            "One sentence (15 words), then 1-2 bullets starting with '\\n- ' (10 words each)."
         )
     )
     suggested_changes: str = Field(
@@ -62,13 +61,10 @@ class ElementEvolution(BaseModel):
     edits: list[ElementEdit] = Field(description="Ordered list of granular edits to apply.")
     rationale: str = Field(
         description=(
-            "One sentence (max 15 words), then 1-3 bullets "
-            "starting with '\\n- ' (max 10 words each)."
+            "One sentence (15 words), then 1-2 bullets starting with '\\n- ' (10 words each)."
         )
     )
     addressed_patterns: list[str] = Field(
         default_factory=list, description="Workflow pattern titles addressed."
     )
-    confidence: float = Field(
-        default=0.0, description="Confidence score 0.0-1.0."
-    )
+    confidence: float = Field(default=0.0, description="Confidence score 0.0-1.0.")

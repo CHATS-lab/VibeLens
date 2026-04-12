@@ -4,7 +4,6 @@ Bridges per-step token metrics with the pricing table in llm/pricing
 to produce USD cost estimates.
 """
 
-
 from vibelens.llm.pricing import TOKENS_PER_MTOK, lookup_pricing
 from vibelens.models.trajectories.step import Step
 from vibelens.models.trajectories.trajectory import Trajectory
@@ -38,7 +37,7 @@ def compute_cost_from_tokens(
     non_cached_input = input_tokens - cache_read_tokens
     cost = (
         non_cached_input * pricing.input_per_mtok
-        + cache_read_tokens * pricing.cached_input_per_mtok
+        + cache_read_tokens * pricing.cache_read_per_mtok
         + cache_creation_tokens * pricing.cache_write_per_mtok
         + output_tokens * pricing.output_per_mtok
     ) / TOKENS_PER_MTOK
@@ -77,7 +76,7 @@ def compute_step_cost(step: Step, session_model: str | None = None) -> float | N
 
     cost = (
         non_cached_input * pricing.input_per_mtok
-        + m.cached_tokens * pricing.cached_input_per_mtok
+        + m.cached_tokens * pricing.cache_read_per_mtok
         + m.cache_creation_tokens * pricing.cache_write_per_mtok
         + m.completion_tokens * pricing.output_per_mtok
     ) / TOKENS_PER_MTOK

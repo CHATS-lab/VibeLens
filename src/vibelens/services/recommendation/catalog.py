@@ -88,12 +88,14 @@ def load_catalog() -> CatalogSnapshot | None:
         if user_catalog.version >= bundled_catalog.version:
             logger.info(
                 "Using user-cached catalog v%s (%d items)",
-                user_catalog.version, len(user_catalog.items),
+                user_catalog.version,
+                len(user_catalog.items),
             )
             return user_catalog
         logger.info(
             "Using bundled catalog v%s (%d items)",
-            bundled_catalog.version, len(bundled_catalog.items),
+            bundled_catalog.version,
+            len(bundled_catalog.items),
         )
         return bundled_catalog
 

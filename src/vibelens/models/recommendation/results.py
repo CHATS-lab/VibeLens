@@ -24,9 +24,7 @@ class RationaleItem(BaseModel):
 class RationaleOutput(BaseModel):
     """LLM output for L4 rationale generation."""
 
-    rationales: list[RationaleItem] = Field(
-        description="Per-candidate personalized rationales."
-    )
+    rationales: list[RationaleItem] = Field(description="Per-candidate personalized rationales.")
 
 
 class CatalogRecommendation(BaseModel):

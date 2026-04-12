@@ -30,6 +30,21 @@ logger = get_logger(__name__)
 CACHE_TTL_SECONDS = 3600
 # Maximum entries in each analysis result cache
 CACHE_MAXSIZE = 64
+# Instructions appended to system prompts when using CLI backends
+CLI_BACKEND_RULES = """
+## Backend Rules
+
+You are running as a headless analysis backend. Follow these rules strictly:
+
+1. Output ONLY a single JSON object. No markdown fences, no prose, no explanation.
+2. Do NOT use any tools (Read, Edit, Bash, etc.). You are a pure text generator.
+3. Do NOT ask clarifying questions. Work with the data provided.
+4. Do NOT write or modify any files. Your only output is the JSON response.
+5. Start your response with `{` and end with `}`.
+"""
+
+# Max tokens of session context to include in a single LLM prompt
+CONTEXT_TOKEN_BUDGET = 100_000
 
 
 def require_backend() -> InferenceBackend:
@@ -133,23 +148,6 @@ def save_analysis_log(log_dir: Path, filename: str, content: str) -> None:
         (log_dir / filename).write_text(content, encoding="utf-8")
     except OSError as exc:
         logger.warning("Failed to save analysis log %s/%s: %s", log_dir, filename, exc)
-
-
-# Instructions appended to system prompts when using CLI backends
-CLI_BACKEND_RULES = """
-## Backend Rules
-
-You are running as a headless analysis backend. Follow these rules strictly:
-
-1. Output ONLY a single JSON object. No markdown fences, no prose, no explanation.
-2. Do NOT use any tools (Read, Edit, Bash, etc.). You are a pure text generator.
-3. Do NOT ask clarifying questions. Work with the data provided.
-4. Do NOT write or modify any files. Your only output is the JSON response.
-5. Start your response with `{` and end with `}`.
-"""
-
-# Max tokens of session context to include in a single LLM prompt
-CONTEXT_TOKEN_BUDGET = 100_000
 
 
 def build_system_kwargs(prompt: AnalysisPrompt, backend: InferenceBackend) -> dict[str, str]:

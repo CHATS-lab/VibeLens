@@ -9,7 +9,6 @@ Model hierarchy:
 - FrictionAnalysisResult: Final merged result across all batches
 """
 
-
 from pydantic import BaseModel, Field
 
 from vibelens.models.llm.inference import BackendType
@@ -54,16 +53,14 @@ class Mitigation(BaseModel):
     addressed_friction_types: list[str] = Field(
         default_factory=list,
         description=(
-            "Friction type_name values this mitigation addresses "
-            "(e.g. 'changed-wrong-files')."
+            "Friction type_name values this mitigation addresses (e.g. 'changed-wrong-files')."
         ),
     )
     action: str = Field(description="How to address the friction (max 30 words).")
     rationale: str = Field(
         default="",
         description=(
-            "One sentence (max 15 words), then 1-2 bullets "
-            "starting with '\\n- ' (max 10 words each)."
+            "One sentence (15 words), then 1-2 bullets starting with '\\n- ' (10 words each)."
         ),
     )
     confidence: float = Field(default=0.0, description="Confidence this will help. 0.0-1.0.")

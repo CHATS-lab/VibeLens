@@ -20,7 +20,10 @@ from vibelens.services.job_tracker import (
     mark_failed,
     submit_job,
 )
-from vibelens.services.recommendation import analyze_recommendation, estimate_recommendation
+from vibelens.services.recommendation import (
+    analyze_recommendation,
+    estimate_recommendation,
+)
 from vibelens.services.recommendation.catalog import load_catalog
 from vibelens.services.recommendation.mock import build_mock_recommendation_result
 from vibelens.services.recommendation.store import RecommendationMeta
@@ -31,9 +34,7 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/recommendation", tags=["recommendation"])
 
 
-async def _run_recommendation(
-    job_id: str, session_ids: list[str], token: str | None
-) -> None:
+async def _run_recommendation(job_id: str, session_ids: list[str], token: str | None) -> None:
     """Background wrapper that runs recommendation analysis and updates job status."""
     try:
         result = await analyze_recommendation(session_ids, session_token=token)
@@ -105,10 +106,7 @@ async def recommendation_analyze(
 
     job_id = secrets.token_urlsafe(12)
     try:
-        submit_job(
-            job_id,
-            _run_recommendation(job_id, body.session_ids, x_session_token),
-        )
+        submit_job(job_id, _run_recommendation(job_id, body.session_ids, x_session_token))
     except ValueError as exc:
         status = 503 if "inference backend" in str(exc) else 400
         raise HTTPException(status_code=status, detail=str(exc)) from exc

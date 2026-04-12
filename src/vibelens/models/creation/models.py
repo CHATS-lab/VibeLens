@@ -17,8 +17,7 @@ class ElementCreationProposal(BaseModel):
     description: str = Field(description="What the element would do. Max 30 words.")
     rationale: str = Field(
         description=(
-            "One sentence (max 15 words), then 1-2 bullets "
-            "starting with '\\n- ' (max 10 words each)."
+            "One sentence (15 words), then 1-2 bullets starting with '\\n- ' (10 words each)."
         )
     )
     addressed_patterns: list[str] = Field(
@@ -43,13 +42,10 @@ class ElementCreation(BaseModel):
     name: str = Field(description="Element name in kebab-case.")
     description: str = Field(description="What it does, plain language. Max 30 words.")
     file_content: str = Field(description="Full file content to write.")
-    target_path: str = Field(
-        description="Suggested install path, e.g. ~/.claude/commands/foo.md."
-    )
+    target_path: str = Field(description="Suggested install path, e.g. ~/.claude/commands/foo.md.")
     rationale: str = Field(
         description=(
-            "One sentence (max 15 words), then 1-2 bullets "
-            "starting with '\\n- ' (max 10 words each)."
+            "One sentence (15 words), then 1-2 bullets starting with '\\n- ' (10 words each)."
         )
     )
     tools_used: list[str] = Field(
@@ -58,6 +54,4 @@ class ElementCreation(BaseModel):
     addressed_patterns: list[str] = Field(
         default_factory=list, description="Workflow pattern titles addressed."
     )
-    confidence: float = Field(
-        default=0.0, description="Confidence score 0.0-1.0."
-    )
+    confidence: float = Field(default=0.0, description="Confidence score 0.0-1.0.")
