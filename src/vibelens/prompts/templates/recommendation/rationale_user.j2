@@ -1,0 +1,14 @@
+{# Rationale generation user prompt (L4) #}
+## User Profile
+
+{{ user_profile | tojson(indent=2) }}
+
+## Candidates
+
+For each candidate below, write a personalized rationale explaining why it matches this user's workflow.
+
+{% for candidate in candidates %}
+- **{{ candidate.name }}**: {{ candidate.description }}
+{% endfor %}
+
+Produce the rationale JSON array with item_id, rationale, and confidence for each candidate.

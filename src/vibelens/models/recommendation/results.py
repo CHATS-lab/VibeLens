@@ -8,6 +8,27 @@ from vibelens.models.recommendation.profile import UserProfile
 from vibelens.models.trajectories.metrics import Metrics
 
 
+class RationaleItem(BaseModel):
+    """LLM-generated rationale for a single candidate."""
+
+    item_id: str = Field(description="CatalogItem reference.")
+    rationale: str = Field(
+        description=(
+            "Personalized explanation: one sentence (max 15 words), "
+            "then 1-2 bullets starting with '\\n- ' (max 10 words each)."
+        )
+    )
+    confidence: float = Field(description="Match confidence from 0.0 to 1.0.")
+
+
+class RationaleOutput(BaseModel):
+    """LLM output for L4 rationale generation."""
+
+    rationales: list[RationaleItem] = Field(
+        description="Per-candidate personalized rationales."
+    )
+
+
 class CatalogRecommendation(BaseModel):
     """A single catalog item recommended to the user.
 
@@ -37,9 +58,7 @@ class RecommendationResult(BaseModel):
 
     analysis_id: str | None = Field(default=None, description="Set on persistence.")
     session_ids: list[str] = Field(description="Sessions analyzed.")
-    skipped_session_ids: list[str] = Field(
-        default_factory=list, description="Sessions not found."
-    )
+    skipped_session_ids: list[str] = Field(default_factory=list, description="Sessions not found.")
     title: str = Field(description="Main finding, max 10 words.")
     summary: str = Field(description="1-2 sentence narrative.")
     user_profile: UserProfile = Field(description="Extracted profile from L2.")

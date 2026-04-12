@@ -1,0 +1,6 @@
+{# Profile generation user prompt (L2) #}
+Analyze {{ session_count }} coding agent session{{ "s" if session_count != 1 else "" }} and produce a user profile.
+
+{{ session_digest }}
+
+Produce the user profile JSON with domains, languages, frameworks, agent_platforms, bottlenecks, workflow_style, and search_keywords (20-30 catalog-friendly terms).
