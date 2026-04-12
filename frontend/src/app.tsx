@@ -360,16 +360,16 @@ export function App() {
   if (shareToken) {
     return (
       <AppContext.Provider value={contextValue}>
-        <div className="flex flex-col h-full overflow-hidden bg-zinc-950 text-zinc-100">
-          <div className="shrink-0 flex items-center justify-between px-4 py-2 bg-violet-900/30 border-b border-violet-700/50">
+        <div className="flex flex-col h-full overflow-hidden bg-canvas text-primary">
+          <div className="shrink-0 flex items-center justify-between px-4 py-2 bg-accent-violet-subtle border-b border-accent-violet">
             <div className="flex items-center gap-2">
-              <Share2 className="w-4 h-4 text-violet-400" />
-              <span className="text-sm text-violet-300 font-medium">Shared session</span>
+              <Share2 className="w-4 h-4 text-accent-violet" />
+              <span className="text-sm text-accent-violet font-medium">Shared session</span>
             </div>
             <div className="flex items-center gap-2">
               <a href="https://github.com/CHATS-lab/VibeLens" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:opacity-80 transition">
                 <img src="/icon.png" alt="VibeLens" className="w-6 h-6" />
-                <span className="text-sm font-bold text-cyan-400">VibeLens</span>
+                <span className="text-sm font-bold text-accent-cyan">VibeLens</span>
               </a>
             </div>
           </div>
@@ -383,33 +383,33 @@ export function App() {
 
   return (
     <AppContext.Provider value={contextValue}>
-      <div className="flex h-full overflow-hidden bg-zinc-950 text-zinc-100">
+      <div className="flex h-full overflow-hidden bg-canvas text-primary">
         {/* Sidebar */}
         {sidebarOpen && (
           <aside
             style={{ width: sidebarWidth }}
-            className="relative border-r border-zinc-800 flex flex-col shrink-0 bg-zinc-900"
+            className="relative border-r border-default flex flex-col shrink-0 bg-panel"
           >
             <ResizeHandle side="left" onResize={handleSidebarResize} />
-            <div data-tour="sidebar-header" className="flex items-center justify-between px-4 h-[75px] border-b border-zinc-800 sticky top-0">
+            <div data-tour="sidebar-header" className="flex items-center justify-between px-4 h-[75px] border-b border-default sticky top-0">
               <div className="flex items-center gap-3">
                 <a href="https://github.com/CHATS-lab/VibeLens" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 hover:opacity-80 transition">
                   <img src="/icon.png" alt="VibeLens" className="w-12 h-12" />
-                  <h1 className="text-2xl font-bold text-cyan-400">VibeLens</h1>
+                  <h1 className="text-2xl font-bold text-accent-cyan">VibeLens</h1>
                 </a>
               </div>
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => setRefreshKey((k) => k + 1)}
                   disabled={sessionsLoading}
-                  className="text-zinc-500 hover:text-zinc-300 transition disabled:opacity-50"
+                  className="text-dimmed hover:text-secondary transition disabled:opacity-50"
                   title="Refresh sessions"
                 >
                   <RefreshCw className={`w-4 h-4 ${sessionsLoading ? "animate-spin" : ""}`} />
                 </button>
                 <button
                   onClick={() => setSidebarOpen(false)}
-                  className="text-zinc-500 hover:text-zinc-300 transition"
+                  className="text-dimmed hover:text-secondary transition"
                   title="Collapse sidebar"
                 >
                   <PanelLeftClose className="w-4 h-4" />
@@ -448,14 +448,14 @@ export function App() {
         )}
 
         {/* Main Content */}
-        <main className="flex-1 flex flex-col min-w-0 bg-zinc-950">
+        <main className="flex-1 flex flex-col min-w-0 bg-canvas">
           {/* View Toggle */}
-          <div className="flex items-center justify-between px-4 py-2 border-b-2 border-zinc-700/60 bg-zinc-900 shadow-sm shadow-black/30">
+          <div className="flex items-center justify-between px-4 py-2 border-b-2 border-card bg-panel shadow-sm shadow-shadow">
             <div className="flex items-center gap-2">
               {!sidebarOpen && (
                 <button
                   onClick={() => setSidebarOpen(true)}
-                  className="p-1.5 mr-1 text-zinc-500 hover:text-zinc-300 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700/50 rounded transition"
+                  className="p-1.5 mr-1 text-dimmed hover:text-secondary bg-control hover:bg-control-hover border border-card rounded transition"
                   title="Expand sidebar"
                 >
                   <Menu className="w-4 h-4" />
@@ -467,8 +467,8 @@ export function App() {
                   onClick={() => setMainView("browse")}
                   className={`min-w-[100px] text-center px-4 py-1.5 text-sm font-semibold rounded-md transition ${
                     mainView === "browse"
-                      ? "bg-indigo-600/30 text-indigo-200 border border-indigo-400/40 shadow-sm shadow-indigo-900/40"
-                      : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+                      ? "bg-accent-indigo-subtle text-indigo-200 border border-accent-indigo shadow-sm shadow-accent-indigo-shadow"
+                      : "text-muted hover:text-secondary hover:bg-control"
                   }`}
                 >
                   Conversation
@@ -480,8 +480,8 @@ export function App() {
                   onClick={() => setMainView("analyze")}
                   className={`min-w-[100px] text-center px-4 py-1.5 text-sm font-semibold rounded-md transition ${
                     mainView === "analyze"
-                      ? "bg-cyan-600/30 text-cyan-200 border border-cyan-400/40 shadow-sm shadow-cyan-900/40"
-                      : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+                      ? "bg-accent-cyan-subtle text-cyan-200 border border-accent-cyan shadow-sm shadow-accent-cyan-shadow"
+                      : "text-muted hover:text-secondary hover:bg-control"
                   }`}
                 >
                   Dashboard
@@ -493,8 +493,8 @@ export function App() {
                   onClick={() => setMainView("skills")}
                   className={`min-w-[100px] text-center px-4 py-1.5 text-sm font-semibold rounded-md transition ${
                     mainView === "skills"
-                      ? "bg-teal-600/30 text-teal-200 border border-teal-400/40 shadow-sm shadow-teal-900/40"
-                      : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+                      ? "bg-accent-teal-subtle text-teal-200 border border-accent-teal shadow-sm shadow-accent-teal-shadow"
+                      : "text-muted hover:text-secondary hover:bg-control"
                   }`}
                 >
                   Personalization
@@ -506,8 +506,8 @@ export function App() {
                   onClick={() => setMainView("friction")}
                   className={`min-w-[100px] text-center px-4 py-1.5 text-sm font-semibold rounded-md transition ${
                     mainView === "friction"
-                      ? "bg-amber-600/30 text-amber-200 border border-amber-400/40 shadow-sm shadow-amber-900/40"
-                      : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+                      ? "bg-accent-amber-subtle text-amber-200 border border-accent-amber shadow-sm shadow-accent-amber-shadow"
+                      : "text-muted hover:text-secondary hover:bg-control"
                   }`}
                 >
                   Productivity Tips
@@ -517,7 +517,7 @@ export function App() {
             <button
               data-tour="settings-button"
               onClick={() => setShowSettingsDialog(true)}
-              className="p-1.5 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 rounded transition"
+              className="p-1.5 text-dimmed hover:text-secondary hover:bg-control rounded transition"
               title="Settings"
             >
               <Settings className="w-6 h-6" />
@@ -544,14 +544,14 @@ export function App() {
               <div className="flex items-center justify-center h-full">
                 <div className="text-center">
                   <div className="text-5xl mb-4 opacity-50">✨</div>
-                  <p className="text-lg font-medium text-zinc-300 mb-1">
+                  <p className="text-lg font-medium text-secondary mb-1">
                     Welcome to VibeLens
                   </p>
-                  <p className="text-sm text-zinc-500 mb-6">
+                  <p className="text-sm text-dimmed mb-6">
                     Select a session from the sidebar to explore agent
                     conversations
                   </p>
-                  <div className="text-xs text-zinc-600">
+                  <div className="text-xs text-faint">
                     <p>{sessions.length} sessions loaded</p>
                     <p>{projects.length} projects available</p>
                   </div>

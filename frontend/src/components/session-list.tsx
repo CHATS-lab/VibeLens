@@ -217,7 +217,7 @@ export function SessionList({
 
   return (
     <div data-tour="session-list" className="flex flex-col flex-1 min-h-0">
-      <div className="p-3 space-y-2 border-b border-zinc-800">
+      <div className="p-3 space-y-2 border-b border-default">
         {/* Upload + Donate row */}
         {onUpload && onDonate ? (
           <div className="flex items-stretch gap-1.5">
@@ -239,20 +239,20 @@ export function SessionList({
 
         <div className="relative">
           {searchLoading ? (
-            <Loader2 className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-cyan-400 animate-spin" />
+            <Loader2 className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-accent-cyan animate-spin" />
           ) : (
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500" />
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-dimmed" />
           )}
           <input
             type="text"
             placeholder="Search sessions..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-zinc-800 text-zinc-200 text-sm rounded pl-7 pr-8 py-1.5 border border-zinc-700 focus:outline-none focus:border-cyan-600 placeholder:text-zinc-500"
+            className="w-full bg-control text-secondary text-sm rounded pl-7 pr-8 py-1.5 border border-card focus:outline-none focus:border-accent-cyan-focus placeholder:text-dimmed"
           />
           <button
             onClick={() => setShowSearchOptions(true)}
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 text-zinc-500 hover:text-zinc-300 transition"
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 text-dimmed hover:text-secondary transition"
             title="Search options"
           >
             <div className="relative">
@@ -285,12 +285,12 @@ export function SessionList({
         <div className="flex items-center justify-between">
           <button
             onClick={handleToggleAll}
-            className="flex items-center gap-1.5 text-xs text-zinc-300 hover:text-zinc-100 transition"
+            className="flex items-center gap-1.5 text-xs text-secondary hover:text-primary transition"
           >
             {allChecked ? (
-              <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
+              <CheckSquare className="w-3.5 h-3.5 text-accent-cyan" />
             ) : someChecked ? (
-              <MinusSquare className="w-3.5 h-3.5 text-cyan-400" />
+              <MinusSquare className="w-3.5 h-3.5 text-accent-cyan" />
             ) : (
               <Square className="w-3.5 h-3.5" />
             )}
@@ -299,7 +299,7 @@ export function SessionList({
           <Tooltip text={viewMode === "project" ? "Switch to time view" : "Switch to project view"}>
             <button
               onClick={() => handleSetViewMode(viewMode === "project" ? "time" : "project")}
-              className="flex items-center justify-center gap-1 w-[90px] px-2 py-1 text-[11px] font-medium text-cyan-300 hover:text-cyan-200 bg-cyan-900/30 hover:bg-cyan-800/40 border border-cyan-700/40 rounded-md transition"
+              className="flex items-center justify-center gap-1 w-[90px] px-2 py-1 text-[11px] font-medium text-accent-cyan hover:text-cyan-200 bg-accent-cyan-muted hover:bg-cyan-800/40 border border-accent-cyan rounded-md transition"
             >
               {viewMode === "project" ? (
                 <FolderOpen className="w-3 h-3 shrink-0" />
@@ -315,8 +315,8 @@ export function SessionList({
 
       <div className="flex-1 overflow-y-auto">
         {loading ? (
-          <div className="flex flex-col items-center justify-center h-full gap-3 text-zinc-500">
-            <Loader2 className="w-6 h-6 animate-spin text-cyan-400" />
+          <div className="flex flex-col items-center justify-center h-full gap-3 text-dimmed">
+            <Loader2 className="w-6 h-6 animate-spin text-accent-cyan" />
             <span className="text-sm">Loading sessions…</span>
           </div>
         ) : viewMode === "time" ? (
@@ -354,34 +354,34 @@ export function SessionList({
               };
               return (
               <div key={projectName}>
-                <div className="sticky top-0 z-10 w-full flex items-center gap-1 bg-zinc-900 border-b border-zinc-800 text-sm text-zinc-200">
+                <div className="sticky top-0 z-10 w-full flex items-center gap-1 bg-panel border-b border-default text-sm text-secondary">
                   <button
                     onClick={handleToggleProject}
-                    className="shrink-0 pl-3 pr-1 py-2 text-zinc-500 hover:text-cyan-400 transition"
+                    className="shrink-0 pl-3 pr-1 py-2 text-dimmed hover:text-accent-cyan transition"
                     title={allProjectChecked ? "Deselect project" : "Select project"}
                   >
                     {allProjectChecked ? (
-                      <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
+                      <CheckSquare className="w-3.5 h-3.5 text-accent-cyan" />
                     ) : someProjectChecked ? (
-                      <MinusSquare className="w-3.5 h-3.5 text-cyan-400" />
+                      <MinusSquare className="w-3.5 h-3.5 text-accent-cyan" />
                     ) : (
                       <Square className="w-3.5 h-3.5" />
                     )}
                   </button>
                   <button
                     onClick={() => toggleProjectExpanded(projectName)}
-                    className="flex-1 flex items-center gap-2 pr-3 py-2 hover:text-zinc-100 transition min-w-0"
+                    className="flex-1 flex items-center gap-2 pr-3 py-2 hover:text-primary transition min-w-0"
                   >
                     {expandedProjects.has(projectName) ? (
                       <ChevronDown className="w-3.5 h-3.5 shrink-0" />
                     ) : (
                       <ChevronRight className="w-3.5 h-3.5 shrink-0" />
                     )}
-                    <FolderOpen className="w-3.5 h-3.5 shrink-0 text-zinc-500" />
+                    <FolderOpen className="w-3.5 h-3.5 shrink-0 text-dimmed" />
                     <span className="truncate font-medium" title={projectName}>
                       {baseProjectName(projectName)}
                     </span>
-                    <span className="ml-auto text-zinc-500 shrink-0">
+                    <span className="ml-auto text-dimmed shrink-0">
                       {projectSessions.length}
                     </span>
                   </button>
@@ -406,7 +406,7 @@ export function SessionList({
       </div>
 
       {/* Footer: filtered count + pagination + download */}
-      <div className="shrink-0 border-t border-zinc-800 px-3 py-2 flex items-center justify-between text-xs text-zinc-400">
+      <div className="shrink-0 border-t border-default px-3 py-2 flex items-center justify-between text-xs text-muted">
         <span>{filtered.length} sessions</span>
         <div className="flex items-center gap-2">
           {viewMode === "time" && filtered.length > SESSIONS_PER_PAGE && (
@@ -414,7 +414,7 @@ export function SessionList({
               <button
                 onClick={() => setPage(Math.max(0, page - 1))}
                 disabled={page === 0}
-                className="p-1 hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed rounded transition"
+                className="p-1 hover:bg-control disabled:opacity-50 disabled:cursor-not-allowed rounded transition"
                 title="Previous page"
               >
                 <ChevronUp className="w-4 h-4" />
@@ -423,7 +423,7 @@ export function SessionList({
               <button
                 onClick={() => setPage(page + 1)}
                 disabled={(page + 1) * SESSIONS_PER_PAGE >= filtered.length}
-                className="p-1 hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed rounded transition"
+                className="p-1 hover:bg-control disabled:opacity-50 disabled:cursor-not-allowed rounded transition"
                 title="Next page"
               >
                 <ChevronDown className="w-4 h-4" />
@@ -466,10 +466,10 @@ function SessionRow({
 }) {
   return (
     <div
-      className={`flex items-center border-b border-zinc-800/50 transition-all duration-200 ${
+      className={`flex items-center border-b border-default/50 transition-all duration-200 ${
         selectedId === session.session_id
-          ? "bg-cyan-600/15 border-l-2 border-l-cyan-400"
-          : "hover:bg-zinc-800/50 border-l-2 border-l-transparent"
+          ? "bg-accent-cyan-subtle border-l-2 border-l-accent-cyan"
+          : "hover:bg-control/50 border-l-2 border-l-transparent"
       }`}
     >
       {/* Checkbox — indented under project header chevron when nested */}
@@ -478,12 +478,12 @@ function SessionRow({
           e.stopPropagation();
           onToggle(session.session_id);
         }}
-        className={`shrink-0 pr-1 text-zinc-500 hover:text-cyan-400 transition ${
+        className={`shrink-0 pr-1 text-dimmed hover:text-accent-cyan transition ${
           showProject ? "pl-3" : "pl-8"
         }`}
       >
         {checkedIds.has(session.session_id) ? (
-          <CheckSquare className="w-3.5 h-3.5 text-cyan-400" />
+          <CheckSquare className="w-3.5 h-3.5 text-accent-cyan" />
         ) : (
           <Square className="w-3.5 h-3.5" />
         )}
@@ -496,41 +496,41 @@ function SessionRow({
       >
         {showProject && (
           <div className="flex items-center justify-between mb-0.5 min-w-0">
-            <span className="text-xs text-zinc-400 uppercase tracking-wide truncate" title={session.project_path || ""}>
+            <span className="text-xs text-muted uppercase tracking-wide truncate" title={session.project_path || ""}>
               {baseProjectName(session.project_path || "")}
             </span>
             <div className="flex items-center gap-1 shrink-0 ml-2">
               {isDemo && !session._upload_id && (
-                <span className="px-1 py-0.5 text-[9px] font-medium bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded" title="Example session (not donatable)">Example</span>
+                <span className="px-1 py-0.5 text-[9px] font-medium bg-amber-500/20 text-accent-amber border border-amber-500/30 rounded" title="Example session (not donatable)">Example</span>
               )}
               {!!session.extra?._anonymized && (
-                <span title="Session anonymized"><ShieldCheck className="w-3 h-3 text-emerald-400" /></span>
+                <span title="Session anonymized"><ShieldCheck className="w-3 h-3 text-accent-emerald" /></span>
               )}
               {(session.last_trajectory_ref || session.continued_trajectory_ref || session.parent_trajectory_ref) && (
-                <span title="Part of continuation chain"><Link2 className="w-3 h-3 text-violet-400" /></span>
+                <span title="Part of continuation chain"><Link2 className="w-3 h-3 text-accent-violet" /></span>
               )}
-              <span className="text-xs text-zinc-400 whitespace-nowrap">
+              <span className="text-xs text-muted whitespace-nowrap">
                 {formatTime(session.timestamp ?? null)}
               </span>
             </div>
           </div>
         )}
         <div className="flex items-center gap-2 min-w-0">
-          <p className="text-sm text-zinc-200 truncate flex-1 min-w-0" title={session.first_message || ""}>
+          <p className="text-sm text-secondary truncate flex-1 min-w-0" title={session.first_message || ""}>
             {truncate(session.first_message || "", 120) || "Empty session"}
           </p>
           <div className="flex items-center gap-1 shrink-0">
             {!showProject && isDemo && !session._upload_id && (
-              <span className="px-1 py-0.5 text-[9px] font-medium bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded" title="Example session (not donatable)">Example</span>
+              <span className="px-1 py-0.5 text-[9px] font-medium bg-amber-500/20 text-accent-amber border border-amber-500/30 rounded" title="Example session (not donatable)">Example</span>
             )}
             {!showProject && !!session.extra?._anonymized && (
-              <span title="Session anonymized"><ShieldCheck className="w-3 h-3 text-emerald-400" /></span>
+              <span title="Session anonymized"><ShieldCheck className="w-3 h-3 text-accent-emerald" /></span>
             )}
             {!showProject && (session.last_trajectory_ref || session.continued_trajectory_ref || session.parent_trajectory_ref) && (
-              <span title="Part of continuation chain"><Link2 className="w-3 h-3 text-violet-400" /></span>
+              <span title="Part of continuation chain"><Link2 className="w-3 h-3 text-accent-violet" /></span>
             )}
             {!showProject && (
-              <span className="text-xs text-zinc-400 whitespace-nowrap">
+              <span className="text-xs text-muted whitespace-nowrap">
                 {formatTime(session.timestamp ?? null)}
               </span>
             )}
@@ -561,26 +561,26 @@ function AgentFilterDropdown({ value, agents, onChange }: { value: string; agent
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center gap-2 bg-zinc-800 text-zinc-200 text-sm rounded px-2.5 py-1.5 border border-zinc-700 hover:border-zinc-600 transition cursor-pointer"
+        className="w-full flex items-center gap-2 bg-control text-secondary text-sm rounded px-2.5 py-1.5 border border-card hover:border-hover transition cursor-pointer"
       >
-        <Bot className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+        <Bot className="w-3.5 h-3.5 text-dimmed shrink-0" />
         <span className="flex-1 text-left truncate">{activeLabel}</span>
-        <ChevronDown className={`w-3.5 h-3.5 text-zinc-500 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+        <ChevronDown className={`w-3.5 h-3.5 text-dimmed shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
-        <div className="absolute z-50 mt-1 w-full bg-zinc-800 border border-zinc-700 rounded-md shadow-xl overflow-hidden">
+        <div className="absolute z-50 mt-1 w-full bg-control border border-card rounded-md shadow-xl overflow-hidden">
           {options.map((opt) => (
             <button
               key={opt.value}
               onClick={() => { onChange(opt.value); setOpen(false); }}
               className={`w-full flex items-center gap-2 px-2.5 py-1.5 text-sm transition ${
                 value === opt.value
-                  ? "bg-cyan-600/20 text-cyan-200"
-                  : "text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100"
+                  ? "bg-accent-cyan-subtle text-cyan-200"
+                  : "text-secondary hover:bg-control-hover hover:text-primary"
               }`}
             >
               {value === opt.value ? (
-                <Check className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                <Check className="w-3.5 h-3.5 text-accent-cyan shrink-0" />
               ) : (
                 <span className="w-3.5 shrink-0" />
               )}
