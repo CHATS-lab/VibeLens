@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppContext } from "../../app";
 import { useDemoGuard } from "../../hooks/use-demo-guard";
 import type { SkillInfo, SkillSourceInfo } from "../../types";
-import { SEARCH_DEBOUNCE_MS } from "../../styles";
+import { SEARCH_DEBOUNCE_MS } from "../../constants";
 import { ConfirmDialog } from "../confirm-dialog";
 import { InstallLocallyDialog } from "../install-locally-dialog";
 import { SkillCard, SkillDetailPopup } from "./skill-cards";

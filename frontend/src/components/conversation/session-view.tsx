@@ -41,11 +41,8 @@ import { formatTokens, formatDuration, formatCost, extractUserText, baseProjectN
 import { LoadingSpinner } from "../loading-spinner";
 import { Modal, ModalHeader, ModalBody } from "../modal";
 import { Tooltip } from "../tooltip";
-import {
-  METRIC_LABEL,
-  SESSION_ID_SHORT, PREVIEW_SHORT, SCROLL_SUPPRESS_MS,
-  SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH,
-} from "../../styles";
+import { METRIC_LABEL, SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH } from "../../styles";
+import { SESSION_ID_SHORT, PREVIEW_SHORT, SCROLL_SUPPRESS_MS } from "../../constants";
 
 interface SessionViewProps {
   sessionId: string;

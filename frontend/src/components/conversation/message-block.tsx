@@ -21,7 +21,7 @@ import { useState } from "react";
 import { createTwoFilesPatch } from "diff";
 import type { Step, ToolCall, ObservationResult, ContentPart } from "../../types";
 import { sanitizeText, extractMessageText } from "../../utils";
-import { PREVIEW_LONG } from "../../styles";
+import { PREVIEW_LONG } from "../../constants";
 import { MarkdownRenderer } from "../markdown-renderer";
 import { ContentRenderer } from "./content-renderer";
 import { CopyButton } from "../copy-button";

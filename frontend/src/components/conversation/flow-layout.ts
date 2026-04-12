@@ -9,7 +9,7 @@
 
 import type { Step, ToolDependencyGraph, PhaseSegment } from "../../types";
 import { extractMessageText } from "../../utils";
-import { LABEL_MAX_LENGTH } from "../../styles";
+import { LABEL_MAX_LENGTH } from "../../constants";
 
 export interface FlowToolChip {
   id: string;

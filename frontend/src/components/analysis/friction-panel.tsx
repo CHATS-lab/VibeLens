@@ -31,7 +31,8 @@ import type {
   Mitigation,
 } from "../../types";
 import { formatCost, formatDuration, formatTokens } from "../../utils";
-import { SEVERITY_COLORS, SHOW_ANALYSIS_DETAIL_SECTIONS, SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH } from "../../styles";
+import { SEVERITY_COLORS, SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH } from "../../styles";
+import { SHOW_ANALYSIS_DETAIL_SECTIONS } from "../../constants";
 import { DemoBanner } from "../demo-banner";
 import { AnalysisWelcomePage, TutorialBanner } from "../analysis-welcome";
 import { LoadingSpinner, LoadingSpinnerRings } from "../loading-spinner";

@@ -5,9 +5,8 @@ import { extractMessageText, extractUserText, truncate } from "../../utils";
 import { ResizeHandle } from "../resize-handle";
 import type { Step, Trajectory } from "../../types";
 import type { FlowPhaseGroup, FlowSection } from "./flow-layout";
-import {
-  PHASE_STYLE, CATEGORY_LABELS, PREVIEW_MEDIUM, PREVIEW_LONG,
-} from "../../styles";
+import { PHASE_STYLE, CATEGORY_LABELS } from "../../styles";
+import { PREVIEW_MEDIUM, PREVIEW_LONG } from "../../constants";
 
 const MIN_PROMPTS_FOR_NAV = 1;
 const COLLAPSED_WIDTH = 40;

@@ -25,7 +25,7 @@ import type { Trajectory } from "../types";
 import { formatTime, truncate, baseProjectName } from "../utils";
 import { SearchOptionsDialog } from "./search-options-dialog";
 import { Tooltip } from "./tooltip";
-import { SESSIONS_PER_PAGE, SEARCH_DEBOUNCE_MS } from "../styles";
+import { SESSIONS_PER_PAGE, SEARCH_DEBOUNCE_MS } from "../constants";
 
 export type ViewMode = "time" | "project";
 

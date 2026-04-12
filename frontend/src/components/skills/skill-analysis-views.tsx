@@ -36,7 +36,7 @@ import { DemoBanner } from "../demo-banner";
 import { InstallLocallyDialog } from "../install-locally-dialog";
 import { LoadingSpinnerRings } from "../loading-spinner";
 import { Tooltip } from "../tooltip";
-import { SHOW_ANALYSIS_DETAIL_SECTIONS } from "../../styles";
+import { SHOW_ANALYSIS_DETAIL_SECTIONS } from "../../constants";
 import { WarningsBanner } from "../warnings-banner";
 import { applySkillEdits } from "./skill-edit-utils";
 import { EvolutionDiffView } from "./skill-evolution-diff";
