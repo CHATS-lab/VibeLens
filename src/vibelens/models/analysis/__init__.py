@@ -9,7 +9,6 @@ from vibelens.models.analysis.friction import (
     Mitigation,
 )
 from vibelens.models.analysis.phase import PhaseSegment
-from vibelens.models.analysis.step_ref import StepRef
 from vibelens.models.analysis.tool_graph import ToolDependencyGraph, ToolEdge
 from vibelens.models.dashboard.dashboard import (
     AgentBehaviorResult,
@@ -22,6 +21,7 @@ from vibelens.models.dashboard.dashboard import (
     UserPreferenceResult,
 )
 from vibelens.models.llm.pricing import ModelPricing
+from vibelens.models.step_ref import StepRef
 
 __all__ = [
     "AgentBehaviorResult",

@@ -6,8 +6,8 @@ tool arg summarization, and non-compaction fallback.
 
 from datetime import datetime, timezone
 
-from vibelens.models.analysis.step_ref import StepRef
 from vibelens.models.context import SessionContextBatch
+from vibelens.models.step_ref import StepRef
 from vibelens.models.trajectories.step import Step, ToolCall
 from vibelens.models.trajectories.trajectory import Trajectory
 from vibelens.models.trajectories.trajectory_ref import TrajectoryRef

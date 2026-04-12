@@ -12,8 +12,8 @@ from vibelens.models.analysis.friction import (
     FrictionType,
     Mitigation,
 )
-from vibelens.models.analysis.step_ref import StepRef
 from vibelens.models.llm.inference import BackendType
+from vibelens.models.step_ref import StepRef
 from vibelens.models.trajectories.metrics import Metrics
 from vibelens.services.session.store_resolver import load_from_stores
 

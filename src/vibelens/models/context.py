@@ -11,7 +11,7 @@ from functools import cached_property
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from vibelens.models.analysis.step_ref import StepRef
+from vibelens.models.step_ref import StepRef
 from vibelens.models.trajectories import Trajectory
 from vibelens.utils.log import get_logger
 

@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, Field, computed_field
 
-from vibelens.models.analysis.step_ref import StepRef
+from vibelens.models.step_ref import StepRef
 from vibelens.utils.compat import StrEnum
 
 

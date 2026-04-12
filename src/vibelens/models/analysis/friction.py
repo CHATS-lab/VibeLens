@@ -12,8 +12,8 @@ Model hierarchy:
 
 from pydantic import BaseModel, Field
 
-from vibelens.models.analysis.step_ref import StepRef
 from vibelens.models.llm.inference import BackendType
+from vibelens.models.step_ref import StepRef
 from vibelens.models.trajectories.metrics import Metrics
 
 

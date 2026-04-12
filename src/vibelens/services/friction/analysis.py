@@ -26,9 +26,9 @@ from vibelens.models.analysis.friction import (
     FrictionCost,
     FrictionType,
 )
-from vibelens.models.analysis.step_ref import StepRef
 from vibelens.models.context import SessionContextBatch
 from vibelens.models.llm.inference import InferenceRequest
+from vibelens.models.step_ref import StepRef
 from vibelens.models.trajectories import Trajectory
 from vibelens.models.trajectories.metrics import Metrics
 from vibelens.services.analysis_shared import (
