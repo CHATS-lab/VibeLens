@@ -1,20 +1,20 @@
 // Text color tiers
-export const TEXT_PRIMARY = "text-zinc-100";
-export const TEXT_SECONDARY = "text-zinc-200";
-export const TEXT_MUTED = "text-zinc-400";
-export const TEXT_DIMMED = "text-zinc-500";
+export const TEXT_PRIMARY = "text-primary";
+export const TEXT_SECONDARY = "text-secondary";
+export const TEXT_MUTED = "text-muted";
+export const TEXT_DIMMED = "text-dimmed";
 
 // Segmented toggle
-export const TOGGLE_CONTAINER = "flex gap-0.5 bg-zinc-800 rounded p-0.5";
+export const TOGGLE_CONTAINER = "flex gap-0.5 bg-control rounded p-0.5";
 export const TOGGLE_BUTTON_BASE = "flex-1 flex items-center justify-center gap-1.5 text-xs py-1.5 rounded transition";
-export const TOGGLE_ACTIVE = "bg-zinc-700 text-zinc-100";
-export const TOGGLE_INACTIVE = "text-zinc-500 hover:text-zinc-300";
+export const TOGGLE_ACTIVE = "bg-control-hover text-primary";
+export const TOGGLE_INACTIVE = "text-dimmed hover:text-secondary";
 
 // Stat card description
-export const CARD_DESCRIPTION = "text-[11px] text-zinc-400 mt-0.5 leading-tight";
+export const CARD_DESCRIPTION = "text-[11px] text-muted mt-0.5 leading-tight";
 
 // Token metric label (session header)
-export const METRIC_LABEL = "text-zinc-400 text-xs";
+export const METRIC_LABEL = "text-muted text-xs";
 
 // Phase colors — shared between flow-diagram, prompt-nav-panel
 export const PHASE_STYLE: Record<string, { border: string; label: string; dot: string; bg: string }> = {
@@ -52,7 +52,7 @@ export const CATEGORY_LABELS: Record<string, string> = {
 
 // Severity colors for friction analysis
 export const SEVERITY_COLORS: Record<number, string> = {
-  1: "bg-zinc-700/50 text-zinc-300 border-zinc-600/40",
+  1: "bg-control-hover/50 text-secondary border-hover/60",
   2: "bg-sky-900/40 text-sky-300 border-sky-700/30",
   3: "bg-yellow-900/40 text-yellow-300 border-yellow-700/30",
   4: "bg-orange-900/50 text-orange-200 border-orange-600/40",
