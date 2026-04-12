@@ -85,6 +85,26 @@ class Settings(BaseSettings):
         description="Directory for persisted skill analysis results.",
     )
 
+    # Recommendation persistence
+    recommendation_dir: Path = Field(
+        default=Path.home() / ".vibelens" / "recommendations",
+        description="Directory for persisted recommendation results.",
+    )
+
+    # Catalog updates
+    catalog_update_url: str = Field(
+        default="",
+        description="URL to fetch catalog.json updates from (GitHub Release asset).",
+    )
+    catalog_auto_update: bool = Field(
+        default=True,
+        description="Check for catalog updates on startup.",
+    )
+    catalog_check_interval_hours: int = Field(
+        default=24,
+        description="Minimum hours between catalog update checks.",
+    )
+
     # Donation
     donation_url: str = Field(
         default="https://vibelens.chats-lab.org",
@@ -166,10 +186,25 @@ class Settings(BaseSettings):
         self.share_dir = self.share_dir.expanduser()
         self.friction_dir = self.friction_dir.expanduser()
         self.skill_analysis_dir = self.skill_analysis_dir.expanduser()
+        self.recommendation_dir = self.recommendation_dir.expanduser()
         self.donation_dir = self.donation_dir.expanduser()
         self.upload_dir = self.upload_dir.expanduser()
-        self.examples_dir = self.examples_dir.expanduser()
+        self.examples_dir = self._resolve_examples_dir()
         return self
+
+    def _resolve_examples_dir(self) -> Path:
+        """Derive examples cache dir from configured example paths.
+
+        Different configs (e.g. recipe-book vs redteam) get separate
+        cache directories so switching configs doesn't serve stale data.
+        """
+        import hashlib
+
+        base = self.examples_dir.expanduser()
+        if not self.demo_example_sessions:
+            return base
+        digest = hashlib.md5(self.demo_example_sessions.encode()).hexdigest()[:8]
+        return base / digest
 
 
 def load_settings(config_path: Path | None = None) -> Settings:
