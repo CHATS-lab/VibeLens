@@ -7,7 +7,7 @@ capability — it enables cross-agent workflow analysis.
 
 from datetime import timedelta
 
-from vibelens.models.analysis.correlator import CorrelatedGroup, CorrelatedSession
+from vibelens.models.session.correlator import CorrelatedGroup, CorrelatedSession
 from vibelens.models.trajectories import Trajectory
 
 

@@ -3,7 +3,7 @@
 
 from pydantic import BaseModel, Field
 
-from vibelens.models.analysis.phase import PhaseSegment
+from vibelens.models.session.phase import PhaseSegment
 
 
 class ToolUsageStat(BaseModel):

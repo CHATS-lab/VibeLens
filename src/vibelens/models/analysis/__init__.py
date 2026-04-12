@@ -1,6 +1,5 @@
 """Analysis result models for VibeLens dashboard and behavior analytics."""
 
-from vibelens.models.analysis.correlator import CorrelatedGroup, CorrelatedSession
 from vibelens.models.analysis.friction import (
     FrictionAnalysisOutput,
     FrictionAnalysisResult,
@@ -8,8 +7,6 @@ from vibelens.models.analysis.friction import (
     FrictionType,
     Mitigation,
 )
-from vibelens.models.analysis.phase import PhaseSegment
-from vibelens.models.analysis.tool_graph import ToolDependencyGraph, ToolEdge
 from vibelens.models.dashboard.dashboard import (
     AgentBehaviorResult,
     DailyStat,
@@ -21,6 +18,9 @@ from vibelens.models.dashboard.dashboard import (
     UserPreferenceResult,
 )
 from vibelens.models.llm.pricing import ModelPricing
+from vibelens.models.session.correlator import CorrelatedGroup, CorrelatedSession
+from vibelens.models.session.phase import PhaseSegment
+from vibelens.models.session.tool_graph import ToolDependencyGraph, ToolEdge
 from vibelens.models.step_ref import StepRef
 
 __all__ = [
