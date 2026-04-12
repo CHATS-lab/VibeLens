@@ -55,18 +55,18 @@ export function SearchOptionsDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        className="absolute inset-0 bg-overlay backdrop-blur-sm"
         onClick={onClose}
       />
 
-      <div className="relative bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl w-full max-w-sm mx-4">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
-          <h2 className="text-sm font-semibold text-zinc-100">
+      <div className="relative bg-panel border border-card rounded-lg shadow-2xl w-full max-w-sm mx-4">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-default">
+          <h2 className="text-sm font-semibold text-primary">
             Search Options
           </h2>
           <button
             onClick={onClose}
-            className="text-zinc-500 hover:text-zinc-300 transition"
+            className="text-dimmed hover:text-secondary transition"
           >
             <X className="w-4 h-4" />
           </button>
@@ -82,22 +82,22 @@ export function SearchOptionsDialog({
                 type="checkbox"
                 checked={sources.has(src.key)}
                 onChange={() => handleToggle(src.key)}
-                className="mt-0.5 accent-cyan-500 w-4 h-4 rounded border-zinc-600 bg-zinc-800"
+                className="mt-0.5 accent-cyan-500 w-4 h-4 rounded border-hover bg-control"
               />
               <div>
-                <span className="text-sm text-zinc-200 group-hover:text-zinc-100 transition">
+                <span className="text-sm text-secondary group-hover:text-primary transition">
                   {src.label}
                 </span>
-                <p className="text-xs text-zinc-500">{src.description}</p>
+                <p className="text-xs text-dimmed">{src.description}</p>
               </div>
             </label>
           ))}
         </div>
 
-        <div className="flex justify-end gap-2 px-5 py-3 border-t border-zinc-800">
+        <div className="flex justify-end gap-2 px-5 py-3 border-t border-default">
           <button
             onClick={onClose}
-            className="px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 transition"
+            className="px-3 py-1.5 text-xs text-muted hover:text-secondary transition"
           >
             Close
           </button>

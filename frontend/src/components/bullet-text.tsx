@@ -26,7 +26,7 @@ function renderInlineMarkdown(raw: string): React.ReactNode {
     if (match.index > lastIndex) {
       parts.push(raw.slice(lastIndex, match.index));
     }
-    parts.push(<strong key={match.index} className="font-semibold text-zinc-100">{match[1]}</strong>);
+    parts.push(<strong key={match.index} className="font-semibold text-primary">{match[1]}</strong>);
     lastIndex = BOLD_REGEX.lastIndex;
   }
   if (lastIndex < raw.length) {
@@ -62,7 +62,7 @@ export function BulletText({ text, className = "" }: { text: string; className?:
   return (
     <div className={className}>
       {leadText && <p>{renderInlineMarkdown(leadText)}</p>}
-      <ul className="mt-1.5 space-y-1 list-disc pl-4 marker:text-zinc-500">
+      <ul className="mt-1.5 space-y-1 list-disc pl-4 marker:text-dimmed">
         {bullets.map((b, i) => (
           <li key={i}>{renderInlineMarkdown(b)}</li>
         ))}

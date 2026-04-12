@@ -33,7 +33,7 @@ export function CollapsiblePill({
         {icon}
         <span className="font-medium">{label}</span>
         {!open && preview && (
-          <span className="text-zinc-300 truncate ml-1">{preview}</span>
+          <span className="text-secondary truncate ml-1">{preview}</span>
         )}
       </button>
       {open && <div className="border-t border-inherit">{children}</div>}

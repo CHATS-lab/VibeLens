@@ -65,8 +65,8 @@ export function LoadingSpinner({ label, sublabel, color = "cyan" }: LoadingSpinn
         <LoadingSpinnerRings color={color} />
         {label && (
           <div className="text-center space-y-1">
-            <p className="text-sm font-medium text-zinc-200">{label}</p>
-            {sublabel && <p className="text-xs text-zinc-500">{sublabel}</p>}
+            <p className="text-sm font-medium text-secondary">{label}</p>
+            {sublabel && <p className="text-xs text-dimmed">{sublabel}</p>}
           </div>
         )}
       </div>
