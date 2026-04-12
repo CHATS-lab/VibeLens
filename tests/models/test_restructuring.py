@@ -122,3 +122,83 @@ class TestFrictionPackage:
         assert FrictionCost is not None
         assert FrictionType is not None
         assert Mitigation is not None
+
+
+class TestRecommendationPackage:
+    """Verify models/recommendation/ package with new models."""
+
+    def test_item_type_values(self):
+        from vibelens.models.recommendation.catalog import ItemType
+
+        assert ItemType.SKILL == "skill"
+        assert ItemType.SUBAGENT == "subagent"
+        assert ItemType.COMMAND == "command"
+        assert ItemType.HOOK == "hook"
+        assert ItemType.REPO == "repo"
+        assert len(ItemType) == 5
+
+    def test_file_based_types(self):
+        from vibelens.models.recommendation.catalog import FILE_BASED_TYPES, ItemType
+
+        assert ItemType.SKILL in FILE_BASED_TYPES
+        assert ItemType.REPO not in FILE_BASED_TYPES
+        assert len(FILE_BASED_TYPES) == 4
+
+    def test_catalog_item(self):
+        from vibelens.models.recommendation.catalog import CatalogItem
+
+        item = CatalogItem(
+            item_id="test-runner",
+            item_type="skill",
+            name="Test Runner",
+            description="Runs tests automatically",
+            tags=["testing"],
+            category="development",
+            platforms=["claude-code"],
+            quality_score=85.0,
+            popularity=0.7,
+            updated_at="2026-04-01T00:00:00Z",
+            source_url="https://github.com/example/test-runner",
+            repo_full_name="example/test-runner",
+            install_method="skill_file",
+        )
+        assert item.is_file_based is True
+
+    def test_catalog_item_repo_not_file_based(self):
+        from vibelens.models.recommendation.catalog import CatalogItem
+
+        item = CatalogItem(
+            item_id="postgres-mcp",
+            item_type="repo",
+            name="Postgres MCP",
+            description="MCP server for PostgreSQL",
+            tags=["database"],
+            category="data",
+            platforms=["claude-code"],
+            quality_score=90.0,
+            popularity=0.9,
+            updated_at="2026-04-01T00:00:00Z",
+            source_url="https://github.com/example/postgres-mcp",
+            repo_full_name="example/postgres-mcp",
+            install_method="mcp_config",
+        )
+        assert item.is_file_based is False
+
+    def test_user_profile(self):
+        from vibelens.models.recommendation.profile import UserProfile
+
+        profile = UserProfile(
+            domains=["web-dev"],
+            languages=["python", "typescript"],
+            frameworks=["fastapi"],
+            agent_platforms=["claude-code"],
+            bottlenecks=["slow tests"],
+            workflow_style="iterative debugger",
+            search_keywords=["testing", "fastapi"],
+        )
+        assert len(profile.languages) == 2
+
+    def test_recommendation_result(self):
+        from vibelens.models.recommendation.results import RecommendationResult
+
+        assert RecommendationResult is not None
