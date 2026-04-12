@@ -54,7 +54,7 @@ export function Tooltip({ state }: { state: TooltipState | null }) {
   return createPortal(
     <div
       ref={ref}
-      className={`fixed z-[9999] pointer-events-none px-3 py-2.5 rounded-lg bg-zinc-800/95 border border-zinc-600 text-[13px] leading-relaxed text-zinc-100 shadow-2xl ${
+      className={`fixed z-[9999] pointer-events-none px-3 py-2.5 rounded-lg bg-control/95 border border-hover text-[13px] leading-relaxed text-primary shadow-2xl ${
         isRichContent ? "whitespace-pre-wrap" : "whitespace-pre-line"
       }`}
       style={{

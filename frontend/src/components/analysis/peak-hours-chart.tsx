@@ -59,7 +59,7 @@ export function PeakHoursChart({
       </div>
       <div className="flex gap-1.5 mt-1.5">
         {bins.map((bin, i) => (
-          <div key={bin.label} className="flex-1 text-center text-[10px] text-zinc-400">
+          <div key={bin.label} className="flex-1 text-center text-[10px] text-muted">
             {i % 2 === 0 ? bin.label : ""}
           </div>
         ))}

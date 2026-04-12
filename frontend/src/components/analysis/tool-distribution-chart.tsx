@@ -67,12 +67,12 @@ export function ToolDistribution({
   };
 
   if (data.length === 0) {
-    return <p className="text-sm text-zinc-500">No data</p>;
+    return <p className="text-sm text-dimmed">No data</p>;
   }
 
   return (
     <div className="space-y-3">
-      <div className="h-4 rounded-full overflow-hidden flex bg-zinc-800">
+      <div className="h-4 rounded-full overflow-hidden flex bg-control">
         {segments.map((seg) => (
           <div
             key={seg.name}
@@ -97,10 +97,10 @@ export function ToolDistribution({
             <span
               className={`w-3 h-3 rounded-sm shrink-0 ${seg.name === "Other" ? "bg-zinc-600" : TOOL_COLORS[i % TOOL_COLORS.length]}`}
             />
-            <span className="flex-1 text-zinc-300 truncate" title={seg.name}>
+            <span className="flex-1 text-secondary truncate" title={seg.name}>
               {seg.name}
             </span>
-            <span className="text-zinc-400 tabular-nums">
+            <span className="text-muted tabular-nums">
               {seg.count.toLocaleString()} ({seg.pct.toFixed(1)}%)
             </span>
           </div>

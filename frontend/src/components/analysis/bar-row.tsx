@@ -24,24 +24,24 @@ export function BarRow({
     <button
       onClick={onClick}
       disabled={!onClick}
-      className="flex items-center gap-2.5 text-[13px] w-full text-left hover:bg-zinc-800/60 px-2.5 py-1.5 rounded-md transition disabled:cursor-default group"
+      className="flex items-center gap-2.5 text-[13px] w-full text-left hover:bg-control/60 px-2.5 py-1.5 rounded-md transition disabled:cursor-default group"
       onMouseEnter={(e) => onHover(e, tooltipText)}
       onMouseMove={onMove}
       onMouseLeave={onLeave}
     >
       <span
-        className="w-32 truncate text-zinc-300 group-hover:text-zinc-100 transition-colors"
+        className="w-32 truncate text-secondary group-hover:text-primary transition-colors"
         title={label}
       >
         {label}
       </span>
-      <div className="flex-1 h-5 bg-zinc-800/60 rounded-md overflow-hidden">
+      <div className="flex-1 h-5 bg-control/60 rounded-md overflow-hidden">
         <div
           className="h-full bg-gradient-to-r from-cyan-600 to-cyan-400 rounded-md transition-all"
           style={{ width: `${pct}%` }}
         />
       </div>
-      <span className="w-10 text-right text-zinc-300 tabular-nums font-medium">
+      <span className="w-10 text-right text-secondary tabular-nums font-medium">
         {value}
       </span>
     </button>

@@ -30,7 +30,7 @@ export function ModelDistribution({
 
   return (
     <div className="space-y-3">
-      <div className="h-4 rounded-full overflow-hidden flex bg-zinc-800">
+      <div className="h-4 rounded-full overflow-hidden flex bg-control">
         {segments.map((seg) => (
           <div
             key={seg.model}
@@ -69,19 +69,19 @@ export function ModelDistribution({
                 className={`w-3 h-3 rounded-sm shrink-0 ${MODEL_COLORS[i % MODEL_COLORS.length]}`}
               />
               <span
-                className="flex-1 text-zinc-300 truncate"
+                className="flex-1 text-secondary truncate"
                 title={displayModelName(model)}
               >
                 {displayModelName(model)}
               </span>
-              <span className="text-zinc-400 tabular-nums">
+              <span className="text-muted tabular-nums">
                 {count} ({pct}%)
               </span>
             </div>
           );
         })}
         {entries.length === 0 && (
-          <p className="text-sm text-zinc-500">No data</p>
+          <p className="text-sm text-dimmed">No data</p>
         )}
       </div>
     </div>

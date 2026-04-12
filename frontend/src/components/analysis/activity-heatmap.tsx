@@ -95,19 +95,19 @@ export function ActivityHeatmap({
     <div>
       <div className="flex items-center justify-between mb-3">
         <p
-          className="text-[13px] text-zinc-300 cursor-default"
+          className="text-[13px] text-secondary cursor-default"
           onMouseEnter={(e) =>
             onHover(e, "GitHub-style heatmap showing daily session activity over the past year")
           }
           onMouseMove={onMove}
           onMouseLeave={onLeave}
         >
-          <span className="text-cyan-400 font-semibold">
+          <span className="text-accent-cyan font-semibold">
             {yearTotal.toLocaleString()}
           </span>{" "}
           sessions in the last year
         </p>
-        <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+        <div className="flex items-center gap-1.5 text-xs text-muted">
           <span>Less</span>
           {HEATMAP_COLORS.slice(1).map((color, i) => (
             <div
@@ -120,7 +120,7 @@ export function ActivityHeatmap({
         </div>
       </div>
       <div className="overflow-x-auto">
-        <svg width={width} height={height} className="text-zinc-400">
+        <svg width={width} height={height} className="text-muted">
           {monthLabels.map(({ month, weekIndex }, i) => (
             <text
               key={`${month}-${i}`}

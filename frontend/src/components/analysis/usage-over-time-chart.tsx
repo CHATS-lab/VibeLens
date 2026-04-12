@@ -146,10 +146,10 @@ export function UsageOverTimeChart({
   if (grouped.length < 1) {
     return (
       <div>
-        <h3 className="text-base font-medium text-zinc-200 mb-3">
+        <h3 className="text-base font-medium text-secondary mb-3">
           Usage Over Time
         </h3>
-        <p className="text-sm text-zinc-400 py-8 text-center">
+        <p className="text-sm text-muted py-8 text-center">
           No data available
         </p>
       </div>
@@ -167,7 +167,7 @@ export function UsageOverTimeChart({
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-base font-medium text-zinc-200">
+        <h3 className="text-base font-medium text-secondary">
           Usage Over Time
         </h3>
         <div className="flex items-center gap-3">
@@ -179,14 +179,14 @@ export function UsageOverTimeChart({
                 className={`px-2 py-1 text-xs font-medium rounded-md transition ${
                   timeGroup === g.key
                     ? TOGGLE_ACTIVE
-                    : `${TOGGLE_INACTIVE} hover:bg-zinc-800`
+                    : `${TOGGLE_INACTIVE} hover:bg-control`
                 }`}
               >
                 {g.label}
               </button>
             ))}
           </div>
-          <div className="w-px h-4 bg-zinc-700" />
+          <div className="w-px h-4 bg-control-hover" />
           <div className="flex gap-1">
             {metricButtons.map((m) => (
               <button
@@ -195,7 +195,7 @@ export function UsageOverTimeChart({
                 className={`px-2.5 py-1 text-xs font-medium rounded-md transition ${
                   metric === m.key
                     ? "bg-cyan-600 text-white"
-                    : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+                    : "text-muted hover:text-secondary hover:bg-control"
                 }`}
               >
                 {m.label}
@@ -212,8 +212,8 @@ export function UsageOverTimeChart({
       >
         <defs>
           <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="rgba(34,211,238,0.3)" />
-            <stop offset="100%" stopColor="rgba(34,211,238,0.02)" />
+            <stop offset="0%" stopColor="var(--color-chart-area-start)" />
+            <stop offset="100%" stopColor="var(--color-chart-area-end)" />
           </linearGradient>
         </defs>
 
@@ -224,12 +224,12 @@ export function UsageOverTimeChart({
               y1={y}
               x2={W - MR}
               y2={y}
-              stroke="rgba(255,255,255,0.06)"
+              stroke="var(--color-chart-grid)"
             />
             <text
               x={ML - 8}
               y={y + 4}
-              fill="#a1a1aa"
+              fill="var(--color-chart-text)"
               fontSize={10}
               textAnchor="end"
             >
@@ -243,7 +243,7 @@ export function UsageOverTimeChart({
           y1={MT + PH}
           x2={W - MR}
           y2={MT + PH}
-          stroke="rgba(255,255,255,0.08)"
+          stroke="var(--color-chart-axis)"
         />
 
         {isSinglePoint ? (
@@ -253,7 +253,7 @@ export function UsageOverTimeChart({
             width={60}
             height={MT + PH - points[0].y}
             fill="url(#areaGrad)"
-            stroke="rgb(34,211,238)"
+            stroke="var(--color-chart-line)"
             strokeWidth={2}
             rx={4}
           />
@@ -263,7 +263,7 @@ export function UsageOverTimeChart({
             <path
               d={lineD}
               fill="none"
-              stroke="rgb(34,211,238)"
+              stroke="var(--color-chart-line)"
               strokeWidth={2}
             />
           </>
@@ -277,7 +277,7 @@ export function UsageOverTimeChart({
               cx={p.x}
               cy={p.y}
               r={activeIndex === i ? 5 : 3}
-              fill="rgb(34,211,238)"
+              fill="var(--color-chart-line)"
               className="pointer-events-none transition-all"
             />
           ))}
@@ -289,7 +289,7 @@ export function UsageOverTimeChart({
             y1={MT}
             x2={points[activeIndex].x}
             y2={MT + PH}
-            stroke="rgba(34,211,238,0.4)"
+            stroke="var(--color-chart-crosshair)"
             strokeWidth={1}
             strokeDasharray="4 3"
             className="pointer-events-none"
@@ -325,7 +325,7 @@ export function UsageOverTimeChart({
               key={d.date}
               x={points[i].x}
               y={H - 6}
-              fill="#a1a1aa"
+              fill="var(--color-chart-text)"
               fontSize={10}
               textAnchor={anchor}
             >

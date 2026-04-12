@@ -15,11 +15,11 @@ export const MONTH_NAMES = [
 ];
 
 export const HEATMAP_COLORS = [
-  "rgba(34,211,238,0.06)",
-  "rgba(34,211,238,0.25)",
-  "rgba(34,211,238,0.45)",
-  "rgba(34,211,238,0.65)",
-  "rgba(34,211,238,0.85)",
+  "var(--color-heatmap-0)",
+  "var(--color-heatmap-1)",
+  "var(--color-heatmap-2)",
+  "var(--color-heatmap-3)",
+  "var(--color-heatmap-4)",
 ];
 
 export const MODEL_COLORS = [

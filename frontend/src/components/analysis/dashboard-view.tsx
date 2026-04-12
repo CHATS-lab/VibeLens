@@ -172,22 +172,22 @@ export function DashboardView({ cache }: DashboardViewProps) {
               <>
                 <button
                   onClick={handleClearFilters}
-                  className="text-sm text-cyan-400 hover:text-cyan-300 transition font-medium"
+                  className="text-sm text-accent-cyan hover:text-accent-cyan transition font-medium"
                 >
                   All Sessions
                 </button>
                 {selectedAgent && (
                   <>
-                    <span className="text-zinc-600">/</span>
+                    <span className="text-faint">/</span>
                     {selectedProject ? (
                       <button
                         onClick={() => setSelectedProject(null)}
-                        className="text-sm text-cyan-400 hover:text-cyan-300 transition font-medium"
+                        className="text-sm text-accent-cyan hover:text-accent-cyan transition font-medium"
                       >
                         {selectedAgent}
                       </button>
                     ) : (
-                      <span className="text-sm text-zinc-200 font-medium">
+                      <span className="text-sm text-secondary font-medium">
                         {selectedAgent}
                       </span>
                     )}
@@ -195,15 +195,15 @@ export function DashboardView({ cache }: DashboardViewProps) {
                 )}
                 {selectedProject && (
                   <>
-                    <span className="text-zinc-600">/</span>
-                    <span className="text-sm text-zinc-200 font-medium">
+                    <span className="text-faint">/</span>
+                    <span className="text-sm text-secondary font-medium">
                       {baseProjectName(selectedProject)}
                     </span>
                   </>
                 )}
               </>
             ) : (
-              <h2 className="text-xl font-semibold text-zinc-100">
+              <h2 className="text-xl font-semibold text-primary">
                 Analytics Dashboard
               </h2>
             )}
@@ -211,7 +211,7 @@ export function DashboardView({ cache }: DashboardViewProps) {
           <div className="flex items-center gap-3">
             {stats.cached_at && (
               <span
-                className="flex items-center gap-1.5 text-xs text-zinc-500"
+                className="flex items-center gap-1.5 text-xs text-dimmed"
                 onMouseEnter={(e) =>
                   show(e, "Stats are cached for 1 hour. Data reflects sessions available at this time.")
                 }
@@ -225,7 +225,7 @@ export function DashboardView({ cache }: DashboardViewProps) {
             <button
               onClick={() => handleExport("csv")}
               disabled={exporting !== null}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:text-zinc-100 bg-zinc-800/80 hover:bg-zinc-700 rounded-lg border border-zinc-700/50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-secondary hover:text-primary bg-control/80 hover:bg-control-hover rounded-lg border border-card transition disabled:opacity-50 disabled:cursor-not-allowed"
               onMouseEnter={(e) =>
                 show(e, "Export all dashboard data as CSV")
               }
@@ -233,7 +233,7 @@ export function DashboardView({ cache }: DashboardViewProps) {
               onMouseLeave={hide}
             >
               {exporting === "csv" ? (
-                <div className="w-3.5 h-3.5 border-2 border-zinc-400/30 border-t-zinc-300 rounded-full animate-spin" />
+                <div className="w-3.5 h-3.5 border-2 border-muted/30 border-t-secondary rounded-full animate-spin" />
               ) : (
                 <Download className="w-3.5 h-3.5" />
               )}
@@ -242,7 +242,7 @@ export function DashboardView({ cache }: DashboardViewProps) {
             <button
               onClick={() => handleExport("json")}
               disabled={exporting !== null}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:text-zinc-100 bg-zinc-800/80 hover:bg-zinc-700 rounded-lg border border-zinc-700/50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-secondary hover:text-primary bg-control/80 hover:bg-control-hover rounded-lg border border-card transition disabled:opacity-50 disabled:cursor-not-allowed"
               onMouseEnter={(e) =>
                 show(e, "Export all dashboard data as JSON")
               }
@@ -250,7 +250,7 @@ export function DashboardView({ cache }: DashboardViewProps) {
               onMouseLeave={hide}
             >
               {exporting === "json" ? (
-                <div className="w-3.5 h-3.5 border-2 border-zinc-400/30 border-t-zinc-300 rounded-full animate-spin" />
+                <div className="w-3.5 h-3.5 border-2 border-muted/30 border-t-secondary rounded-full animate-spin" />
               ) : (
                 <Download className="w-3.5 h-3.5" />
               )}
@@ -430,7 +430,7 @@ export function DashboardView({ cache }: DashboardViewProps) {
         </div>
 
         {/* Usage Over Time */}
-        <div className="rounded-xl border border-zinc-700/60 bg-zinc-900/80 p-5">
+        <div className="rounded-xl border border-card bg-panel/80 p-5">
           <UsageOverTimeChart
             data={stats.daily_stats ?? []}
             onHover={show}
@@ -440,7 +440,7 @@ export function DashboardView({ cache }: DashboardViewProps) {
         </div>
 
         {/* Activity Heatmap */}
-        <div className="rounded-xl border border-zinc-700/60 bg-zinc-900/80 p-5">
+        <div className="rounded-xl border border-card bg-panel/80 p-5">
           <ActivityHeatmap
             data={stats.daily_activity}
             onHover={show}
@@ -452,11 +452,11 @@ export function DashboardView({ cache }: DashboardViewProps) {
         {/* Bottom grid: Peak Hours + Project | Agent + Model + Tools */}
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-4">
-            <div className="rounded-xl border border-zinc-700/60 bg-zinc-900/80 p-5">
+            <div className="rounded-xl border border-card bg-panel/80 p-5">
               <div className="flex items-center gap-2 mb-3">
-                <Clock className="w-4 h-4 text-cyan-400" />
+                <Clock className="w-4 h-4 text-accent-cyan" />
                 <h3
-                  className="text-base font-medium text-zinc-200 cursor-default"
+                  className="text-base font-medium text-secondary cursor-default"
                   onMouseEnter={(e) =>
                     show(e, "Distribution of session starts by hour of day")
                   }
@@ -466,7 +466,7 @@ export function DashboardView({ cache }: DashboardViewProps) {
                   Peak Hours
                 </h3>
                 <span
-                  className="text-xs text-zinc-500 cursor-default"
+                  className="text-xs text-dimmed cursor-default"
                   onMouseEnter={(e) =>
                     show(e, `All times shown in ${stats.timezone} timezone`)
                   }
@@ -484,13 +484,13 @@ export function DashboardView({ cache }: DashboardViewProps) {
               />
             </div>
 
-            <div className="rounded-xl border border-zinc-700/60 bg-zinc-900/80 p-5">
+            <div className="rounded-xl border border-card bg-panel/80 p-5">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
-                  <FolderOpen className="w-4 h-4 text-cyan-400" />
+                  <FolderOpen className="w-4 h-4 text-accent-cyan" />
                   <div>
                     <h3
-                      className="text-base font-medium text-zinc-200 cursor-default"
+                      className="text-base font-medium text-secondary cursor-default"
                       onMouseEnter={(e) =>
                         show(e, `Per-project breakdown (${allProjectEntries.length} total). Click to filter.`)
                       }
@@ -499,7 +499,7 @@ export function DashboardView({ cache }: DashboardViewProps) {
                     >
                       Project Activity
                     </h3>
-                    <p className="text-xs text-zinc-400 mt-0.5">
+                    <p className="text-xs text-muted mt-0.5">
                       Click a project to view its dedicated dashboard analysis
                     </p>
                   </div>
@@ -507,7 +507,7 @@ export function DashboardView({ cache }: DashboardViewProps) {
                 {hasMoreProjects && (
                   <button
                     onClick={() => setShowAllProjects((v) => !v)}
-                    className="px-2.5 py-1 text-xs font-medium text-cyan-400 hover:text-cyan-300 bg-cyan-400/10 hover:bg-cyan-400/20 rounded-md border border-cyan-400/20 transition"
+                    className="px-2.5 py-1 text-xs font-medium text-accent-cyan hover:text-accent-cyan bg-accent-cyan-subtle hover:bg-accent-cyan-muted rounded-md border border-accent-cyan-border transition"
                   >
                     {showAllProjects
                       ? "Top 10"
@@ -534,7 +534,7 @@ export function DashboardView({ cache }: DashboardViewProps) {
                   );
                 })}
                 {projectEntries.length === 0 && (
-                  <p className="text-sm text-zinc-500">No data</p>
+                  <p className="text-sm text-dimmed">No data</p>
                 )}
               </div>
             </div>
@@ -542,12 +542,12 @@ export function DashboardView({ cache }: DashboardViewProps) {
 
           <div className="space-y-4">
             {agentEntries.length > 1 && (
-              <div className="rounded-xl border border-zinc-700/60 bg-zinc-900/80 p-5">
+              <div className="rounded-xl border border-card bg-panel/80 p-5">
                 <div className="flex items-center gap-2 mb-4">
-                  <Bot className="w-4 h-4 text-cyan-400" />
+                  <Bot className="w-4 h-4 text-accent-cyan" />
                   <div>
                     <h3
-                      className="text-base font-medium text-zinc-200 cursor-default"
+                      className="text-base font-medium text-secondary cursor-default"
                       onMouseEnter={(e) =>
                         show(e, "Session count breakdown by agent. Click to filter.")
                       }
@@ -556,7 +556,7 @@ export function DashboardView({ cache }: DashboardViewProps) {
                     >
                       Agent Distribution
                     </h3>
-                    <p className="text-xs text-zinc-400 mt-0.5">
+                    <p className="text-xs text-muted mt-0.5">
                       Click an agent to view its dedicated dashboard analysis
                     </p>
                   </div>
@@ -583,11 +583,11 @@ export function DashboardView({ cache }: DashboardViewProps) {
               </div>
             )}
 
-            <div className="rounded-xl border border-zinc-700/60 bg-zinc-900/80 p-5">
+            <div className="rounded-xl border border-card bg-panel/80 p-5">
               <div className="flex items-center gap-2 mb-4">
-                <Cpu className="w-4 h-4 text-cyan-400" />
+                <Cpu className="w-4 h-4 text-accent-cyan" />
                 <h3
-                  className="text-base font-medium text-zinc-200 cursor-default"
+                  className="text-base font-medium text-secondary cursor-default"
                   onMouseEnter={(e) =>
                     show(e, "Session count breakdown by AI model")
                   }
@@ -606,12 +606,12 @@ export function DashboardView({ cache }: DashboardViewProps) {
             </div>
 
             {toolUsage.length > 0 && (
-              <div className="rounded-xl border border-zinc-700/60 bg-zinc-900/80 p-5">
+              <div className="rounded-xl border border-card bg-panel/80 p-5">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
-                    <Wrench className="w-4 h-4 text-cyan-400" />
+                    <Wrench className="w-4 h-4 text-accent-cyan" />
                     <h3
-                      className="text-base font-medium text-zinc-200 cursor-default"
+                      className="text-base font-medium text-secondary cursor-default"
                       onMouseEnter={(e) =>
                         show(e, `Tool call distribution (${totalToolCalls(toolUsage).toLocaleString()} total, avg ${stats.avg_tool_calls_per_session.toFixed(1)}/session)`)
                       }
@@ -621,7 +621,7 @@ export function DashboardView({ cache }: DashboardViewProps) {
                       Tool Distribution
                     </h3>
                   </div>
-                  <span className="text-xs text-zinc-500">
+                  <span className="text-xs text-dimmed">
                     {totalToolCalls(toolUsage).toLocaleString()} total
                   </span>
                 </div>
@@ -679,30 +679,30 @@ function ProjectRow({
   return (
     <button
       onClick={onClick}
-      className="flex flex-col gap-1 w-full text-left hover:bg-zinc-800/60 px-3 py-2 rounded-lg transition group"
+      className="flex flex-col gap-1 w-full text-left hover:bg-control/60 px-3 py-2 rounded-lg transition group"
       onMouseEnter={(e) => onHover(e, tooltipLines.join("\n"))}
       onMouseMove={onMove}
       onMouseLeave={onLeave}
     >
       <div className="flex items-center justify-between w-full">
         <span
-          className="text-[13px] text-zinc-300 group-hover:text-zinc-100 transition-colors truncate max-w-[60%]"
+          className="text-[13px] text-secondary group-hover:text-primary transition-colors truncate max-w-[60%]"
           title={name}
         >
           {name}
         </span>
-        <span className="text-[13px] text-zinc-300 tabular-nums font-medium">
+        <span className="text-[13px] text-secondary tabular-nums font-medium">
           {count} session{count !== 1 ? "s" : ""}
         </span>
       </div>
-      <div className="w-full h-1.5 bg-zinc-800/60 rounded-full overflow-hidden">
+      <div className="w-full h-1.5 bg-control/60 rounded-full overflow-hidden">
         <div
           className="h-full bg-gradient-to-r from-cyan-600 to-cyan-400 rounded-full transition-all"
           style={{ width: `${pct}%` }}
         />
       </div>
       {detail && (
-        <div className="flex items-center gap-3 text-xs text-zinc-400">
+        <div className="flex items-center gap-3 text-xs text-muted">
           <span className="inline-flex items-center gap-1">
             <Hash className="w-3 h-3 text-cyan-500" />
             {detail.messages.toLocaleString()} msgs

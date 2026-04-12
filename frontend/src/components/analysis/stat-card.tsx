@@ -31,14 +31,14 @@ export function StatCard({
 }: StatCardProps) {
   return (
     <div
-      className="rounded-xl border border-zinc-700/60 bg-zinc-900/80 px-5 py-5 flex flex-col gap-3 hover:border-zinc-500/60 transition-colors cursor-default"
+      className="rounded-xl border border-card bg-panel/80 px-5 py-5 flex flex-col gap-3 hover:border-hover/60 transition-colors cursor-default"
       onMouseEnter={(e) => onHover(e, tooltipText)}
       onMouseMove={onMove}
       onMouseLeave={onLeave}
     >
       <div className="flex items-center justify-between">
         <div>
-          <span className="text-xs font-semibold text-zinc-200 uppercase tracking-wider">
+          <span className="text-xs font-semibold text-secondary uppercase tracking-wider">
             {label}
           </span>
           {description && (
@@ -47,12 +47,12 @@ export function StatCard({
             </p>
           )}
         </div>
-        <div className="text-cyan-400/70">{icon}</div>
+        <div className="text-accent-cyan/70">{icon}</div>
       </div>
-      <div className="text-3xl font-bold text-cyan-400 tabular-nums tracking-tight">
+      <div className="text-3xl font-bold text-accent-cyan tabular-nums tracking-tight">
         {value}
       </div>
-      <div className="border-t border-zinc-700/40 pt-2.5 space-y-1.5">
+      <div className="border-t border-card/40 pt-2.5 space-y-1.5">
         {rows.map((row) => (
           <div
             key={row.label}
@@ -76,8 +76,8 @@ export function StatCard({
               }
             }}
           >
-            <span className="text-zinc-400">{row.label}</span>
-            <span className="text-zinc-200 tabular-nums font-medium">
+            <span className="text-muted">{row.label}</span>
+            <span className="text-secondary tabular-nums font-medium">
               {row.value}
             </span>
           </div>
