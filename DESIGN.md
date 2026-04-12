@@ -2,109 +2,85 @@
 
 ## 1. Visual Theme & Atmosphere
 
-VibeLens is a dense, data-rich analysis tool built on a dark zinc canvas. The design prioritizes information density and scannability over decoration. Every surface is a shade of zinc — from near-black (`zinc-950`) for the deepest background to cool gray (`zinc-800`) for elevated controls — creating a layered cockpit where data emerges from darkness through carefully calibrated luminance steps.
+VibeLens is a developer tool for analyzing coding agent trajectories. The design prioritizes information density and readability across long sessions, with a dual-mode system that treats light and dark as equal citizens. The light mode draws from Apple's cool neutral palette -- near-white canvas, high-contrast black text hierarchy, and soft diffused shadows. The dark mode uses a zinc-based theme with softened near-white text and border-driven elevation, inspired by Linear's dark-first engineering tools.
 
-The color system is achromatic at its core, with semantic accent colors assigned by function rather than aesthetics. Cyan is the primary accent — navigation, session identifiers, and interactive highlights all share this cool blue tone. A supporting cast of violet, teal, amber, rose, and emerald each own a single semantic lane (sub-agents, skills, friction, errors, success). No color appears in two roles. This strict mapping means users learn the system once and can scan by color alone.
+The typography uses the system font stack (`-apple-system, BlinkMacSystemFont, Segoe UI, Roboto`) for UI chrome and Geist Mono for code, session IDs, and technical labels. The system is built on semantic color tokens via CSS custom properties, with Tailwind's `dark:` prefix handling mode switching. Every color has both a light and dark variant, defined in `:root` and `.dark` respectively.
 
-Typography is system-native — the app inherits the operating system's sans-serif stack (`-apple-system`, `Segoe UI`, `Roboto`) for UI text, and uses Geist Mono for all code and numeric data. There is no custom display typeface. Headlines are small (18-24px) because this is a tool, not a marketing page. The largest text in the entire app is the brand name "VibeLens" at 24px. Most content lives at 11-14px, optimized for dense data tables, session lists, and metric displays.
-
-The overall impression is a mission-control interface: dark, focused, information-forward, with color used as signal rather than style.
+The color story uses a cool neutral base with semantic accent colors that carry meaning rather than decoration. Cyan marks navigation and primary session context. Teal marks skills, tutorials, and guided actions. Violet marks sub-agents and continuation chains. Amber marks warnings and verification phases. Rose marks destructive actions and errors. These accents appear at low opacity for backgrounds and borders, with full saturation reserved for icons and interactive text.
 
 **Key Characteristics:**
-- Dark and light mode with system preference detection (3-way toggle: System / Light / Dark)
-- CSS custom property token layer with semantic Tailwind classes (`bg-canvas`, `bg-panel`, `bg-control`, `text-primary`, etc.)
-- Cyan as the singular primary accent, with five supporting semantic colors
-- System sans-serif for UI, Geist Mono for code and numbers
-- Dense, small-type layouts optimized for data analysis workflows
-- Tailwind CSS utility classes as the styling primitive — no custom CSS framework
+- Dual-mode: light (`#fafafa` canvas, `#ffffff` panels) and dark (`#09090b` canvas, `#18181b` panels)
+- System font stack for UI, Geist Mono for code and technical content
+- CSS custom properties for all colors, consumed via Tailwind `extend.colors`
+- Semantic accent colors: cyan (navigation), teal (skills/tutorials), violet (sub-agents), amber (warnings), rose (destructive)
+- `dark:` prefix pattern for dual-mode overrides: `text-cyan-800 dark:text-cyan-100`
+- Accent colors at 6% opacity for light-mode backgrounds, 15-20% for dark-mode backgrounds
+- High-contrast text hierarchy: 5 tiers from primary to faint
 - Lucide React for all iconography
 - No gradients on surfaces, no textures, no decorative elements
 
 ## 2. Color Palette & Roles
 
-### Background Surfaces
+### Surfaces
 
-| Token | Tailwind | Hex | Use |
-|-------|----------|-----|-----|
-| Canvas | `bg-zinc-950` | `#09090b` | App root, main content area, deepest background |
-| Panel | `bg-zinc-900` | `#18181b` | Sidebar, modal cards, nav bar, right panels |
-| Control | `bg-zinc-800` | `#27272a` | Inputs, buttons, dropdowns, code header bars |
-| Subtle | `bg-zinc-800/50` | — | Hover states, stat boxes, confirm card backgrounds |
-| Overlay | `bg-black/60` | — | Modal backdrop (paired with `backdrop-blur-sm`) |
+| Token | Light | Dark | Use |
+|-------|-------|------|-----|
+| `canvas` | `#fafafa` | `#09090b` | Page background, outermost container |
+| `panel` | `#ffffff` | `#18181b` | Cards, modals, elevated content areas |
+| `control` | `#f0f0f2` | `#27272a` | Input backgrounds, toggle containers, inactive controls |
+| `control-hover` | `#e5e5ea` | `#3f3f46` | Hover state for controls and interactive surfaces |
+| `subtle` | `rgba(0,0,0,0.025)` | `rgba(39,39,42,0.5)` | Barely-visible tinting for depth |
+| `overlay` | `rgba(0,0,0,0.45)` | `rgba(0,0,0,0.6)` | Modal backdrop |
 
-### Text Hierarchy
+### Text
 
-| Role | Tailwind | Use |
-|------|----------|-----|
-| Primary | `text-zinc-100` | Headings, key values, modal titles |
-| Secondary | `text-zinc-200` | Body text, paragraph content, stat row values |
-| Muted | `text-zinc-400` | Labels, metadata, sidebar info, axis labels |
-| Dimmed | `text-zinc-500` | Placeholders, timestamps, disabled states, icon defaults |
-| Faint | `text-zinc-600` | Breadcrumb separators, background stats |
+| Token | Light | Dark | Use |
+|-------|-------|------|-----|
+| `primary` | `#000000` | `#f4f4f5` | Headings, names, primary content |
+| `secondary` | `#1d1d1f` | `#e4e4e7` | Body text, descriptions |
+| `muted` | `#48484a` | `#a1a1aa` | Labels, metadata |
+| `dimmed` | `#6e6e73` | `#71717a` | Timestamps, tertiary info |
+| `faint` | `#aeaeb2` | `#52525b` | Placeholders, disabled states |
+| `on-accent` | `#ffffff` | `#ffffff` | Text on filled accent buttons |
 
-### Semantic Accent Colors
+### Borders
 
-Each accent color owns exactly one semantic lane. Never repurpose a color for a different meaning.
+Dark mode borders use semi-transparent white for natural depth on dark surfaces, not solid zinc values.
 
-| Color | Role | Primary Classes | Where Used |
-|-------|------|----------------|------------|
-| **Cyan** | Navigation, primary interactive | `text-cyan-400`, `bg-cyan-600`, `border-cyan-700/40` | Session IDs, selected states, main CTAs, links, chart fills, resize handles, brand logo |
-| **Violet** | Sub-agents, uploads, continuations | `text-violet-400`, `bg-violet-600`, `border-violet-700/40` | Upload button, sub-agent badges, continuation chain pills, shared session banner |
-| **Teal** | Skills, plan entries, personalization | `text-teal-300`, `bg-teal-600/20`, `border-teal-500/30` | Skills tab, plan/auto-prompt entries, skill-related banners |
-| **Amber** | Friction, productivity, thinking | `text-amber-300`, `bg-amber-600/30`, `border-amber-400/40` | Friction/productivity tab, thinking blocks, warning banners, example badges |
-| **Rose** | Errors, destructive actions, donate | `text-rose-300`, `bg-rose-600`, `border-rose-800/50` | Donate button, error states, delete confirmations, debugging phase |
-| **Emerald** | Success, completion, privacy | `text-emerald-400`, `bg-emerald-500/10`, `border-emerald-700/30` | Upload success, copy confirmation, privacy protection stats, connected status dots |
-| **Indigo** | Conversation tab, exploration phase | `text-indigo-200`, `bg-indigo-600/30`, `border-indigo-400/40` | Conversation view toggle, exploration phase border, mixed phase |
-| **Blue** | File read operations, exploration | `text-blue-400`, `bg-blue-500/20` | File read tool category, exploration phase styling |
-| **Sky** | Search operations, low-severity | `text-sky-300`, `bg-sky-500/20` | Search tool category, severity level 2 badges |
-| **Orange** | Web operations, high-severity | `text-orange-300`, `bg-orange-500/20` | Web tool category, severity level 4 badges |
+| Token | Light | Dark | Use |
+|-------|-------|------|-----|
+| `default` | `#e5e5ea` | `rgba(255,255,255,0.06)` | Panel boundary borders (`border-l` on right sidebars) |
+| `card` | `rgba(0,0,0,0.08)` | `rgba(255,255,255,0.04)` | Row dividers, interior card borders |
+| `control` | `#d1d1d6` | `rgba(255,255,255,0.07)` | Input field borders |
+| `hover` | `#c7c7cc` | `rgba(255,255,255,0.10)` | Border on hover |
 
-### Border Hierarchy
+**Border hierarchy:** `default` (6% white) is used for structural boundaries like panel edges. `card` (4% white) is used for softer interior dividers between rows and list items. This two-tier system keeps panel boundaries visible while row dividers remain subtle.
 
-| Tailwind | Use |
-|----------|-----|
-| `border-zinc-800` | Primary dividers: sidebar borders, section separators, modal header/footer |
-| `border-zinc-700` | Card borders, input borders, modal outer border |
-| `border-zinc-700/60` | Softer card borders (dashboard stat cards, chart panels) |
-| `border-zinc-600` | Hover-elevated borders, blockquote accents |
+### Accent Colors
 
-### Phase Colors
+Each accent defines a full token set: base (icons/text), bg (filled buttons), subtle (background tint), border, focus, shadow.
 
-Used for left-border accents on conversation steps to indicate development phases:
+| Accent | Light Base | Dark Base | Semantic Role |
+|--------|-----------|-----------|---------------|
+| **Cyan** | `#0e7490` | `#22d3ee` | Navigation, session IDs, primary interactive |
+| **Teal** | `#0f766e` | `#5eead4` | Skills, tutorials, guided actions |
+| **Violet** | `#6d28d9` | `#a78bfa` | Sub-agents, continuation chains |
+| **Amber** | `#b45309` | `#fcd34d` | Warnings, verification, star ratings |
+| **Rose** | `#be123c` | `#fda4af` | Destructive actions, errors, donate |
+| **Emerald** | `#047857` | `#34d399` | Success states, installed/synced |
+| **Indigo** | `#4338ca` | `#a5b4fc` | Mixed phases, secondary grouping |
+| **Blue** | `#1d4ed8` | `#60a5fa` | Exploration phase, view toggles |
 
-| Phase | Border | Label | Dot | Background |
-|-------|--------|-------|-----|------------|
-| Exploration | `border-l-blue-400` | `text-blue-400` | `bg-blue-400` | `bg-blue-500/[0.03]` |
-| Implementation | `border-l-emerald-400` | `text-emerald-400` | `bg-emerald-400` | `bg-emerald-500/[0.03]` |
-| Debugging | `border-l-red-400` | `text-red-400` | `bg-red-400` | `bg-red-500/[0.03]` |
-| Verification | `border-l-amber-400` | `text-amber-400` | `bg-amber-400` | `bg-amber-500/[0.03]` |
-| Planning | `border-l-violet-400` | `text-violet-400` | `bg-violet-400` | `bg-violet-500/[0.03]` |
-| Mixed | `border-l-indigo-400` | `text-indigo-400` | `bg-indigo-400` | `bg-indigo-500/[0.03]` |
+### Accent Opacity Scale
 
-### Tool Category Colors
+Accent token suffixes follow a consistent opacity pattern:
 
-Used for tool call badges and distribution charts:
-
-| Category | Background | Ring | Text |
-|----------|-----------|------|------|
-| File Read | `bg-blue-500/20` | `ring-blue-400/60` | `text-blue-300` |
-| File Write | `bg-emerald-500/20` | `ring-emerald-400/60` | `text-emerald-300` |
-| Shell | `bg-amber-500/20` | `ring-amber-400/60` | `text-amber-300` |
-| Search | `bg-sky-500/20` | `ring-sky-400/60` | `text-sky-300` |
-| Web | `bg-orange-500/20` | `ring-orange-400/60` | `text-orange-300` |
-| Agent | `bg-violet-500/20` | `ring-violet-400/60` | `text-violet-300` |
-| Task | `bg-rose-500/20` | `ring-rose-400/60` | `text-rose-300` |
-| Other | `bg-zinc-500/20` | `ring-zinc-400/60` | `text-zinc-400` |
-
-### Severity Scale (Friction Analysis)
-
-| Level | Background | Text | Border |
-|-------|-----------|------|--------|
-| 1 (Low) | `bg-zinc-700/50` | `text-zinc-300` | `border-zinc-600/40` |
-| 2 | `bg-sky-900/40` | `text-sky-300` | `border-sky-700/30` |
-| 3 (Medium) | `bg-yellow-900/40` | `text-yellow-300` | `border-yellow-700/30` |
-| 4 | `bg-orange-900/50` | `text-orange-200` | `border-orange-600/40` |
-| 5 (High) | `bg-rose-900/50` | `text-rose-200` | `border-rose-600/40` |
+| Suffix | Light Opacity | Dark Opacity | Use |
+|--------|--------------|--------------|-----|
+| `-subtle` | 6% | 15-20% | Background tint for cards, badges |
+| `-border` | 15-18% | 25-40% | Colored borders on accent containers |
+| `-muted` | 10% | 35% | Slightly stronger tint (cyan only) |
+| `-shadow` | 10% | 40% | Focus ring shadows |
 
 ## 3. Typography Rules
 
@@ -112,344 +88,164 @@ Used for tool call badges and distribution charts:
 
 | Role | Stack | Use |
 |------|-------|-----|
-| UI / Body | `-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif` | All interface text — labels, headings, body, buttons |
-| Code / Numbers | `'Geist Mono', 'SF Mono', 'Fira Code', 'Fira Mono', 'Roboto Mono', monospace` | Code blocks, token counts, costs, session IDs, stat values |
+| UI / Body | `-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif` | All interface text |
+| Code / Numbers | `'Geist Mono', 'SF Mono', 'Fira Code', 'Fira Mono', 'Roboto Mono', monospace` | Code blocks, token counts, costs, session IDs |
 
 Geist Mono is loaded via Google Fonts at weights 400, 500, and 600.
 
-### Type Scale
+### Hierarchy
 
-| Role | Size | Weight | Extra | Use |
-|------|------|--------|-------|-----|
-| Brand | `text-2xl` (24px) | `font-bold` | `text-cyan-400` | "VibeLens" in sidebar header |
-| Page Title | `text-xl` (20px) | `font-semibold` | — | Dashboard heading |
-| Section Title | `text-lg` (18px) | `font-medium` | — | Session title in header |
-| Chart Heading | `text-base` (16px) | `font-medium` | — | Chart section headings within panels |
-| Body | `text-sm` (14px) | normal | — | Dialog messages, session list items, body text |
-| Label | `text-xs` (12px) | `font-medium` / `font-semibold` | — | Buttons, stat labels, pill text, secondary info |
-| Description | `text-[11px]` | normal | — | Card descriptions, tooltip text, badge text, session IDs |
-| Section Header | `text-[10px]` | `font-medium` | `uppercase tracking-wider` | Dashboard section labels, settings group headers |
-| Micro | `text-[9px]` | `font-medium` | — | Example badges, small overflow counts |
+| Role | Classes | Use |
+|------|---------|-----|
+| Page heading | `text-lg font-bold text-primary` | Panel titles, dialog headers |
+| Section heading | `text-sm font-semibold text-primary` | Section labels within panels |
+| Body | `text-sm text-secondary` | Descriptions, body content |
+| Label | `text-xs text-muted` | Metadata, counts, timestamps |
+| Caption | `text-[11px] text-muted` | Stat card descriptions, small labels |
+| Micro | `text-[10px] text-dimmed` | Badge text, tool counts |
+| Nano | `text-[9px] uppercase tracking-wider` | Auto-prompt labels |
+| Code | `font-mono text-sm text-primary` | Skill names, session IDs |
+| Code small | `font-mono text-[11px]` | Tool chip names, prompt indices |
 
-### Monospace Patterns
+### Principles
+- Text color always uses semantic tokens (`text-primary`, `text-secondary`, etc.) for content that must adapt to both modes
+- Tailwind color classes with `dark:` prefix for inline colored text: `text-cyan-800 dark:text-cyan-100`
+- Never use raw hex colors in component classes; all theme colors flow through CSS custom properties
+- `font-mono` for anything the user might want to copy: skill names, session IDs, file paths, tool names
+- `tabular-nums` on all numeric values for column alignment
 
-| Pattern | Classes | Use |
-|---------|---------|-----|
-| Stat Value | `font-mono tabular-nums` | Token counts, costs, session counts |
-| Code Block | `font-mono text-xs` | Command displays, code content |
-| Session ID | `font-mono text-[11px]` | Truncated UUIDs in session headers |
-| Stat Card Value | `text-3xl font-bold tabular-nums tracking-tight` | Dashboard big numbers |
-
-### Typography Principles
-
-- **No display type.** This is a tool, not a landing page. The largest text is 24px (brand name). Most UI text is 11-14px.
-- **System fonts for speed.** No custom web fonts for UI text. The OS provides the best reading experience at small sizes.
-- **Geist Mono for data.** All numeric values, costs, token counts, and code use the monospace stack. `tabular-nums` ensures columns align.
-- **Uppercase sparingly.** Reserved for section header labels (`text-[10px] font-medium uppercase tracking-wider text-zinc-400`). Never on body text or headings.
-- **Weight range is narrow.** Normal (400), medium (500), semibold (600), and bold (700). No light weights. Bold is rare — used only for stat card values and the brand name.
-
-## 4. Component Stylings
+## 4. Component Patterns
 
 ### Buttons
 
-**Primary (Accent-Colored)**
-Each feature area uses its own accent color, but all follow the same shape:
-```
-inline-flex items-center gap-2 px-4 py-2
-bg-{accent}-600 hover:bg-{accent}-500 text-white
-text-sm font-medium rounded-lg transition
-disabled:opacity-40 disabled:cursor-not-allowed
-```
-- Cyan: main actions (confirm, connect)
-- Violet: upload actions
-- Teal: skill actions
-- Amber: cost estimate actions
-- Rose: donate, destructive actions
+**Primary (Teal CTA)**
+- Classes: `px-3 py-1.5 text-xs font-medium text-white bg-teal-600 hover:bg-teal-500 rounded-md transition`
+- Use: "New Skill", "Install", primary actions
 
-**Secondary / Ghost**
-```
-px-3 py-1.5 text-xs
-text-zinc-400 hover:text-zinc-200
-border border-zinc-700 hover:border-zinc-600
-rounded transition
-```
+**Secondary (Ghost)**
+- Classes: `px-3 py-1.5 text-xs font-medium text-secondary hover:text-primary bg-control hover:bg-control-hover border border-card rounded-md transition`
+- Use: Refresh, close, secondary actions
 
-**Icon-Only**
-```
-p-1.5 text-zinc-500 hover:text-zinc-300
-hover:bg-zinc-800 rounded transition
-```
+**Destructive (Inline)**
+- Classes: `text-dimmed hover:text-red-600 dark:hover:text-red-400 hover:bg-control-hover rounded transition`
+- Use: Delete buttons (icon-only in lists)
 
-**Segmented Toggle (shared constant from `styles.ts`)**
-```
-Container: flex gap-0.5 bg-zinc-800 rounded p-0.5
-Button:    flex-1 flex items-center justify-center gap-1.5 text-xs py-1.5 rounded transition
-Active:    bg-zinc-700 text-zinc-100
-Inactive:  text-zinc-500 hover:text-zinc-300
-```
+**Toggle (Segmented Control) -- Simple**
+- Container: `flex gap-0.5 bg-control rounded p-0.5`
+- Active: `bg-control-hover text-primary`
+- Inactive: `text-dimmed hover:text-secondary`
+- Use: Small metric/time-group toggles (e.g., Day/Month/Year in charts)
+- Defined as shared constants in `styles.ts`: `TOGGLE_CONTAINER`, `TOGGLE_ACTIVE`, `TOGGLE_INACTIVE`
 
-**View Mode Toggle (header tabs)**
-```
-Active:   min-w-[100px] text-center px-4 py-1.5 text-sm font-semibold rounded-md
-          bg-{accent}-600/30 text-{accent}-200 border border-{accent}-400/40
-          shadow-sm shadow-{accent}-900/40 transition
-Inactive: min-w-[100px] text-center px-4 py-1.5 text-sm font-semibold rounded-md
-          text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition
-```
+**Toggle (Segmented Control) -- Apple-style Pill**
+- Container: `flex rounded-lg bg-zinc-100 dark:bg-zinc-800/60 p-0.5`
+- Active: `bg-white dark:bg-zinc-700 text-primary font-semibold shadow-sm`
+- Inactive: `text-muted hover:text-secondary`
+- Use: Primary mode switches (View Mode: Concise/Detail/Workflow, Nav Mode: User/Sub-Agents)
+- Uses hardcoded zinc values (not semantic tokens) for the distinctive white-pill-on-gray-track appearance
 
-**Pill Selector**
-```
-Active:   px-3 py-1 text-xs rounded-full bg-violet-600 text-white
-Inactive: px-3 py-1 text-xs rounded-full bg-zinc-800 text-zinc-400
-          border border-zinc-700 hover:border-zinc-500 hover:text-zinc-200
-```
+### Cards
 
-### Cards & Containers
+**Skill Card (Local/Explore)**
+- Container: `border border-card rounded-lg bg-panel hover:bg-control/80 transition`
+- Title: `font-mono text-sm font-semibold text-primary`
+- Description: `text-sm text-secondary mt-1 line-clamp-2`
+- Icon container: `p-1.5 rounded-md bg-accent-teal-subtle`
 
-**Dashboard Stat Card**
-```
-rounded-xl border border-zinc-700/60 bg-zinc-900/80
-px-5 py-5 hover:border-zinc-500/60 transition-colors
-```
-- Label: `text-xs font-semibold text-zinc-200 uppercase tracking-wider`
-- Value: `text-3xl font-bold text-cyan-400 tabular-nums tracking-tight`
-- Divider: `border-t border-zinc-700/40 pt-2.5`
+**Installed Skill Card (Explore)**
+- Container: `border-emerald-300/40 bg-emerald-50 hover:bg-emerald-100/80 dark:border-emerald-800/40 dark:bg-emerald-950/20 dark:hover:bg-emerald-950/30`
+- Green tint signals "already installed" state
 
-**Dashboard Section Card**
-```
-rounded-xl border border-zinc-700/60 bg-zinc-900/80 p-5
-```
+**Flow Card (Workflow Diagram)**
 
-**Info Card (dialogs, confirmations)**
-```
-bg-zinc-800/50 border border-zinc-700 rounded-lg p-4 space-y-2.5
-```
+Flow cards use a dual-mode strategy: neutral zinc in light mode for readability, colored accents in dark mode for visual richness.
 
-**Success Card**
-```
-rounded-lg border border-emerald-700/30 bg-emerald-950/10 px-4 py-3
-```
+- Agent card: `border-zinc-200 dark:border-cyan-500/20 bg-zinc-50/50 dark:bg-cyan-950/20 hover:border-zinc-300 dark:hover:border-cyan-400/35`
+- User anchor (manual): `border-zinc-200 dark:border-cyan-500/25 bg-zinc-50/50 dark:bg-cyan-950/20`
+- User anchor (auto-prompt): `border-zinc-200 dark:border-teal-500/20 bg-zinc-50/50 dark:bg-teal-950/20`
+- Agent text: `text-zinc-800 dark:text-cyan-100`
+- Icon container: `bg-zinc-100 border-zinc-200/50 dark:bg-cyan-500/20 dark:border-cyan-400/15`
 
-### Inputs & Forms
+**Tool Chip (Workflow Diagram)**
+- Base: category-colored `bg-{color}-500/20` with `text-{color}-600 dark:text-{color}-300`
+- Highlight on hover: `ring-2 ring-{color}-400/60`
 
-**Text Input**
-```
-w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg
-text-sm text-zinc-200 placeholder-zinc-500
-focus:outline-none focus:border-cyan-600
-```
-Focus border color changes per panel: `focus:border-amber-600` (friction), `focus:border-teal-600` (skills).
+### Tutorial Banners
 
-**Search Input (with icon)**
-```
-w-full bg-zinc-800 text-zinc-200 text-sm rounded
-pl-7 pr-8 py-1.5 border border-zinc-700
-focus:outline-none focus:border-cyan-600 placeholder:text-zinc-500
-```
-Search icon: absolute positioned, `left-2 top-1/2 -translate-y-1/2`, `w-3.5 h-3.5 text-zinc-500`.
-
-**Checkbox**
-```
-accent-cyan-500 w-4 h-4 rounded border-zinc-600 bg-zinc-800
-```
-
-**Form Label**
-```
-block text-xs font-medium text-zinc-300 mb-1
-```
-
-**Section Header**
-```
-text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-3
-```
-
-### Badges & Pills
-
-**MetaPill (session header)**
-```
-inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px]
-bg-zinc-800 border border-zinc-700/50
-```
-Session ID variant: `bg-cyan-950/50 border-cyan-800/30 text-cyan-300 font-mono`
-
-**Continuation Chain Pill**
-```
-inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full
-bg-violet-900/30 border border-violet-700/40 text-xs text-violet-300
-hover:bg-violet-800/40 hover:border-violet-600/50 transition-colors
-```
-
-**Tag Badge**
-```
-text-xs px-1.5 py-0.5 rounded bg-zinc-700/60 text-zinc-300
-```
-
-**Tool Badge (monospace)**
-```
-text-[10px] px-1.5 py-0.5 rounded bg-cyan-900/20 text-cyan-400/70 font-mono
-```
-
-**Example Badge**
-```
-px-1 py-0.5 text-[9px] font-medium
-bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded
-```
-
-**Status Dot**
-```
-w-1.5 h-1.5 rounded-full bg-emerald-400
-```
-
-### Custom Dropdown
-
-VibeLens uses custom dropdown components instead of native `<select>` elements. Native selects break the dark theme.
+All tutorial/info banners follow a consistent pattern:
 
 ```
-Trigger:  w-full flex items-center justify-between px-3 py-2
-          bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-200
-          focus:outline-none focus:border-cyan-600 transition
-Chevron:  w-3.5 h-3.5 text-zinc-500 transition (rotate-180 when open)
-Menu:     absolute z-20 mt-1 w-full max-h-64 overflow-y-auto
-          bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl
-Option:   w-full text-left px-3 py-2 text-sm hover:bg-zinc-700 transition
-Selected: text-cyan-400 (or accent color) with Check icon
+border border-{color}-300 dark:border-{color}-800/40
+bg-{color}-50 dark:bg-{color}-950/20
 ```
+
+- Icon container: `bg-{color}-100 dark:bg-{color}-500/15 border border-{color}-200 dark:border-{color}-500/20`
+- Icon: `text-{color}-600 dark:text-{color}-400`
+- Title: `text-primary` (always semantic, never colored)
+- Description: `text-secondary` (always semantic)
+
+Supported colors: teal (skills), cyan (session viewer), amber (friction analysis).
 
 ### Modals
 
-Built from four composable parts (`modal.tsx`):
+- Always use shared `Modal` / `ModalHeader` / `ModalBody` / `ModalFooter` from `components/modal.tsx`
+- Background: `bg-panel` with `border border-card`
+- Overlay: `bg-overlay` backdrop with `backdrop-blur-sm`
+
+### Tooltips
+
+- Always use shared `Tooltip` from `components/tooltip.tsx`
+- Renders via portal, shows instantly, auto-flips
+- Never use native `title` attributes
+
+### Right Sidebar Panels
+
+- Width: `SIDEBAR_DEFAULT_WIDTH` (252px), min 180px, max 400px from `styles.ts`
+- Background: `bg-canvas` with `border-l border-default`
+- All sidebar panels (prompt nav, friction history, skills history) share these dimensions
+
+### Custom Dropdowns
+
+Use custom dropdown components instead of native `<select>` elements. Native selects break the dark theme.
+
+### Error Banners
 
 ```
-Overlay:  fixed inset-0 z-50, backdrop bg-black/60 backdrop-blur-sm
-Card:     bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl
-          max-h-[85vh] w-full {maxWidth} mx-4 flex flex-col
-Header:   px-5 py-4 border-b border-zinc-800
-          Title: text-sm font-semibold text-zinc-100
-          Close: text-zinc-500 hover:text-zinc-300 transition, X icon w-4 h-4
-Body:     flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-4
-Footer:   flex justify-end gap-2 px-5 py-3 border-t border-zinc-800
+flex items-start gap-2 px-4 py-3 rounded-lg
+bg-red-50 dark:bg-red-900/20
+border border-red-200 dark:border-red-800/30
 ```
-
-### Tooltip
-
-Portal-rendered, instant-show, auto-flips vertically:
-```
-z-[9999] px-3 py-2 text-xs leading-relaxed text-zinc-100
-bg-zinc-800/95 border border-zinc-600 rounded-lg shadow-2xl
-max-w-[300px] w-max text-center pointer-events-none break-words
-```
-
-### Banners
-
-All banners follow the same structure with accent-specific colors:
-
-| Type | Background | Border | Icon Color | Text Color |
-|------|-----------|--------|------------|------------|
-| Info (Cyan) | `bg-cyan-900/20` | `border-cyan-700/30` | `text-cyan-400` | `text-cyan-300/90` |
-| Warning (Amber) | `bg-amber-900/20` | `border-amber-700/30` | `text-amber-400` | `text-amber-300/90` |
-| Error (Rose) | `bg-rose-900/20` | `border-rose-800/50` | `text-rose-400` | `text-rose-300` |
-| Success (Emerald) | `bg-emerald-950/10` | `border-emerald-700/30` | `text-emerald-400` | `text-emerald-400` |
-
-Structure: `px-3 py-2 rounded-lg {bg} border {border}`, icon `w-3.5 h-3.5 shrink-0 mt-0.5`, text `text-xs`.
-
-### Bar Charts
-
-```
-Track: flex-1 h-5 bg-zinc-800/60 rounded-md overflow-hidden
-Fill:  h-full bg-gradient-to-r from-cyan-600 to-cyan-400 rounded-md transition-all
-Label: w-32 truncate text-zinc-300 group-hover:text-zinc-100
-Value: w-10 text-right text-zinc-300 tabular-nums font-medium
-```
-
-Progress bar (thin): `h-1.5 bg-zinc-800/60 rounded-full` with fill `from-cyan-600 to-cyan-400 rounded-full`.
-
-### CollapsiblePill
-
-```
-Outer:   rounded-lg border {colorClass} overflow-hidden
-Toggle:  flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-white/5 transition-colors
-Chevron: ChevronDown/Right w-3 h-3
-Label:   font-medium
-Content: border-t border-inherit
-```
-
-### Loading States
-
-**Full-area spinner:** Three concentric animated rings with pulsing center dot. Colors: cyan, amber, teal. Label: `text-sm font-medium text-zinc-200`.
-
-**Inline spinner:** `<Loader2 className="w-4 h-4 animate-spin text-zinc-500" />`
-
-**Success state:** `w-14 h-14 rounded-full bg-emerald-500/10 border border-emerald-500/20` with `CheckCircle2 w-7 h-7 text-emerald-400`.
-
-**Error state:** `bg-rose-900/20 border border-rose-800 rounded-lg p-6` with title `text-sm font-semibold text-rose-300`.
-
-### Empty / Welcome State
-
-```
-flex items-center justify-center h-full
-text-center
-Icon:     text-5xl mb-4 opacity-50
-Title:    text-lg font-medium text-zinc-300 mb-1
-Subtitle: text-sm text-zinc-500 mb-6
-```
+- Icon: `text-red-600 dark:text-red-400`
+- Text: `text-red-700 dark:text-red-300`
 
 ## 5. Layout Principles
 
 ### App Shell
 
-The app is a fixed-viewport three-column layout:
-
 ```
-Root:    flex h-full overflow-hidden bg-zinc-950 text-zinc-100
-Left:    Sidebar — resizable, 240-600px, default 280px
-         bg-zinc-900, border-r border-zinc-800
-Center:  Main content — flex-1 min-w-0 bg-zinc-950
-Right:   Optional panel — 180-400px, default 252px
-         border-l border-zinc-800 bg-zinc-900/50
+Root:    flex h-full overflow-hidden bg-canvas text-primary
+Left:    Sidebar (resizable, default 280px), bg-panel, border-r border-default
+Center:  Main content (flex-1), bg-canvas
+Right:   Optional panel (default 252px), border-l border-default, bg-canvas
 ```
 
-### Sidebar
+### Spacing
+- Base unit: Tailwind's 4px scale (`gap-1` = 4px, `gap-2` = 8px, etc.)
+- Panel padding: `px-6 py-8` for main content areas
+- Card padding: `px-4 py-3` for list items
+- Section gaps: `space-y-2` for card lists, `mb-4`/`mb-5` between sections
 
-- Header: `h-[75px] px-4 border-b border-zinc-800 sticky top-0`
-- Footer: `border-t border-zinc-800 px-3 py-2 text-xs text-zinc-400`
-- Resize handle: `w-1 cursor-col-resize hover:bg-cyan-500/40 active:bg-cyan-500/60`
+### Widths
+- Main content: `max-w-5xl mx-auto` for skills panels
+- Flow diagram: `max-w-3xl mx-auto` for workflow view
+- Sidebar: 252px default (resizable 180-400px)
+- Dashboard: `max-w-[1400px] mx-auto`
 
-### Dashboard Grid
-
-```
-Container: max-w-[1400px] mx-auto p-6 space-y-5
-Stat row:  grid grid-cols-5 gap-4
-Content:   grid grid-cols-2 gap-4
-```
-
-### Session View
-
-```
-Header:  px-4 py-2
-Content: max-w-5xl mx-auto px-4 py-6 space-y-3
-User messages: max-w-[85%]
-```
-
-### Top Nav Bar
-
-```
-flex items-center justify-between px-4 py-2
-border-b-2 border-zinc-700/60 bg-zinc-900 shadow-sm shadow-black/30
-```
-
-### Spacing Conventions
-
-| Context | Padding |
-|---------|---------|
-| Modal header/body | `px-5 py-4` |
-| Modal footer | `px-5 py-3` |
-| Stat cards | `px-5 py-5` |
-| Dashboard panels | `p-5` |
-| Small inputs | `px-2.5 py-1.5` |
-| Standard inputs | `px-3 py-2` |
-| Small buttons | `px-3 py-1.5` |
-| Primary buttons | `px-4 py-2` |
-| Banners | `px-3 py-2` |
+### Content Pattern
+- Filter bars sit above search bars, both above content lists
+- Error banners appear between controls and content
+- Loading/empty states center vertically in the content area
+- Pagination at bottom of lists, hidden when total fits in one page
 
 ### Shared Width Constants
 
@@ -459,35 +255,19 @@ SIDEBAR_MIN_WIDTH     = 180
 SIDEBAR_MAX_WIDTH     = 400
 ```
 
-All right-side panels (prompt nav, friction history, skills history) must use these shared values. Never hardcode panel widths locally.
-
-### Whitespace Philosophy
-
-- **Density over breath.** VibeLens is an analysis tool. Screen real estate is for data, not decoration. Padding is functional (readability, click targets), never atmospheric.
-- **Sections divide by borders, not space.** Horizontal dividers (`border-b border-zinc-800`) separate sections. No large empty gaps between content areas.
-- **Cards contain, not float.** Cards sit flush in grids with `gap-4`, not surrounded by generous margins. The dark background IS the negative space.
+All right-side panels must use these shared values. Never hardcode panel widths locally.
 
 ## 6. Depth & Elevation
 
-| Level | Treatment | Use |
-|-------|-----------|-----|
-| Flat (Level 0) | No shadow, `bg-zinc-950` | App canvas, main content area |
-| Surface (Level 1) | `bg-zinc-900`, `border border-zinc-800` | Sidebar, nav bar, right panels |
-| Card (Level 2) | `bg-zinc-900/80`, `border border-zinc-700/60` | Dashboard cards, chart panels, stat cards |
-| Control (Level 3) | `bg-zinc-800`, `border border-zinc-700` | Inputs, dropdown triggers, code blocks |
-| Elevated (Level 4) | `bg-zinc-800`, `border border-zinc-700`, `shadow-xl` | Dropdown menus |
-| Modal (Level 5) | `bg-zinc-900`, `border border-zinc-700`, `shadow-2xl` | Modals, dialogs |
-| Tooltip (Level 6) | `bg-zinc-800/95`, `border border-zinc-600`, `shadow-2xl`, `z-[9999]` | Tooltip popups |
+| Level | Light | Dark | Use |
+|-------|-------|------|-----|
+| Flat | `bg-canvas` | `bg-canvas` | Page background |
+| Surface | `bg-panel` | `bg-panel` | Cards, modals, sidebar |
+| Control | `bg-control` | `bg-control` | Inputs, toggles, inactive tabs |
+| Hover | `bg-control-hover` | `bg-control-hover` | Hover states, active tabs |
+| Card shadow | `0 1px 3px rgba(0,0,0,0.06), 0 2px 8px rgba(0,0,0,0.04)` | `none` | Light mode card elevation |
 
-**Shadow Philosophy:** Shadows are rare and minimal. The dark canvas makes traditional drop shadows nearly invisible, so elevation is communicated primarily through background luminance steps (`zinc-950` -> `zinc-900` -> `zinc-800`) and border visibility. The only significant shadows appear on modals (`shadow-2xl`), dropdown menus (`shadow-xl`), and the nav bar (`shadow-sm shadow-black/30`). Tooltips use `shadow-2xl` because they must visually float above all content.
-
-### Modal Backdrop
-
-```
-bg-black/60 backdrop-blur-sm
-```
-
-The backdrop dims the entire viewport and applies a subtle blur, creating focus isolation for the modal card.
+**Shadow philosophy:** Light mode uses Apple-inspired soft diffused shadows for subtle elevation. Dark mode uses no shadows; elevation is communicated through background luminance steps (`#09090b` < `#18181b` < `#27272a` < `#3f3f46`). Borders on dark mode are semi-transparent white (`rgba(255,255,255,0.04-0.06)`) to provide structure without visual noise.
 
 ### Border Radius Scale
 
@@ -495,146 +275,186 @@ The backdrop dims the entire viewport and applies a subtle blur, creating focus 
 |------|----------|-----|
 | Micro | `rounded` (4px) | Small controls, inputs, toggle buttons |
 | Standard | `rounded-md` (6px) | Buttons, dropdown items |
-| Comfortable | `rounded-lg` (8px) | Cards, modals, banners, code blocks, most containers |
+| Comfortable | `rounded-lg` (8px) | Cards, modals, banners, code blocks |
 | Large | `rounded-xl` (12px) | Dashboard stat cards, chart panels |
-| Full | `rounded-full` | Pills, progress bars, status dots, circular buttons |
+| Full | `rounded-full` | Pills, progress bars, status dots |
 
-## 7. Do's and Don'ts
+## 7. Phase & Category Colors
+
+### Workflow Phases
+
+Used in flow diagram sections and nav panel entries:
+
+| Phase | Border | Label | Dot |
+|-------|--------|-------|-----|
+| Exploration | `border-l-blue-400` | `text-blue-600 dark:text-blue-400` | `bg-blue-400` |
+| Implementation | `border-l-emerald-400` | `text-emerald-600 dark:text-emerald-400` | `bg-emerald-400` |
+| Debugging | `border-l-red-400` | `text-red-600 dark:text-red-400` | `bg-red-400` |
+| Verification | `border-l-amber-400` | `text-amber-600 dark:text-amber-400` | `bg-amber-400` |
+| Planning | `border-l-violet-400` | `text-violet-600 dark:text-violet-400` | `bg-violet-400` |
+| Mixed | `border-l-indigo-400` | `text-indigo-600 dark:text-indigo-400` | `bg-indigo-400` |
+
+### Tool Categories
+
+Used in flow diagram tool chips and category breakdowns:
+
+| Category | Background | Text | Label | Tools |
+|----------|-----------|------|-------|-------|
+| File Read | `bg-blue-500/20` | `text-blue-600 dark:text-blue-300` | read | Read, NotebookRead, cat |
+| File Write | `bg-emerald-500/20` | `text-emerald-600 dark:text-emerald-300` | write | Edit, Write, NotebookEdit, MultiEdit, apply_patch |
+| Shell | `bg-amber-500/20` | `text-amber-600 dark:text-amber-300` | shell | Bash, execute_command |
+| Search | `bg-sky-500/20` | `text-sky-600 dark:text-sky-300` | search | Glob, Grep, find, LS |
+| Web | `bg-orange-500/20` | `text-orange-600 dark:text-orange-300` | web | WebSearch, WebFetch |
+| Agent | `bg-violet-500/20` | `text-violet-600 dark:text-violet-300` | agent | Agent, Task, Skill |
+| Task | `bg-rose-500/20` | `text-rose-600 dark:text-rose-300` | task | TaskCreate, TaskUpdate, TaskList, TaskGet, TaskOutput, TaskStop, TodoWrite, TodoRead |
+| Interact | `bg-cyan-500/20` | `text-cyan-600 dark:text-cyan-300` | interact | AskUserQuestion, AskUser, EnterPlanMode, ExitPlanMode, EnterWorktree |
+| Other | `bg-zinc-500/20` | `text-zinc-500 dark:text-zinc-400` | other | (fallback for unmapped tools) |
+
+Tool category mappings are maintained in parallel: `frontend/src/components/conversation/flow-layout.ts` (TypeScript) and `src/vibelens/services/session/tool_categories.py` (Python). Both must be kept in sync.
+
+### Severity Colors (Friction Analysis)
+
+| Level | Light | Dark |
+|-------|-------|------|
+| 1 (info) | `bg-control-hover/50 text-secondary` | Same (semantic tokens) |
+| 2 (low) | `bg-sky-50 text-sky-700 border-sky-200` | `bg-sky-900/40 text-sky-300 border-sky-700/30` |
+| 3 (medium) | `bg-yellow-50 text-yellow-700 border-yellow-200` | `bg-yellow-900/40 text-yellow-300 border-yellow-700/30` |
+| 4 (high) | `bg-orange-50 text-orange-700 border-orange-200` | `bg-orange-900/50 text-orange-200 border-orange-600/40` |
+| 5 (critical) | `bg-rose-50 text-rose-700 border-rose-200` | `bg-rose-900/50 text-rose-200 border-rose-600/40` |
+
+## 8. Do's and Don'ts
 
 ### Do
-
-- Use the zinc surface hierarchy consistently: `zinc-950` (canvas) > `zinc-900` (panels) > `zinc-800` (controls)
-- Assign each accent color to exactly one semantic role (cyan = navigation, violet = sub-agents, etc.)
-- Use `font-mono tabular-nums` for all numeric data — costs, token counts, session counts, percentages
-- Match focus border color to the panel's accent: `focus:border-cyan-600` in main views, `focus:border-amber-600` in friction, `focus:border-teal-600` in skills
-- Use the shared `Modal` / `ModalHeader` / `ModalBody` / `ModalFooter` from `components/modal.tsx` for all dialogs
-- Use the shared `Tooltip` from `components/tooltip.tsx` — it renders via portal, shows instantly, and auto-flips
-- Use custom dropdown components instead of native `<select>` elements (native selects break the dark theme)
-- Use `text-zinc-100` for primary text — not pure white, which is too harsh on dark backgrounds
-- Apply `transition` or `transition-colors` on all interactive elements for smooth state changes
-- Use Lucide React for all icons, sized with `w-{n} h-{n}` classes
-- Keep button text at `text-xs` (12px) for standard buttons, `text-sm` (14px) for primary CTAs
-- Use `uppercase tracking-wider` only on section header labels at `text-[10px]` or `text-xs`
+- Use CSS custom properties for all theme colors; consume via Tailwind `extend.colors` tokens
+- Use `dark:` prefix for every color that differs between modes: `text-cyan-800 dark:text-cyan-100`
+- Use semantic text tokens (`text-primary`, `text-secondary`) for content text
+- Use `bg-panel` for card/block backgrounds, `bg-canvas` for page background
+- Use the shared Modal, Tooltip, and sidebar dimension constants
+- Keep tutorial banners consistent: `text-primary` title, `text-secondary` description, flat colored background
+- Match existing patterns when adding new components
+- Use `font-mono` for technical identifiers (skill names, session IDs, file paths)
+- Use `font-mono tabular-nums` for all numeric data
+- Apply `transition` or `transition-colors` on all interactive elements
 
 ### Don't
+- Don't use raw dark-only colors without a light equivalent: `text-cyan-100` alone is invisible in light mode
+- Don't use `hover:brightness-125` as a hover effect; it does nothing meaningful on light backgrounds. Use `hover:bg-control-hover` or explicit hover colors
+- Don't use CSS variable values with Tailwind opacity modifiers (`border-card/40`); the `/40` suffix silently fails on CSS variables containing hex or rgba
+- Don't use `bg-subtle` for content cards; use `bg-panel` for a clean white/dark-zinc appearance
+- Don't use gradients or radial overlays on tutorial/info banners; use flat colored backgrounds
+- Don't hardcode sidebar widths; use `SIDEBAR_DEFAULT_WIDTH` / `SIDEBAR_MIN_WIDTH` / `SIDEBAR_MAX_WIDTH` from `styles.ts`
+- Don't use native `<select>` elements; they break the dark theme. Use custom dropdown components
+- Don't use native `title` attributes; they have delayed display and unstyled appearance. Use the shared Tooltip
+- Don't hand-roll modal overlay markup; use the shared `Modal` component
+- Don't add decorative elements, illustrations, or ornamental spacing
 
-- Don't use pure white (`#ffffff`) as a background or primary text color — use `text-zinc-100` or lower
-- Don't use native `<select>`, `<input type="checkbox">` without styling, or browser-default form controls — they break the dark theme
-- Don't use native `title` attributes for tooltips — they have delayed display and unstyled appearance; use the shared `Tooltip` component
-- Don't hand-roll modal overlay markup — use the shared `Modal` component which handles backdrop, focus trap, and z-indexing
-- Don't introduce warm accent colors (yellow, orange, red) for non-error/non-warning UI elements
-- Don't use gradients on surfaces or backgrounds — backgrounds are always solid zinc values or semi-transparent
-- Don't hardcode sidebar or panel widths — use `SIDEBAR_DEFAULT_WIDTH`, `SIDEBAR_MIN_WIDTH`, `SIDEBAR_MAX_WIDTH` from `styles.ts`
-- Don't use `text-white` for button text on colored backgrounds — use `text-white` only, never `text-zinc-50` (the distinction matters in opacity compositing)
-- Don't use `font-bold` outside of stat card values and the brand name — `font-semibold` is the maximum for headings, `font-medium` for labels
-- Don't add decorative elements, illustrations, or ornamental spacing — the interface is utilitarian
-- Don't use `shadow-md` or `shadow-lg` on cards — cards get elevation from border and background color, not shadows
+## 9. File Architecture
 
-## 8. Responsive Behavior
+### Theme Definition
+- `frontend/src/index.css` -- CSS custom properties in `:root` (light) and `.dark` (dark)
+- `frontend/tailwind.config.js` -- Maps CSS variables to Tailwind token names via `extend.colors`
+- `frontend/src/styles.ts` -- Shared constants: phase colors, category styles, severity colors, layout dimensions
 
-VibeLens is designed as a **desktop-first dense application**. The UI assumes a wide viewport (1280px+) and does not include mobile layouts.
+### Component Structure
+Feature panels follow a consistent file-splitting pattern:
+- `*-panel.tsx` -- Thin orchestrator with tab routing and top-level state
+- `*-tab.tsx` -- One file per tab with its own state management
+- `*-cards.tsx` -- Card and detail popup components
+- `*-shared.tsx` -- Reusable sub-components (search bars, filter bars, empty states)
+- `*-constants.ts` -- Color maps, label maps, config arrays
 
-### Current Breakpoints
+### Shared Primitives
+- `components/modal.tsx` -- `Modal`, `ModalHeader`, `ModalBody`, `ModalFooter`
+- `components/tooltip.tsx` -- Portal-rendered `Tooltip` with auto-flip
+- `components/confirm-dialog.tsx` -- Confirmation dialogs for destructive actions
+- `components/markdown-renderer.tsx` -- Syntax-highlighted markdown rendering
 
-| Breakpoint | Use |
-|-----------|-----|
-| `xl` (1280px) | Right-side prompt nav panel appears (`hidden xl:flex`) |
+## 10. Chart & Data Visualization
 
-No other responsive breakpoints are used. Dashboard grids (`grid-cols-5`, `grid-cols-2`) and session view layouts are fixed.
+### Chart Colors (via CSS variables)
 
-### Theme System
+| Token | Light | Dark | Use |
+|-------|-------|------|-----|
+| `chart-line` | `rgb(8,145,178)` | `rgb(34,211,238)` | Line strokes |
+| `chart-area-start` | `rgba(8,145,178,0.15)` | `rgba(34,211,238,0.3)` | Area gradient top |
+| `chart-area-end` | `rgba(8,145,178,0.02)` | `rgba(34,211,238,0.02)` | Area gradient bottom |
+| `chart-grid` | `rgba(0,0,0,0.06)` | `rgba(255,255,255,0.06)` | Grid lines |
+| `chart-axis` | `rgba(0,0,0,0.1)` | `rgba(255,255,255,0.08)` | Axis baselines |
+| `chart-text` | `#6e6e73` | `#a1a1aa` | Axis labels |
 
-VibeLens supports dark and light mode via a CSS custom property token layer. Colors are defined as CSS variables in `:root` (light) and `.dark` (dark), referenced through Tailwind's `theme.extend.colors`.
+### Heatmap (5-level scale)
 
-**How it works:**
-- `frontend/src/index.css` defines ~60 CSS variables in `:root` (light defaults) and `.dark` (dark overrides)
-- `frontend/tailwind.config.js` maps semantic names to CSS variables (e.g., `canvas` -> `var(--color-bg-canvas)`)
-- Components use semantic classes like `bg-canvas`, `text-primary`, `border-default` instead of hardcoded zinc values
-- `settings-context.tsx` manages the 3-way toggle (System / Light / Dark) with localStorage persistence and `prefers-color-scheme` media query detection
+Level 0 uses neutral gray (not cyan) so empty cells form a visible grid without implying activity.
 
-**Adding a new theme color:**
-1. Add the CSS variable to both `:root` and `.dark` in `index.css`
-2. Add the Tailwind mapping in `tailwind.config.js` under `theme.extend.colors`
-3. Use the new semantic class in components (e.g., `bg-my-token`)
+| Level | Light | Dark |
+|-------|-------|------|
+| 0 | `rgba(0,0,0,0.04)` | `rgba(255,255,255,0.04)` |
+| 1 | `rgba(8,145,178,0.15)` | `rgba(34,211,238,0.20)` |
+| 2 | `rgba(8,145,178,0.30)` | `rgba(34,211,238,0.40)` |
+| 3 | `rgba(8,145,178,0.50)` | `rgba(34,211,238,0.60)` |
+| 4 | `rgba(8,145,178,0.70)` | `rgba(34,211,238,0.80)` |
 
-### Scrollbar Styling
+### Scrollbar
 
-Custom WebKit scrollbar:
-```css
-width/height: 6px
-thumb: rgba(63,63,70,0.5)  /* zinc-700/50 */
-thumb hover: rgba(82,82,91,0.7)
-border-radius: 3px
-```
+| Part | Light | Dark |
+|------|-------|------|
+| Thumb | `rgba(0,0,0,0.15)` | `rgba(63,63,70,0.5)` |
+| Thumb hover | `rgba(0,0,0,0.25)` | `rgba(82,82,91,0.7)` |
+| Width/height | 6px | 6px |
+| Border radius | 3px | 3px |
 
-## 9. Agent Prompt Guide
+## 11. Loading & Empty States
 
-### Quick Color Reference
+### Loading Spinners
 
-```
-App background:    bg-zinc-950
-Panel background:  bg-zinc-900
-Control surface:   bg-zinc-800
-Primary text:      text-zinc-100
-Body text:         text-zinc-200
-Muted text:        text-zinc-400
-Dimmed text:       text-zinc-500
-Primary accent:    cyan-400 / cyan-600
-Primary border:    border-zinc-800
-Card border:       border-zinc-700/60
-Input border:      border-zinc-700
-Focus ring:        focus:border-cyan-600
-Modal backdrop:    bg-black/60 backdrop-blur-sm
-Modal shadow:      shadow-2xl
-```
+Three tiers of loading indication, each for a different context:
 
-### Example Component Prompts
+**Page-level: Concentric Rings (`LoadingSpinnerRings`)**
+- Defined in `components/loading-spinner.tsx`
+- Three rotating rings at different speeds (3s, 1.8s, 1s) with a pulsing center dot and a soft glow backdrop
+- Color prop: `"cyan"` (default), `"amber"`, or `"teal"`
+- Wrapped by `LoadingSpinner` which adds an optional label and sublabel
+- Use: Full-page or full-panel loading (session loading, dashboard loading, shared session loading)
 
-- **Stat card:** "Create a dashboard stat card: `rounded-xl border border-zinc-700/60 bg-zinc-900/80 px-5 py-5`. Label at `text-xs font-semibold text-zinc-200 uppercase tracking-wider`. Value at `text-3xl font-bold text-cyan-400 tabular-nums tracking-tight`. Rows below `border-t border-zinc-700/40` with label `text-zinc-400` and value `text-zinc-200 tabular-nums font-medium`."
+**Section-level: `Loader2` icon (w-4 to w-6)**
+- From `lucide-react`, with `animate-spin`
+- Dual-mode color: `text-zinc-400 dark:text-cyan-400/60` -- neutral gray in light mode, cyan tint in dark mode
+- Use: Panel loading (history sidebar, skill content, modal content)
 
-- **Button pair:** "Primary button: `px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-medium rounded-lg transition`. Cancel button: `px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 border border-zinc-700 hover:border-zinc-600 rounded transition`."
+**Button-level: `Loader2` icon (w-3 to w-3.5)**
+- Inherits text color from the parent button context
+- Use: Inline spinners in buttons during async operations (export, save, install)
 
-- **Modal:** "Full modal: backdrop `fixed inset-0 z-50 bg-black/60 backdrop-blur-sm`. Card `bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl max-w-lg mx-4 max-h-[85vh]`. Header `px-5 py-4 border-b border-zinc-800` with title `text-sm font-semibold text-zinc-100`. Body `px-5 py-4 space-y-4`. Footer `px-5 py-3 border-t border-zinc-800 flex justify-end gap-2`."
+### Empty States
 
-- **Banner:** "Info banner: `px-3 py-2 rounded-lg bg-cyan-900/20 border border-cyan-700/30`. Icon `Info w-3.5 h-3.5 text-cyan-400`. Text `text-xs text-cyan-300/90`."
-
-- **Data bar:** "Horizontal bar chart row: `flex items-center gap-2.5 text-[13px] hover:bg-zinc-800/60 px-2.5 py-1.5 rounded-md transition`. Label `w-32 truncate text-zinc-300`. Track `flex-1 h-5 bg-zinc-800/60 rounded-md`. Fill `bg-gradient-to-r from-cyan-600 to-cyan-400 rounded-md`. Value `w-10 text-right text-zinc-300 tabular-nums font-medium`."
-
-- **Dropdown:** "Custom dropdown: trigger `px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-200 focus:border-cyan-600`. Menu `absolute z-20 mt-1 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl max-h-64 overflow-y-auto`. Option `px-3 py-2 text-sm hover:bg-zinc-700 transition`. Selected option `text-cyan-400` with check icon."
-
-### Iteration Guide
-
-1. Surface hierarchy is the foundation: every element must sit on the correct zinc level (`950` > `900` > `800`)
-2. Accent color is cyan for all primary interactions; use the feature-specific accent only within that feature's panel
-3. All numbers and costs use `font-mono tabular-nums` — never render numeric data in the proportional font
-4. Borders are the primary depth indicator on dark surfaces, not shadows — use `border-zinc-700/60` for cards, `border-zinc-800` for dividers
-5. Interactive elements get `transition` or `transition-colors` — no element should change state without an animation
-6. Icons from Lucide React, sized `w-3.5 h-3.5` (small) to `w-4 h-4` (standard), colored to match their text context
-7. Form inputs match their panel's accent on focus: cyan in main views, amber in friction, teal in skills
-
-### Chart Styling Reference
+Empty states use a centered icon + title + subtitle pattern:
 
 ```
-Line stroke:     rgb(34,211,238)           /* cyan-400 */
-Area gradient:   rgba(34,211,238,0.3) top → rgba(34,211,238,0.02) bottom
-Grid lines:      rgba(255,255,255,0.06)
-Axis baseline:   rgba(255,255,255,0.08)
-Axis text:       #a1a1aa                    /* zinc-400 */
-Data points:     cyan filled circles, 3px default, 5px active
-Crosshair:       rgba(34,211,238,0.4) dashed
-Bar fill:        gradient from-cyan-600 to-cyan-400
-Bar track:       bg-zinc-800/60 rounded-md
+<div className="flex flex-col items-center justify-center py-12 gap-2">
+  <Icon className="w-8 h-8 text-faint" />
+  <p className="text-sm text-muted">Primary message</p>
+  <p className="text-xs text-dimmed">Secondary explanation</p>
+</div>
 ```
 
-Heatmap (5-level cyan scale):
-```
-Level 0: rgba(34,211,238,0.06)
-Level 1: rgba(34,211,238,0.25)
-Level 2: rgba(34,211,238,0.45)
-Level 3: rgba(34,211,238,0.65)
-Level 4: rgba(34,211,238,0.85)
-```
+The shared `EmptyState` component in `skills/skill-shared.tsx` provides a reusable version.
 
-Model distribution colors: `blue-500`, `amber-400`, `rose-500`, `emerald-500`, `violet-500`, `orange-500`, `cyan-400`, `fuchsia-500`.
+## 12. List & History Patterns
 
-Tool distribution colors: `cyan-500`, `teal-400`, `sky-500`, `indigo-400`, `emerald-500`, `amber-400`, `violet-500`, `rose-400`, `orange-400`, `lime-400`, `pink-400`, `blue-400`. Overflow: `zinc-600`.
+### Flat Row Pattern (History Cards)
+
+History cards in right sidebar panels (skills history, friction history) use a flat row design that mirrors the left sidebar's session list:
+
+- Row: `border-b border-card` bottom divider (no card border, no background)
+- Hover: `hover:bg-zinc-100 dark:hover:bg-zinc-800/60`
+- Layout: Title on first line, metadata (session count, cost, duration, date) on subsequent lines
+- Session count: subtle `text-accent-cyan/70` for visual accent
+- Running indicator: `border-b border-card animate-pulse` (no colored badge)
+- Example tag: amber bordered tag `bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700/50`
+
+### Session List (Left Sidebar)
+
+- Row dividers: `border-b border-card`
+- Project group headers: `border-b border-card`
+- Active session: `bg-accent-cyan-subtle` highlight
+- Hover: `hover:bg-control/60`

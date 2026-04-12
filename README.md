@@ -121,12 +121,12 @@ Or run without installing:
 uvx vibelens serve
 ```
 
-VibeLens opens your browser and reads your local `~/.claude/` sessions by default.
+VibeLens opens your browser at **http://localhost:12001** and reads your local `~/.claude/` sessions by default.
 
 ### Development install
 
 ```bash
-git clone https://github.com/yejh123/VibeLens.git
+git clone https://github.com/CHATS-lab/VibeLens.git
 cd VibeLens
 uv sync --extra dev
 uv run vibelens serve
