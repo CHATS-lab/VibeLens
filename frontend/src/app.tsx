@@ -13,7 +13,7 @@ import { SessionList, type ViewMode } from "./components/session/session-list";
 import { SessionView } from "./components/session/session-view";
 import { SharedSessionView } from "./components/session/shared-session-view";
 import { RecommendationView } from "./components/recommendations/recommendation-view";
-import { UploadDialog } from "./components/upload-dialog";
+import { UploadDialog } from "./components/upload/upload-dialog";
 import { DashboardView } from "./components/dashboard/dashboard-view";
 import { FrictionPanel } from "./components/friction/friction-panel";
 import { SkillsPanel } from "./components/skills/skills-panel";
