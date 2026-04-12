@@ -3,7 +3,7 @@ import shutil
 
 from typer.testing import CliRunner
 
-from vibelens.cli import app, discover_and_select_backend
+from vibelens.cli import app
 
 runner = CliRunner()
 
@@ -19,8 +19,6 @@ def test_recommend_help():
 def test_discover_finds_available_backends(monkeypatch):
     """discover_and_select_backend finds CLIs in PATH."""
     # Mock shutil.which to simulate 'gemini' being available
-    original_which = shutil.which
-
     def mock_which(name):
         if name == "gemini":
             return "/usr/local/bin/gemini"

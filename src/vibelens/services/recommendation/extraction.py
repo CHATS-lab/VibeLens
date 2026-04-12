@@ -218,7 +218,7 @@ def _sample_sessions(
 
     # Within each project, sort by timestamp (newest first), keep top MAX_PER_PROJECT
     selected: list[tuple[str, str, str]] = []
-    for project, group in project_groups.items():
+    for _project, group in project_groups.items():
         group.sort(key=lambda x: x[2], reverse=True)
         selected.extend(group[:MAX_PER_PROJECT])
 
@@ -229,7 +229,9 @@ def _sample_sessions(
 
     # Still over budget: rank projects by session count (most active first),
     # drop least-active projects until under budget
-    project_by_count = sorted(project_groups.keys(), key=lambda p: len(project_groups[p]), reverse=True)
+    project_by_count = sorted(
+        project_groups.keys(), key=lambda p: len(project_groups[p]), reverse=True
+    )
     result: list[tuple[str, str]] = []
     running_text = ""
     for project in project_by_count:

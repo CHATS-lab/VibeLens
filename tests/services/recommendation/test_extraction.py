@@ -1,10 +1,7 @@
 """Tests for lightweight compaction-based extraction."""
-from pathlib import Path
-from unittest.mock import MagicMock, patch
-
 from vibelens.services.recommendation.extraction import (
-    extract_lightweight_digest,
     _sample_sessions,
+    extract_lightweight_digest,
 )
 
 
@@ -22,7 +19,10 @@ def test_extract_lightweight_digest_with_compaction(tmp_path):
             "type": "message",
             "message": {
                 "role": "assistant",
-                "content": [{"type": "text", "text": "Implemented auth system with JWT tokens and bcrypt hashing."}],
+                "content": [
+                    {"type": "text",
+                     "text": "Implemented auth system with JWT tokens and bcrypt hashing."}
+                ],
             },
         }),
     ]
@@ -99,7 +99,6 @@ def test_sample_sessions_over_budget():
     result = _sample_sessions(sessions, token_budget=5_000)
     assert len(result) < 100
     # All three projects should still be represented
-    project_ids = {sid.split("-")[-1] for sid, _ in result}
     print(f"Sampled {len(result)}/100 sessions")
 
 
@@ -109,7 +108,8 @@ def test_sample_sessions_diverse_projects():
     for proj in range(5):
         for i in range(20):
             sessions.append(
-                (f"p{proj}-s{i}", f"Signal for project {proj}", f"/project-{proj}", f"2026-01-{i+1:02d}")
+                (f"p{proj}-s{i}", f"Signal for project {proj}",
+                 f"/project-{proj}", f"2026-01-{i+1:02d}")
             )
     result = _sample_sessions(sessions, token_budget=3_000)
     # Should have sessions from multiple projects
