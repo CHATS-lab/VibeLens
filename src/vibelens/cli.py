@@ -51,3 +51,38 @@ def serve(
 def version() -> None:
     """Print version and exit."""
     typer.echo(f"vibelens {__version__}")
+
+
+@app.command()
+def update_catalog(
+    check: bool = typer.Option(False, "--check", help="Check version without downloading"),
+) -> None:
+    """Download the latest catalog from the update URL."""
+    settings = load_settings()
+    if not settings.catalog_update_url:
+        typer.echo("No catalog_update_url configured. Set it in your vibelens.yaml or environment.")
+        raise typer.Exit(code=1)
+
+    if check:
+        typer.echo(f"Catalog update URL: {settings.catalog_update_url}")
+        typer.echo("Version check not yet implemented (requires catalog loader).")
+        raise typer.Exit()
+
+    typer.echo("Catalog download not yet implemented (requires HTTP client).")
+    raise typer.Exit(code=1)
+
+
+@app.command()
+def build_catalog(
+    github_token: str = typer.Option("", "--github-token", help="GitHub personal access token"),
+    output: str = typer.Option("catalog.json", "--output", help="Output file path"),
+) -> None:
+    """Build catalog.json by crawling GitHub (requires --github-token)."""
+    if not github_token:
+        typer.echo("Error: --github-token is required for catalog builds.")
+        typer.echo("Usage: vibelens build-catalog --github-token $GITHUB_TOKEN")
+        raise typer.Exit(code=1)
+
+    typer.echo("Catalog build not yet implemented (planned for crawler subpackage).")
+    typer.echo(f"Would output to: {output}")
+    raise typer.Exit(code=1)
