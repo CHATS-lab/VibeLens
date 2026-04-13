@@ -37,18 +37,6 @@ class FeaturedSkillInstallRequest(BaseModel):
     )
 
 
-class SkillAnalysisRequest(BaseModel):
-    """Request for LLM-powered skill analysis across sessions."""
-
-    session_ids: list[str] = Field(description="Session IDs to analyze.")
-    mode: SkillMode = Field(description="Analysis mode: retrieval, creation, or evolution.")
-    skill_names: list[str] | None = Field(
-        default=None,
-        description="Skill names to target for evolution mode. None means all installed skills.",
-    )
-
-
-
 class SkillAnalysisMeta(BaseModel):
     """Lightweight metadata for a persisted skill analysis."""
 

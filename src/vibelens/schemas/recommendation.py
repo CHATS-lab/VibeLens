@@ -9,16 +9,6 @@ class RecommendationAnalyzeRequest(BaseModel):
     session_ids: list[str] = Field(description="Session IDs to analyze for recommendations.")
 
 
-class RecommendationInstallRequest(BaseModel):
-    """Request body for generating an installation plan."""
-
-    selected_item_ids: list[str] = Field(description="CatalogItem IDs to install.")
-    target_agent: str = Field(
-        default="claude-code",
-        description="Target agent platform for installation instructions.",
-    )
-
-
 class CatalogStatusResponse(BaseModel):
     """Response for catalog status check."""
 
