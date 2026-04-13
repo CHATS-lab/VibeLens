@@ -1,11 +1,14 @@
 """Catalog builder orchestrator -- reads hub sources, scores, deduplicates, writes JSON."""
 
 import argparse
+import asyncio
 import json
 import sys
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
+
+import httpx
 
 from vibelens.catalog.dedup import deduplicate
 from vibelens.catalog.scoring import score_items
@@ -14,9 +17,58 @@ from vibelens.catalog.sources.featured import parse_featured
 from vibelens.catalog.sources.templates import parse_templates
 from vibelens.models.recommendation.catalog import CatalogItem
 from vibelens.services.recommendation.catalog import load_catalog_from_path
+from vibelens.utils.log import get_logger
+
+logger = get_logger(__name__)
 
 DEFAULT_OUTPUT = Path("src/vibelens/data/catalog.json")
 SCHEMA_VERSION = 1
+URL_CHECK_TIMEOUT = 5
+URL_CHECK_CONCURRENCY = 50
+
+
+async def _check_url(client: httpx.AsyncClient, url: str) -> bool:
+    """HEAD-check a single URL. Returns True if accessible."""
+    try:
+        resp = await client.head(url, follow_redirects=True, timeout=URL_CHECK_TIMEOUT)
+        return resp.status_code < 400
+    except (httpx.HTTPError, httpx.TimeoutException):
+        return False
+
+
+async def _validate_urls_async(items: list[CatalogItem]) -> list[CatalogItem]:
+    """Filter out items with broken source_url values."""
+    to_check = [(i, item) for i, item in enumerate(items) if item.source_url]
+    if not to_check:
+        return items
+
+    sem = asyncio.Semaphore(URL_CHECK_CONCURRENCY)
+    results: dict[int, bool] = {}
+
+    async with httpx.AsyncClient() as client:
+
+        async def check(idx: int, url: str) -> None:
+            async with sem:
+                results[idx] = await _check_url(client, url)
+
+        tasks = [check(idx, item.source_url) for idx, item in to_check]
+        await asyncio.gather(*tasks)
+
+    kept: list[CatalogItem] = []
+    dropped = 0
+    for i, item in enumerate(items):
+        if item.source_url and not results.get(i, True):
+            dropped += 1
+            continue
+        kept.append(item)
+
+    logger.info("URL validation: %d items dropped (%d kept)", dropped, len(kept))
+    return kept
+
+
+def validate_source_urls(items: list[CatalogItem]) -> list[CatalogItem]:
+    """Synchronous wrapper for URL validation."""
+    return asyncio.run(_validate_urls_async(items))
 
 
 def build_catalog(
@@ -26,7 +78,7 @@ def build_catalog(
 ) -> list[CatalogItem]:
     """Build catalog.json from hub data sources.
 
-    Pipeline: collect -> deduplicate -> score -> merge existing -> write.
+    Pipeline: collect -> deduplicate -> score -> validate URLs -> merge existing -> write.
 
     Args:
         hub_dir: Root hub directory containing source subdirectories.
@@ -63,6 +115,8 @@ def build_catalog(
     print(f"After dedup: {len(deduped)} items ({len(raw_items) - len(deduped)} removed)")
 
     scored = score_items(deduped)
+
+    scored = validate_source_urls(scored)
 
     if existing_catalog_path:
         existing = load_catalog_from_path(existing_catalog_path)
