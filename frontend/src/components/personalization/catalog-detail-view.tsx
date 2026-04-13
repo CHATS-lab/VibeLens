@@ -1,4 +1,5 @@
-import { ArrowLeft, Check, Download, ExternalLink, Loader2 } from "lucide-react";
+import { ArrowLeft, Check, Clock, Download, ExternalLink, GitFork, Loader2, Scale, Star } from "lucide-react";
+import { formatCount, formatRelativeDate } from "./catalog-format";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAppContext } from "../../app";
 import type { CatalogItemSummary } from "../../types";
@@ -6,11 +7,6 @@ import { CopyButton } from "../copy-button";
 import { CatalogDetailContent, type TocEntry } from "./catalog-detail-content";
 import { TypeBadge } from "./catalog-card";
 import { ITEM_TYPE_LABELS, PLATFORM_LABELS } from "./catalog-constants";
-
-/** Full catalog item returned by GET /api/catalog/{item_id} (includes install_content). */
-interface CatalogItemFull extends CatalogItemSummary {
-  install_content: string | null;
-}
 
 function extractTocEntries(markdown: string): TocEntry[] {
   const regex = /^(#{1,3})\s+(.+)$/gm;
@@ -38,23 +34,42 @@ interface CatalogDetailViewProps {
 export function CatalogDetailView({ item, isInstalled, onBack, onInstalled }: CatalogDetailViewProps) {
   const { fetchWithToken } = useAppContext();
 
-  const [fullItem, setFullItem] = useState<CatalogItemFull | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [installing, setInstalling] = useState(false);
   const [installed, setInstalled] = useState(isInstalled);
   const [installError, setInstallError] = useState<string | null>(null);
+  const [displayContent, setDisplayContent] = useState<string | null>(null);
+  const [contentLoading, setContentLoading] = useState(false);
+  const [contentError, setContentError] = useState<string | null>(null);
 
-  // Fetch full item (with install_content) on mount
+  // Fetch full item to surface load errors (e.g., item not found)
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const res = await fetchWithToken(`/api/catalog/${encodeURIComponent(item.item_id)}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data: CatalogItemFull = await res.json();
-        if (!cancelled) setFullItem(data);
       } catch (err) {
         if (!cancelled) setLoadError(err instanceof Error ? err.message : String(err));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [fetchWithToken, item.item_id]);
+
+  // Fetch displayable content (may differ from install_content for repos/featured)
+  useEffect(() => {
+    let cancelled = false;
+    setContentLoading(true);
+    (async () => {
+      try {
+        const res = await fetchWithToken(`/api/catalog/${encodeURIComponent(item.item_id)}/content`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (!cancelled) setDisplayContent(data.content);
+      } catch (err) {
+        if (!cancelled) setContentError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (!cancelled) setContentLoading(false);
       }
     })();
     return () => { cancelled = true; };
@@ -90,8 +105,8 @@ export function CatalogDetailView({ item, isInstalled, onBack, onInstalled }: Ca
   }, [fetchWithToken, item.item_id, onInstalled]);
 
   const tocEntries = useMemo(
-    () => (fullItem?.install_content ? extractTocEntries(fullItem.install_content) : []),
-    [fullItem?.install_content],
+    () => (displayContent ? extractTocEntries(displayContent) : []),
+    [displayContent],
   );
 
   const typeLabel = ITEM_TYPE_LABELS[item.item_type] || item.item_type;
@@ -133,6 +148,37 @@ export function CatalogDetailView({ item, isInstalled, onBack, onInstalled }: Ca
                 </a>
               )}
             </div>
+            {(item.stars > 0 || item.forks > 0 || item.language || item.license_name || item.updated_at) && (
+              <div className="flex items-center gap-4 text-xs text-muted flex-wrap mt-1">
+                {item.stars > 0 && (
+                  <span className="flex items-center gap-1">
+                    <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
+                    <span className="text-secondary">{formatCount(item.stars)}</span>
+                  </span>
+                )}
+                {item.forks > 0 && (
+                  <span className="flex items-center gap-1">
+                    <GitFork className="w-3 h-3" />
+                    <span className="text-secondary">{formatCount(item.forks)}</span>
+                  </span>
+                )}
+                {item.language && (
+                  <span className="text-secondary">{item.language}</span>
+                )}
+                {item.license_name && (
+                  <span className="flex items-center gap-1">
+                    <Scale className="w-3 h-3" />
+                    <span className="text-secondary">{item.license_name}</span>
+                  </span>
+                )}
+                {item.updated_at && (
+                  <span className="flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    <span className="text-secondary">{formatRelativeDate(item.updated_at)}</span>
+                  </span>
+                )}
+              </div>
+            )}
             {item.tags.length > 0 && (
               <div className="flex flex-wrap gap-1 mt-2">
                 {item.tags.map((tag) => (
@@ -186,18 +232,24 @@ export function CatalogDetailView({ item, isInstalled, onBack, onInstalled }: Ca
         </div>
       )}
 
-      {!fullItem && !loadError && (
+      {contentLoading && (
         <div className="flex items-center gap-2 text-sm text-muted py-8 justify-center">
           <Loader2 className="w-4 h-4 animate-spin" />
           Loading content...
         </div>
       )}
 
-      {fullItem?.install_content && (
-        <CatalogDetailContent content={fullItem.install_content} tocEntries={tocEntries} />
+      {contentError && (
+        <div className="border border-red-500/30 bg-red-950/20 rounded-lg p-4 text-sm text-red-400">
+          Failed to load content: {contentError}
+        </div>
       )}
 
-      {fullItem && !fullItem.install_content && (
+      {!contentLoading && !contentError && displayContent && (
+        <CatalogDetailContent content={displayContent} tocEntries={tocEntries} />
+      )}
+
+      {!contentLoading && !contentError && !displayContent && (
         <div className="border border-card rounded-lg bg-panel p-6 text-center text-sm text-muted">
           No content available for this item.
           {item.install_command && (
