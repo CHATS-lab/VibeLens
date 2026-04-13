@@ -1,5 +1,9 @@
 """Catalog browsing endpoints."""
 
+import re
+
+import httpx
+from cachetools import TTLCache
 from fastapi import APIRouter, HTTPException, Query
 
 from vibelens.deps import get_recommendation_store
@@ -18,6 +22,14 @@ from vibelens.utils.log import get_logger
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/catalog", tags=["catalog"])
+
+_content_cache: TTLCache = TTLCache(maxsize=64, ttl=3600)
+
+_GITHUB_TREE_RE = re.compile(
+    r"https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/tree/(?P<ref>[^/]+)/(?P<path>.+)"
+)
+
+CONTENT_FETCH_TIMEOUT = 15
 
 
 def _get_catalog() -> CatalogSnapshot:
@@ -199,6 +211,110 @@ async def catalog_meta() -> CatalogMetaResponse:
     profile = _load_latest_profile()
     has_profile = bool(profile and profile.search_keywords)
     return CatalogMetaResponse(categories=categories, has_profile=has_profile)
+
+
+@router.get("/{item_id:path}/content")
+async def get_catalog_item_content(item_id: str) -> dict:
+    """Fetch displayable content for a catalog item.
+
+    For file-based items with install_content: returns it directly.
+    For repo items: fetches README from GitHub.
+    For featured skills: fetches SKILL.md from GitHub tree URL.
+
+    Args:
+        item_id: Unique catalog item identifier.
+
+    Returns:
+        Dict with item_id, content (str or null), and content_type.
+    """
+    if item_id in _content_cache:
+        return _content_cache[item_id]
+
+    catalog = _get_catalog()
+    item = catalog.get_item(item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail=f"Item {item_id} not found")
+
+    result = await _resolve_content(item)
+    _content_cache[item_id] = result
+    return result
+
+
+async def _resolve_content(item: CatalogItem) -> dict:
+    """Resolve displayable content for a catalog item.
+
+    Args:
+        item: Catalog item to resolve content for.
+
+    Returns:
+        Dict with item_id, content, and content_type.
+    """
+    if item.install_content:
+        return {
+            "item_id": item.item_id,
+            "content": item.install_content,
+            "content_type": "install_content",
+        }
+
+    if item.item_type.value == "repo" and item.repo_full_name:
+        owner, repo = item.repo_full_name.split("/", 1)
+        readme_url = f"https://raw.githubusercontent.com/{owner}/{repo}/HEAD/README.md"
+        content = await _fetch_url_content(readme_url)
+        if content:
+            return {
+                "item_id": item.item_id,
+                "content": content,
+                "content_type": "readme",
+            }
+        return {
+            "item_id": item.item_id,
+            "content": None,
+            "content_type": None,
+            "error": "Failed to fetch README from GitHub",
+        }
+
+    match = _GITHUB_TREE_RE.match(item.source_url)
+    if match:
+        owner = match.group("owner")
+        repo = match.group("repo")
+        ref = match.group("ref")
+        path = match.group("path")
+        raw_url = f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{path}/SKILL.md"
+        content = await _fetch_url_content(raw_url)
+        if content:
+            return {
+                "item_id": item.item_id,
+                "content": content,
+                "content_type": "skill_md",
+            }
+        return {
+            "item_id": item.item_id,
+            "content": None,
+            "content_type": None,
+            "error": "Failed to fetch SKILL.md from GitHub",
+        }
+
+    return {"item_id": item.item_id, "content": None, "content_type": None}
+
+
+async def _fetch_url_content(url: str) -> str | None:
+    """Fetch text content from a URL.
+
+    Args:
+        url: URL to fetch.
+
+    Returns:
+        Response text or None on failure.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=CONTENT_FETCH_TIMEOUT) as http_client:
+            resp = await http_client.get(url, follow_redirects=True)
+            if resp.status_code < 400:
+                return resp.text
+    except (httpx.HTTPError, httpx.TimeoutException):
+        pass
+    logger.warning("Failed to fetch content from %s", url)
+    return None
 
 
 @router.post("/{item_id:path}/install")

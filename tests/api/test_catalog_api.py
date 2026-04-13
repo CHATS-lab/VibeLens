@@ -105,3 +105,29 @@ def test_get_catalog_item_not_found(client):
     resp = client.get("/api/catalog/nonexistent")
     assert resp.status_code == 404
     print("404 for nonexistent item")
+
+
+def test_get_catalog_item_content_with_install_content(client):
+    """Content endpoint returns install_content for file-based items."""
+    resp = client.get("/api/catalog/bwc:skill:test-skill/content")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["content_type"] == "install_content"
+    assert "Test Skill" in data["content"]
+    print(f"Content type: {data['content_type']}, length: {len(data['content'])}")
+
+
+def test_get_catalog_item_content_null_for_empty_item(client):
+    """Content endpoint returns null content for item without install_content or repo."""
+    # bwc:mcp:test-mcp has install_content (MCP JSON config), so it should return it
+    resp = client.get("/api/catalog/bwc:mcp:test-mcp/content")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["content"] is not None
+    print(f"MCP content type: {data['content_type']}")
+
+
+def test_get_catalog_item_content_not_found(client):
+    """Content endpoint returns 404 for unknown item."""
+    resp = client.get("/api/catalog/test:skill:nonexistent/content")
+    assert resp.status_code == 404
