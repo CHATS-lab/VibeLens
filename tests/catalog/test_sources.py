@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 from vibelens.catalog.sources.buildwithclaude import parse_buildwithclaude
+from vibelens.catalog.sources.templates import parse_templates
 from vibelens.models.recommendation.catalog import ItemType
 
 
@@ -126,3 +127,91 @@ def test_bwc_empty_dir(tmp_path: Path):
     items = parse_buildwithclaude(tmp_path)
     assert items == []
     print("BWC empty dir: 0 items")
+
+
+def test_cct_parses_agents(tmp_path: Path):
+    """Parse agent .md files from claude-code-templates."""
+    comp_dir = tmp_path / "cli-tool" / "components"
+    _write_md(
+        comp_dir / "agents" / "ai-specialists" / "prompt-engineer.md",
+        "prompt-engineer",
+        "Design and optimize LLM prompts",
+        "ai-specialists",
+    )
+    items = parse_templates(tmp_path)
+    agents = [i for i in items if i.item_type == ItemType.SUBAGENT]
+    assert len(agents) == 1
+    assert agents[0].item_id == "cct:agent:prompt-engineer"
+    assert agents[0].install_content is not None
+    print(f"CCT agent: {agents[0].item_id}")
+
+
+def test_cct_parses_skills(tmp_path: Path):
+    """Parse skill SKILL.md from claude-code-templates."""
+    comp_dir = tmp_path / "cli-tool" / "components"
+    _write_md(
+        comp_dir / "skills" / "design-to-code" / "SKILL.md",
+        "design-to-code",
+        "Figma to React conversion",
+    )
+    items = parse_templates(tmp_path)
+    skills = [i for i in items if i.item_type == ItemType.SKILL]
+    assert len(skills) == 1
+    assert skills[0].item_id == "cct:skill:design-to-code"
+    print(f"CCT skill: {skills[0].item_id}")
+
+
+def test_cct_parses_mcps(tmp_path: Path):
+    """Parse MCP JSON files from claude-code-templates."""
+    comp_dir = tmp_path / "cli-tool" / "components"
+    _write_json(
+        comp_dir / "mcps" / "deepgraph" / "deepgraph-typescript.json",
+        {
+            "mcpServers": {
+                "DeepGraph TypeScript MCP": {
+                    "description": "TypeScript code analysis",
+                    "command": "npx",
+                    "args": ["-y", "mcp-code-graph@latest"],
+                }
+            }
+        },
+    )
+    items = parse_templates(tmp_path)
+    mcps = [i for i in items if i.item_type == ItemType.REPO]
+    assert len(mcps) == 1
+    assert mcps[0].item_id == "cct:mcp:deepgraph/deepgraph-typescript"
+    print(f"CCT MCP: {mcps[0].item_id}")
+
+
+def test_cct_excludes_settings(tmp_path: Path):
+    """Settings directory is excluded from parsing."""
+    comp_dir = tmp_path / "cli-tool" / "components"
+    (comp_dir / "settings" / "general").mkdir(parents=True)
+    (comp_dir / "settings" / "general" / "theme.json").write_text('{"theme": "dark"}')
+    items = parse_templates(tmp_path)
+    assert len(items) == 0
+    print("CCT settings excluded: 0 items")
+
+
+def test_cct_parses_hooks(tmp_path: Path):
+    """Parse hook JSON files from claude-code-templates."""
+    comp_dir = tmp_path / "cli-tool" / "components"
+    _write_json(
+        comp_dir / "hooks" / "security" / "secret-scanner.json",
+        {
+            "description": "Detects hardcoded secrets before commits",
+            "hooks": {
+                "PreToolUse": [
+                    {
+                        "matcher": "Bash",
+                        "hooks": [{"type": "command", "command": "python3 scanner.py"}],
+                    }
+                ]
+            },
+        },
+    )
+    items = parse_templates(tmp_path)
+    hooks = [i for i in items if i.item_type == ItemType.HOOK]
+    assert len(hooks) == 1
+    assert hooks[0].item_id == "cct:hook:security/secret-scanner"
+    print(f"CCT hook: {hooks[0].item_id}")
