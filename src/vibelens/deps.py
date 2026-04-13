@@ -121,6 +121,26 @@ def get_skill_analysis_store():
     )
 
 
+def get_creation_store():
+    """Return cached CreationAnalysisStore singleton."""
+    from vibelens.services.creation.store import CreationAnalysisStore
+
+    return _get_or_create(
+        "creation_store",
+        lambda: CreationAnalysisStore(get_settings().skill_analysis_dir / "creation"),
+    )
+
+
+def get_evolution_store():
+    """Return cached EvolutionAnalysisStore singleton."""
+    from vibelens.services.evolution.store import EvolutionAnalysisStore
+
+    return _get_or_create(
+        "evolution_store",
+        lambda: EvolutionAnalysisStore(get_settings().skill_analysis_dir / "evolution"),
+    )
+
+
 def get_recommendation_store():
     """Return cached RecommendationStore singleton."""
     from vibelens.services.recommendation.store import RecommendationStore
