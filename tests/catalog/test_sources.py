@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 from vibelens.catalog.sources.buildwithclaude import parse_buildwithclaude
+from vibelens.catalog.sources.featured import parse_featured
 from vibelens.catalog.sources.templates import parse_templates
 from vibelens.models.recommendation.catalog import ItemType
 
@@ -215,3 +216,78 @@ def test_cct_parses_hooks(tmp_path: Path):
     assert len(hooks) == 1
     assert hooks[0].item_id == "cct:hook:security/secret-scanner"
     print(f"CCT hook: {hooks[0].item_id}")
+
+
+def test_featured_parses_skills(tmp_path: Path):
+    """Parse featured-skills.json entries."""
+    _write_json(
+        tmp_path / "featured-skills.json",
+        {
+            "updated_at": "2026-03-25T01:00:49Z",
+            "total": 2,
+            "categories": ["ai-assistant", "development"],
+            "skills": [
+                {
+                    "slug": "algorithmic-art",
+                    "name": "algorithmic-art",
+                    "summary": "Creating algorithmic art using p5.js",
+                    "downloads": 0,
+                    "stars": 101984,
+                    "category": "ai-assistant",
+                    "tags": ["agent-skills"],
+                    "source_url": "https://github.com/anthropics/skills/tree/main/skills/algorithmic-art",
+                    "updated_at": "2026-03-25T01:00:33Z",
+                },
+                {
+                    "slug": "brand-guidelines",
+                    "name": "brand-guidelines",
+                    "summary": "Applies Anthropic's official brand colors",
+                    "downloads": 0,
+                    "stars": 101984,
+                    "category": "ai-assistant",
+                    "tags": ["agent-skills"],
+                    "source_url": "https://github.com/anthropics/skills/tree/main/skills/brand-guidelines",
+                    "updated_at": "2026-03-25T01:00:33Z",
+                },
+            ],
+        },
+    )
+    items = parse_featured(tmp_path)
+    assert len(items) == 2
+    assert items[0].item_id == "featured:skill:algorithmic-art"
+    assert items[0].item_type == ItemType.SKILL
+    assert items[0].popularity > 0.0
+    assert items[0].updated_at == "2026-03-25T01:00:33Z"
+    assert items[0].source_url == "https://github.com/anthropics/skills/tree/main/skills/algorithmic-art"
+    print(f"Featured: {[i.item_id for i in items]}")
+
+
+def test_featured_missing_file(tmp_path: Path):
+    """Return empty list when featured-skills.json is missing."""
+    items = parse_featured(tmp_path)
+    assert items == []
+    print("Featured missing: 0 items")
+
+
+def test_featured_skips_no_summary(tmp_path: Path):
+    """Skip entries without summary."""
+    _write_json(
+        tmp_path / "featured-skills.json",
+        {
+            "skills": [
+                {
+                    "slug": "no-desc",
+                    "name": "no-desc",
+                    "summary": "",
+                    "stars": 10,
+                    "category": "x",
+                    "tags": [],
+                    "source_url": "",
+                    "updated_at": "",
+                }
+            ]
+        },
+    )
+    items = parse_featured(tmp_path)
+    assert len(items) == 0
+    print("Featured no-summary: 0 items")
