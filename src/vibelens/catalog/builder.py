@@ -11,6 +11,7 @@ from pathlib import Path
 import httpx
 
 from vibelens.catalog.dedup import deduplicate
+from vibelens.catalog.enricher import enrich_from_github
 from vibelens.catalog.scoring import score_items
 from vibelens.catalog.sources.buildwithclaude import parse_buildwithclaude
 from vibelens.catalog.sources.featured import parse_featured
@@ -75,39 +76,48 @@ def build_catalog(
     hub_dir: Path,
     output_path: Path = DEFAULT_OUTPUT,
     existing_catalog_path: Path | None = None,
+    bwc_repo: str | None = None,
+    cct_repo: str | None = None,
 ) -> list[CatalogItem]:
     """Build catalog.json from hub data sources.
 
-    Pipeline: collect -> deduplicate -> score -> validate URLs -> merge existing -> write.
+    Pipeline: collect -> deduplicate -> score -> validate URLs -> enrich -> merge -> write.
 
     Args:
         hub_dir: Root hub directory containing source subdirectories.
         output_path: Where to write the output catalog.json.
         existing_catalog_path: Optional path to existing catalog whose items
             are preserved (hand-curated items keep their original scores).
+        bwc_repo: GitHub owner/repo for buildwithclaude (e.g. "davepoon/buildwithclaude").
+        cct_repo: GitHub owner/repo for claude-code-templates
+            (e.g. "davila7/claude-code-templates").
 
     Returns:
         Final list of CatalogItem instances written to output.
     """
     raw_items: list[CatalogItem] = []
+    path_map: dict[str, str] = {}
 
     bwc_dir = hub_dir / "buildwithclaude"
     if bwc_dir.is_dir():
-        bwc_items, _ = parse_buildwithclaude(bwc_dir)
+        bwc_items, bwc_paths = parse_buildwithclaude(bwc_dir)
         print(f"  buildwithclaude: {len(bwc_items)} items")
         raw_items.extend(bwc_items)
+        path_map.update(bwc_paths)
 
     cct_dir = hub_dir / "claude-code-templates"
     if cct_dir.is_dir():
-        cct_items, _ = parse_templates(cct_dir)
+        cct_items, cct_paths = parse_templates(cct_dir)
         print(f"  claude-code-templates: {len(cct_items)} items")
         raw_items.extend(cct_items)
+        path_map.update(cct_paths)
 
     featured_dir = hub_dir / "skills-hub"
     if featured_dir.is_dir():
-        featured_items, _ = parse_featured(featured_dir)
+        featured_items, featured_paths = parse_featured(featured_dir)
         print(f"  skills-hub featured: {len(featured_items)} items")
         raw_items.extend(featured_items)
+        path_map.update(featured_paths)
 
     print(f"Total raw: {len(raw_items)} items")
 
@@ -117,6 +127,9 @@ def build_catalog(
     scored = score_items(deduped)
 
     scored = validate_source_urls(scored)
+
+    if bwc_repo or cct_repo:
+        scored = enrich_from_github(scored, path_map, bwc_repo=bwc_repo, cct_repo=cct_repo)
 
     if existing_catalog_path:
         existing = load_catalog_from_path(existing_catalog_path)
@@ -205,6 +218,12 @@ def main() -> None:
         "--output", type=Path, default=DEFAULT_OUTPUT, help="Output catalog.json path"
     )
     parser.add_argument("--existing", type=Path, default=None, help="Existing catalog to preserve")
+    parser.add_argument(
+        "--bwc-repo", type=str, default=None, help="GitHub owner/repo for buildwithclaude"
+    )
+    parser.add_argument(
+        "--cct-repo", type=str, default=None, help="GitHub owner/repo for claude-code-templates"
+    )
     parser.add_argument("--stats", action="store_true", help="Print statistics after build")
     args = parser.parse_args()
 
@@ -217,6 +236,8 @@ def main() -> None:
         hub_dir=args.hub_dir,
         output_path=args.output,
         existing_catalog_path=args.existing,
+        bwc_repo=args.bwc_repo,
+        cct_repo=args.cct_repo,
     )
 
     if args.stats:
