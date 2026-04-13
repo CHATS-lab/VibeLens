@@ -452,13 +452,17 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
       {/* Content area */}
       <div className="flex-1 min-h-0 flex">
         <div className="flex-1 min-h-0 overflow-y-auto">
+          {isAnalysisTab && (
+            <div className="px-6 pt-4 pb-2">
+              <TutorialBanner tutorial={MODE_DESCRIPTIONS[currentMode].tutorial} accentColor="teal" />
+            </div>
+          )}
           {activeTab === "local" && <LocalSkillsTab />}
           {activeTab === "explore" && <CatalogExploreTab />}
           {isAnalysisTab && (analysisLoading || estimating) && (
             <div className="flex items-center justify-center h-full">
               <div className="flex flex-col items-center gap-5 max-w-md">
                 <AnalysisLoadingState mode={currentMode} sessionCount={activeTab === "retrieve" ? resolvedSessionIdsRef.current.length : checkedIds.size} />
-                <TutorialBanner tutorial={MODE_DESCRIPTIONS[currentMode].tutorial} accentColor="teal" />
                 {activeJobId && (
                   <div className="flex flex-col items-center gap-3 mt-1">
                     <button
@@ -491,7 +495,6 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
               error={analysisError}
               onRun={() => handleRequestEstimate(currentMode)}
               isDemo={appMode === "demo"}
-              tutorial={MODE_DESCRIPTIONS[currentMode].tutorial}
               {...(activeTab === "retrieve" ? { buttonLabel: "Start", alwaysEnabled: true } : {})}
             />
           )}
@@ -507,7 +510,6 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
               activeTab={activeTab}
               onNew={handleNewAnalysis}
               fetchWithToken={fetchWithToken}
-              tutorial={MODE_DESCRIPTIONS[currentMode].tutorial}
             />
           )}
         </div>

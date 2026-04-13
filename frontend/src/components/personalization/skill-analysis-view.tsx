@@ -5,7 +5,6 @@ import type {
   SkillMode,
   SkillSourceInfo,
 } from "../../types";
-import { TutorialBanner } from "../analysis-welcome";
 import { DemoBanner } from "../demo-banner";
 import { LoadingSpinnerRings } from "../loading-spinner";
 import { Tooltip } from "../tooltip";
@@ -58,13 +57,11 @@ export function AnalysisResultView({
   activeTab,
   onNew,
   fetchWithToken,
-  tutorial,
 }: {
   result: SkillAnalysisResult;
   activeTab: SkillTab;
   onNew: () => void;
   fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
-  tutorial?: { title: string; description: string };
 }) {
   const [agentSources, setAgentSources] = useState<SkillSourceInfo[]>([]);
 
@@ -84,7 +81,6 @@ export function AnalysisResultView({
       {result.backend_id === "mock" && <DemoBanner />}
       {/* Header */}
       <ResultHeader result={result} onNew={onNew} mode={result.mode} />
-      {tutorial && <TutorialBanner tutorial={tutorial} accentColor="teal" />}
       {result.warnings && result.warnings.length > 0 && (
         <WarningsBanner warnings={result.warnings} />
       )}
