@@ -3,20 +3,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAppContext } from "../../app";
 import type { CatalogItemSummary } from "../../types";
 import { CopyButton } from "../copy-button";
-import { MarkdownRenderer } from "../markdown-renderer";
+import { CatalogDetailContent, type TocEntry } from "./catalog-detail-content";
 import { TypeBadge } from "./catalog-card";
 import { ITEM_TYPE_LABELS, PLATFORM_LABELS } from "./catalog-constants";
 
 /** Full catalog item returned by GET /api/catalog/{item_id} (includes install_content). */
 interface CatalogItemFull extends CatalogItemSummary {
   install_content: string | null;
-}
-
-/** Heading extracted from markdown for the TOC sidebar. */
-interface TocEntry {
-  level: number;
-  text: string;
-  slug: string;
 }
 
 function extractTocEntries(markdown: string): TocEntry[] {
@@ -140,6 +133,18 @@ export function CatalogDetailView({ item, isInstalled, onBack, onInstalled }: Ca
                 </a>
               )}
             </div>
+            {item.tags.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-2">
+                {item.tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="text-[10px] px-1.5 py-0.5 rounded-full bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Install button */}
@@ -189,33 +194,7 @@ export function CatalogDetailView({ item, isInstalled, onBack, onInstalled }: Ca
       )}
 
       {fullItem?.install_content && (
-        <div className="flex gap-6">
-          {/* Main content */}
-          <div className="flex-1 min-w-0 border border-card rounded-lg bg-panel p-6 overflow-auto">
-            <MarkdownRenderer content={fullItem.install_content} />
-          </div>
-
-          {/* TOC sidebar (only shown when headings exist) */}
-          {tocEntries.length > 2 && (
-            <nav className="hidden lg:block w-56 shrink-0 sticky top-6 self-start">
-              <h3 className="text-xs font-semibold text-muted uppercase tracking-wider mb-3">
-                On this page
-              </h3>
-              <ul className="space-y-1.5">
-                {tocEntries.map((entry) => (
-                  <li key={entry.slug} style={{ paddingLeft: `${(entry.level - 1) * 12}px` }}>
-                    <a
-                      href={`#${entry.slug}`}
-                      className="text-xs text-muted hover:text-secondary transition block truncate"
-                    >
-                      {entry.text}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </nav>
-          )}
-        </div>
+        <CatalogDetailContent content={fullItem.install_content} tocEntries={tocEntries} />
       )}
 
       {fullItem && !fullItem.install_content && (
