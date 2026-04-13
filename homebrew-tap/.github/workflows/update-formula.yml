@@ -1,0 +1,176 @@
+name: Update vibelens formula
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "New version (e.g. 0.9.31)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  update-formula:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Regenerate formula
+        run: |
+          pip install "vibelens==${{ github.event.inputs.version }}" homebrew-pypi-poet
+          poet -f vibelens > Formula/vibelens.rb
+
+      - name: Patch formula metadata
+        run: |
+          python3 - <<'PYEOF'
+          import re
+
+          with open("Formula/vibelens.rb") as f:
+              content = f.read()
+
+          content = re.sub(
+              r'desc ".*?"',
+              'desc "Agent trajectory analysis and visualization platform"',
+              content,
+          )
+          content = re.sub(
+              r'homepage ".*?"',
+              'homepage "https://vibelens.chats-lab.org/"',
+              content,
+          )
+          if 'license' not in content:
+              content = content.replace(
+                  'homepage "https://vibelens.chats-lab.org/"',
+                  'homepage "https://vibelens.chats-lab.org/"\n  license "MIT"',
+              )
+          content = re.sub(
+              r'test do.*?end',
+              'test do\n    assert_match version.to_s, shell_output("#{bin}/vibelens version")\n  end',
+              content,
+              flags=re.DOTALL,
+          )
+
+          with open("Formula/vibelens.rb", "w") as f:
+              f.write(content)
+          PYEOF
+
+      - name: Commit updated formula
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/vibelens.rb
+          git diff --cached --quiet && echo "No changes" && exit 0
+          git commit -m "vibelens ${{ github.event.inputs.version }}"
+          git push
+
+  build-bottles:
+    needs: update-formula
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            arch: arm64
+          - os: macos-13
+            arch: x86_64
+          - os: ubuntu-latest
+            arch: x86_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Pull latest
+        run: git pull origin main
+
+      - name: Build bottle
+        run: |
+          brew install --build-bottle Formula/vibelens.rb
+          brew bottle --json --root-url="https://github.com/CHATS-lab/homebrew-tap/releases/download/vibelens-${{ github.event.inputs.version }}" vibelens
+
+      - name: Upload bottle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bottle-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            vibelens--*.tar.gz
+            vibelens--*.json
+
+  upload-bottles:
+    needs: build-bottles
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Pull latest
+        run: git pull origin main
+
+      - name: Download all bottle artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: bottles/
+          merge-multiple: true
+
+      - name: Create release and upload bottles
+        run: |
+          TAG="vibelens-${{ github.event.inputs.version }}"
+          gh release create "$TAG" \
+            --title "vibelens ${{ github.event.inputs.version }}" \
+            --notes "Bottles for vibelens ${{ github.event.inputs.version }}" \
+            bottles/*.tar.gz
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Update formula with bottle block
+        run: |
+          python3 - <<'PYEOF'
+          import json, glob, re
+
+          bottle_lines = ["  bottle do"]
+          for jf in sorted(glob.glob("bottles/*.json")):
+              data = json.load(open(jf))
+              for formula_data in data.values():
+                  for tag, info in formula_data["bottle"]["tags"].items():
+                      sha = info["sha256"]
+                      cellar = info.get("cellar", ":any_skip_relocation")
+                      bottle_lines.append(f'    sha256 cellar: {cellar}, {tag}: "{sha}"')
+
+          root_url = f"https://github.com/CHATS-lab/homebrew-tap/releases/download/vibelens-${{ github.event.inputs.version }}"
+          bottle_lines.insert(1, f'    root_url "{root_url}"')
+          bottle_lines.append("  end")
+          bottle_block = "\n".join(bottle_lines)
+
+          with open("Formula/vibelens.rb") as f:
+              content = f.read()
+
+          # Remove existing bottle block if present
+          content = re.sub(r'\n  bottle do.*?\n  end\n', '\n', content, flags=re.DOTALL)
+
+          # Insert bottle block after license line
+          content = content.replace(
+              '  license "MIT"',
+              f'  license "MIT"\n\n{bottle_block}',
+          )
+
+          with open("Formula/vibelens.rb", "w") as f:
+              f.write(content)
+          PYEOF
+
+      - name: Commit formula with bottles
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/vibelens.rb
+          git diff --cached --quiet && echo "No changes" && exit 0
+          git commit -m "vibelens ${{ github.event.inputs.version }}: add bottles"
+          git push
