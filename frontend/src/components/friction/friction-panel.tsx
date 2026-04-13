@@ -276,7 +276,11 @@ export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: Fricti
   if (loading || estimating) {
     if (activeJobId) {
       return (
-        <div className="flex items-center justify-center h-full">
+        <div className="h-full flex flex-col">
+          <div className="px-6 pt-3 pb-0">
+            <TutorialBanner tutorial={FRICTION_TUTORIAL} accentColor="cyan" />
+          </div>
+          <div className="flex items-center justify-center flex-1">
           <div className="flex flex-col items-center gap-5 max-w-md">
             <LoadingSpinnerRings color="amber" />
             <div className="text-center space-y-1.5">
@@ -285,7 +289,6 @@ export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: Fricti
               </p>
               <p className="text-sm text-secondary">Identifying patterns that slow you down</p>
             </div>
-            <TutorialBanner tutorial={FRICTION_TUTORIAL} accentColor="cyan" />
             <div className="flex flex-col items-center gap-3 mt-1">
               <button
                 onClick={handleStopAnalysis}
@@ -298,6 +301,7 @@ export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: Fricti
                 <p className="text-sm text-muted">Running in background — you can switch tabs</p>
               </div>
             </div>
+          </div>
           </div>
         </div>
       );
@@ -318,7 +322,10 @@ export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: Fricti
   if (!result) {
     return (
       <div className="h-full flex">
-        <div className="flex-1">
+        <div className="flex-1 overflow-y-auto">
+          <div className="px-6 pt-3 pb-0">
+            <TutorialBanner tutorial={FRICTION_TUTORIAL} accentColor="cyan" />
+          </div>
           <AnalysisWelcomePage
             icon={<Sparkles className="w-12 h-12 text-amber-600 dark:text-amber-400" />}
             title="Productivity Tips"
@@ -332,8 +339,6 @@ export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: Fricti
             error={error}
             onRun={handleRequestAnalysis}
             isDemo={appMode === "demo"}
-            tutorial={FRICTION_TUTORIAL}
-            tutorialAccentColor="cyan"
           />
         </div>
         {sidebar}
@@ -345,10 +350,12 @@ export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: Fricti
   return (
     <div className="h-full flex">
       <div className="flex-1 overflow-y-auto">
+        <div className="px-6 pt-3 pb-0">
+          <TutorialBanner tutorial={FRICTION_TUTORIAL} accentColor="cyan" />
+        </div>
         <div className="max-w-4xl mx-auto px-6 py-8 space-y-8">
           {result.backend_id === "mock" && <DemoBanner />}
           <ResultHeader result={result} onNew={handleNewAnalysis} />
-          <TutorialBanner tutorial={FRICTION_TUTORIAL} accentColor="cyan" />
           {result.warnings && result.warnings.length > 0 && (
             <WarningsBanner warnings={result.warnings} />
           )}

@@ -74,6 +74,8 @@ interface AnalysisWelcomePageProps {
   isDemo?: boolean;
   tutorial?: Tutorial;
   tutorialAccentColor?: AccentColor;
+  buttonLabel?: string;
+  alwaysEnabled?: boolean;
 }
 
 export function AnalysisWelcomePage({
@@ -91,6 +93,8 @@ export function AnalysisWelcomePage({
   isDemo,
   tutorial,
   tutorialAccentColor,
+  buttonLabel,
+  alwaysEnabled,
 }: AnalysisWelcomePageProps) {
   const [view, setView] = useState<"intro" | "config">("intro");
   const [showInstallDialog, setShowInstallDialog] = useState(false);
@@ -131,7 +135,7 @@ export function AnalysisWelcomePage({
   }
 
   return (
-    <div className="flex items-center justify-center h-full">
+    <div className="flex justify-center pt-8">
       <div className="text-center max-w-md px-6">
         <div className="flex justify-center mb-4">{icon}</div>
         <h3 className="text-xl font-bold text-primary mb-2">{title}</h3>
@@ -185,16 +189,18 @@ export function AnalysisWelcomePage({
           </div>
         )}
 
-        <Tooltip text={checkedCount === 0 ? "Use the checkboxes in the session list to select sessions for analysis." : ""}>
+        <Tooltip text={!alwaysEnabled && checkedCount === 0 ? "Use the checkboxes in the session list to select sessions for analysis." : ""}>
           <button
             onClick={isDemo ? () => setShowInstallDialog(true) : onRun}
-            disabled={checkedCount === 0 || overLimit || (!isConnected && !isMock)}
+            disabled={(!alwaysEnabled && checkedCount === 0) || overLimit || (!isConnected && !isMock)}
             className={`inline-flex items-center gap-2 px-5 py-2.5 ${ACCENT_BUTTON[accentColor]} text-white text-sm font-medium rounded-lg transition disabled:opacity-60 disabled:cursor-not-allowed`}
           >
             <Play className="w-4 h-4" />
-            {checkedCount > 0
-              ? `Analyze ${checkedCount} session${checkedCount !== 1 ? "s" : ""}`
-              : "Select sessions first"}
+            {buttonLabel
+              ? buttonLabel
+              : checkedCount > 0
+                ? `Analyze ${checkedCount} session${checkedCount !== 1 ? "s" : ""}`
+                : "Select sessions first"}
           </button>
         </Tooltip>
       </div>
