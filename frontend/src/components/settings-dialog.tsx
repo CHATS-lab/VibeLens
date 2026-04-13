@@ -1,7 +1,7 @@
 import { X, Bug, Lightbulb, Sparkles, Compass } from "lucide-react";
 import { TOUR_STORAGE_KEY } from "./tutorial/tour-steps";
 import { useSettings } from "../settings-context";
-import type { FontScale, ThemePreference } from "../settings-context";
+import type { FontScale, ThemePreference, FontFamily } from "../settings-context";
 
 const GITHUB_ISSUES_URL = "https://github.com/CHATS-lab/VibeLens/issues/new";
 
@@ -54,6 +54,13 @@ Why would this improvement matter?`,
   },
 };
 
+const FONT_CARDS: { key: FontFamily; label: string; fontFamily: string }[] = [
+  { key: "default", label: "Default", fontFamily: "Georgia, 'Times New Roman', Times, serif" },
+  { key: "sans", label: "Sans", fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" },
+  { key: "system", label: "System", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', system-ui, sans-serif" },
+  { key: "dyslexic", label: "Dyslexic friendly", fontFamily: "'OpenDyslexic', sans-serif" },
+];
+
 interface SettingsDialogProps {
   onClose: () => void;
   onShowOnboarding?: () => void;
@@ -70,7 +77,7 @@ function openFeedback(label: string): void {
 }
 
 export function SettingsDialog({ onClose, onShowOnboarding }: SettingsDialogProps) {
-  const { fontScale, setFontScale, fontScaleOptions, theme, setTheme, themeOptions } = useSettings();
+  const { fontScale, setFontScale, fontScaleOptions, theme, setTheme, themeOptions, fontFamily, setFontFamily } = useSettings();
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -112,6 +119,36 @@ export function SettingsDialog({ onClose, onShowOnboarding }: SettingsDialogProp
                   }`}
                 >
                   {option.charAt(0).toUpperCase() + option.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Chat font */}
+          <div>
+            <h3 className="text-xs font-semibold text-muted uppercase tracking-wider mb-3">
+              Chat font
+            </h3>
+            <div className="grid grid-cols-4 gap-2">
+              {FONT_CARDS.map((card) => (
+                <button
+                  key={card.key}
+                  onClick={() => setFontFamily(card.key)}
+                  className={`flex flex-col items-center gap-1 py-3 px-1 rounded-lg border transition ${
+                    fontFamily === card.key
+                      ? "bg-accent-cyan-subtle border-cyan-200 dark:border-cyan-700/40"
+                      : "border-card hover:border-hover"
+                  }`}
+                >
+                  <span
+                    className="text-2xl text-primary leading-none"
+                    style={{ fontFamily: card.fontFamily }}
+                  >
+                    Aa
+                  </span>
+                  <span className="text-[10px] text-muted mt-1 truncate w-full text-center">
+                    {card.label}
+                  </span>
                 </button>
               ))}
             </div>
