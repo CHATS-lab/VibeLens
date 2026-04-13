@@ -168,7 +168,7 @@ def _md_to_item(md_path: Path, item_type: ItemType, type_label: str) -> CatalogI
         updated_at="",
         source_url="",
         repo_full_name="",
-        install_method="skill_file" if item_type != ItemType.HOOK else "hook_config",
+        install_method="skill_file",
         install_content=content,
     )
 
