@@ -7,7 +7,7 @@ import { AnalysisWelcomePage, TutorialBanner } from "../analysis-welcome";
 import { CostEstimateDialog } from "../cost-estimate-dialog";
 import { Modal, ModalBody, ModalFooter, ModalHeader } from "../modal";
 import { Tooltip } from "../tooltip";
-import { ExploreSkillsTab } from "./explore-skills-tab";
+import { CatalogExploreTab } from "./catalog-explore-tab";
 import { LocalSkillsTab } from "./local-skills-tab";
 import {
   AnalysisLoadingState,
@@ -374,7 +374,7 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
       <div className="flex-1 min-h-0 flex">
         <div className="flex-1 min-h-0 overflow-y-auto">
           {activeTab === "local" && <LocalSkillsTab />}
-          {activeTab === "explore" && <ExploreSkillsTab onSwitchTab={setActiveTab} />}
+          {activeTab === "explore" && <CatalogExploreTab />}
           {isAnalysisTab && (analysisLoading || estimating) && (
             <div className="flex items-center justify-center h-full">
               <div className="flex flex-col items-center gap-5 max-w-md">
