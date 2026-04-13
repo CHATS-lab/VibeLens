@@ -1,0 +1,33 @@
+{
+  "name": "vibelens",
+  "version": "0.9.31",
+  "description": "Agent trajectory analysis and visualization platform",
+  "bin": {
+    "vibelens": "bin/vibelens.js"
+  },
+  "keywords": [
+    "agent",
+    "trajectory",
+    "analysis",
+    "claude",
+    "codex",
+    "gemini",
+    "visualization"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CHATS-lab/VibeLens"
+  },
+  "homepage": "https://vibelens.chats-lab.org/",
+  "bugs": {
+    "url": "https://github.com/CHATS-lab/VibeLens/issues"
+  },
+  "engines": {
+    "node": ">=16"
+  },
+  "files": [
+    "bin/vibelens.js",
+    "README.md"
+  ]
+}
