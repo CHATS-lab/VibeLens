@@ -146,14 +146,23 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
 
   const pendingModeRef = useRef<SkillMode>("retrieval");
   const selectedSkillNamesRef = useRef<string[] | undefined>(undefined);
+  const resolvedSessionIdsRef = useRef<string[]>([]);
   const [showSkillSelector, setShowSkillSelector] = useState(false);
+
+  const fetchAllSessionIds = useCallback(async (): Promise<string[]> => {
+    const res = await fetchWithToken("/api/sessions");
+    if (!res.ok) throw new Error("Failed to load sessions");
+    const sessions: { session_id: string }[] = await res.json();
+    return sessions.map((s) => s.session_id);
+  }, [fetchWithToken]);
 
   const proceedToEstimate = useCallback(
     async (mode: SkillMode) => {
       setEstimating(true);
       setAnalysisError(null);
       try {
-        const body: Record<string, unknown> = { session_ids: [...checkedIds] };
+        const sessionIds = [...checkedIds];
+        const body: Record<string, unknown> = { session_ids: sessionIds };
         if (selectedSkillNamesRef.current) body.skill_names = selectedSkillNamesRef.current;
         const tabKey = Object.entries(MODE_MAP).find(([, v]) => v === mode)?.[0] ?? "retrieve";
         const apiBase = API_BASE_MAP[tabKey];
@@ -176,29 +185,6 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
     [checkedIds, fetchWithToken],
   );
 
-  const handleRequestEstimate = useCallback(
-    (mode: SkillMode) => {
-      if (checkedIds.size === 0) return;
-      pendingModeRef.current = mode;
-      selectedSkillNamesRef.current = undefined;
-      if (mode === "evolution") {
-        setShowSkillSelector(true);
-        return;
-      }
-      proceedToEstimate(mode);
-    },
-    [checkedIds, proceedToEstimate],
-  );
-
-  const handleSkillSelectionConfirm = useCallback(
-    (skillNames: string[]) => {
-      setShowSkillSelector(false);
-      selectedSkillNamesRef.current = skillNames;
-      proceedToEstimate(pendingModeRef.current);
-    },
-    [proceedToEstimate],
-  );
-
   const handleConfirmAnalysis = useCallback(async () => {
     const mode = pendingModeRef.current;
     const tabKey = Object.entries(MODE_MAP).find(([, v]) => v === mode)?.[0] ?? "retrieve";
@@ -208,7 +194,10 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
     setAnalysisLoading(true);
     setAnalysisError(null);
     try {
-      const body: Record<string, unknown> = { session_ids: [...checkedIds] };
+      const sessionIds = isRecommend
+        ? resolvedSessionIdsRef.current
+        : [...checkedIds];
+      const body: Record<string, unknown> = { session_ids: sessionIds };
       if (selectedSkillNamesRef.current) body.skill_names = selectedSkillNamesRef.current;
       const res = await fetchWithToken(apiBase, {
         method: "POST",
@@ -239,6 +228,48 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
       setAnalysisLoading(false);
     }
   }, [checkedIds, fetchWithToken, onJobIdChange]);
+
+  const handleRequestEstimate = useCallback(
+    async (mode: SkillMode) => {
+      if (mode !== "retrieval" && checkedIds.size === 0) return;
+      pendingModeRef.current = mode;
+      selectedSkillNamesRef.current = undefined;
+      if (mode === "retrieval") {
+        setAnalysisError(null);
+        setAnalysisLoading(true);
+        try {
+          resolvedSessionIdsRef.current = await fetchAllSessionIds();
+          if (resolvedSessionIdsRef.current.length === 0) {
+            setAnalysisError("No sessions available for analysis.");
+            setAnalysisLoading(false);
+            return;
+          }
+        } catch (err) {
+          setAnalysisError(err instanceof Error ? err.message : String(err));
+          setAnalysisLoading(false);
+          return;
+        }
+        setAnalysisLoading(false);
+        await handleConfirmAnalysis();
+        return;
+      }
+      if (mode === "evolution") {
+        setShowSkillSelector(true);
+        return;
+      }
+      proceedToEstimate(mode);
+    },
+    [checkedIds, fetchAllSessionIds, handleConfirmAnalysis, proceedToEstimate],
+  );
+
+  const handleSkillSelectionConfirm = useCallback(
+    (skillNames: string[]) => {
+      setShowSkillSelector(false);
+      selectedSkillNamesRef.current = skillNames;
+      proceedToEstimate(pendingModeRef.current);
+    },
+    [proceedToEstimate],
+  );
 
   const handleHistorySelect = useCallback((loaded: SkillAnalysisResult) => {
     const tabMap: Record<SkillMode, SkillTab> = {
@@ -426,7 +457,7 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
           {isAnalysisTab && (analysisLoading || estimating) && (
             <div className="flex items-center justify-center h-full">
               <div className="flex flex-col items-center gap-5 max-w-md">
-                <AnalysisLoadingState mode={currentMode} sessionCount={checkedIds.size} />
+                <AnalysisLoadingState mode={currentMode} sessionCount={activeTab === "retrieve" ? resolvedSessionIdsRef.current.length : checkedIds.size} />
                 <TutorialBanner tutorial={MODE_DESCRIPTIONS[currentMode].tutorial} accentColor="teal" />
                 {activeJobId && (
                   <div className="flex flex-col items-center gap-3 mt-1">
@@ -461,6 +492,7 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
               onRun={() => handleRequestEstimate(currentMode)}
               isDemo={appMode === "demo"}
               tutorial={MODE_DESCRIPTIONS[currentMode].tutorial}
+              {...(activeTab === "retrieve" ? { buttonLabel: "Start", alwaysEnabled: true } : {})}
             />
           )}
           {isAnalysisTab && !analysisLoading && activeTab === "retrieve" && recommendationAnalysisId && (
@@ -526,7 +558,7 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
       {estimate && (
         <CostEstimateDialog
           estimate={estimate}
-          sessionCount={checkedIds.size}
+          sessionCount={activeTab === "retrieve" ? resolvedSessionIdsRef.current.length : checkedIds.size}
           onConfirm={handleConfirmAnalysis}
           onCancel={() => setEstimate(null)}
         />
