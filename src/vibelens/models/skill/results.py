@@ -3,9 +3,9 @@
 
 from pydantic import BaseModel, Field
 
+from vibelens.models.creation import ElementCreation as SkillCreation
+from vibelens.models.evolution import ElementEvolution as SkillEvolution
 from vibelens.models.llm.inference import BackendType
-from vibelens.models.skill.creation import SkillCreation
-from vibelens.models.skill.evolution import SkillEvolution
 from vibelens.models.skill.patterns import SkillMode, WorkflowPattern
 from vibelens.models.skill.retrieval import SkillRecommendation
 from vibelens.models.trajectories.metrics import Metrics
