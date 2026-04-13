@@ -19,12 +19,11 @@ interface TocEntry {
   slug: string;
 }
 
-const HEADING_REGEX = /^(#{1,3})\s+(.+)$/gm;
-
 function extractTocEntries(markdown: string): TocEntry[] {
+  const regex = /^(#{1,3})\s+(.+)$/gm;
   const entries: TocEntry[] = [];
   let match: RegExpExecArray | null;
-  while ((match = HEADING_REGEX.exec(markdown)) !== null) {
+  while ((match = regex.exec(markdown)) !== null) {
     const level = match[1].length;
     const text = match[2].trim();
     const slug = text

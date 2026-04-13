@@ -24,7 +24,6 @@ export function CatalogExploreTab() {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
-  const [categoryFilter] = useState<string | null>(null);
   const [page, setPage] = useState(1);
 
   // Installed tracking
@@ -54,7 +53,6 @@ export function CatalogExploreTab() {
       });
       if (debouncedSearch) params.set("search", debouncedSearch);
       if (typeFilter) params.set("item_type", typeFilter);
-      if (categoryFilter) params.set("category", categoryFilter);
 
       const res = await fetchWithToken(`/api/catalog?${params}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -66,7 +64,7 @@ export function CatalogExploreTab() {
     } finally {
       setLoading(false);
     }
-  }, [fetchWithToken, page, debouncedSearch, typeFilter, categoryFilter]);
+  }, [fetchWithToken, page, debouncedSearch, typeFilter]);
 
   useEffect(() => {
     fetchCatalog();

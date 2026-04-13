@@ -3,7 +3,12 @@
 from fastapi import APIRouter, HTTPException, Query
 
 from vibelens.models.recommendation.catalog import CatalogItem
-from vibelens.schemas.catalog import CatalogListResponse
+from vibelens.schemas.catalog import (
+    CatalogInstallRequest,
+    CatalogInstallResponse,
+    CatalogListResponse,
+)
+from vibelens.services.catalog.install import install_catalog_item
 from vibelens.services.recommendation.catalog import CatalogSnapshot, load_catalog
 from vibelens.utils.log import get_logger
 
@@ -124,6 +129,47 @@ async def list_catalog(
         item_dicts.append(d)
 
     return CatalogListResponse(items=item_dicts, total=total, page=page, per_page=per_page)
+
+
+@router.post("/{item_id:path}/install")
+async def install_item(item_id: str, body: CatalogInstallRequest) -> CatalogInstallResponse:
+    """Install a catalog item to the target agent platform.
+
+    Args:
+        item_id: Unique catalog item identifier.
+        body: Install request with target platform and overwrite flag.
+
+    Returns:
+        Install response with success status and installed path.
+
+    Raises:
+        HTTPException: 404 if item not found, 400 if not installable,
+            409 if file exists and overwrite is False.
+    """
+    catalog = _get_catalog()
+    item = catalog.get_item(item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail=f"Item {item_id} not found")
+    if not item.install_content:
+        raise HTTPException(status_code=400, detail=f"Item {item_id} has no installable content")
+    try:
+        installed_path = install_catalog_item(
+            item=item,
+            target_platform=body.target_platform,
+            overwrite=body.overwrite,
+        )
+    except FileExistsError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="File already exists. Set overwrite=true to replace.",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return CatalogInstallResponse(
+        success=True,
+        installed_path=str(installed_path),
+        message=f"Installed {item.name} to {installed_path}",
+    )
 
 
 @router.get("/{item_id:path}")
