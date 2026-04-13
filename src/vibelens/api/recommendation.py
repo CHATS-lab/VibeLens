@@ -81,7 +81,7 @@ async def recommendation_estimate(
     )
 
 
-@router.post("/analyze")
+@router.post("")
 async def recommendation_analyze(
     body: RecommendationAnalyzeRequest, x_session_token: str | None = Header(None)
 ) -> AnalysisJobResponse:

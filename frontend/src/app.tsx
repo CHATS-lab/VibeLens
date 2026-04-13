@@ -19,7 +19,7 @@ import { FrictionPanel } from "./components/friction/friction-panel";
 import { PersonalizationPanel } from "./components/personalization/personalization-panel";
 import { SettingsDialog } from "./components/settings-dialog";
 import { Tooltip } from "./components/tooltip";
-import { RecommendationWelcomeDialog, shouldShowRecommendationWelcome } from "./components/recommendation-welcome-dialog";
+import { RecommendationWelcomeDialog } from "./components/recommendation-welcome-dialog";
 import { SpotlightTour } from "./components/tutorial/spotlight-tour";
 import { hasSeenTour } from "./components/tutorial/tour-steps";
 import type { DashboardStats, DonateResult, ToolUsageStat, Trajectory } from "./types";
@@ -80,7 +80,7 @@ export function App() {
   const [mainView, setMainView] = useState<MainView>("browse");
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [showRecWelcome, setShowRecWelcome] = useState(false);
+  const [showRecWelcome, setShowRecWelcome] = useState(true);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [pendingScrollStepId, setPendingScrollStepId] = useState<string | null>(() => {
     const params = new URLSearchParams(window.location.search);
@@ -163,14 +163,6 @@ export function App() {
     setShowOnboarding(true);
   }, [settingsLoaded]);
 
-  // Show recommendation welcome dialog on first visit
-  useEffect(() => {
-    if (!settingsLoaded) return;
-    if (shareToken || recommendationId) return;
-    if (shouldShowRecommendationWelcome()) {
-      setShowRecWelcome(true);
-    }
-  }, [settingsLoaded, shareToken, recommendationId]);
 
   useEffect(() => {
     fetchWithToken("/api/projects")
@@ -640,6 +632,7 @@ export function App() {
           <RecommendationWelcomeDialog
             onTryNow={() => {
               setShowRecWelcome(false);
+              localStorage.setItem("vibelens-skills-tab", "retrieve");
               setMainView("skills");
             }}
             onDismiss={() => setShowRecWelcome(false)}

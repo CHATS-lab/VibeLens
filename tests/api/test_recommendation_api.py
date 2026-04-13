@@ -18,5 +18,5 @@ def test_recommendation_router_importable():
     """Recommendation API router is importable."""
     from vibelens.api.recommendation import router
     routes = [r.path for r in router.routes]
-    assert "/analyze" in routes or any("/analyze" in r for r in routes)
+    assert "/recommendation" in routes, f"Expected /recommendation in {routes}"
     print(f"Recommendation routes: {routes}")

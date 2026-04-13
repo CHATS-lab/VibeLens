@@ -1,36 +1,24 @@
 import { Search, Sparkles, X } from "lucide-react";
 import { Modal, ModalBody } from "./modal";
 
-const STORAGE_KEY = "vibelens-rec-welcome-seen";
-
 interface RecommendationWelcomeDialogProps {
   onTryNow: () => void;
   onDismiss: () => void;
 }
 
 export function RecommendationWelcomeDialog({ onTryNow, onDismiss }: RecommendationWelcomeDialogProps) {
-  const handleDismiss = () => {
-    localStorage.setItem(STORAGE_KEY, "1");
-    onDismiss();
-  };
-
-  const handleTryNow = () => {
-    localStorage.setItem(STORAGE_KEY, "1");
-    onTryNow();
-  };
-
   return (
-    <Modal onClose={handleDismiss} maxWidth="max-w-md">
+    <Modal onClose={onDismiss} maxWidth="max-w-md">
       <ModalBody>
         <div className="flex flex-col items-center text-center py-4 gap-5">
           <button
-            onClick={handleDismiss}
+            onClick={onDismiss}
             className="absolute top-3 right-3 p-1 text-zinc-400 hover:text-zinc-200 transition"
           >
             <X className="w-4 h-4" />
           </button>
 
-          <span className="text-[11px] font-semibold tracking-widest uppercase text-cyan-500">
+          <span className="text-sm font-semibold tracking-widest uppercase text-cyan-500">
             New Feature
           </span>
 
@@ -57,13 +45,13 @@ export function RecommendationWelcomeDialog({ onTryNow, onDismiss }: Recommendat
 
           <div className="flex items-center gap-3 pt-2">
             <button
-              onClick={handleTryNow}
+              onClick={onTryNow}
               className="px-5 py-2 text-sm font-semibold text-white bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 rounded-lg transition"
             >
               Try It Now
             </button>
             <button
-              onClick={handleDismiss}
+              onClick={onDismiss}
               className="px-4 py-2 text-sm text-muted hover:text-secondary transition"
             >
               Skip
@@ -73,8 +61,4 @@ export function RecommendationWelcomeDialog({ onTryNow, onDismiss }: Recommendat
       </ModalBody>
     </Modal>
   );
-}
-
-export function shouldShowRecommendationWelcome(): boolean {
-  return !localStorage.getItem(STORAGE_KEY);
 }
