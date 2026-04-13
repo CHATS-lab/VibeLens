@@ -5,7 +5,10 @@ from datetime import datetime, timezone
 from vibelens.models.llm.inference import BackendType
 from vibelens.models.recommendation.catalog import ITEM_TYPE_LABELS, ItemType
 from vibelens.models.recommendation.profile import UserProfile
-from vibelens.models.recommendation.results import CatalogRecommendation, RecommendationResult
+from vibelens.models.recommendation.results import (
+    CatalogRecommendation,
+    RecommendationResult,
+)
 from vibelens.models.trajectories.metrics import Metrics
 
 
@@ -26,9 +29,19 @@ def build_mock_recommendation_result(session_ids: list[str]) -> RecommendationRe
         bottlenecks=["repeated test failures", "slow CI feedback"],
         workflow_style="iterative debugger, prefers small commits",
         search_keywords=[
-            "testing", "pytest", "fastapi", "react", "docker",
-            "code-review", "refactoring", "debugging", "linting",
-            "type-checking", "documentation", "ci-cd", "deployment",
+            "testing",
+            "pytest",
+            "fastapi",
+            "react",
+            "docker",
+            "code-review",
+            "refactoring",
+            "debugging",
+            "linting",
+            "type-checking",
+            "documentation",
+            "ci-cd",
+            "deployment",
         ],
     )
 

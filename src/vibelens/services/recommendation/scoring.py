@@ -86,9 +86,7 @@ def _score_popularity(item: CatalogItem) -> float:
 
 
 def score_candidates(
-    candidates: list[tuple[CatalogItem, float]],
-    profile: UserProfile,
-    top_k: int = 15,
+    candidates: list[tuple[CatalogItem, float]], profile: UserProfile, top_k: int = 15
 ) -> list[tuple[CatalogItem, float]]:
     """Score and rank retrieval candidates using weighted signals.
 

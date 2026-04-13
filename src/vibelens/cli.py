@@ -219,10 +219,7 @@ def recommend(
     typer.echo(f"  Recommendations: {len(result.recommendations)}")
 
     cost_str = f"${result.metrics.cost_usd:.2f}" if result.metrics.cost_usd else "n/a"
-    typer.echo(
-        f"\nSaved: {result.analysis_id} "
-        f"({result.duration_seconds}s, {cost_str})"
-    )
+    typer.echo(f"\nSaved: {result.analysis_id} ({result.duration_seconds}s, {cost_str})")
 
     if not no_open:
         bind_host = settings.host
@@ -236,9 +233,5 @@ def recommend(
         thread.start()
 
         uvicorn.run(
-            "vibelens.app:create_app",
-            factory=True,
-            host=bind_host,
-            port=bind_port,
-            reload=False,
+            "vibelens.app:create_app", factory=True, host=bind_host, port=bind_port, reload=False
         )

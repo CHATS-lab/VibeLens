@@ -25,3 +25,24 @@ export const PLATFORM_LABELS: Record<string, string> = {
 
 /** Items per page for catalog browsing. */
 export const CATALOG_PAGE_SIZE = 50;
+
+/** Sort options for catalog browsing. */
+export const SORT_OPTIONS: { value: string; label: string; needsProfile?: boolean }[] = [
+  { value: "quality", label: "Quality" },
+  { value: "name", label: "Name" },
+  { value: "popularity", label: "Popularity" },
+  { value: "recent", label: "Recent" },
+  { value: "relevance", label: "For You", needsProfile: true },
+];
+
+/** View mode for catalog list. */
+export type CatalogViewMode = "list" | "card";
+
+/** Maximum tags shown in list view cards. */
+export const LIST_VIEW_MAX_TAGS = 3;
+
+/** Maximum tags shown in card grid view. */
+export const CARD_VIEW_MAX_TAGS = 5;
+
+/** Maximum page buttons shown in pagination. */
+export const MAX_VISIBLE_PAGES = 7;

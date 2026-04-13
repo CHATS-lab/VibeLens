@@ -535,3 +535,8 @@ export interface CatalogInstallResponse {
   installed_path: string;
   message: string;
 }
+
+export interface CatalogMetaResponse {
+  categories: string[];
+  has_profile: boolean;
+}

@@ -295,7 +295,7 @@ export function SessionList({
           <Tooltip text={viewMode === "project" ? "Switch to time view" : "Switch to project view"}>
             <button
               onClick={() => handleSetViewMode(viewMode === "project" ? "time" : "project")}
-              className="flex items-center justify-center gap-1 w-[90px] px-2 py-1 text-[11px] font-medium text-accent-cyan hover:text-cyan-700 dark:hover:text-cyan-200 bg-accent-cyan-muted hover:bg-cyan-100 dark:hover:bg-cyan-800/40 border border-cyan-200 dark:border-cyan-700/30 rounded-md transition"
+              className="flex items-center justify-center gap-1 w-[90px] px-2 py-1 text-[11px] font-medium text-cyan-700 dark:text-cyan-300 bg-cyan-50 dark:bg-cyan-950/60 hover:bg-cyan-100 dark:hover:bg-cyan-900/60 border border-cyan-200/80 dark:border-cyan-700/50 rounded-md shadow-sm shadow-cyan-500/5 dark:shadow-cyan-400/5 transition"
             >
               {viewMode === "project" ? (
                 <FolderOpen className="w-3 h-3 shrink-0" />

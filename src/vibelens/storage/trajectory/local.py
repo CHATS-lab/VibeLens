@@ -248,7 +248,7 @@ class LocalTrajectoryStore(BaseTrajectoryStore):
                 self._metadata_cache[real_sid] = meta
                 reparsed += 1
             except Exception:
-                logger.debug("Failed to re-parse stale file %s", fpath)
+                logger.debug("Failed to re-parse stale file %s", fpath, exc_info=True)
 
         logger.info(
             "Incremental update: %d cached, %d re-parsed",

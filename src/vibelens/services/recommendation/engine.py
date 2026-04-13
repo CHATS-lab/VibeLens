@@ -192,11 +192,7 @@ async def _run_pipeline(
         digest, total_count, signal_count = extract_lightweight_digest(all_metadata)
         loaded_session_ids = [m.get("session_id", "") for m in all_metadata]
         skipped_session_ids = []
-        logger.info(
-            "Lightweight extraction: %d sessions, %d signals",
-            total_count,
-            signal_count,
-        )
+        logger.info("Lightweight extraction: %d sessions, %d signals", total_count, signal_count)
 
     catalog = load_catalog()
     if not catalog or not catalog.items:
@@ -218,9 +214,7 @@ async def _run_pipeline(
     )
 
     # L2: Profile generation (1 LLM call)
-    profile, profile_cost = await _generate_profile(
-        backend, digest, loaded_session_ids, log_dir
-    )
+    profile, profile_cost = await _generate_profile(backend, digest, loaded_session_ids, log_dir)
 
     # L3: Retrieval + scoring (no LLM)
     scored_candidates = _retrieve_and_score(catalog, profile)
@@ -337,11 +331,7 @@ def _retrieve_and_score(
     if not raw_candidates:
         return []
 
-    scored = score_candidates(
-        candidates=raw_candidates,
-        profile=profile,
-        top_k=SCORING_TOP_K,
-    )
+    scored = score_candidates(candidates=raw_candidates, profile=profile, top_k=SCORING_TOP_K)
     logger.info("L3 scoring: %d → %d candidates", len(raw_candidates), len(scored))
     return scored
 
@@ -375,8 +365,7 @@ async def _generate_rationales(
     system_kwargs = build_system_kwargs(RECOMMENDATION_RATIONALE_PROMPT, backend)
     system_prompt = RECOMMENDATION_RATIONALE_PROMPT.render_system(**system_kwargs)
     user_prompt = RECOMMENDATION_RATIONALE_PROMPT.render_user(
-        user_profile=profile.model_dump(),
-        candidates=candidates_for_template,
+        user_profile=profile.model_dump(), candidates=candidates_for_template
     )
 
     request = InferenceRequest(

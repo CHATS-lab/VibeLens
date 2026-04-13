@@ -2,11 +2,14 @@
 
 from fastapi import APIRouter, HTTPException, Query
 
+from vibelens.deps import get_recommendation_store
 from vibelens.models.recommendation.catalog import CatalogItem
+from vibelens.models.recommendation.profile import UserProfile
 from vibelens.schemas.catalog import (
     CatalogInstallRequest,
     CatalogInstallResponse,
     CatalogListResponse,
+    CatalogMetaResponse,
 )
 from vibelens.services.catalog.install import install_catalog_item
 from vibelens.services.recommendation.catalog import CatalogSnapshot, load_catalog
@@ -75,18 +78,67 @@ def _filter_items(
     return result
 
 
-def _sort_items(items: list[CatalogItem], sort: str) -> list[CatalogItem]:
+def _score_relevance(item: CatalogItem, keywords: list[str]) -> float:
+    """Score item relevance against user profile keywords.
+
+    Args:
+        item: Catalog item to score.
+        keywords: Lowercased search keywords from user profile.
+
+    Returns:
+        Relevance score from 0.0 to 1.0.
+    """
+    if not keywords:
+        return 0.0
+    text = f"{item.name} {item.description} {' '.join(item.tags)} {item.category}".lower()
+    hits = sum(1 for kw in keywords if kw in text)
+    return hits / len(keywords)
+
+
+def _load_latest_profile() -> UserProfile | None:
+    """Load user profile from the most recent recommendation analysis.
+
+    Returns:
+        UserProfile if a recommendation analysis exists, else None.
+    """
+    store = get_recommendation_store()
+    analyses = store.list_analyses()
+    if not analyses:
+        return None
+    result = store.load(analyses[0].analysis_id)
+    if not result:
+        return None
+    return result.user_profile
+
+
+def _sort_items(
+    items: list[CatalogItem],
+    sort: str,
+    profile: UserProfile | None = None,
+) -> list[CatalogItem]:
     """Sort items by the given criterion.
 
     Args:
         items: Items to sort.
-        sort: Sort key — "name" for alphabetical, anything else for quality descending.
+        sort: Sort key - quality, name, popularity, recent, or relevance.
+        profile: Optional user profile for relevance sorting.
 
     Returns:
         Sorted list of catalog items.
     """
     if sort == "name":
         return sorted(items, key=lambda i: i.name.lower())
+    if sort == "popularity":
+        return sorted(items, key=lambda i: i.popularity, reverse=True)
+    if sort == "recent":
+        return sorted(items, key=lambda i: i.updated_at, reverse=True)
+    if sort == "relevance" and profile and profile.search_keywords:
+        keywords = [kw.lower() for kw in profile.search_keywords]
+        return sorted(
+            items,
+            key=lambda i: (_score_relevance(i, keywords), i.quality_score),
+            reverse=True,
+        )
     return sorted(items, key=lambda i: i.quality_score, reverse=True)
 
 
@@ -96,7 +148,10 @@ async def list_catalog(
     item_type: str | None = Query(default=None, description="Filter by item type"),
     category: str | None = Query(default=None, description="Filter by category"),
     platform: str | None = Query(default=None, description="Filter by platform"),
-    sort: str = Query(default="quality", description="Sort: quality or name"),
+    sort: str = Query(
+        default="quality",
+        description="Sort: quality, name, popularity, recent, relevance",
+    ),
     page: int = Query(default=1, ge=1, description="Page number"),
     per_page: int = Query(default=50, ge=1, le=200, description="Items per page"),
 ) -> CatalogListResponse:
@@ -107,7 +162,7 @@ async def list_catalog(
         item_type: Filter by item type value.
         category: Filter by category string.
         platform: Filter by platform string.
-        sort: Sort criterion — "quality" (default) or "name".
+        sort: Sort criterion — quality (default), name, popularity, recent, or relevance.
         page: Page number, 1-indexed.
         per_page: Number of items per page (1-200).
 
@@ -116,7 +171,8 @@ async def list_catalog(
     """
     catalog = _get_catalog()
     filtered = _filter_items(catalog.items, search, item_type, category, platform)
-    sorted_items = _sort_items(filtered, sort)
+    profile = _load_latest_profile() if sort == "relevance" else None
+    sorted_items = _sort_items(filtered, sort, profile=profile)
 
     total = len(sorted_items)
     start = (page - 1) * per_page
@@ -129,6 +185,20 @@ async def list_catalog(
         item_dicts.append(d)
 
     return CatalogListResponse(items=item_dicts, total=total, page=page, per_page=per_page)
+
+
+@router.get("/meta")
+async def catalog_meta() -> CatalogMetaResponse:
+    """Return catalog metadata for frontend filter and sort options.
+
+    Returns:
+        Categories list and profile availability flag.
+    """
+    catalog = _get_catalog()
+    categories = sorted({item.category for item in catalog.items})
+    profile = _load_latest_profile()
+    has_profile = bool(profile and profile.search_keywords)
+    return CatalogMetaResponse(categories=categories, has_profile=has_profile)
 
 
 @router.post("/{item_id:path}/install")

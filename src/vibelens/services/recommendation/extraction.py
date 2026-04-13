@@ -25,9 +25,7 @@ MAX_PER_PROJECT = 3
 MIN_FIRST_MESSAGE_CHARS = 15
 
 
-def extract_lightweight_digest(
-    metadata_list: list[dict],
-) -> tuple[str, int, int]:
+def extract_lightweight_digest(metadata_list: list[dict]) -> tuple[str, int, int]:
     """Extract a lightweight digest from session metadata and compaction files.
 
     For sessions with compaction agents: reads the compaction JSONL directly,

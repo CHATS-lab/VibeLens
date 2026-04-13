@@ -97,12 +97,10 @@ class Settings(BaseSettings):
         description="URL to fetch catalog.json updates from (GitHub Release asset).",
     )
     catalog_auto_update: bool = Field(
-        default=True,
-        description="Check for catalog updates on startup.",
+        default=True, description="Check for catalog updates on startup."
     )
     catalog_check_interval_hours: int = Field(
-        default=24,
-        description="Minimum hours between catalog update checks.",
+        default=24, description="Minimum hours between catalog update checks."
     )
 
     # Donation

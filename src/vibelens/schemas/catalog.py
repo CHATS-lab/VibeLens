@@ -31,3 +31,10 @@ class CatalogInstallResponse(BaseModel):
     success: bool = Field(description="Whether installation succeeded.")
     installed_path: str = Field(description="Path where the item was installed.")
     message: str = Field(default="", description="Additional status message.")
+
+
+class CatalogMetaResponse(BaseModel):
+    """Catalog metadata for frontend filter/sort options."""
+
+    categories: list[str] = Field(description="Unique category values from catalog.")
+    has_profile: bool = Field(description="Whether a user profile exists for relevance sorting.")

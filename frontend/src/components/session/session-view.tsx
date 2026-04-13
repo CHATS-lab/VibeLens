@@ -426,8 +426,8 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
               <MetaPill
                 icon={<Hash className="w-3 h-3" />}
                 label={main.session_id.slice(0, SESSION_ID_SHORT)}
-                color="text-accent-cyan"
-                bg="bg-accent-cyan-muted border border-accent-cyan"
+                color="text-cyan-700 dark:text-cyan-300"
+                bg="bg-cyan-50 dark:bg-cyan-950/60 border border-cyan-200/80 dark:border-cyan-700/50 shadow-sm shadow-cyan-500/5 dark:shadow-cyan-400/5"
                 tooltip={`Session ID: ${main.session_id}`}
               />
               <Tooltip text={main.first_message || "Session"} className="min-w-0">

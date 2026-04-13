@@ -89,9 +89,7 @@ def get_codex_skill_store():
 
     return _get_or_create(
         "codex_skill_store",
-        lambda: DiskSkillStore(
-            get_settings().codex_dir / "skills", SkillSourceType.CODEX
-        ),
+        lambda: DiskSkillStore(get_settings().codex_dir / "skills", SkillSourceType.CODEX),
     )
 
 

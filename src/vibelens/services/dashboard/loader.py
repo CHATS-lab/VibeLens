@@ -268,7 +268,7 @@ def _load_one_session(
                 traj.project_path = meta.get("project_path")
             return traj
     except Exception:
-        logger.warning("Failed to load session %s, skipping", session_id)
+        logger.warning("Failed to load session %s, skipping", session_id, exc_info=True)
     return None
 
 

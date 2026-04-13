@@ -62,14 +62,10 @@ class KeywordRetrieval(RetrievalBackend):
             self._tfidf_matrix = None
             return
 
-        documents = [
-            f"{item.name} {item.description} {' '.join(item.tags)}"
-            for item in items
-        ]
+        documents = [f"{item.name} {item.description} {' '.join(item.tags)}" for item in items]
         self._tfidf_matrix = self._vectorizer.fit_transform(documents)
         logger.info(
-            "Built TF-IDF index: %d items, %d features",
-            len(items), self._tfidf_matrix.shape[1],
+            "Built TF-IDF index: %d items, %d features", len(items), self._tfidf_matrix.shape[1]
         )
 
     def search(self, query: str, top_k: int) -> list[tuple[CatalogItem, float]]:
