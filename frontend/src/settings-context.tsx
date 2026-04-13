@@ -3,9 +3,17 @@ import type { ReactNode } from "react";
 
 export type FontScale = "90%" | "100%" | "110%" | "120%" | "130%";
 export type ThemePreference = "system" | "light" | "dark";
+export type FontFamily = "default" | "sans" | "system" | "dyslexic";
 
 const FONT_SCALE_OPTIONS: FontScale[] = ["90%", "100%", "110%", "120%", "130%"];
 const THEME_OPTIONS: ThemePreference[] = ["system", "light", "dark"];
+const FONT_FAMILY_OPTIONS: FontFamily[] = ["default", "sans", "system", "dyslexic"];
+const FONT_FAMILY_CLASSES: Record<FontFamily, string | null> = {
+  default: null,
+  sans: "font-sans",
+  system: "font-system",
+  dyslexic: "font-dyslexic",
+};
 
 const STORAGE_KEY = "vibelens-settings";
 const DARK_MEDIA_QUERY = "(prefers-color-scheme: dark)";
@@ -13,6 +21,7 @@ const DARK_MEDIA_QUERY = "(prefers-color-scheme: dark)";
 interface PersistedSettings {
   fontScale?: string;
   theme?: string;
+  fontFamily?: string;
 }
 
 interface SettingsValue {
@@ -22,6 +31,9 @@ interface SettingsValue {
   theme: ThemePreference;
   setTheme: (theme: ThemePreference) => void;
   themeOptions: ThemePreference[];
+  fontFamily: FontFamily;
+  setFontFamily: (family: FontFamily) => void;
+  fontFamilyOptions: FontFamily[];
 }
 
 const SettingsContext = createContext<SettingsValue>({
@@ -31,6 +43,9 @@ const SettingsContext = createContext<SettingsValue>({
   theme: "system",
   setTheme: () => {},
   themeOptions: THEME_OPTIONS,
+  fontFamily: "default",
+  setFontFamily: () => {},
+  fontFamilyOptions: FONT_FAMILY_OPTIONS,
 });
 
 export function useSettings(): SettingsValue {
@@ -63,22 +78,36 @@ function loadPersistedTheme(): ThemePreference {
   return "system";
 }
 
-function persistSettings(fontScale: FontScale, theme: ThemePreference): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({ fontScale, theme }));
+function loadPersistedFontFamily(): FontFamily {
+  const parsed = loadPersistedSettings();
+  if (parsed.fontFamily && FONT_FAMILY_OPTIONS.includes(parsed.fontFamily as FontFamily)) {
+    return parsed.fontFamily as FontFamily;
+  }
+  return "default";
+}
+
+function persistSettings(fontScale: FontScale, theme: ThemePreference, fontFamily: FontFamily): void {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ fontScale, theme, fontFamily }));
 }
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [fontScale, setFontScaleState] = useState<FontScale>(loadPersistedScale);
   const [theme, setThemeState] = useState<ThemePreference>(loadPersistedTheme);
+  const [fontFamily, setFontFamilyState] = useState<FontFamily>(loadPersistedFontFamily);
 
   const setFontScale = (scale: FontScale) => {
     setFontScaleState(scale);
-    persistSettings(scale, theme);
+    persistSettings(scale, theme, fontFamily);
   };
 
   const setTheme = (newTheme: ThemePreference) => {
     setThemeState(newTheme);
-    persistSettings(fontScale, newTheme);
+    persistSettings(fontScale, newTheme, fontFamily);
+  };
+
+  const setFontFamily = (family: FontFamily) => {
+    setFontFamilyState(family);
+    persistSettings(fontScale, theme, family);
   };
 
   // Apply CSS zoom on #root and adjust dimensions so content fills the viewport
@@ -109,6 +138,16 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     }
   }, [theme]);
 
+  // Apply font-family class on <html> based on selected font
+  useEffect(() => {
+    const html = document.documentElement;
+    for (const cls of Object.values(FONT_FAMILY_CLASSES)) {
+      if (cls) html.classList.remove(cls);
+    }
+    const cls = FONT_FAMILY_CLASSES[fontFamily];
+    if (cls) html.classList.add(cls);
+  }, [fontFamily]);
+
   return (
     <SettingsContext.Provider
       value={{
@@ -118,6 +157,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         theme,
         setTheme,
         themeOptions: THEME_OPTIONS,
+        fontFamily,
+        setFontFamily,
+        fontFamilyOptions: FONT_FAMILY_OPTIONS,
       }}
     >
       {children}
