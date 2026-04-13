@@ -215,7 +215,7 @@ export function AnalysisWelcomePage({
 export function TutorialBanner({ tutorial, accentColor }: { tutorial: Tutorial; accentColor: AccentColor }) {
   const s = ACCENT_TUTORIAL[accentColor];
   return (
-    <div className={`relative w-full px-4 py-3.5 rounded-lg border ${s.border} ${s.bg} overflow-hidden text-left mb-6`}>
+    <div className={`relative w-full px-4 py-3.5 rounded-lg border ${s.border} ${s.bg} overflow-hidden text-left`}>
       <div className="flex items-center gap-3">
         <div className={`shrink-0 p-2 rounded-lg ${s.iconBg}`}>
           <Lightbulb className={`w-4 h-4 ${s.iconColor}`} />

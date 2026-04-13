@@ -277,7 +277,7 @@ export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: Fricti
     if (activeJobId) {
       return (
         <div className="h-full flex flex-col">
-          <div className="px-6 pt-3 pb-0">
+          <div className="px-6 pt-5 pb-2">
             <TutorialBanner tutorial={FRICTION_TUTORIAL} accentColor="cyan" />
           </div>
           <div className="flex items-center justify-center flex-1">
@@ -323,7 +323,7 @@ export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: Fricti
     return (
       <div className="h-full flex">
         <div className="flex-1 overflow-y-auto">
-          <div className="px-6 pt-3 pb-0">
+          <div className="px-6 pt-5 pb-2">
             <TutorialBanner tutorial={FRICTION_TUTORIAL} accentColor="cyan" />
           </div>
           <AnalysisWelcomePage
@@ -350,7 +350,7 @@ export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: Fricti
   return (
     <div className="h-full flex">
       <div className="flex-1 overflow-y-auto">
-        <div className="px-6 pt-3 pb-0">
+        <div className="px-6 pt-5 pb-2">
           <TutorialBanner tutorial={FRICTION_TUTORIAL} accentColor="cyan" />
         </div>
         <div className="max-w-4xl mx-auto px-6 py-8 space-y-8">
