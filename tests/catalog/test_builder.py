@@ -1,9 +1,15 @@
 """Tests for the catalog builder orchestrator."""
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 from vibelens.catalog.builder import build_catalog
 from vibelens.models.recommendation.catalog import ItemType
+
+
+def _noop_validate(items):
+    """Bypass URL validation in tests (no network access)."""
+    return items
 
 
 def _setup_hub(tmp_path: Path) -> Path:
@@ -57,7 +63,8 @@ description: A test skill from templates
     return tmp_path
 
 
-def test_build_catalog_produces_items(tmp_path: Path):
+@patch("vibelens.catalog.builder.validate_source_urls", side_effect=_noop_validate)
+def test_build_catalog_produces_items(mock_validate, tmp_path: Path):
     """Builder reads all sources and produces scored, deduped items."""
     hub_dir = _setup_hub(tmp_path)
     output_path = tmp_path / "catalog.json"
@@ -72,7 +79,8 @@ def test_build_catalog_produces_items(tmp_path: Path):
         print(f"  {item.item_id}: score={item.quality_score:.1f}, type={item.item_type}")
 
 
-def test_build_catalog_all_items_scored(tmp_path: Path):
+@patch("vibelens.catalog.builder.validate_source_urls", side_effect=_noop_validate)
+def test_build_catalog_all_items_scored(mock_validate, tmp_path: Path):
     """Every item has quality_score in valid range."""
     hub_dir = _setup_hub(tmp_path)
     items = build_catalog(hub_dir=hub_dir, output_path=tmp_path / "out.json")
@@ -81,7 +89,8 @@ def test_build_catalog_all_items_scored(tmp_path: Path):
     print(f"All {len(items)} items scored in 50-100 range")
 
 
-def test_build_catalog_preserves_existing(tmp_path: Path):
+@patch("vibelens.catalog.builder.validate_source_urls", side_effect=_noop_validate)
+def test_build_catalog_preserves_existing(mock_validate, tmp_path: Path):
     """Existing hand-curated items are preserved."""
     hub_dir = _setup_hub(tmp_path)
     existing_path = tmp_path / "existing.json"
@@ -114,7 +123,8 @@ def test_build_catalog_preserves_existing(tmp_path: Path):
     print(f"Preserved existing: {existing_ids}")
 
 
-def test_build_catalog_type_distribution(tmp_path: Path):
+@patch("vibelens.catalog.builder.validate_source_urls", side_effect=_noop_validate)
+def test_build_catalog_type_distribution(mock_validate, tmp_path: Path):
     """Builder produces items of various types."""
     hub_dir = _setup_hub(tmp_path)
     items = build_catalog(hub_dir=hub_dir, output_path=tmp_path / "out.json")

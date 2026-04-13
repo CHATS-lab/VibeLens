@@ -208,25 +208,22 @@ class TestCreationPackage:
     """Verify models/creation/ package with new generalized models."""
 
     def test_element_creation(self):
-        from vibelens.models.creation.models import ElementCreation
+        from vibelens.models.creation.creation import ElementCreation
 
         creation = ElementCreation(
-            element_type="skill",
             name="test-runner",
             description="Runs tests automatically",
-            file_content="# Test Runner\n...",
-            target_path="~/.claude/commands/test-runner.md",
+            skill_md_content="# Test Runner\n...",
             rationale="Automates repetitive test runs",
             confidence=0.85,
         )
-        assert creation.element_type == "skill"
+        assert creation.name == "test-runner"
         assert creation.tools_used == []
 
     def test_element_creation_proposal(self):
-        from vibelens.models.creation.models import ElementCreationProposal
+        from vibelens.models.creation.creation import ElementCreationProposal
 
         proposal = ElementCreationProposal(
-            element_type="command",
             name="deploy",
             description="Deploys to staging",
             rationale="Reduces manual deployment steps",
@@ -235,16 +232,16 @@ class TestCreationPackage:
         assert proposal.relevant_session_indices == []
 
     def test_creation_result(self):
-        from vibelens.models.creation.results import CreationResult
+        from vibelens.models.creation.results import CreationAnalysisResult
 
-        assert CreationResult is not None
+        assert CreationAnalysisResult is not None
 
 
 class TestEvolutionPackage:
     """Verify models/evolution/ package with new generalized models."""
 
     def test_element_edit(self):
-        from vibelens.models.evolution.models import ElementEdit
+        from vibelens.models.evolution.evolution import ElementEdit
 
         edit = ElementEdit(
             old_string="original text",
@@ -253,7 +250,7 @@ class TestEvolutionPackage:
         assert edit.replace_all is False
 
     def test_element_evolution(self):
-        from vibelens.models.evolution.models import ElementEvolution
+        from vibelens.models.evolution.evolution import ElementEvolution
 
         evo = ElementEvolution(
             element_type="skill",
@@ -266,7 +263,7 @@ class TestEvolutionPackage:
         assert evo.addressed_patterns == []
 
     def test_element_evolution_proposal(self):
-        from vibelens.models.evolution.models import ElementEvolutionProposal
+        from vibelens.models.evolution.evolution import ElementEvolutionProposal
 
         proposal = ElementEvolutionProposal(
             element_type="subagent",
@@ -278,6 +275,6 @@ class TestEvolutionPackage:
         assert proposal.confidence == 0.0
 
     def test_evolution_result(self):
-        from vibelens.models.evolution.results import EvolutionResult
+        from vibelens.models.evolution.results import EvolutionAnalysisResult
 
-        assert EvolutionResult is not None
+        assert EvolutionAnalysisResult is not None
