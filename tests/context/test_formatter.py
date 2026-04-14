@@ -322,7 +322,7 @@ def test_compact_header_omits_steps_and_tools() -> None:
 
 
 def test_detailed_header_includes_steps_and_tools() -> None:
-    """include_details=True adds STEPS and TOOLS lines."""
+    """include_details=True adds STEPS line (TOOLS covered by test_build_metadata_block_tool_summary)."""
     traj = _make_trajectory(
         session_id="test-session-001",
         project_path="/home/user/myproject",
