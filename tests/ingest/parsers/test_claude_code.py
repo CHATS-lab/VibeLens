@@ -1236,8 +1236,8 @@ class TestStepExtraEnrichment:
 
 
 class TestErrorHandling:
-    def test_all_invalid_json_raises(self):
-        """Content where all lines fail JSON parsing raises ValueError."""
+    def test_all_invalid_json_returns_empty(self):
+        """Content where all lines fail JSON parsing returns [] with warning."""
         content = "not json\nalso not json\n"
-        with pytest.raises(ValueError, match="No parseable entries"):
-            _parser.parse(content, source_path="test.jsonl")
+        result = _parser.parse(content, source_path="test.jsonl")
+        assert result == []

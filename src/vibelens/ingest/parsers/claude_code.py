@@ -218,9 +218,11 @@ class ClaudeCodeParser(BaseParser):
         if not steps:
             if collector.parsed_lines == 0 and collector.total_lines > 0:
                 source = source_path or "unknown"
-                raise ValueError(
-                    f"No parseable entries in {source}"
-                    f" ({collector.total_lines} lines, {collector.skipped_lines} skipped)"
+                logger.warning(
+                    "No parseable entries in %s (%d lines, %d skipped)",
+                    source,
+                    collector.total_lines,
+                    collector.skipped_lines,
                 )
             return []
 

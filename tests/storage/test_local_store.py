@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from vibelens.config import Settings
+from vibelens.ingest.parsers.claude_code import ClaudeCodeParser
 from vibelens.storage.trajectory.local import LocalTrajectoryStore as LocalSource
 
 
@@ -367,3 +368,26 @@ class TestCacheHitOrRebuild:
         result = source._try_load_from_cache()
         assert result is False, "Stale files should trigger full rebuild, not incremental update"
         print("Stale file correctly triggers full rebuild (returns False)")
+
+
+class TestParserResilience:
+    """Test that parsers handle corrupt files gracefully."""
+
+    def test_parse_file_handles_unicode_error(self, test_settings):
+        """parse_file returns [] for files with non-UTF-8 bytes."""
+        settings, _, test_project = test_settings
+        corrupt_file = test_project / "corrupt.jsonl"
+        corrupt_file.write_bytes(b'\x80\x81\x82 invalid utf-8 bytes')
+
+        parser = ClaudeCodeParser()
+        result = parser.parse_file(corrupt_file)
+        assert result == []
+        print("parse_file returns [] for non-UTF-8 file")
+
+    def test_parse_handles_all_unparseable_lines(self):
+        """parse returns [] (not raises ValueError) when all lines are corrupt JSON."""
+        corrupt_content = "not json at all\nalso not json\nstill not json\n"
+        parser = ClaudeCodeParser()
+        result = parser.parse(corrupt_content, source_path="/fake/session.jsonl")
+        assert result == []
+        print("parse returns [] for fully corrupt content")
