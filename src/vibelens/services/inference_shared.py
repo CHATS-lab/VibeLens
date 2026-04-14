@@ -241,9 +241,9 @@ def sample_contexts(
         selected.append(ctx)
         running_chars = candidate_chars
 
-    # Re-index selected sessions sequentially
+    # Re-index selected sessions sequentially (updates both session_index and context_text)
     for i, ctx in enumerate(selected):
-        ctx.session_index = i
+        ctx.reindex(i)
 
     logger.info(
         "Sampled %d/%d sessions (est. %d tokens within %d budget)",
