@@ -310,3 +310,35 @@ class TestLocalStoreErrorHandling:
 
             summaries = source.list_metadata()
             assert len(summaries) == 0
+
+
+class TestLoadSnapshotPattern:
+    """Test that load() snapshots index state to avoid races."""
+
+    def test_load_uses_ensure_index_return_value(
+        self, test_settings, sample_history, sample_sessions
+    ):
+        """load() passes metadata_cache to _enrich_refs, not self._metadata_cache."""
+        settings, _, _ = test_settings
+        source = LocalSource(settings=settings)
+
+        # Load a session to warm the index
+        group = source.load("session-001")
+        assert group is not None
+
+        # Invalidate after _ensure_index_snapshot but before _enrich_refs — simulates race
+        # If load() snapshots correctly, this should not crash
+        original_ensure = source._ensure_index_snapshot
+
+        def ensure_then_invalidate():
+            result = original_ensure()
+            source._metadata_cache = None
+            source._index = {}
+            return result
+
+        source._ensure_index_snapshot = ensure_then_invalidate
+        source._metadata_cache = None
+
+        group = source.load("session-001")
+        assert group is not None
+        print("load() survived concurrent invalidation via snapshot pattern")

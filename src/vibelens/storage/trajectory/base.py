@@ -74,7 +74,8 @@ class BaseTrajectoryStore(ABC):
     def load(self, session_id: str) -> list[Trajectory] | None:
         """Load a full trajectory group by session ID.
 
-        Delegates to the parser associated with the session in _index.
+        Snapshots _index and _metadata_cache at call time so a concurrent
+        invalidate_index() cannot cause AttributeError mid-operation.
 
         Args:
             session_id: Main session identifier.
@@ -82,8 +83,8 @@ class BaseTrajectoryStore(ABC):
         Returns:
             List of Trajectory objects (main + sub-agents), or None.
         """
-        self._ensure_index()
-        entry = self._index.get(session_id)
+        metadata_cache, index = self._ensure_index_snapshot()
+        entry = index.get(session_id)
         if not entry:
             return None
 
@@ -98,18 +99,28 @@ class BaseTrajectoryStore(ABC):
             )
             return None
 
-        self._enrich_refs_from_index(session_id, trajectories)
+        self._enrich_refs_from_index(session_id, trajectories, metadata_cache)
         return self._sort_trajectories(trajectories)
 
-    def _enrich_refs_from_index(self, session_id: str, trajectories: list[Trajectory]) -> None:
+    def _enrich_refs_from_index(
+        self,
+        session_id: str,
+        trajectories: list[Trajectory],
+        metadata_cache: dict[str, dict],
+    ) -> None:
         """Carry over continuation refs from the index to loaded trajectories.
 
         The index builder enriches skeletons with prev_trajectory_ref and
         next_trajectory_ref via JSONL analysis.  When sessions are
         re-parsed from disk these refs are lost, so we copy them back
         from the cached metadata onto the main trajectory.
+
+        Args:
+            session_id: Main session identifier.
+            trajectories: Parsed trajectory list to enrich.
+            metadata_cache: Snapshot of the metadata cache dict.
         """
-        meta = self._metadata_cache.get(session_id)
+        meta = metadata_cache.get(session_id)
         if not meta:
             return
         main = next((t for t in trajectories if t.session_id == session_id), None)
@@ -178,6 +189,23 @@ class BaseTrajectoryStore(ABC):
         if self._metadata_cache is None:
             self._build_index()
         return self._metadata_cache  # type: ignore[return-value]
+
+    def _ensure_index_snapshot(
+        self,
+    ) -> tuple[dict[str, dict], dict[str, tuple[Path, BaseParser]]]:
+        """Lazy-load index and return both caches as a snapshot.
+
+        Captures _metadata_cache and _index together after _build_index
+        completes so load() holds stable local references even if a
+        concurrent invalidate_index() replaces the instance attributes.
+
+        Returns:
+            Tuple of (metadata_cache, index) captured atomically after
+            the index is guaranteed to be populated.
+        """
+        if self._metadata_cache is None:
+            self._build_index()
+        return self._metadata_cache, self._index  # type: ignore[return-value]
 
     def invalidate_index(self) -> None:
         """Clear cached index, forcing rebuild on next access."""
