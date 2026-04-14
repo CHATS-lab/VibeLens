@@ -14,7 +14,6 @@ class SkillSourceType(StrEnum):
     """
 
     AIDER = AgentType.AIDER
-    AMP = AgentType.AMP
     ANTIGRAVITY = AgentType.ANTIGRAVITY
     CLAUDE_CODE = AgentType.CLAUDE_CODE
     CODEX = AgentType.CODEX

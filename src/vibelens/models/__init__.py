@@ -13,8 +13,6 @@ from vibelens.models.enums import (
     AgentType,
     AppMode,
     ContentType,
-    DataSourceType,
-    DataTargetType,
     SessionPhase,
     StepSource,
 )
@@ -34,7 +32,6 @@ from vibelens.models.trajectories import (
     Trajectory,
     TrajectoryRef,
 )
-from vibelens.schemas import RemoteSessionsQuery
 
 __all__ = [
     "Agent",
@@ -47,14 +44,11 @@ __all__ = [
     "ContentType",
     "DailyStat",
     "DashboardStats",
-    "DataSourceType",
-    "DataTargetType",
     "FinalMetrics",
     "ImageSource",
     "Metrics",
     "Observation",
     "ObservationResult",
-    "RemoteSessionsQuery",
     "SessionAnalytics",
     "SessionPhase",
     "SkillInfo",
