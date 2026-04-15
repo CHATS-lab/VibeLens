@@ -12,7 +12,7 @@ Registry:
 from pathlib import Path
 
 from vibelens.models.skill import ExtensionSource
-from vibelens.storage.skill.disk import DiskExtensionStore
+from vibelens.storage.extension.disk import DiskExtensionStore
 
 AGENT_EXTENSION_REGISTRY: dict[ExtensionSource, Path] = {
     ExtensionSource.CURSOR: Path.home() / ".cursor" / "skills",

@@ -74,7 +74,7 @@ def get_friction_store():
 def get_claude_extension_store():
     """Return cached Claude Code extension store singleton."""
     from vibelens.models.skill import ExtensionSource
-    from vibelens.storage.skill.disk import DiskExtensionStore
+    from vibelens.storage.extension.disk import DiskExtensionStore
 
     return _get_or_create(
         "extension_store",
@@ -85,7 +85,7 @@ def get_claude_extension_store():
 def get_codex_extension_store():
     """Return cached Codex CLI extension store singleton."""
     from vibelens.models.skill import ExtensionSource
-    from vibelens.storage.skill.disk import DiskExtensionStore
+    from vibelens.storage.extension.disk import DiskExtensionStore
 
     return _get_or_create(
         "codex_extension_store",
@@ -95,7 +95,7 @@ def get_codex_extension_store():
 
 def get_central_extension_store():
     """Return cached central managed extension repository."""
-    from vibelens.storage.skill.central import CentralExtensionStore
+    from vibelens.storage.extension.central import CentralExtensionStore
 
     return _get_or_create(
         "central_extension_store", lambda: CentralExtensionStore(get_settings().managed_skills_dir)
@@ -107,7 +107,7 @@ def get_agent_extension_stores() -> list:
 
     Only includes agents whose skills directories exist on disk.
     """
-    from vibelens.storage.skill.agent import create_agent_extension_stores
+    from vibelens.storage.extension.agent import create_agent_extension_stores
 
     return _get_or_create("agent_extension_stores", create_agent_extension_stores)
 

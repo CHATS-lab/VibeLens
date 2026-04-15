@@ -26,7 +26,7 @@ from vibelens.models.skill import (
     ExtensionSource,
     ExtensionSourceInfo,
 )
-from vibelens.storage.skill.base import BaseExtensionStore
+from vibelens.storage.extension.base import BaseExtensionStore
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)

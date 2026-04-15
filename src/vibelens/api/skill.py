@@ -23,8 +23,8 @@ from vibelens.schemas.skills import (
 )
 from vibelens.services.inference_shared import CACHE_TTL_SECONDS
 from vibelens.services.skill.download import download_skill_directory
-from vibelens.storage.skill.agent import AGENT_EXTENSION_REGISTRY
-from vibelens.storage.skill.disk import DiskExtensionStore
+from vibelens.storage.extension.agent import AGENT_EXTENSION_REGISTRY
+from vibelens.storage.extension.disk import DiskExtensionStore
 
 logger = logging.getLogger(__name__)
 

@@ -11,8 +11,8 @@ from pathlib import Path
 import yaml
 
 from vibelens.models.skill import ExtensionInfo, ExtensionSource, ExtensionSourceInfo
-from vibelens.storage.skill.base import BaseExtensionStore
-from vibelens.storage.skill.disk import (
+from vibelens.storage.extension.base import BaseExtensionStore
+from vibelens.storage.extension.disk import (
     FRONTMATTER_DELIMITER,
     SKILL_FILENAME,
     DiskExtensionStore,
