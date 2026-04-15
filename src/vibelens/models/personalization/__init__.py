@@ -6,7 +6,7 @@ from vibelens.models.personalization.creation import (
     CreationProposalResult,
     PersonalizationCreation,
 )
-from vibelens.models.personalization.enums import PersonalizationElementType, PersonalizationMode
+from vibelens.models.personalization.enums import PersonalizationMode
 from vibelens.models.personalization.evolution import (
     EvolutionProposal,
     EvolutionProposalBatch,
@@ -25,7 +25,6 @@ __all__ = [
     "EvolutionProposalResult",
     "PersonalizationCreation",
     "PersonalizationEdit",
-    "PersonalizationElementType",
     "PersonalizationEvolution",
     "PersonalizationMeta",
     "PersonalizationMode",

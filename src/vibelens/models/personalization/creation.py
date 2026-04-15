@@ -2,13 +2,13 @@
 
 from pydantic import BaseModel, Field
 
+from vibelens.models.enums import AgentExtensionType
 from vibelens.models.llm.inference import BackendType
 from vibelens.models.personalization.constants import (
     DESCRIPTION_CONFIDENCE,
     DESCRIPTION_RATIONALE,
     DESCRIPTION_TITLE,
 )
-from vibelens.models.personalization.enums import PersonalizationElementType
 from vibelens.models.session.patterns import WorkflowPattern
 from vibelens.models.trajectories.final_metrics import FinalMetrics
 from vibelens.models.trajectories.metrics import Metrics
@@ -21,7 +21,7 @@ class CreationProposal(BaseModel):
     before the deep-creation step generates full file content.
     """
 
-    element_type: PersonalizationElementType = Field(description="Type of element to create.")
+    element_type: AgentExtensionType = Field(description="Type of element to create.")
     element_name: str = Field(description="Proposed element name in kebab-case.")
     session_indices: list[int] = Field(
         default_factory=list, description="0-indexed session indices pointing to relevant sessions."
@@ -86,7 +86,7 @@ class PersonalizationCreation(BaseModel):
     from the originating proposal's confidence score.
     """
 
-    element_type: PersonalizationElementType = Field(description="Type of element to create.")
+    element_type: AgentExtensionType = Field(description="Type of element to create.")
     element_name: str = Field(description="Element name in kebab-case.")
     description: str = Field(
         description=(

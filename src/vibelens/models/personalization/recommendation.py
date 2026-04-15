@@ -2,25 +2,15 @@
 
 from pydantic import BaseModel, Field
 
+from vibelens.models.enums import AgentExtensionType
 from vibelens.models.personalization.constants import DESCRIPTION_RATIONALE
-from vibelens.utils.compat import StrEnum
-
-
-class RecommendationItemType(StrEnum):
-    """Recommendation item type classification."""
-
-    SKILL = "skill"
-    SUBAGENT = "subagent"
-    COMMAND = "command"
-    HOOK = "hook"
-    REPO = "repo"
 
 
 class RecommendationItem(BaseModel):
     """A catalog item surfaced by the recommendation pipeline."""
 
-    item_id: str = Field(description="Unique identifier.")
-    item_type: RecommendationItemType = Field(description="Classified type.")
+    extension_id: str = Field(description="Unique identifier.")
+    extension_type: AgentExtensionType = Field(description="Classified type.")
     name: str = Field(description="Display name.")
     repo_name: str = Field(description="GitHub owner/repo.")
     source_url: str = Field(description="GitHub URL.")

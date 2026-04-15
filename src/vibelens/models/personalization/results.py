@@ -12,7 +12,6 @@ from vibelens.models.personalization.recommendation import (
     UserProfile,
 )
 from vibelens.models.session.patterns import WorkflowPattern
-from vibelens.models.skill.retrieval import SkillRecommendation
 from vibelens.models.trajectories.final_metrics import FinalMetrics
 from vibelens.models.trajectories.metrics import Metrics
 
@@ -22,20 +21,20 @@ class PersonalizationMeta(BaseModel):
 
     id: str = Field(description="Unique analysis ID.")
     mode: PersonalizationMode = Field(description="Analysis mode used.")
-    session_count: int = Field(description="Number of sessions analyzed.")
     title: str = Field(default="", description=DESCRIPTION_TITLE)
+    session_count: int = Field(description="Number of sessions analyzed.")
+    batch_count: int = Field(default=1, description="Number of LLM batches used.")
     item_count: int = Field(
-        default=0,
-        description="Number of output items (recommendations, creations, or evolutions).",
+        default=0, description="Number of output items (recommendations, creations, or evolutions)."
     )
     backend: BackendType = Field(description="Inference backend used.")
     model: str = Field(description="Model identifier.")
     created_at: str = Field(description="ISO timestamp of analysis completion.")
-    batch_count: int = Field(default=1, description="Number of LLM batches used.")
     final_metrics: FinalMetrics = Field(
         default_factory=FinalMetrics, description="Aggregate cost and token totals."
     )
     is_example: bool = Field(default=False, description="Whether this is a bundled example.")
+
 
 
 class PersonalizationResult(BaseModel):
@@ -47,30 +46,27 @@ class PersonalizationResult(BaseModel):
 
     id: str = Field(description="Persistence ID. Set when saved to disk.")
     mode: PersonalizationMode = Field(description="Which analysis mode was used.")
+    title: str = Field(description=DESCRIPTION_TITLE)
     session_ids: list[str] = Field(
         description="Session IDs that were successfully loaded and analyzed."
     )
     skipped_session_ids: list[str] = Field(
         default_factory=list, description="Session IDs that could not be loaded."
     )
-    title: str = Field(description=DESCRIPTION_TITLE)
     workflow_patterns: list[WorkflowPattern] = Field(
         default_factory=list, description="Detected workflow patterns from trajectory analysis."
     )
-    recommendations: list[SkillRecommendation] = Field(
-        default_factory=list, description="Recommended skills (retrieval mode)."
+    recommendations: list[RankedRecommendationItem] = Field(
+        default_factory=list, description="Ranked catalog recommendations."
+    )
+    user_profile: UserProfile | None = Field(
+        default=None, description="User profile from L2 generation (recommendation mode)."
     )
     creations: list[PersonalizationCreation] = Field(
         default_factory=list, description="Generated skills (creation mode)."
     )
     evolutions: list[PersonalizationEvolution] = Field(
         default_factory=list, description="Evolution suggestions (evolution mode)."
-    )
-    user_profile: UserProfile | None = Field(
-        default=None, description="User profile from L2 generation (recommendation mode)."
-    )
-    ranked_recommendations: list[RankedRecommendationItem] = Field(
-        default_factory=list, description="Ranked catalog recommendations (recommendation mode)."
     )
     backend: BackendType = Field(description="Inference backend used.")
     model: str = Field(description="Model identifier.")
@@ -86,3 +82,4 @@ class PersonalizationResult(BaseModel):
         default_factory=list, description="Non-fatal issues encountered during analysis."
     )
     is_example: bool = Field(default=False, description="Whether this is an example.")
+
