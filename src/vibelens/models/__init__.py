@@ -17,7 +17,7 @@ from vibelens.models.enums import (
     StepSource,
 )
 from vibelens.models.llm.prompts import AnalysisPrompt
-from vibelens.models.skill import SkillInfo
+from vibelens.models.skill import ExtensionInfo
 from vibelens.models.trajectories import (
     Agent,
     Base64Source,
@@ -51,7 +51,7 @@ __all__ = [
     "ObservationResult",
     "SessionAnalytics",
     "SessionPhase",
-    "SkillInfo",
+    "ExtensionInfo",
     "Step",
     "StepSource",
     "TimePattern",

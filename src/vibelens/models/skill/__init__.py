@@ -1,15 +1,15 @@
-"""Skill domain models."""
+"""Extension domain models (skill, subagent, command, hook, repo)."""
 
-from vibelens.models.enums import SkillSource
-from vibelens.models.skill.info import VALID_SKILL_NAME, SkillInfo
+from vibelens.models.enums import ExtensionSource
+from vibelens.models.skill.info import VALID_EXTENSION_NAME, ExtensionInfo
 from vibelens.models.skill.retrieval import SkillRecommendation, SkillRetrievalOutput
-from vibelens.models.skill.source import SkillSourceInfo
+from vibelens.models.skill.source import ExtensionSourceInfo
 
 __all__ = [
-    "SkillInfo",
+    "ExtensionInfo",
+    "ExtensionSource",
+    "ExtensionSourceInfo",
     "SkillRecommendation",
     "SkillRetrievalOutput",
-    "SkillSource",
-    "SkillSourceInfo",
-    "VALID_SKILL_NAME",
+    "VALID_EXTENSION_NAME",
 ]

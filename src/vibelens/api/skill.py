@@ -10,11 +10,11 @@ from cachetools import TTLCache
 from fastapi import APIRouter, HTTPException
 
 from vibelens.deps import (
-    get_central_skill_store,
-    get_claude_skill_store,
-    get_codex_skill_store,
+    get_central_extension_store,
+    get_claude_extension_store,
+    get_codex_extension_store,
 )
-from vibelens.models.skill import VALID_SKILL_NAME
+from vibelens.models.skill import VALID_EXTENSION_NAME
 from vibelens.schemas.skills import (
     FeaturedSkillInstallRequest,
     SkillLoadRequest,
@@ -23,8 +23,8 @@ from vibelens.schemas.skills import (
 )
 from vibelens.services.inference_shared import CACHE_TTL_SECONDS
 from vibelens.services.skill.download import download_skill_directory
-from vibelens.storage.skill.agent import AGENT_SKILL_REGISTRY
-from vibelens.storage.skill.disk import DiskSkillStore
+from vibelens.storage.skill.agent import AGENT_EXTENSION_REGISTRY
+from vibelens.storage.skill.disk import DiskExtensionStore
 
 logger = logging.getLogger(__name__)
 
@@ -40,18 +40,18 @@ def _make_agent_getter(source_type, skills_dir):
     """Create a lazy getter for a third-party agent skill store."""
 
     def _getter():
-        return DiskSkillStore(skills_dir.expanduser().resolve(), source_type)
+        return DiskExtensionStore(skills_dir.expanduser().resolve(), source_type)
 
     return _getter
 
 
 AGENT_STORE_REGISTRY: dict[str, callable] = {
-    "claude_code": get_claude_skill_store,
-    "codex": get_codex_skill_store,
+    "claude_code": get_claude_extension_store,
+    "codex": get_codex_extension_store,
 }
 
 # Register all third-party agents from the agent skill registry
-for _src_type, _skills_dir in AGENT_SKILL_REGISTRY.items():
+for _src_type, _skills_dir in AGENT_EXTENSION_REGISTRY.items():
     _key = _src_type.value
     if _key not in AGENT_STORE_REGISTRY:
         AGENT_STORE_REGISTRY[_key] = _make_agent_getter(_src_type, _skills_dir)
@@ -60,9 +60,9 @@ for _src_type, _skills_dir in AGENT_SKILL_REGISTRY.items():
 def _resolve_source_store(source: str):
     """Resolve supported source store ids."""
     if source == "claude":
-        return get_claude_skill_store()
+        return get_claude_extension_store()
     if source == "codex":
-        return get_codex_skill_store()
+        return get_codex_extension_store()
     raise HTTPException(status_code=404, detail=f"Unsupported skill source: {source}")
 
 
@@ -80,7 +80,7 @@ def list_local_skills(
     Returns:
         Dict with items, total count, page, and page_size.
     """
-    store = get_central_skill_store()
+    store = get_central_extension_store()
     if refresh:
         store.invalidate_cache()
     all_skills = store.get_cached()
@@ -100,7 +100,7 @@ def list_local_skills(
 def load_skills(source: str, req: SkillLoadRequest) -> dict:
     """Load all skills from an agent-native store into the central store."""
     source_store = _resolve_source_store(source)
-    central_store = get_central_skill_store()
+    central_store = get_central_extension_store()
     imported = central_store.import_all_from(source_store, overwrite=req.overwrite)
     return {
         "source": source,
@@ -152,7 +152,7 @@ def install_featured_skill(req: FeaturedSkillInstallRequest) -> dict:
     if not matched:
         raise HTTPException(status_code=404, detail=f"Skill {req.slug!r} not found in catalog")
 
-    central = get_central_skill_store()
+    central = get_central_extension_store()
     if central.get_skill(req.slug):
         raise HTTPException(status_code=409, detail=f"Skill {req.slug!r} already installed")
 
@@ -296,7 +296,7 @@ def _build_skill_md_from_catalog(catalog_entry: dict) -> str:
 @router.get("/search")
 def search_skills(q: str = "") -> list[dict]:
     """Search installed skills by name or description."""
-    store = get_central_skill_store()
+    store = get_central_extension_store()
     if not q.strip():
         return [s.model_dump(mode="json") for s in store.get_cached()]
     results = store.search_skills(q)
@@ -306,7 +306,7 @@ def search_skills(q: str = "") -> list[dict]:
 @router.get("/local/{name}")
 def get_local_skill_content(name: str) -> dict:
     """Read the full content of a locally installed skill."""
-    store = get_central_skill_store()
+    store = get_central_extension_store()
     info = store.get_skill(name)
     if not info:
         raise HTTPException(status_code=404, detail=f"Skill {name!r} not found")
@@ -318,12 +318,12 @@ def get_local_skill_content(name: str) -> dict:
 @router.post("/install")
 def install_skill(req: SkillWriteRequest) -> dict:
     """Install a new skill by writing its SKILL.md content."""
-    if not VALID_SKILL_NAME.match(req.name):
+    if not VALID_EXTENSION_NAME.match(req.name):
         raise HTTPException(status_code=422, detail="Skill name must be kebab-case")
     if not req.content.strip():
         raise HTTPException(status_code=422, detail="Skill content must not be empty")
 
-    store = get_central_skill_store()
+    store = get_central_extension_store()
     existing = store.get_skill(req.name)
     if existing:
         raise HTTPException(
@@ -338,7 +338,7 @@ def install_skill(req: SkillWriteRequest) -> dict:
 @router.put("/local/{name}")
 def update_skill(name: str, req: SkillWriteRequest) -> dict:
     """Update an existing skill's SKILL.md content."""
-    store = get_central_skill_store()
+    store = get_central_extension_store()
     if not store.get_skill(name):
         raise HTTPException(status_code=404, detail=f"Skill {name!r} not found")
     if not req.content.strip():
@@ -352,7 +352,7 @@ def update_skill(name: str, req: SkillWriteRequest) -> dict:
 @router.delete("/local/{name}")
 def delete_skill(name: str) -> dict:
     """Delete an installed skill and its entire directory."""
-    store = get_central_skill_store()
+    store = get_central_extension_store()
     deleted = store.delete_skill(name)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Skill {name!r} not found")
@@ -394,7 +394,7 @@ def sync_skill_to_targets(name: str, req: SkillSyncRequest) -> dict:
     Returns:
         Dict with sync results per target.
     """
-    central = get_central_skill_store()
+    central = get_central_extension_store()
     if not central.get_skill(name):
         raise HTTPException(status_code=404, detail=f"Skill {name!r} not found in central store")
 

@@ -12,7 +12,7 @@ Directory layout (shared across all agents):
 
 Used directly for Claude Code, Codex CLI, Cursor, Gemini CLI, and all
 other agents that follow the standard skills/<name>/SKILL.md layout.
-Subclassed by CentralSkillStore (adds source metadata injection).
+Subclassed by CentralExtensionStore (adds source metadata injection).
 """
 
 import shutil
@@ -20,8 +20,13 @@ from pathlib import Path
 
 import yaml
 
-from vibelens.models.skill import VALID_SKILL_NAME, SkillInfo, SkillSource, SkillSourceInfo
-from vibelens.storage.skill.base import BaseSkillStore
+from vibelens.models.skill import (
+    VALID_EXTENSION_NAME,
+    ExtensionInfo,
+    ExtensionSource,
+    ExtensionSourceInfo,
+)
+from vibelens.storage.skill.base import BaseExtensionStore
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -36,20 +41,20 @@ KNOWN_SUBDIRS = ("scripts", "references", "agents", "assets")
 FRONTMATTER_DELIMITER = "---"
 
 
-class DiskSkillStore(BaseSkillStore):
+class DiskExtensionStore(BaseExtensionStore):
     """Concrete skill store backed by a directory of SKILL.md files.
 
     Constructor takes both skills_dir and source_type so any agent
-    can be represented by a plain DiskSkillStore instance.
+    can be represented by a plain DiskExtensionStore instance.
     """
 
-    def __init__(self, skills_dir: Path, source_type: SkillSource) -> None:
+    def __init__(self, skills_dir: Path, source_type: ExtensionSource) -> None:
         super().__init__()
         self._skills_dir = skills_dir.expanduser().resolve()
         self._source_type = source_type
 
     @property
-    def source_type(self) -> SkillSource:
+    def source_type(self) -> ExtensionSource:
         """Return the agent-specific source type."""
         return self._source_type
 
@@ -58,18 +63,18 @@ class DiskSkillStore(BaseSkillStore):
         """Return the root directory for this store's skills."""
         return self._skills_dir
 
-    def list_skills(self) -> list[SkillInfo]:
+    def list_skills(self) -> list[ExtensionInfo]:
         """Scan skills_dir and return metadata for all valid skill directories."""
         if not self._skills_dir.is_dir():
             logger.debug("Skills directory does not exist: %s", self._skills_dir)
             return []
 
-        skills: list[SkillInfo] = []
+        skills: list[ExtensionInfo] = []
         for entry in sorted(self._skills_dir.iterdir()):
             if not entry.is_dir():
                 continue
             name = entry.name
-            if not VALID_SKILL_NAME.match(name):
+            if not VALID_EXTENSION_NAME.match(name):
                 logger.debug("Skipping non-kebab-case skill dir: %s", name)
                 continue
             skill_file = entry / SKILL_FILENAME
@@ -82,9 +87,9 @@ class DiskSkillStore(BaseSkillStore):
         logger.debug("Scanned %d skills from %s", len(skills), self._skills_dir)
         return skills
 
-    def get_skill(self, name: str) -> SkillInfo | None:
+    def get_skill(self, name: str) -> ExtensionInfo | None:
         """Look up a single skill by directory name."""
-        if not VALID_SKILL_NAME.match(name):
+        if not VALID_EXTENSION_NAME.match(name):
             return None
         skill_dir = self._skills_dir / name
         skill_file = skill_dir / SKILL_FILENAME
@@ -112,7 +117,7 @@ class DiskSkillStore(BaseSkillStore):
         Raises:
             ValueError: If name is not valid kebab-case.
         """
-        if not VALID_SKILL_NAME.match(name):
+        if not VALID_EXTENSION_NAME.match(name):
             raise ValueError(f"Skill name must be kebab-case: {name!r}")
 
         skill_dir = self._skills_dir / name
@@ -139,8 +144,10 @@ class DiskSkillStore(BaseSkillStore):
         logger.info("Deleted skill %r from %s", name, skill_dir)
         return True
 
-    def _build_skill_info(self, name: str, skill_dir: Path, skill_file: Path) -> SkillInfo | None:
-        """Parse a SKILL.md and build SkillInfo metadata."""
+    def _build_skill_info(
+        self, name: str, skill_dir: Path, skill_file: Path
+    ) -> ExtensionInfo | None:
+        """Parse a SKILL.md and build ExtensionInfo metadata."""
         try:
             text = skill_file.read_text(encoding="utf-8")
         except OSError as exc:
@@ -153,12 +160,12 @@ class DiskSkillStore(BaseSkillStore):
         allowed_tools = parse_allowed_tools(frontmatter.pop("allowed-tools", None))
         frontmatter.pop("name", None)  # already using directory name
 
-        return SkillInfo(
+        return ExtensionInfo(
             name=name,
             description=description,
-            sources=[SkillSourceInfo(source_type=self.source_type, source_path=str(skill_dir))],
+            sources=[ExtensionSourceInfo(source_type=self.source_type, source_path=str(skill_dir))],
             central_path=None,
-            content_hash=SkillInfo.hash_content(text),
+            content_hash=ExtensionInfo.hash_content(text),
             metadata={
                 **frontmatter,
                 "allowed_tools": allowed_tools,

@@ -10,12 +10,12 @@ from pathlib import Path
 
 import yaml
 
-from vibelens.models.skill import SkillInfo, SkillSource, SkillSourceInfo
-from vibelens.storage.skill.base import BaseSkillStore
+from vibelens.models.skill import ExtensionInfo, ExtensionSource, ExtensionSourceInfo
+from vibelens.storage.skill.base import BaseExtensionStore
 from vibelens.storage.skill.disk import (
     FRONTMATTER_DELIMITER,
     SKILL_FILENAME,
-    DiskSkillStore,
+    DiskExtensionStore,
     detect_subdirs,
     extract_body,
     parse_allowed_tools,
@@ -26,19 +26,21 @@ from vibelens.utils.log import get_logger
 logger = get_logger(__name__)
 
 
-class CentralSkillStore(DiskSkillStore):
+class CentralExtensionStore(DiskExtensionStore):
     """Central repository for VibeLens-managed skills.
 
-    Extends DiskSkillStore with source metadata injection and
+    Extends DiskExtensionStore with source metadata injection and
     central-specific frontmatter fields (tags, sources).
     Creates its directory on init (unlike agent stores which are read-only).
     """
 
     def __init__(self, root_dir: Path) -> None:
-        super().__init__(root_dir, SkillSource.CENTRAL)
+        super().__init__(root_dir, ExtensionSource.CENTRAL)
         self._skills_dir.mkdir(parents=True, exist_ok=True)
 
-    def _build_skill_info(self, name: str, skill_dir: Path, skill_file: Path) -> SkillInfo | None:
+    def _build_skill_info(
+        self, name: str, skill_dir: Path, skill_file: Path
+    ) -> ExtensionInfo | None:
         """Parse central SKILL.md with extra metadata (tags, sources)."""
         try:
             text = skill_file.read_text(encoding="utf-8")
@@ -57,12 +59,12 @@ class CentralSkillStore(DiskSkillStore):
         if not isinstance(tags, list):
             tags = []
 
-        return SkillInfo(
+        return ExtensionInfo(
             name=name,
             description=description,
             sources=sources,
             central_path=skill_dir,
-            content_hash=SkillInfo.hash_content(text),
+            content_hash=ExtensionInfo.hash_content(text),
             metadata={
                 **frontmatter,
                 "allowed_tools": allowed_tools,
@@ -73,8 +75,8 @@ class CentralSkillStore(DiskSkillStore):
         )
 
     def import_skill_from(
-        self, source_store: "BaseSkillStore", name: str, overwrite: bool = False
-    ) -> SkillInfo | None:
+        self, source_store: "BaseExtensionStore", name: str, overwrite: bool = False
+    ) -> ExtensionInfo | None:
         """Import a skill, injecting source provenance into frontmatter."""
         result = super().import_skill_from(source_store, name, overwrite=overwrite)
         if result is None:
@@ -84,7 +86,7 @@ class CentralSkillStore(DiskSkillStore):
         self.invalidate_cache()
         return self.get_skill(name)
 
-    def _inject_source_metadata(self, name: str, source_store: "BaseSkillStore") -> None:
+    def _inject_source_metadata(self, name: str, source_store: "BaseExtensionStore") -> None:
         """Add source_type and source_path to SKILL.md frontmatter."""
         skill_file = self._skills_dir / name / SKILL_FILENAME
         if not skill_file.is_file():
@@ -114,18 +116,18 @@ class CentralSkillStore(DiskSkillStore):
         skill_file.write_text(new_text.rstrip() + "\n", encoding="utf-8")
 
 
-def _parse_sources(raw: object) -> list[SkillSourceInfo]:
-    """Normalize persisted source metadata into SkillSourceInfo objects."""
+def _parse_sources(raw: object) -> list[ExtensionSourceInfo]:
+    """Normalize persisted source metadata into ExtensionSourceInfo objects."""
     if not isinstance(raw, list):
         return []
-    sources: list[SkillSourceInfo] = []
+    sources: list[ExtensionSourceInfo] = []
     for item in raw:
         if not isinstance(item, dict):
             continue
         try:
             sources.append(
-                SkillSourceInfo(
-                    source_type=SkillSource(item.get("source_type")),
+                ExtensionSourceInfo(
+                    source_type=ExtensionSource(item.get("source_type")),
                     source_path=str(item.get("source_path", "")),
                 )
             )

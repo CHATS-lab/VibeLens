@@ -27,8 +27,8 @@ class AgentType(StrEnum):
     QWEN = "qwen"
 
 
-class SkillSource(StrEnum):
-    """Unified source/store type for skills.
+class ExtensionSource(StrEnum):
+    """Unified source/store type for extensions.
 
     Every AgentType member is mirrored here, plus CENTRAL.
     When adding a new agent to AgentType, add a matching line here.

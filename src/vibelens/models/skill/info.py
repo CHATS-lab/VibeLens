@@ -1,4 +1,4 @@
-"""Unified skill metadata models."""
+"""Unified extension metadata models."""
 
 import hashlib
 import re
@@ -7,20 +7,19 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
-from vibelens.models.skill.source import SkillSourceInfo
+from vibelens.models.skill.source import ExtensionSourceInfo
 
-# Enforces kebab-case naming (e.g. "test-fix-loop", "commit-with-review")
-VALID_SKILL_NAME = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+VALID_EXTENSION_NAME = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 
 
-class SkillInfo(BaseModel):
-    """Simplified skill metadata shared across central and agent stores."""
+class ExtensionInfo(BaseModel):
+    """Simplified extension metadata shared across central and agent stores."""
 
-    name: str = Field(description="Skill identifier in kebab-case.")
+    name: str = Field(description="Extension identifier in kebab-case.")
     description: str = Field(description="Trigger description from frontmatter.")
-    sources: list[SkillSourceInfo] = Field(
+    sources: list[ExtensionSourceInfo] = Field(
         default_factory=list,
-        description="All known sources from which this skill was loaded or is available.",
+        description="All known sources from which this extension was loaded or is available.",
     )
     central_path: Path | None = Field(
         default=None,
@@ -35,8 +34,8 @@ class SkillInfo(BaseModel):
     @classmethod
     def validate_kebab_case(cls, v: str) -> str:
         """Ensure name is valid kebab-case."""
-        if not VALID_SKILL_NAME.match(v):
-            raise ValueError(f"Skill name must be kebab-case: {v!r}")
+        if not VALID_EXTENSION_NAME.match(v):
+            raise ValueError(f"Extension name must be kebab-case: {v!r}")
         return v
 
     @classmethod

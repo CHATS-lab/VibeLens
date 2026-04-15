@@ -71,45 +71,45 @@ def get_friction_store():
     return _get_or_create("friction_store", lambda: FrictionStore(get_settings().friction_dir))
 
 
-def get_claude_skill_store():
-    """Return cached Claude Code skill store singleton."""
-    from vibelens.models.skill import SkillSource
-    from vibelens.storage.skill.disk import DiskSkillStore
+def get_claude_extension_store():
+    """Return cached Claude Code extension store singleton."""
+    from vibelens.models.skill import ExtensionSource
+    from vibelens.storage.skill.disk import DiskExtensionStore
 
     return _get_or_create(
-        "skill_store",
-        lambda: DiskSkillStore(get_settings().skills_dir, SkillSource.CLAUDE),
+        "extension_store",
+        lambda: DiskExtensionStore(get_settings().skills_dir, ExtensionSource.CLAUDE),
     )
 
 
-def get_codex_skill_store():
-    """Return cached Codex CLI skill store singleton."""
-    from vibelens.models.skill import SkillSource
-    from vibelens.storage.skill.disk import DiskSkillStore
+def get_codex_extension_store():
+    """Return cached Codex CLI extension store singleton."""
+    from vibelens.models.skill import ExtensionSource
+    from vibelens.storage.skill.disk import DiskExtensionStore
 
     return _get_or_create(
-        "codex_skill_store",
-        lambda: DiskSkillStore(get_settings().codex_dir / "skills", SkillSource.CODEX),
+        "codex_extension_store",
+        lambda: DiskExtensionStore(get_settings().codex_dir / "skills", ExtensionSource.CODEX),
     )
 
 
-def get_central_skill_store():
-    """Return cached central managed skill repository."""
-    from vibelens.storage.skill.central import CentralSkillStore
+def get_central_extension_store():
+    """Return cached central managed extension repository."""
+    from vibelens.storage.skill.central import CentralExtensionStore
 
     return _get_or_create(
-        "central_skill_store", lambda: CentralSkillStore(get_settings().managed_skills_dir)
+        "central_extension_store", lambda: CentralExtensionStore(get_settings().managed_skills_dir)
     )
 
 
-def get_agent_skill_stores() -> list:
-    """Return cached list of third-party agent skill stores.
+def get_agent_extension_stores() -> list:
+    """Return cached list of third-party agent extension stores.
 
     Only includes agents whose skills directories exist on disk.
     """
-    from vibelens.storage.skill.agent import create_agent_skill_stores
+    from vibelens.storage.skill.agent import create_agent_extension_stores
 
-    return _get_or_create("agent_skill_stores", create_agent_skill_stores)
+    return _get_or_create("agent_extension_stores", create_agent_extension_stores)
 
 
 def get_personalization_store():

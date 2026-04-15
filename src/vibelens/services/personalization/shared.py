@@ -13,7 +13,7 @@ from typing import TypeVar
 from cachetools import TTLCache
 from pydantic import BaseModel, ValidationError
 
-from vibelens.deps import get_central_skill_store
+from vibelens.deps import get_central_extension_store
 from vibelens.llm.backend import InferenceError
 from vibelens.models.context import SessionContextBatch
 from vibelens.models.personalization.enums import PersonalizationMode
@@ -58,7 +58,7 @@ def gather_installed_skills(
     Returns:
         List of dicts with skill info at the requested detail level.
     """
-    managed_store = get_central_skill_store()
+    managed_store = get_central_extension_store()
     skills = managed_store.get_cached()
 
     if detail_level == SkillDetailLevel.METADATA:

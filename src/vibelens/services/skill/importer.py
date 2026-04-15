@@ -1,10 +1,10 @@
 """Import skills from agent CLIs into the central managed repository."""
 
 from vibelens.deps import (
-    get_agent_skill_stores,
-    get_central_skill_store,
-    get_claude_skill_store,
-    get_codex_skill_store,
+    get_agent_extension_stores,
+    get_central_extension_store,
+    get_claude_extension_store,
+    get_codex_extension_store,
 )
 from vibelens.utils import get_logger
 
@@ -22,11 +22,11 @@ def import_agent_skills() -> int:
     Returns:
         Total number of skills imported.
     """
-    central = get_central_skill_store()
+    central = get_central_extension_store()
     agent_stores = [
-        ("claude_code", get_claude_skill_store()),
-        ("codex", get_codex_skill_store()),
-        *((s.source_type.value, s) for s in get_agent_skill_stores()),
+        ("claude_code", get_claude_extension_store()),
+        ("codex", get_codex_extension_store()),
+        *((s.source_type.value, s) for s in get_agent_extension_stores()),
     ]
     total_imported = 0
     for label, store in agent_stores:

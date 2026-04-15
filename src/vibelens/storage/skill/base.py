@@ -5,7 +5,7 @@ import time
 from abc import ABC, abstractmethod
 from pathlib import Path
 
-from vibelens.models.skill import SkillInfo, SkillSource
+from vibelens.models.skill import ExtensionInfo, ExtensionSource
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -14,7 +14,7 @@ logger = get_logger(__name__)
 CACHE_TTL_SECONDS = 300
 
 
-class BaseSkillStore(ABC):
+class BaseExtensionStore(ABC):
     """Abstract base for all skill stores.
 
     Both the central VibeLens store and agent-native stores inherit from this
@@ -23,12 +23,12 @@ class BaseSkillStore(ABC):
     """
 
     def __init__(self) -> None:
-        self._cache: list[SkillInfo] | None = None
+        self._cache: list[ExtensionInfo] | None = None
         self._cached_at: float = 0.0
 
     @property
     @abstractmethod
-    def source_type(self) -> SkillSource:
+    def source_type(self) -> ExtensionSource:
         """Unified source/store type for this store."""
 
     @property
@@ -37,11 +37,11 @@ class BaseSkillStore(ABC):
         """Root directory for this agent's skills."""
 
     @abstractmethod
-    def list_skills(self) -> list[SkillInfo]:
+    def list_skills(self) -> list[ExtensionInfo]:
         """List all installed skills with metadata (fresh scan)."""
 
     @abstractmethod
-    def get_skill(self, name: str) -> SkillInfo | None:
+    def get_skill(self, name: str) -> ExtensionInfo | None:
         """Look up a single skill by name."""
 
     @abstractmethod
@@ -72,8 +72,8 @@ class BaseSkillStore(ABC):
         return self.skills_dir / name
 
     def import_skill_from(
-        self, source_store: "BaseSkillStore", name: str, overwrite: bool = False
-    ) -> SkillInfo | None:
+        self, source_store: "BaseExtensionStore", name: str, overwrite: bool = False
+    ) -> ExtensionInfo | None:
         """Copy one skill directory from another store into this store."""
         source_dir = source_store.skill_path(name)
         if not source_dir.is_dir():
@@ -96,17 +96,17 @@ class BaseSkillStore(ABC):
         return self.get_skill(name)
 
     def import_all_from(
-        self, source_store: "BaseSkillStore", overwrite: bool = False
-    ) -> list[SkillInfo]:
+        self, source_store: "BaseExtensionStore", overwrite: bool = False
+    ) -> list[ExtensionInfo]:
         """Copy every skill from another store into this store."""
-        imported: list[SkillInfo] = []
+        imported: list[ExtensionInfo] = []
         for skill in source_store.get_cached():
             copied = self.import_skill_from(source_store, skill.name, overwrite=overwrite)
             if copied:
                 imported.append(copied)
         return imported
 
-    def search_skills(self, query: str) -> list[SkillInfo]:
+    def search_skills(self, query: str) -> list[ExtensionInfo]:
         """Search skills by name or description substring (case-insensitive)."""
         query_lower = query.lower()
         return [
@@ -115,7 +115,7 @@ class BaseSkillStore(ABC):
             if query_lower in s.name.lower() or query_lower in s.description.lower()
         ]
 
-    def get_cached(self) -> list[SkillInfo]:
+    def get_cached(self) -> list[ExtensionInfo]:
         """Return cached skill list, rescanning if stale."""
         now = time.monotonic()
         if self._cache is None or (now - self._cached_at) > CACHE_TTL_SECONDS:
