@@ -81,7 +81,7 @@ async def send_donation(
             session.repo_hash = repo_hash_map.get(session.session_id)
         zip_path = _create_donation_zip(sessions_data, donation_id, repo_bundles)
         try:
-            donation_url = f"{settings.donation_url.rstrip('/')}{DONATION_RECEIVE_PATH}"
+            donation_url = f"{settings.donation.url.rstrip('/')}{DONATION_RECEIVE_PATH}"
             await _send_zip(zip_path, donation_url, donation_id)
             donated = len(sessions_data.valid_sessions)
         except httpx.HTTPError as exc:
@@ -361,7 +361,7 @@ def _locate_upload_zip(upload_id: str) -> Path | None:
         Path to the upload ZIP, or None if not found.
     """
     settings = get_settings()
-    zip_path = settings.upload_dir / upload_id / f"{upload_id}.zip"
+    zip_path = settings.upload.dir / upload_id / f"{upload_id}.zip"
     if zip_path.exists():
         return zip_path
     return None

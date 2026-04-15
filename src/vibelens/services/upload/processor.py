@@ -81,13 +81,13 @@ async def receive_zip(file: UploadFile, dest_dir: Path) -> Path:
 
     with open(zip_path, "wb") as f:
         while True:
-            chunk = await file.read(settings.stream_chunk_size)
+            chunk = await file.read(settings.upload.stream_chunk_size)
             if not chunk:
                 break
             total_written += len(chunk)
-            if total_written > settings.max_zip_bytes:
+            if total_written > settings.upload.max_zip_bytes:
                 zip_path.unlink(missing_ok=True)
-                max_mb = settings.max_zip_bytes // (1024 * 1024)
+                max_mb = settings.upload.max_zip_bytes // (1024 * 1024)
                 raise HTTPException(status_code=400, detail=f"File exceeds {max_mb} MB limit")
             f.write(chunk)
 
@@ -110,9 +110,9 @@ def extract_and_discover(zip_path: Path, agent_type: str) -> list[Path]:
     settings = get_settings()
     validate_zip(
         zip_path=zip_path,
-        max_zip_bytes=settings.max_zip_bytes,
-        max_extracted_bytes=settings.max_extracted_bytes,
-        max_file_count=settings.max_file_count,
+        max_zip_bytes=settings.upload.max_zip_bytes,
+        max_extracted_bytes=settings.upload.max_extracted_bytes,
+        max_file_count=settings.upload.max_file_count,
     )
 
     extracted_dir = zip_path.parent / EXTRACTED_SUBDIR
@@ -160,7 +160,7 @@ async def process_zip(
     result = UploadResult(files_received=1)
     upload_id = generate_timestamped_id()
     token_short = session_token[:8] if session_token else "none"
-    dest_dir = settings.upload_dir / upload_id
+    dest_dir = settings.upload.dir / upload_id
 
     logger.info(
         "process_zip START: file=%s agent=%s token=%s upload_id=%s upload_dir=%s",
@@ -168,7 +168,7 @@ async def process_zip(
         agent_type,
         token_short,
         upload_id,
-        settings.upload_dir,
+        settings.upload.dir,
     )
 
     try:
@@ -218,7 +218,7 @@ async def process_zip(
         }
         metadata = _build_upload_metadata(upload_info, session_details, result)
         await asyncio.to_thread(
-            locked_jsonl_append, path=settings.upload_dir / METADATA_FILENAME, data=metadata
+            locked_jsonl_append, path=settings.upload.dir / METADATA_FILENAME, data=metadata
         )
 
         if session_token:

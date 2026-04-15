@@ -85,7 +85,8 @@ def estimate_friction(session_ids: list[str], session_token: str | None = None) 
     if not context_set:
         raise ValueError(f"No sessions could be loaded from: {session_ids}")
 
-    batches = build_batches(context_set.contexts, max_batch_tokens=get_settings().max_batch_tokens)
+    max_input = get_settings().inference.max_input_tokens
+    batches = build_batches(context_set.contexts, max_batch_tokens=max_input)
     system_prompt = FRICTION_PROMPT.render_system()
 
     batch_token_counts = [count_tokens(format_context_batch(batch)) for batch in batches]
@@ -131,7 +132,8 @@ async def analyze_friction(
         clear_analysis_id()
         raise ValueError(f"No sessions could be loaded from: {session_ids}")
 
-    batches = build_batches(context_set.contexts, max_batch_tokens=get_settings().max_batch_tokens)
+    max_input = get_settings().inference.max_input_tokens
+    batches = build_batches(context_set.contexts, max_batch_tokens=max_input)
     logger.info(
         "Friction analysis: %d sessions → %d batch(es)",
         len(context_set.session_ids),

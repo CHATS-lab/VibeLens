@@ -1,8 +1,8 @@
-"""Central managed skill repository (~/.vibelens/skills/).
+"""Central managed extension repository (~/.vibelens/skills/).
 
-Acts as the authoritative skill store for VibeLens. Skills imported from
-agent-native stores are copied here with source metadata injected into
-the SKILL.md frontmatter so the UI can display where each skill
+Acts as the authoritative extension store for VibeLens. Extensions imported
+from agent-native stores are copied here with source metadata injected into
+the SKILL.md frontmatter so the UI can display where each extension
 originated and which interfaces it can be synced to.
 """
 
@@ -10,7 +10,12 @@ from pathlib import Path
 
 import yaml
 
-from vibelens.models.skill import ExtensionInfo, ExtensionSource, ExtensionSourceInfo
+from vibelens.models.enums import AgentExtensionType
+from vibelens.models.extension import (
+    ExtensionInfo,
+    ExtensionSource,
+    ExtensionSourceInfo,
+)
 from vibelens.storage.extension.base import BaseExtensionStore
 from vibelens.storage.extension.disk import (
     FRONTMATTER_DELIMITER,
@@ -27,19 +32,21 @@ logger = get_logger(__name__)
 
 
 class CentralExtensionStore(DiskExtensionStore):
-    """Central repository for VibeLens-managed skills.
+    """Central repository for VibeLens-managed extensions.
 
     Extends DiskExtensionStore with source metadata injection and
     central-specific frontmatter fields (tags, sources).
     Creates its directory on init (unlike agent stores which are read-only).
     """
 
-    def __init__(self, root_dir: Path) -> None:
-        super().__init__(root_dir, ExtensionSource.CENTRAL)
-        self._skills_dir.mkdir(parents=True, exist_ok=True)
+    def __init__(
+        self, root_dir: Path, extension_type: AgentExtensionType = AgentExtensionType.SKILL
+    ) -> None:
+        super().__init__(root_dir, ExtensionSource.CENTRAL, extension_type=extension_type)
+        self._extensions_dir.mkdir(parents=True, exist_ok=True)
 
-    def _build_skill_info(
-        self, name: str, skill_dir: Path, skill_file: Path
+    def _build_extension_info(
+        self, name: str, ext_dir: Path, skill_file: Path
     ) -> ExtensionInfo | None:
         """Parse central SKILL.md with extra metadata (tags, sources)."""
         try:
@@ -61,34 +68,35 @@ class CentralExtensionStore(DiskExtensionStore):
 
         return ExtensionInfo(
             name=name,
+            extension_type=self._extension_type,
             description=description,
             sources=sources,
-            central_path=skill_dir,
+            central_path=ext_dir,
             content_hash=ExtensionInfo.hash_content(text),
             metadata={
                 **frontmatter,
                 "allowed_tools": allowed_tools,
-                "subdirs": detect_subdirs(skill_dir),
+                "subdirs": detect_subdirs(ext_dir),
                 "tags": [str(tag) for tag in tags if str(tag).strip()],
                 "line_count": text.count("\n") + 1,
             },
         )
 
-    def import_skill_from(
+    def import_extension_from(
         self, source_store: "BaseExtensionStore", name: str, overwrite: bool = False
     ) -> ExtensionInfo | None:
-        """Import a skill, injecting source provenance into frontmatter."""
-        result = super().import_skill_from(source_store, name, overwrite=overwrite)
+        """Import an extension, injecting source provenance into frontmatter."""
+        result = super().import_extension_from(source_store, name, overwrite=overwrite)
         if result is None:
             return None
 
         self._inject_source_metadata(name, source_store)
         self.invalidate_cache()
-        return self.get_skill(name)
+        return self.get_extension(name)
 
     def _inject_source_metadata(self, name: str, source_store: "BaseExtensionStore") -> None:
         """Add source_type and source_path to SKILL.md frontmatter."""
-        skill_file = self._skills_dir / name / SKILL_FILENAME
+        skill_file = self._extensions_dir / name / SKILL_FILENAME
         if not skill_file.is_file():
             return
 
@@ -97,7 +105,7 @@ class CentralExtensionStore(DiskExtensionStore):
 
         new_source = {
             "source_type": str(source_store.source_type),
-            "source_path": str(source_store.skill_path(name)),
+            "source_path": str(source_store.extension_path(name)),
         }
 
         # Merge with existing sources, avoiding duplicates by source_type

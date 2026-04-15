@@ -115,7 +115,8 @@ def estimate_skill_evolution(
     if not installed_skills:
         raise ValueError("No installed skills found for evolution analysis.")
 
-    batches = build_batches(context_set.contexts, max_batch_tokens=get_settings().max_batch_tokens)
+    max_input = get_settings().inference.max_input_tokens
+    batches = build_batches(context_set.contexts, max_batch_tokens=max_input)
 
     # Proposal phase tokens
     proposal_system = EVOLUTION_PROPOSAL_PROMPT.render_system(
@@ -287,7 +288,8 @@ async def _infer_evolution_proposals(
     if not installed_skills:
         raise ValueError("No installed skills found for evolution analysis.")
 
-    batches = build_batches(context_set.contexts, max_batch_tokens=get_settings().max_batch_tokens)
+    max_input = get_settings().inference.max_input_tokens
+    batches = build_batches(context_set.contexts, max_batch_tokens=max_input)
     logger.info(
         "Evolution proposals: %d sessions → %d batch(es)",
         len(context_set.session_ids),

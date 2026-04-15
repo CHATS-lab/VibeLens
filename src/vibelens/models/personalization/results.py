@@ -36,7 +36,6 @@ class PersonalizationMeta(BaseModel):
     is_example: bool = Field(default=False, description="Whether this is a bundled example.")
 
 
-
 class PersonalizationResult(BaseModel):
     """Complete personalization result with service metadata.
 
@@ -82,4 +81,3 @@ class PersonalizationResult(BaseModel):
         default_factory=list, description="Non-fatal issues encountered during analysis."
     )
     is_example: bool = Field(default=False, description="Whether this is an example.")
-

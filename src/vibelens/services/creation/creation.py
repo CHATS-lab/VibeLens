@@ -96,7 +96,8 @@ def estimate_skill_creation(
     if not context_set:
         raise ValueError(f"No sessions could be loaded from: {session_ids}")
 
-    batches = build_batches(context_set.contexts, max_batch_tokens=get_settings().max_batch_tokens)
+    max_input = get_settings().inference.max_input_tokens
+    batches = build_batches(context_set.contexts, max_batch_tokens=max_input)
 
     # Proposal phase tokens
     proposal_system = CREATION_PROPOSAL_PROMPT.render_system(
@@ -246,7 +247,8 @@ async def _infer_skill_creation_proposals(
     if not context_set:
         raise ValueError(f"No sessions could be loaded from: {session_ids}")
 
-    batches = build_batches(context_set.contexts, max_batch_tokens=get_settings().max_batch_tokens)
+    max_input = get_settings().inference.max_input_tokens
+    batches = build_batches(context_set.contexts, max_batch_tokens=max_input)
     logger.info(
         "Skill proposals: %d sessions → %d batch(es)",
         len(context_set.session_ids),

@@ -6,9 +6,12 @@ Thin subclass of AnalysisStore with personalization-specific meta building.
 from pathlib import Path
 
 from vibelens.models.personalization.enums import PersonalizationMode
-from vibelens.models.personalization.results import PersonalizationMeta, PersonalizationResult
+from vibelens.models.personalization.results import (
+    PersonalizationMeta,
+    PersonalizationResult,
+)
 from vibelens.services.analysis_store import AnalysisStore, generate_analysis_id
-from vibelens.utils.json import locked_jsonl_append
+from vibelens.utils.json import locked_jsonl_append, locked_jsonl_remove
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -16,8 +19,7 @@ logger = get_logger(__name__)
 MODE_ITEM_COUNTS = {
     PersonalizationMode.CREATION: "creations",
     PersonalizationMode.EVOLUTION: "evolutions",
-    PersonalizationMode.RECOMMENDATION: "ranked_recommendations",
-    PersonalizationMode.RETRIEVAL: "recommendations",
+    PersonalizationMode.RECOMMENDATION: "recommendations",
 }
 
 
@@ -44,7 +46,12 @@ class PersonalizationStore(AnalysisStore[PersonalizationResult, PersonalizationM
     """Manages persisted personalization results on disk."""
 
     def __init__(self, store_dir: Path):
-        super().__init__(store_dir, PersonalizationResult, PersonalizationMeta, _build_meta)
+        super().__init__(
+            store_dir=store_dir,
+            result_type=PersonalizationResult,
+            meta_type=PersonalizationMeta,
+            build_meta_fn=_build_meta,
+        )
 
     def save(
         self, result: PersonalizationResult, analysis_id: str | None = None
@@ -60,3 +67,13 @@ class PersonalizationStore(AnalysisStore[PersonalizationResult, PersonalizationM
 
         logger.info("Saved analysis %s to %s", analysis_id, self._dir.name)
         return meta
+
+    def delete(self, analysis_id: str) -> bool:
+        """Delete an analysis result and remove its entry from the index."""
+        data_path = self._data_path(analysis_id)
+        if not data_path.exists():
+            return False
+        data_path.unlink(missing_ok=True)
+        locked_jsonl_remove(self._index_path, "id", analysis_id)
+        logger.info("Deleted analysis %s from %s", analysis_id, self._dir.name)
+        return True

@@ -1,7 +1,7 @@
-"""Disk-based skill storage for agents using SKILL.md format.
+"""Disk-based extension storage for agents using SKILL.md format.
 
 Directory layout (shared across all agents):
-    <skills_dir>/
+    <extensions_dir>/
     ├── my-skill/
     │   ├── SKILL.md         (YAML frontmatter + markdown body)
     │   ├── scripts/         (optional)
@@ -11,7 +11,7 @@ Directory layout (shared across all agents):
         └── SKILL.md
 
 Used directly for Claude Code, Codex CLI, Cursor, Gemini CLI, and all
-other agents that follow the standard skills/<name>/SKILL.md layout.
+other agents that follow the standard extensions/<name>/SKILL.md layout.
 Subclassed by CentralExtensionStore (adds source metadata injection).
 """
 
@@ -20,7 +20,8 @@ from pathlib import Path
 
 import yaml
 
-from vibelens.models.skill import (
+from vibelens.models.enums import AgentExtensionType
+from vibelens.models.extension import (
     VALID_EXTENSION_NAME,
     ExtensionInfo,
     ExtensionSource,
@@ -31,10 +32,10 @@ from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
 
-# Required definition file inside each skill directory
+# Required definition file inside each extension directory
 SKILL_FILENAME = "SKILL.md"
 
-# Optional subdirectories recognized inside a skill directory
+# Optional subdirectories recognized inside an extension directory
 KNOWN_SUBDIRS = ("scripts", "references", "agents", "assets")
 
 # YAML frontmatter opening/closing marker in SKILL.md files
@@ -42,16 +43,22 @@ FRONTMATTER_DELIMITER = "---"
 
 
 class DiskExtensionStore(BaseExtensionStore):
-    """Concrete skill store backed by a directory of SKILL.md files.
+    """Concrete extension store backed by a directory of SKILL.md files.
 
-    Constructor takes both skills_dir and source_type so any agent
-    can be represented by a plain DiskExtensionStore instance.
+    Constructor takes extensions_dir, source_type, and extension_type so any
+    agent and extension type can be represented by a DiskExtensionStore instance.
     """
 
-    def __init__(self, skills_dir: Path, source_type: ExtensionSource) -> None:
+    def __init__(
+        self,
+        extensions_dir: Path,
+        source_type: ExtensionSource,
+        extension_type: AgentExtensionType = AgentExtensionType.SKILL,
+    ) -> None:
         super().__init__()
-        self._skills_dir = skills_dir.expanduser().resolve()
+        self._extensions_dir = extensions_dir.expanduser().resolve()
         self._source_type = source_type
+        self._extension_type = extension_type
 
     @property
     def source_type(self) -> ExtensionSource:
@@ -59,56 +66,61 @@ class DiskExtensionStore(BaseExtensionStore):
         return self._source_type
 
     @property
-    def skills_dir(self) -> Path:
-        """Return the root directory for this store's skills."""
-        return self._skills_dir
+    def extensions_dir(self) -> Path:
+        """Return the root directory for this store's extensions."""
+        return self._extensions_dir
 
-    def list_skills(self) -> list[ExtensionInfo]:
-        """Scan skills_dir and return metadata for all valid skill directories."""
-        if not self._skills_dir.is_dir():
-            logger.debug("Skills directory does not exist: %s", self._skills_dir)
+    @property
+    def extension_type(self) -> AgentExtensionType:
+        """Return the type of extensions this store manages."""
+        return self._extension_type
+
+    def list_extensions(self) -> list[ExtensionInfo]:
+        """Scan extensions_dir and return metadata for all valid extension directories."""
+        if not self._extensions_dir.is_dir():
+            logger.debug("Extensions directory does not exist: %s", self._extensions_dir)
             return []
 
-        skills: list[ExtensionInfo] = []
-        for entry in sorted(self._skills_dir.iterdir()):
+        extensions: list[ExtensionInfo] = []
+        for entry in sorted(self._extensions_dir.iterdir()):
             if not entry.is_dir():
                 continue
             name = entry.name
             if not VALID_EXTENSION_NAME.match(name):
-                logger.debug("Skipping non-kebab-case skill dir: %s", name)
+                logger.debug("Skipping non-kebab-case dir: %s", name)
                 continue
             skill_file = entry / SKILL_FILENAME
             if not skill_file.is_file():
                 continue
-            info = self._build_skill_info(name, entry, skill_file)
+            info = self._build_extension_info(name, entry, skill_file)
             if info:
-                skills.append(info)
+                extensions.append(info)
 
-        logger.debug("Scanned %d skills from %s", len(skills), self._skills_dir)
-        return skills
+        logger.debug("Scanned %d extensions from %s", len(extensions), self._extensions_dir)
+        return extensions
 
-    def get_skill(self, name: str) -> ExtensionInfo | None:
-        """Look up a single skill by directory name."""
+    def get_extension(self, name: str) -> ExtensionInfo | None:
+        """Look up a single extension by directory name."""
         if not VALID_EXTENSION_NAME.match(name):
             return None
-        skill_dir = self._skills_dir / name
-        skill_file = skill_dir / SKILL_FILENAME
+        ext_dir = self._extensions_dir / name
+        skill_file = ext_dir / SKILL_FILENAME
         if not skill_file.is_file():
             return None
-        return self._build_skill_info(name, skill_dir, skill_file)
+        return self._build_extension_info(name, ext_dir, skill_file)
 
     def read_content(self, name: str) -> str | None:
-        """Read the full SKILL.md content for a named skill."""
-        skill_file = self._skills_dir / name / SKILL_FILENAME
+        """Read the full SKILL.md content for a named extension."""
+        skill_file = self._extensions_dir / name / SKILL_FILENAME
         if not skill_file.is_file():
             return None
         return skill_file.read_text(encoding="utf-8")
 
-    def write_skill(self, name: str, content: str) -> Path:
-        """Create or overwrite a skill's SKILL.md file.
+    def write_extension(self, name: str, content: str) -> Path:
+        """Create or overwrite an extension's SKILL.md file.
 
         Args:
-            name: Skill name (must be valid kebab-case).
+            name: Extension name (must be valid kebab-case).
             content: Full SKILL.md content including frontmatter.
 
         Returns:
@@ -118,34 +130,34 @@ class DiskExtensionStore(BaseExtensionStore):
             ValueError: If name is not valid kebab-case.
         """
         if not VALID_EXTENSION_NAME.match(name):
-            raise ValueError(f"Skill name must be kebab-case: {name!r}")
+            raise ValueError(f"Extension name must be kebab-case: {name!r}")
 
-        skill_dir = self._skills_dir / name
-        skill_dir.mkdir(parents=True, exist_ok=True)
+        ext_dir = self._extensions_dir / name
+        ext_dir.mkdir(parents=True, exist_ok=True)
 
-        skill_file = skill_dir / SKILL_FILENAME
+        skill_file = ext_dir / SKILL_FILENAME
         # LLM-generated content often has excessive trailing newlines
         normalized = content.rstrip() + "\n"
         skill_file.write_text(normalized, encoding="utf-8")
         self.invalidate_cache()
 
-        logger.info("Wrote skill %r to %s", name, skill_file)
+        logger.info("Wrote extension %r to %s", name, skill_file)
         return skill_file
 
-    def delete_skill(self, name: str) -> bool:
-        """Remove a skill directory entirely."""
-        skill_dir = self._skills_dir / name
-        if not skill_dir.is_dir():
+    def delete_extension(self, name: str) -> bool:
+        """Remove an extension directory entirely."""
+        ext_dir = self._extensions_dir / name
+        if not ext_dir.is_dir():
             return False
 
-        shutil.rmtree(skill_dir)
+        shutil.rmtree(ext_dir)
         self.invalidate_cache()
 
-        logger.info("Deleted skill %r from %s", name, skill_dir)
+        logger.info("Deleted extension %r from %s", name, ext_dir)
         return True
 
-    def _build_skill_info(
-        self, name: str, skill_dir: Path, skill_file: Path
+    def _build_extension_info(
+        self, name: str, ext_dir: Path, skill_file: Path
     ) -> ExtensionInfo | None:
         """Parse a SKILL.md and build ExtensionInfo metadata."""
         try:
@@ -162,15 +174,16 @@ class DiskExtensionStore(BaseExtensionStore):
 
         return ExtensionInfo(
             name=name,
+            extension_type=self._extension_type,
             description=description,
-            sources=[ExtensionSourceInfo(source_type=self.source_type, source_path=str(skill_dir))],
+            sources=[ExtensionSourceInfo(source_type=self.source_type, source_path=str(ext_dir))],
             central_path=None,
             content_hash=ExtensionInfo.hash_content(text),
             metadata={
                 **frontmatter,
                 "allowed_tools": allowed_tools,
-                "subdirs": detect_subdirs(skill_dir),
-                "store_path": str(skill_dir),
+                "subdirs": detect_subdirs(ext_dir),
+                "store_path": str(ext_dir),
                 "line_count": text.count("\n") + 1,
             },
         )
@@ -216,9 +229,9 @@ def parse_allowed_tools(raw: str | list | None) -> list[str]:
     return [t.strip() for t in str(raw).split(",") if t.strip()]
 
 
-def detect_subdirs(skill_dir: Path) -> list[str]:
-    """Return which KNOWN_SUBDIRS exist in the skill directory."""
-    return [name for name in KNOWN_SUBDIRS if (skill_dir / name).is_dir()]
+def detect_subdirs(ext_dir: Path) -> list[str]:
+    """Return which KNOWN_SUBDIRS exist in the extension directory."""
+    return [name for name in KNOWN_SUBDIRS if (ext_dir / name).is_dir()]
 
 
 def extract_body(text: str) -> str:

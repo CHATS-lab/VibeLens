@@ -50,8 +50,8 @@ def serve(
 ) -> None:
     """Start the VibeLens server."""
     settings = load_settings(config_path=config)
-    bind_host = host or settings.host
-    bind_port = port or settings.port
+    bind_host = host or settings.server.host
+    bind_port = port or settings.server.port
 
     typer.echo(f"VibeLens v{__version__}")
     typer.echo(f"VibeLens running at http://{bind_host}:{bind_port}")
@@ -74,41 +74,6 @@ def version() -> None:
     typer.echo(f"vibelens {__version__}")
 
 
-@app.command()
-def update_catalog(
-    check: bool = typer.Option(False, "--check", help="Check version without downloading"),
-) -> None:
-    """Download the latest catalog from the update URL."""
-    settings = load_settings()
-    if not settings.catalog_update_url:
-        typer.echo("No catalog_update_url configured. Set it in your vibelens.yaml or environment.")
-        raise typer.Exit(code=1)
-
-    if check:
-        typer.echo(f"Catalog update URL: {settings.catalog_update_url}")
-        typer.echo("Version check not yet implemented (requires catalog loader).")
-        raise typer.Exit()
-
-    typer.echo("Catalog download not yet implemented (requires HTTP client).")
-    raise typer.Exit(code=1)
-
-
-@app.command()
-def build_catalog(
-    github_token: str = typer.Option("", "--github-token", help="GitHub personal access token"),
-    output: str = typer.Option("catalog.json", "--output", help="Output file path"),
-) -> None:
-    """Build catalog.json by crawling GitHub (requires --github-token)."""
-    if not github_token:
-        typer.echo("Error: --github-token is required for catalog builds.")
-        typer.echo("Usage: vibelens build-catalog --github-token $GITHUB_TOKEN")
-        raise typer.Exit(code=1)
-
-    typer.echo("Catalog build not yet implemented (planned for crawler subpackage).")
-    typer.echo(f"Would output to: {output}")
-    raise typer.Exit(code=1)
-
-
 def discover_and_select_backend():
     """Scan system for available CLI backends and let user pick one.
 
@@ -116,9 +81,9 @@ def discover_and_select_backend():
     Presents an interactive numbered list with default models and pricing.
 
     Returns:
-        LLMConfig for the selected backend, or None if user cancels or none found.
+        InferenceConfig for the selected backend, or None if user cancels or none found.
     """
-    from vibelens.config.llm_config import LLMConfig
+    from vibelens.config import InferenceConfig
     from vibelens.llm.backends import _CLI_BACKEND_REGISTRY
     from vibelens.llm.pricing import lookup_pricing
     from vibelens.models.llm.inference import BackendType
@@ -157,7 +122,7 @@ def discover_and_select_backend():
     selected_bt, _, selected_model, _ = available[choice - 1]
     typer.echo(f"\nUsing {selected_bt.value} with {selected_model}")
 
-    return LLMConfig(backend=selected_bt, model=selected_model)
+    return InferenceConfig(backend=selected_bt, model=selected_model)
 
 
 @app.command()
@@ -167,7 +132,7 @@ def recommend(
     no_open: bool = typer.Option(False, "--no-open", help="Skip launching browser"),
 ) -> None:
     """Run the recommendation pipeline on all local sessions."""
-    from vibelens.deps import get_llm_config, get_settings, set_llm_config
+    from vibelens.deps import get_inference_config, get_settings, set_inference_config
     from vibelens.llm.backend import InferenceError
     from vibelens.models.llm.inference import BackendType
     from vibelens.services.recommendation.engine import analyze_recommendation
@@ -177,8 +142,8 @@ def recommend(
     settings = load_settings(config_path=config)
 
     # Check if backend is configured; if not, run auto-discovery
-    llm_config = get_llm_config()
-    if llm_config.backend == BackendType.DISABLED:
+    inference_config = get_inference_config()
+    if inference_config.backend == BackendType.DISABLED:
         discovered = discover_and_select_backend()
         if discovered is None:
             typer.echo(
@@ -186,7 +151,7 @@ def recommend(
                 "(claude, gemini, codex, etc.) or configure an API key."
             )
             raise typer.Exit(code=1)
-        set_llm_config(discovered)
+        set_inference_config(discovered)
         typer.echo(f"Saved to {get_settings().settings_path or '~/.vibelens/settings.json'}\n")
 
     # Run pipeline
@@ -214,7 +179,7 @@ def recommend(
     if result.user_profile:
         typer.echo(f"  Profile: {', '.join(result.user_profile.domains[:3])}")
         typer.echo(f"  Languages: {', '.join(result.user_profile.languages[:3])}")
-    typer.echo(f"  Recommendations: {len(result.ranked_recommendations)}")
+    typer.echo(f"  Recommendations: {len(result.recommendations)}")
 
     cost_str = (
         f"${result.final_metrics.total_cost_usd:.2f}"
@@ -224,8 +189,8 @@ def recommend(
     typer.echo(f"\nSaved: {result.id} ({cost_str})")
 
     if not no_open:
-        bind_host = settings.host
-        bind_port = settings.port
+        bind_host = settings.server.host
+        bind_port = settings.server.port
         url = f"http://{bind_host}:{bind_port}?recommendation={result.id}"
         typer.echo(f"Opening {url}")
 

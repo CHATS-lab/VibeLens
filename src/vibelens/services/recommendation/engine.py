@@ -46,10 +46,10 @@ from vibelens.services.inference_shared import (
     truncate_digest_to_fit,
 )
 from vibelens.services.personalization.shared import parse_llm_output
-from vibelens.services.recommendation.catalog import CatalogSnapshot, load_catalog
 from vibelens.services.recommendation.retrieval import KeywordRetrieval
 from vibelens.services.recommendation.scoring import score_candidates
 from vibelens.services.session.store_resolver import list_all_metadata
+from vibelens.storage.extension.catalog import CatalogSnapshot, load_catalog
 from vibelens.utils.content import truncate
 from vibelens.utils.log import clear_analysis_id, get_logger, set_analysis_id
 

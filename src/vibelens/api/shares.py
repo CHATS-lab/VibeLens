@@ -24,12 +24,12 @@ LOCAL_HOSTS = ("127.0.0.1", "0.0.0.0", "localhost")
 def _build_share_url(request: Request, session_id: str) -> str:
     """Build the full shareable URL from the current request context."""
     settings = get_settings()
-    if settings.public_url:
-        base = settings.public_url.rstrip("/")
-    elif settings.app_mode.value == "demo":
+    if settings.server.public_url:
+        base = settings.server.public_url.rstrip("/")
+    elif settings.mode.value == "demo":
         base = DEMO_PUBLIC_URL
-    elif settings.host in LOCAL_HOSTS:
-        base = f"http://localhost:{settings.port}"
+    elif settings.server.host in LOCAL_HOSTS:
+        base = f"http://localhost:{settings.server.port}"
     else:
         base = str(request.base_url).rstrip("/")
     return f"{base}/?share={session_id}"

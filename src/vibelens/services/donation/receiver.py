@@ -45,14 +45,14 @@ async def receive_donation(file: UploadFile) -> dict:
         HTTPException: If the file is not a valid ZIP or exceeds limits.
     """
     settings = get_settings()
-    donation_dir = settings.donation_dir
+    donation_dir = settings.donation.dir
     donation_dir.mkdir(parents=True, exist_ok=True)
 
     # Stream to a temp path first, then rename after reading manifest
     temp_id = generate_timestamped_id()
     temp_path = donation_dir / f"_tmp_{temp_id}.zip"
 
-    total_written = await _stream_to_disk(file, temp_path, settings.max_zip_bytes)
+    total_written = await _stream_to_disk(file, temp_path, settings.upload.max_zip_bytes)
 
     # Offloaded to thread pool -- ZIP reading is blocking I/O
     manifest = await asyncio.to_thread(_read_manifest, temp_path)

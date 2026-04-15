@@ -4,14 +4,13 @@ from collections.abc import Callable
 from typing import Any
 
 from vibelens.config import (
-    LLMConfig,
+    InferenceConfig,
     Settings,
-    load_llm_config,
     load_settings,
-    save_llm_config,
+    save_inference_config,
 )
-from vibelens.config.llm_config import DEFAULT_SETTINGS_PATH, discover_settings_path
 from vibelens.llm.backend import InferenceBackend
+from vibelens.llm.backends import create_backend_from_config
 from vibelens.models.enums import AppMode
 from vibelens.storage.trajectory.base import BaseTrajectoryStore
 from vibelens.storage.trajectory.disk import DiskTrajectoryStore
@@ -49,47 +48,28 @@ def get_settings() -> Settings:
 
 def is_demo_mode() -> bool:
     """Check whether the application is running in demo mode."""
-    return get_settings().app_mode == AppMode.DEMO
+    return get_settings().mode == AppMode.DEMO
 
 
 def is_test_mode() -> bool:
     """Check whether the application is running in test mode."""
-    return get_settings().app_mode == AppMode.TEST
+    return get_settings().mode == AppMode.TEST
 
 
 def get_share_service():
     """Return cached ShareService singleton."""
     from vibelens.services.session.share import ShareService
 
-    return _get_or_create("share_service", lambda: ShareService(get_settings().share_dir))
+    return _get_or_create("share_service", lambda: ShareService(get_settings().storage.share_dir))
 
 
 def get_friction_store():
     """Return cached FrictionStore singleton."""
     from vibelens.services.friction.store import FrictionStore
 
-    return _get_or_create("friction_store", lambda: FrictionStore(get_settings().friction_dir))
-
-
-def get_claude_extension_store():
-    """Return cached Claude Code extension store singleton."""
-    from vibelens.models.skill import ExtensionSource
-    from vibelens.storage.extension.disk import DiskExtensionStore
-
+    settings = get_settings()
     return _get_or_create(
-        "extension_store",
-        lambda: DiskExtensionStore(get_settings().skills_dir, ExtensionSource.CLAUDE),
-    )
-
-
-def get_codex_extension_store():
-    """Return cached Codex CLI extension store singleton."""
-    from vibelens.models.skill import ExtensionSource
-    from vibelens.storage.extension.disk import DiskExtensionStore
-
-    return _get_or_create(
-        "codex_extension_store",
-        lambda: DiskExtensionStore(get_settings().codex_dir / "skills", ExtensionSource.CODEX),
+        "friction_store", lambda: FrictionStore(settings.storage.friction_dir)
     )
 
 
@@ -97,15 +77,21 @@ def get_central_extension_store():
     """Return cached central managed extension repository."""
     from vibelens.storage.extension.central import CentralExtensionStore
 
+    settings = get_settings()
     return _get_or_create(
-        "central_extension_store", lambda: CentralExtensionStore(get_settings().managed_skills_dir)
+        "central_extension_store",
+        lambda: CentralExtensionStore(settings.storage.managed_skills_dir),
     )
 
 
-def get_agent_extension_stores() -> list:
-    """Return cached list of third-party agent extension stores.
+def get_agent_extension_stores() -> dict:
+    """Return cached dict of all agent extension stores whose dirs exist on disk.
 
-    Only includes agents whose skills directories exist on disk.
+    Includes Claude Code, Codex, and all third-party agents.
+    Directory paths come from AGENT_EXTENSION_REGISTRY in storage/extension/agent.py.
+
+    Returns:
+        Dict mapping ExtensionSource to DiskExtensionStore for each installed agent.
     """
     from vibelens.storage.extension.agent import create_agent_extension_stores
 
@@ -116,27 +102,25 @@ def get_personalization_store():
     """Return cached PersonalizationStore singleton."""
     from vibelens.services.personalization.store import PersonalizationStore
 
+    settings = get_settings()
     return _get_or_create(
-        "personalization_store", lambda: PersonalizationStore(get_settings().personalization_dir)
+        "personalization_store",
+        lambda: PersonalizationStore(settings.storage.personalization_dir),
     )
 
 
+def get_inference_config() -> InferenceConfig:
+    """Return the inference config from cached settings."""
+    return get_settings().inference
 
-def get_llm_config() -> LLMConfig:
-    """Return cached LLM configuration, lazy-loading from YAML/env."""
-    return _get_or_create("llm_config", load_llm_config)
 
+def set_inference_config(config: InferenceConfig) -> None:
+    """Update inference config, persist to settings.json, and recreate backend."""
+    settings = get_settings()
+    settings.inference = config
+    save_inference_config(config)
 
-def set_llm_config(config: LLMConfig) -> None:
-    """Update LLM config singleton, persist to settings.json, and recreate backend."""
-    _registry["llm_config"] = config
-
-    config_path = discover_settings_path() or DEFAULT_SETTINGS_PATH
-    save_llm_config(config, config_path)
-
-    from vibelens.llm.backends import create_backend_from_llm_config
-
-    backend = create_backend_from_llm_config(config)
+    backend = create_backend_from_config(config)
     set_inference_backend(backend)
 
 
@@ -146,10 +130,10 @@ def get_inference_backend() -> InferenceBackend | None:
     if value is not _NOT_CHECKED:
         return value
 
-    from vibelens.llm.backends import create_backend_from_llm_config
+    from vibelens.llm.backends import create_backend_from_config
 
-    backend = create_backend_from_llm_config(get_llm_config())
-    _registry["inference_backend"] = backend
+    backend = create_backend_from_config(get_inference_config())
+    set_inference_backend(backend)
     return backend
 
 
@@ -211,7 +195,7 @@ def reconstruct_upload_registry() -> None:
     Uploads without a session_token are skipped (no owner to register under).
     """
     settings = get_settings()
-    metadata_path = settings.upload_dir / "metadata.jsonl"
+    metadata_path = settings.upload.dir / "metadata.jsonl"
     if not metadata_path.exists():
         logger.info("No metadata.jsonl found, skipping upload registry reconstruction")
         return
@@ -225,7 +209,7 @@ def reconstruct_upload_registry() -> None:
         if not token or not upload_id:
             continue
 
-        store_root = settings.upload_dir / upload_id
+        store_root = settings.upload.dir / upload_id
         if not store_root.exists():
             continue
 
@@ -252,9 +236,7 @@ def get_trajectory_store() -> BaseTrajectoryStore:
     def _create_store() -> BaseTrajectoryStore:
         settings = get_settings()
         return (
-            DiskTrajectoryStore(settings.upload_dir)
-            if is_demo_mode()
-            else LocalTrajectoryStore(settings=settings)
+            DiskTrajectoryStore(settings.upload.dir) if is_demo_mode() else LocalTrajectoryStore()
         )
 
     return _get_or_create("store", _create_store)
@@ -266,4 +248,8 @@ def get_example_store() -> DiskTrajectoryStore:
     Separate from the upload store so examples live in ``~/.vibelens/examples/``
     and uploads live in ``~/.vibelens/uploads/``.
     """
-    return _get_or_create("example_store", lambda: DiskTrajectoryStore(get_settings().examples_dir))
+    settings = get_settings()
+    return _get_or_create(
+        "example_store",
+        lambda: DiskTrajectoryStore(settings.storage.examples_dir),
+    )

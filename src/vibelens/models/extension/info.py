@@ -7,7 +7,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
-from vibelens.models.skill.source import ExtensionSourceInfo
+from vibelens.models.enums import AgentExtensionType
+from vibelens.models.extension.source import ExtensionSourceInfo
 
 VALID_EXTENSION_NAME = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 
@@ -16,6 +17,10 @@ class ExtensionInfo(BaseModel):
     """Simplified extension metadata shared across central and agent stores."""
 
     name: str = Field(description="Extension identifier in kebab-case.")
+    extension_type: AgentExtensionType = Field(
+        default=AgentExtensionType.SKILL,
+        description="Type of extension (skill, subagent, command, hook, repo).",
+    )
     description: str = Field(description="Trigger description from frontmatter.")
     sources: list[ExtensionSourceInfo] = Field(
         default_factory=list,

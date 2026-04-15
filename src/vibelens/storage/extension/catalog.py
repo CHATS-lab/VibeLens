@@ -14,8 +14,11 @@ from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
 
+_cached_catalog: "CatalogSnapshot | None" = None
+_cache_checked = False
+
 # Bundled catalog shipped with VibeLens releases (inside package data)
-# parent chain: recommendation/ → services/ → vibelens/
+# parent chain: extension/ → storage/ → vibelens/
 _VIBELENS_PACKAGE_DIR = Path(__file__).resolve().parent.parent.parent
 BUNDLED_CATALOG_PATH = _VIBELENS_PACKAGE_DIR / "data" / "catalog.json"
 # User-cached catalog downloaded from update URL
@@ -72,10 +75,34 @@ def load_catalog_from_path(path: Path) -> CatalogSnapshot | None:
 
 
 def load_catalog() -> CatalogSnapshot | None:
-    """Load the best available catalog (user cache > bundled).
+    """Load the best available catalog, cached after first call.
 
-    Checks both the user-cached catalog and the bundled catalog,
-    returning whichever has the newer version date.
+    On first call, checks both the user-cached catalog and the bundled
+    catalog, picks whichever has the newer version date, and caches the
+    result for all subsequent calls. Use ``reset_catalog_cache()`` to
+    force a reload.
+
+    Returns:
+        CatalogSnapshot or None if no catalog available.
+    """
+    global _cached_catalog, _cache_checked  # noqa: PLW0603
+    if _cache_checked:
+        return _cached_catalog
+
+    _cached_catalog = _load_best_catalog()
+    _cache_checked = True
+    return _cached_catalog
+
+
+def reset_catalog_cache() -> None:
+    """Clear the cached catalog so the next ``load_catalog()`` reloads from disk."""
+    global _cached_catalog, _cache_checked  # noqa: PLW0603
+    _cached_catalog = None
+    _cache_checked = False
+
+
+def _load_best_catalog() -> CatalogSnapshot | None:
+    """Pick the best catalog from user cache and bundled paths.
 
     Returns:
         CatalogSnapshot or None if no catalog available.

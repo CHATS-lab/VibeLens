@@ -5,17 +5,18 @@ import importlib
 from fastapi import APIRouter, HTTPException
 
 from vibelens import __version__
-from vibelens.config.llm_config import LLMConfig, mask_api_key
+from vibelens.config import InferenceConfig
 from vibelens.deps import (
     get_inference_backend,
-    get_llm_config,
+    get_inference_config,
     get_settings,
     is_demo_mode,
     is_test_mode,
-    set_llm_config,
+    set_inference_config,
 )
 from vibelens.llm.backends import _CLI_BACKEND_REGISTRY
 from vibelens.llm.pricing import lookup_pricing
+from vibelens.llm.providers import mask_api_key
 from vibelens.models.llm.inference import BackendType
 from vibelens.schemas.llm import LLMConfigureRequest
 from vibelens.services.dashboard.loader import get_warming_status
@@ -32,13 +33,11 @@ async def get_server_settings() -> dict:
     settings = get_settings()
     return {
         "version": __version__,
-        "host": settings.host,
-        "port": settings.port,
-        "claude_dir": str(settings.claude_dir),
-        "app_mode": settings.app_mode.value,
-        "max_zip_bytes": settings.max_zip_bytes,
-        "max_analysis_sessions": settings.max_analysis_sessions,
-        "visible_agents": settings.visible_agents,
+        "host": settings.server.host,
+        "port": settings.server.port,
+        "app_mode": settings.mode.value,
+        "max_zip_bytes": settings.upload.max_zip_bytes,
+        "max_sessions": settings.inference.max_sessions,
     }
 
 
@@ -75,7 +74,7 @@ async def llm_status() -> dict:
     if is_test_mode():
         return {"available": True, "backend_id": BackendType.MOCK, "model": "mock/test-model"}
 
-    config = get_llm_config()
+    config = get_inference_config()
     backend = get_inference_backend()
     masked_key = mask_api_key(config.api_key) if config.api_key else None
     if not backend:
@@ -86,7 +85,7 @@ async def llm_status() -> dict:
             "api_key_masked": masked_key,
             "base_url": config.base_url,
             "timeout": config.timeout,
-            "max_tokens": config.max_tokens,
+            "max_output_tokens": config.max_output_tokens,
             "pricing": None,
         }
 
@@ -99,7 +98,7 @@ async def llm_status() -> dict:
         "api_key_masked": masked_key,
         "base_url": config.base_url,
         "timeout": config.timeout,
-        "max_tokens": config.max_tokens,
+        "max_output_tokens": config.max_output_tokens,
         "pricing": pricing,
     }
 
@@ -117,19 +116,19 @@ async def configure_llm(body: LLMConfigureRequest) -> dict:
     # If no new key provided, keep the existing one
     api_key = body.api_key
     if not api_key:
-        api_key = get_llm_config().api_key
+        api_key = get_inference_config().api_key
 
-    config = LLMConfig(
+    config = InferenceConfig(
         backend=body.backend,
         api_key=api_key,
         model=body.model,
         base_url=body.base_url,
         timeout=body.timeout,
-        max_tokens=body.max_tokens,
+        max_output_tokens=body.max_output_tokens,
     )
 
     try:
-        set_llm_config(config)
+        set_inference_config(config)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Failed to create backend: {exc}") from exc
 
@@ -144,7 +143,7 @@ async def configure_llm(body: LLMConfigureRequest) -> dict:
         "model": model_name,
         "base_url": config.base_url,
         "timeout": config.timeout,
-        "max_tokens": config.max_tokens,
+        "max_output_tokens": config.max_output_tokens,
         "pricing": pricing,
     }
 
@@ -191,7 +190,4 @@ def _format_pricing(model_name: str) -> dict | None:
     pricing = lookup_pricing(model_name)
     if not pricing:
         return None
-    return {
-        "input_per_mtok": pricing.input_per_mtok,
-        "output_per_mtok": pricing.output_per_mtok,
-    }
+    return {"input_per_mtok": pricing.input_per_mtok, "output_per_mtok": pricing.output_per_mtok}

@@ -59,7 +59,7 @@ def load_demo_examples(settings: Settings, store: DiskTrajectoryStore) -> int:
         return count
 
     loaded = 0
-    for example_path in settings.example_session_paths:
+    for example_path in settings.demo.session_paths:
         if not example_path.exists():
             logger.warning("Example path not found: %s", example_path)
             continue
@@ -221,12 +221,18 @@ def seed_example_analyses() -> None:
     copies when the target store is empty to avoid overwriting user data.
     """
     settings = get_settings()
-    for example_path in settings.example_session_paths:
+    for example_path in settings.demo.session_paths:
         if not example_path.is_dir():
             continue
-        _copy_example_store(example_path / "friction_analyses", settings.friction_dir, "friction")
         _copy_example_store(
-            example_path / "personalization", settings.personalization_dir, "personalization"
+            example_path / "friction_analyses",
+            settings.storage.friction_dir,
+            "friction",
+        )
+        _copy_example_store(
+            example_path / "personalization",
+            settings.storage.personalization_dir,
+            "personalization",
         )
 
 

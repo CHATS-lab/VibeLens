@@ -13,13 +13,14 @@ from vibelens import __version__
 from vibelens.api import build_router
 from vibelens.deps import (
     get_example_store,
-    get_llm_config,
+    get_inference_config,
     get_settings,
     get_trajectory_store,
     reconstruct_upload_registry,
 )
 from vibelens.models.enums import AppMode
 from vibelens.services.dashboard.loader import warm_cache
+from vibelens.services.extensions.skill import import_agent_extensions
 from vibelens.services.job_tracker import cleanup_stale as cleanup_stale_jobs
 from vibelens.services.session.demo import load_demo_examples, seed_example_analyses
 from vibelens.services.session.search import (
@@ -27,7 +28,6 @@ from vibelens.services.session.search import (
     build_search_index,
     refresh_search_index,
 )
-from vibelens.services.skill.importer import import_agent_skills
 from vibelens.utils import get_logger
 
 logger = get_logger(__name__)
@@ -57,14 +57,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     _log_startup_summary(settings, store)
 
     # Load example sessions (demo: required, self: for example analyses)
-    if settings.example_session_paths:
+    if settings.demo.session_paths:
         example_store = get_example_store()
         example_store.initialize()
         loaded = load_demo_examples(settings, example_store)
         if loaded:
             logger.info("Loaded %d example trajectory groups", loaded)
 
-    if settings.app_mode == AppMode.DEMO:
+    if settings.mode == AppMode.DEMO:
         reconstruct_upload_registry()
 
     # All heavy work runs in background so the server accepts connections immediately
@@ -145,22 +145,22 @@ def _run_background_startup() -> None:
     Skill import and example seeding are fast and don't involve heavy
     JSON parsing, so a thread is fine.
     """
-    import_agent_skills()
+    import_agent_extensions()
     seed_example_analyses()
 
 
 def _log_startup_summary(settings, store) -> None:
     """Log a single-line startup summary with key configuration details."""
-    llm_config = get_llm_config()
+    inference = get_inference_config()
     store_type = type(store).__name__
     logger.info(
         "VibeLens v%s started: mode=%s store=%s llm_backend=%s host=%s:%d",
         __version__,
-        settings.app_mode.value,
+        settings.mode.value,
         store_type,
-        llm_config.backend.value,
-        settings.host,
-        settings.port,
+        inference.backend.value,
+        settings.server.host,
+        settings.server.port,
     )
 
 

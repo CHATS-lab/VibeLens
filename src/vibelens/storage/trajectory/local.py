@@ -9,7 +9,6 @@ across all agents.
 import threading
 from pathlib import Path
 
-from vibelens.config import Settings
 from vibelens.ingest.fast_metrics import scan_session_metrics
 from vibelens.ingest.index_builder import build_session_index
 from vibelens.ingest.index_cache import collect_file_mtimes, load_cache, save_cache
@@ -80,25 +79,20 @@ class LocalTrajectoryStore(BaseTrajectoryStore):
     from TrajectoryStore. Only overrides initialize, save, and _build_index.
     """
 
-    def __init__(self, settings: Settings | None = None) -> None:
+    def __init__(self, data_dirs: dict[AgentType, Path] | None = None) -> None:
         super().__init__()
         self._build_lock = threading.Lock()
         self._parsers: list[BaseParser] = [cls() for cls in LOCAL_PARSER_CLASSES]
         self._data_dirs: dict[BaseParser, Path] = {}
 
-        # Resolve data directory for each parser: settings override > class default
-        overrides: dict[AgentType, Path] = {}
-        if settings:
-            overrides = {
-                AgentType.CLAUDE: settings.claude_dir,
-                AgentType.CODEX: settings.codex_dir,
-                AgentType.GEMINI: settings.gemini_dir,
-                AgentType.OPENCLAW: settings.openclaw_dir,
-            }
-        for parser in self._parsers:
-            data_dir = overrides.get(parser.AGENT_TYPE) or parser.LOCAL_DATA_DIR
-            if data_dir:
-                self._data_dirs[parser] = data_dir
+        if data_dirs is not None:
+            for parser in self._parsers:
+                if parser.AGENT_TYPE in data_dirs:
+                    self._data_dirs[parser] = data_dirs[parser.AGENT_TYPE]
+        else:
+            for parser in self._parsers:
+                if parser.LOCAL_DATA_DIR:
+                    self._data_dirs[parser] = parser.LOCAL_DATA_DIR
 
     def get_data_dir(self, parser: BaseParser) -> Path | None:
         """Return the data directory for a parser.

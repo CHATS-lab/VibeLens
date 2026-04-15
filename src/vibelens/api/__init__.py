@@ -2,11 +2,11 @@
 
 from fastapi import APIRouter
 
-from vibelens.api.catalog import router as catalog_router
 from vibelens.api.creation import router as creation_router
 from vibelens.api.dashboard import router as dashboard_router
 from vibelens.api.donation import router as donation_router
 from vibelens.api.evolution import router as evolution_router
+from vibelens.api.extensions import router as extensions_router
 from vibelens.api.friction import router as friction_router
 from vibelens.api.recommendation import router as recommendation_router
 from vibelens.api.sessions import router as sessions_router
@@ -30,5 +30,5 @@ def build_router() -> APIRouter:
     router.include_router(creation_router)
     router.include_router(evolution_router)
     router.include_router(recommendation_router)
-    router.include_router(catalog_router)
+    router.include_router(extensions_router)
     return router

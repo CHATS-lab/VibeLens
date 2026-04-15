@@ -21,7 +21,7 @@ from vibelens.services.recommendation import (
     analyze_recommendation,
     estimate_recommendation,
 )
-from vibelens.services.recommendation.catalog import load_catalog
+from vibelens.storage.extension.catalog import load_catalog
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)

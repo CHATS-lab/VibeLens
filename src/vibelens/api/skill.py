@@ -2,29 +2,24 @@
 
 import json
 import logging
-import re
 from pathlib import Path
 
-import httpx
 from cachetools import TTLCache
 from fastapi import APIRouter, HTTPException
 
-from vibelens.deps import (
-    get_central_extension_store,
-    get_claude_extension_store,
-    get_codex_extension_store,
-)
-from vibelens.models.skill import VALID_EXTENSION_NAME
+from vibelens.deps import get_agent_extension_stores, get_central_extension_store
+from vibelens.models.extension import VALID_EXTENSION_NAME
 from vibelens.schemas.skills import (
     FeaturedSkillInstallRequest,
     SkillLoadRequest,
     SkillSyncRequest,
     SkillWriteRequest,
 )
+from vibelens.services.extensions.skill import download_skill_directory
 from vibelens.services.inference_shared import CACHE_TTL_SECONDS
-from vibelens.services.skill.download import download_skill_directory
-from vibelens.storage.extension.agent import AGENT_EXTENSION_REGISTRY
 from vibelens.storage.extension.disk import DiskExtensionStore
+from vibelens.utils.github import github_tree_to_raw_url
+from vibelens.utils.http import fetch_text
 
 logger = logging.getLogger(__name__)
 
@@ -36,34 +31,29 @@ FEATURED_SKILLS_PATH = Path(__file__).resolve().parents[3] / "featured-skills.js
 DEFAULT_PAGE_SIZE = 50
 
 
-def _make_agent_getter(source_type, skills_dir):
-    """Create a lazy getter for a third-party agent skill store."""
-
-    def _getter():
-        return DiskExtensionStore(skills_dir.expanduser().resolve(), source_type)
-
-    return _getter
-
-
-AGENT_STORE_REGISTRY: dict[str, callable] = {
-    "claude_code": get_claude_extension_store,
-    "codex": get_codex_extension_store,
-}
-
-# Register all third-party agents from the agent skill registry
-for _src_type, _skills_dir in AGENT_EXTENSION_REGISTRY.items():
-    _key = _src_type.value
-    if _key not in AGENT_STORE_REGISTRY:
-        AGENT_STORE_REGISTRY[_key] = _make_agent_getter(_src_type, _skills_dir)
+def _find_store_by_key(
+    stores: dict, source_key: str
+) -> DiskExtensionStore | None:
+    """Find an agent store by its ExtensionSource value string, or None."""
+    for src, store in stores.items():
+        if src.value == source_key:
+            return store
+    return None
 
 
-def _resolve_source_store(source: str):
-    """Resolve supported source store ids."""
-    if source == "claude":
-        return get_claude_extension_store()
-    if source == "codex":
-        return get_codex_extension_store()
-    raise HTTPException(status_code=404, detail=f"Unsupported skill source: {source}")
+def _resolve_agent_store(source_key: str) -> DiskExtensionStore:
+    """Look up an agent extension store by its ExtensionSource value string.
+
+    Args:
+        source_key: ExtensionSource value (e.g. "claude", "codex", "cursor").
+
+    Raises:
+        HTTPException 404 if no installed agent matches the key.
+    """
+    store = _find_store_by_key(get_agent_extension_stores(), source_key)
+    if not store:
+        raise HTTPException(status_code=404, detail=f"Agent store not found: {source_key}")
+    return store
 
 
 @router.get("/local")
@@ -99,7 +89,7 @@ def list_local_skills(
 @router.post("/load/{source}")
 def load_skills(source: str, req: SkillLoadRequest) -> dict:
     """Load all skills from an agent-native store into the central store."""
-    source_store = _resolve_source_store(source)
+    source_store = _resolve_agent_store(source)
     central_store = get_central_extension_store()
     imported = central_store.import_all_from(source_store, overwrite=req.overwrite)
     return {
@@ -153,30 +143,30 @@ def install_featured_skill(req: FeaturedSkillInstallRequest) -> dict:
         raise HTTPException(status_code=404, detail=f"Skill {req.slug!r} not found in catalog")
 
     central = get_central_extension_store()
-    if central.get_skill(req.slug):
+    if central.get_extension(req.slug):
         raise HTTPException(status_code=409, detail=f"Skill {req.slug!r} already installed")
 
     # Download complete skill directory from GitHub (SKILL.md + auxiliary files)
     source_url = matched.get("source_url", "")
-    skill_dir = central.skill_path(req.slug)
+    skill_dir = central.extension_path(req.slug)
     downloaded = download_skill_directory(source_url, skill_dir) if source_url else False
 
     if not downloaded:
         # Fallback: build a minimal SKILL.md from catalog metadata
         logger.warning("GitHub download failed for %s, using catalog stub", req.slug)
         skill_content = _build_skill_md_from_catalog(matched)
-        central.write_skill(req.slug, skill_content)
+        central.write_extension(req.slug, skill_content)
 
     # Sync to requested agent interfaces
+    agent_stores = get_agent_extension_stores()
     sync_results = {}
     for target_key in req.targets:
-        getter = AGENT_STORE_REGISTRY.get(target_key)
-        if not getter:
+        target_store = _find_store_by_key(agent_stores, target_key)
+        if not target_store:
             sync_results[target_key] = {"synced": False, "error": f"Unknown target: {target_key}"}
             continue
         try:
-            target_store = getter()
-            copied = target_store.import_skill_from(central, req.slug, overwrite=True)
+            copied = target_store.import_extension_from(central, req.slug, overwrite=True)
             sync_results[target_key] = {"synced": bool(copied)}
             if copied:
                 central._inject_source_metadata(req.slug, target_store)
@@ -184,7 +174,7 @@ def install_featured_skill(req: FeaturedSkillInstallRequest) -> dict:
             sync_results[target_key] = {"synced": False, "error": str(exc)}
 
     central.invalidate_cache()
-    info = central.get_skill(req.slug)
+    info = central.get_extension(req.slug)
     return {
         "name": req.slug,
         "info": info.model_dump(mode="json") if info else None,
@@ -223,46 +213,16 @@ def get_featured_skill_content(slug: str) -> dict:
         raise HTTPException(status_code=404, detail=f"Skill {slug!r} not found in catalog")
 
     source_url = matched.get("source_url", "")
-    raw_url = _source_url_to_raw(source_url)
+    raw_url = github_tree_to_raw_url(tree_url=source_url, filename="SKILL.md")
     if not raw_url:
         raise HTTPException(status_code=404, detail=f"Cannot resolve content URL for {slug!r}")
 
-    try:
-        with httpx.Client(timeout=15) as client:
-            response = client.get(raw_url)
-            response.raise_for_status()
-        content = response.text
-    except httpx.HTTPError as exc:
-        logger.warning("Failed to fetch SKILL.md for %s: %s", slug, exc)
-        raise HTTPException(status_code=502, detail=f"Failed to fetch from GitHub: {exc}") from exc
+    content = fetch_text(raw_url)
+    if not content:
+        raise HTTPException(status_code=502, detail=f"Failed to fetch SKILL.md for {slug!r}")
 
     _featured_content_cache[slug] = content
     return {"slug": slug, "content": content}
-
-
-_GITHUB_TREE_RE = re.compile(
-    r"https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/tree/(?P<ref>[^/]+)/(?P<path>.+)"
-)
-
-
-def _source_url_to_raw(source_url: str) -> str | None:
-    """Convert a GitHub tree URL to a raw SKILL.md URL.
-
-    Args:
-        source_url: GitHub tree URL like
-            https://github.com/{owner}/{repo}/tree/main/skills/{slug}
-
-    Returns:
-        Raw content URL or None if the pattern doesn't match.
-    """
-    match = _GITHUB_TREE_RE.match(source_url)
-    if not match:
-        return None
-    owner = match.group("owner")
-    repo = match.group("repo")
-    ref = match.group("ref")
-    path = match.group("path")
-    return f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{path}/SKILL.md"
 
 
 def _build_skill_md_from_catalog(catalog_entry: dict) -> str:
@@ -299,7 +259,7 @@ def search_skills(q: str = "") -> list[dict]:
     store = get_central_extension_store()
     if not q.strip():
         return [s.model_dump(mode="json") for s in store.get_cached()]
-    results = store.search_skills(q)
+    results = store.search_extensions(q)
     return [s.model_dump(mode="json") for s in results]
 
 
@@ -307,7 +267,7 @@ def search_skills(q: str = "") -> list[dict]:
 def get_local_skill_content(name: str) -> dict:
     """Read the full content of a locally installed skill."""
     store = get_central_extension_store()
-    info = store.get_skill(name)
+    info = store.get_extension(name)
     if not info:
         raise HTTPException(status_code=404, detail=f"Skill {name!r} not found")
 
@@ -324,14 +284,14 @@ def install_skill(req: SkillWriteRequest) -> dict:
         raise HTTPException(status_code=422, detail="Skill content must not be empty")
 
     store = get_central_extension_store()
-    existing = store.get_skill(req.name)
+    existing = store.get_extension(req.name)
     if existing:
         raise HTTPException(
             status_code=409, detail=f"Skill {req.name!r} already exists. Use PUT to update."
         )
 
-    path = store.write_skill(req.name, req.content)
-    info = store.get_skill(req.name)
+    path = store.write_extension(req.name, req.content)
+    info = store.get_extension(req.name)
     return {"path": str(path), "info": info.model_dump(mode="json") if info else None}
 
 
@@ -339,13 +299,13 @@ def install_skill(req: SkillWriteRequest) -> dict:
 def update_skill(name: str, req: SkillWriteRequest) -> dict:
     """Update an existing skill's SKILL.md content."""
     store = get_central_extension_store()
-    if not store.get_skill(name):
+    if not store.get_extension(name):
         raise HTTPException(status_code=404, detail=f"Skill {name!r} not found")
     if not req.content.strip():
         raise HTTPException(status_code=422, detail="Skill content must not be empty")
 
-    path = store.write_skill(name, req.content)
-    info = store.get_skill(name)
+    path = store.write_extension(name, req.content)
+    info = store.get_extension(name)
     return {"path": str(path), "info": info.model_dump(mode="json") if info else None}
 
 
@@ -353,7 +313,7 @@ def update_skill(name: str, req: SkillWriteRequest) -> dict:
 def delete_skill(name: str) -> dict:
     """Delete an installed skill and its entire directory."""
     store = get_central_extension_store()
-    deleted = store.delete_skill(name)
+    deleted = store.delete_extension(name)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Skill {name!r} not found")
     return {"deleted": name}
@@ -363,21 +323,16 @@ def delete_skill(name: str) -> dict:
 def list_skill_sources() -> list[dict]:
     """List available agent interfaces and their skill counts."""
     sources = []
-    for key, getter in AGENT_STORE_REGISTRY.items():
-        try:
-            store = getter()
-            skills = store.get_cached()
-            sources.append(
-                {
-                    "key": key,
-                    "label": key.replace("_", " ").title(),
-                    "skill_count": len(skills),
-                    "skills_dir": str(store.skills_dir),
-                }
-            )
-        except Exception:
-            label = key.replace("_", " ").title()
-            sources.append({"key": key, "label": label, "skill_count": 0, "skills_dir": ""})
+    for src, store in get_agent_extension_stores().items():
+        extensions = store.get_cached()
+        sources.append(
+            {
+                "key": src.value,
+                "label": src.value.replace("_", " ").title(),
+                "skill_count": len(extensions),
+                "skills_dir": str(store.extensions_dir),
+            }
+        )
     return sources
 
 
@@ -395,19 +350,19 @@ def sync_skill_to_targets(name: str, req: SkillSyncRequest) -> dict:
         Dict with sync results per target.
     """
     central = get_central_extension_store()
-    if not central.get_skill(name):
+    if not central.get_extension(name):
         raise HTTPException(status_code=404, detail=f"Skill {name!r} not found in central store")
 
+    agent_stores = get_agent_extension_stores()
     results = {}
     for target_key in req.targets:
-        getter = AGENT_STORE_REGISTRY.get(target_key)
-        if not getter:
+        target_store = _find_store_by_key(agent_stores, target_key)
+        if not target_store:
             results[target_key] = {"synced": False, "error": f"Unknown target: {target_key}"}
             continue
         try:
-            target_store = getter()
-            copied = target_store.import_skill_from(central, name, overwrite=True)
-            skill_path = str(target_store.skill_path(name))
+            copied = target_store.import_extension_from(central, name, overwrite=True)
+            skill_path = str(target_store.extension_path(name))
             results[target_key] = {"synced": bool(copied), "path": skill_path}
 
             # Update the central store's source metadata to record
@@ -418,7 +373,7 @@ def sync_skill_to_targets(name: str, req: SkillSyncRequest) -> dict:
         except Exception as exc:
             results[target_key] = {"synced": False, "error": str(exc)}
 
-    updated_skill = central.get_skill(name)
+    updated_skill = central.get_extension(name)
     return {
         "name": name,
         "results": results,
