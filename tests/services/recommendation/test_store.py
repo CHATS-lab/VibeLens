@@ -6,10 +6,10 @@ from pathlib import Path
 
 from vibelens.models.llm.inference import BackendType
 from vibelens.models.personalization.enums import PersonalizationMode
+from vibelens.models.enums import AgentExtensionType
 from vibelens.models.personalization.recommendation import (
     RankedRecommendationItem,
     RecommendationItem,
-    RecommendationItemType,
     UserProfile,
 )
 from vibelens.models.personalization.results import PersonalizationResult
@@ -35,11 +35,11 @@ def _build_test_result(session_ids: list[str]) -> PersonalizationResult:
             workflow_style="iterative",
             search_keywords=["testing", "python"],
         ),
-        ranked_recommendations=[
+        recommendations=[
             RankedRecommendationItem(
                 item=RecommendationItem(
-                    item_id="test/skill",
-                    item_type=RecommendationItemType.SKILL,
+                    extension_id="test/skill",
+                    extension_type=AgentExtensionType.SKILL,
                     name="test-skill",
                     description="A test skill.",
                     tags=["testing"],
@@ -72,8 +72,8 @@ def test_recommendation_store_save_and_load():
         loaded = store.load("test-analysis-001")
         assert loaded is not None
         assert loaded.id == "test-rec-001"
-        assert len(loaded.ranked_recommendations) > 0
-        print(f"Saved and loaded {len(loaded.ranked_recommendations)} recommendations")
+        assert len(loaded.recommendations) > 0
+        print(f"Saved and loaded {len(loaded.recommendations)} recommendations")
 
 
 def test_recommendation_store_list():

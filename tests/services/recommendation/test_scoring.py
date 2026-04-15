@@ -1,14 +1,17 @@
 """Tests for the multi-signal recommendation scoring pipeline."""
 
-from vibelens.catalog import CatalogItem, ItemType
+from vibelens.models.enums import AgentExtensionType
+from vibelens.models.extension import ExtensionItem
 from vibelens.models.personalization.recommendation import UserProfile
 from vibelens.services.recommendation.scoring import score_candidates
 
 
-def _make_item(name: str, quality: float = 50.0, platforms: list[str] | None = None) -> CatalogItem:
-    return CatalogItem(
-        item_id=f"test/{name}",
-        item_type=ItemType.SKILL,
+def _make_item(
+    name: str, quality: float = 50.0, platforms: list[str] | None = None
+) -> ExtensionItem:
+    return ExtensionItem(
+        extension_id=f"test/{name}",
+        extension_type=AgentExtensionType.SKILL,
         name=name,
         description=f"A {name} tool",
         tags=[],

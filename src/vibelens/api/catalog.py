@@ -6,8 +6,8 @@ import httpx
 from cachetools import TTLCache
 from fastapi import APIRouter, HTTPException, Query
 
-from vibelens.catalog import CatalogItem
 from vibelens.deps import get_personalization_store
+from vibelens.models.extension import ExtensionItem
 from vibelens.models.personalization.recommendation import UserProfile
 from vibelens.schemas.catalog import (
     CatalogInstallRequest,
@@ -15,7 +15,10 @@ from vibelens.schemas.catalog import (
     CatalogListResponse,
     CatalogMetaResponse,
 )
-from vibelens.services.catalog.install import install_catalog_item
+from vibelens.services.catalog.install import (
+    install_catalog_item,
+    install_from_source_url,
+)
 from vibelens.services.recommendation.catalog import CatalogSnapshot, load_catalog
 from vibelens.utils.log import get_logger
 
@@ -48,12 +51,12 @@ def _get_catalog() -> CatalogSnapshot:
 
 
 def _filter_items(
-    items: list[CatalogItem],
+    items: list[ExtensionItem],
     search: str | None,
     item_type: str | None,
     category: str | None,
     platform: str | None,
-) -> list[CatalogItem]:
+) -> list[ExtensionItem]:
     """Apply search and filter criteria to items.
 
     Args:
@@ -79,7 +82,7 @@ def _filter_items(
         ]
 
     if item_type:
-        result = [i for i in result if i.item_type.value == item_type]
+        result = [i for i in result if i.extension_type.value == item_type]
 
     if category:
         result = [i for i in result if i.category == category]
@@ -90,7 +93,7 @@ def _filter_items(
     return result
 
 
-def _score_relevance(item: CatalogItem, keywords: list[str]) -> float:
+def _score_relevance(item: ExtensionItem, keywords: list[str]) -> float:
     """Score item relevance against user profile keywords.
 
     Args:
@@ -124,10 +127,8 @@ def _load_latest_profile() -> UserProfile | None:
 
 
 def _sort_items(
-    items: list[CatalogItem],
-    sort: str,
-    profile: UserProfile | None = None,
-) -> list[CatalogItem]:
+    items: list[ExtensionItem], sort: str, profile: UserProfile | None = None
+) -> list[ExtensionItem]:
     """Sort items by the given criterion.
 
     Args:
@@ -161,8 +162,7 @@ async def list_catalog(
     category: str | None = Query(default=None, description="Filter by category"),
     platform: str | None = Query(default=None, description="Filter by platform"),
     sort: str = Query(
-        default="quality",
-        description="Sort: quality, name, popularity, recent, relevance",
+        default="quality", description="Sort: quality, name, popularity, recent, relevance"
     ),
     page: int = Query(default=1, ge=1, description="Page number"),
     per_page: int = Query(default=50, ge=1, le=200, description="Items per page"),
@@ -240,7 +240,7 @@ async def get_catalog_item_content(item_id: str) -> dict:
     return result
 
 
-async def _resolve_content(item: CatalogItem) -> dict:
+async def _resolve_content(item: ExtensionItem) -> dict:
     """Resolve displayable content for a catalog item.
 
     Args:
@@ -251,23 +251,23 @@ async def _resolve_content(item: CatalogItem) -> dict:
     """
     if item.install_content:
         return {
-            "item_id": item.item_id,
+            "item_id": item.extension_id,
             "content": item.install_content,
             "content_type": "install_content",
         }
 
-    if item.item_type.value == "repo" and item.repo_full_name:
+    if item.extension_type.value == "repo" and item.repo_full_name:
         owner, repo = item.repo_full_name.split("/", 1)
         readme_url = f"https://raw.githubusercontent.com/{owner}/{repo}/HEAD/README.md"
         content = await _fetch_url_content(readme_url)
         if content:
             return {
-                "item_id": item.item_id,
+                "item_id": item.extension_id,
                 "content": content,
                 "content_type": "readme",
             }
         return {
-            "item_id": item.item_id,
+            "item_id": item.extension_id,
             "content": None,
             "content_type": None,
             "error": "Failed to fetch README from GitHub",
@@ -283,18 +283,18 @@ async def _resolve_content(item: CatalogItem) -> dict:
         content = await _fetch_url_content(raw_url)
         if content:
             return {
-                "item_id": item.item_id,
+                "item_id": item.extension_id,
                 "content": content,
                 "content_type": "skill_md",
             }
         return {
-            "item_id": item.item_id,
+            "item_id": item.extension_id,
             "content": None,
             "content_type": None,
             "error": "Failed to fetch SKILL.md from GitHub",
         }
 
-    return {"item_id": item.item_id, "content": None, "content_type": None}
+    return {"item_id": item.extension_id, "content": None, "content_type": None}
 
 
 async def _fetch_url_content(url: str) -> str | None:
@@ -336,14 +336,23 @@ async def install_item(item_id: str, body: CatalogInstallRequest) -> CatalogInst
     item = catalog.get_item(item_id)
     if not item:
         raise HTTPException(status_code=404, detail=f"Item {item_id} not found")
-    if not item.install_content:
-        raise HTTPException(status_code=400, detail=f"Item {item_id} has no installable content")
     try:
-        installed_path = install_catalog_item(
-            item=item,
-            target_platform=body.target_platform,
-            overwrite=body.overwrite,
-        )
+        if item.install_content:
+            installed_path = install_catalog_item(
+                item=item, target_platform=body.target_platform, overwrite=body.overwrite
+            )
+        elif item.extension_type.value in ("hook", "repo"):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Item {item_id} requires install_content"
+                    f" for {item.extension_type.value} type"
+                ),
+            )
+        else:
+            installed_path = install_from_source_url(
+                item=item, target_platform=body.target_platform, overwrite=body.overwrite
+            )
     except FileExistsError as exc:
         raise HTTPException(
             status_code=409,

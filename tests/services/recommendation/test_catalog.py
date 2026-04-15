@@ -4,7 +4,7 @@ import json
 import tempfile
 from pathlib import Path
 
-from vibelens.catalog import CatalogItem
+from vibelens.models.extension import ExtensionItem
 from vibelens.services.recommendation.catalog import load_catalog_from_path
 
 
@@ -14,8 +14,8 @@ def _build_test_catalog(item_count: int = 3) -> dict:
     for i in range(item_count):
         items.append(
             {
-                "item_id": f"test-org/test-repo-{i}",
-                "item_type": "skill",
+                "extension_id": f"test-org/test-repo-{i}",
+                "extension_type": "skill",
                 "name": f"test-skill-{i}",
                 "description": f"Test skill {i} description",
                 "tags": ["test", "skill"],
@@ -48,7 +48,7 @@ def test_load_catalog_from_path():
     assert snapshot is not None
     assert snapshot.version == "2026-04-10"
     assert len(snapshot.items) == 5
-    assert all(isinstance(item, CatalogItem) for item in snapshot.items)
+    assert all(isinstance(item, ExtensionItem) for item in snapshot.items)
     print(f"Loaded {len(snapshot.items)} items, version={snapshot.version}")
     path.unlink()
 

@@ -6,16 +6,17 @@ import pytest
 from fastapi.testclient import TestClient
 
 from vibelens.app import create_app
-from vibelens.catalog import CatalogItem, ItemType
+from vibelens.models.enums import AgentExtensionType
+from vibelens.models.extension import ExtensionItem
 from vibelens.services.recommendation.catalog import CatalogSnapshot
 
 
 def _make_snapshot() -> CatalogSnapshot:
     """Create a test catalog snapshot."""
     items = [
-        CatalogItem(
-            item_id="bwc:skill:test-skill",
-            item_type=ItemType.SKILL,
+        ExtensionItem(
+            extension_id="bwc:skill:test-skill",
+            extension_type=AgentExtensionType.SKILL,
             name="test-skill",
             description="A test skill",
             tags=["testing"],
@@ -29,9 +30,9 @@ def _make_snapshot() -> CatalogSnapshot:
             install_method="skill_file",
             install_content="# Test Skill\nContent here.",
         ),
-        CatalogItem(
-            item_id="bwc:mcp:test-mcp",
-            item_type=ItemType.REPO,
+        ExtensionItem(
+            extension_id="bwc:mcp:test-mcp",
+            extension_type=AgentExtensionType.REPO,
             name="test-mcp",
             description="A test MCP server",
             tags=["mcp"],
@@ -76,7 +77,7 @@ def test_list_catalog_search(client):
     assert resp.status_code == 200
     data = resp.json()
     assert data["total"] == 1
-    assert data["items"][0]["item_id"] == "bwc:mcp:test-mcp"
+    assert data["items"][0]["extension_id"] == "bwc:mcp:test-mcp"
     print(f"Search 'mcp': {data['total']} results")
 
 
@@ -86,7 +87,7 @@ def test_list_catalog_type_filter(client):
     assert resp.status_code == 200
     data = resp.json()
     assert data["total"] == 1
-    assert data["items"][0]["item_type"] == "skill"
+    assert data["items"][0]["extension_type"] == "skill"
     print(f"Type filter: {data['total']} results")
 
 
@@ -95,9 +96,9 @@ def test_get_catalog_item(client):
     resp = client.get("/api/catalog/bwc:skill:test-skill")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["item_id"] == "bwc:skill:test-skill"
+    assert data["extension_id"] == "bwc:skill:test-skill"
     assert data["install_content"] is not None
-    print(f"Got item: {data['item_id']}")
+    print(f"Got item: {data['extension_id']}")
 
 
 def test_get_catalog_item_not_found(client):

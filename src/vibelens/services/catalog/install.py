@@ -3,7 +3,9 @@
 import json
 from pathlib import Path
 
-from vibelens.catalog import CatalogItem, ItemType
+from vibelens.models.enums import AgentExtensionType
+from vibelens.models.extension import ExtensionItem
+from vibelens.services.skill.download import GITHUB_TREE_PATTERN, download_skill_directory
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -15,18 +17,22 @@ PLATFORM_DIRS: dict[str, dict[str, Path]] = {
     },
 }
 
-FILE_INSTALL_TYPES = {ItemType.SKILL, ItemType.SUBAGENT, ItemType.COMMAND}
+FILE_INSTALL_TYPES = {
+    AgentExtensionType.SKILL,
+    AgentExtensionType.SUBAGENT,
+    AgentExtensionType.COMMAND,
+}
 
 
 def install_catalog_item(
-    item: CatalogItem,
+    item: ExtensionItem,
     target_platform: str = "claude_code",
     overwrite: bool = False,
 ) -> Path:
     """Install a catalog item to the target agent platform.
 
     Args:
-        item: CatalogItem with install_content populated.
+        item: ExtensionItem with install_content populated.
         target_platform: Target platform key (e.g. 'claude_code').
         overwrite: If True, overwrite existing files.
 
@@ -44,23 +50,66 @@ def install_catalog_item(
 
     dirs = PLATFORM_DIRS[target_platform]
 
-    if item.item_type in FILE_INSTALL_TYPES:
+    if item.extension_type in FILE_INSTALL_TYPES:
         return _install_file(item=item, commands_dir=dirs["commands"], overwrite=overwrite)
-    elif item.item_type == ItemType.HOOK:
+    elif item.extension_type == AgentExtensionType.HOOK:
         return _install_hook(item=item, settings_path=dirs["settings"])
     elif item.install_method == "mcp_config":
         return _install_mcp(item=item, settings_path=dirs["settings"])
     else:
         raise ValueError(
-            f"Cannot auto-install item type {item.item_type} with method {item.install_method}"
+            f"Cannot auto-install item type {item.extension_type} with method {item.install_method}"
         )
 
 
-def _install_file(item: CatalogItem, commands_dir: Path, overwrite: bool) -> Path:
+def install_from_source_url(
+    item: ExtensionItem,
+    target_platform: str = "claude_code",
+    overwrite: bool = False,
+) -> Path:
+    """Install a catalog item by downloading its skill directory from GitHub.
+
+    Used when install_content is None but source_url points to a GitHub tree URL.
+
+    Args:
+        item: ExtensionItem with a GitHub tree source_url.
+        target_platform: Target platform key (e.g. 'claude_code').
+        overwrite: If True, overwrite existing directory.
+
+    Returns:
+        Path where the skill directory was installed.
+
+    Raises:
+        ValueError: If platform is unknown, source_url is missing, or download fails.
+        FileExistsError: If target directory exists and overwrite is False.
+    """
+    if target_platform not in PLATFORM_DIRS:
+        raise ValueError(
+            f"Unknown platform: {target_platform}. Available: {list(PLATFORM_DIRS.keys())}"
+        )
+    if not item.source_url or not GITHUB_TREE_PATTERN.match(item.source_url):
+        raise ValueError(f"Item {item.extension_id} has no installable content or valid source URL")
+
+    commands_dir = PLATFORM_DIRS[target_platform]["commands"]
+    target_dir = commands_dir / item.name
+    if target_dir.exists() and not overwrite:
+        raise FileExistsError(
+            f"Directory already exists: {target_dir}. Use overwrite=true to replace."
+        )
+
+    success = download_skill_directory(source_url=item.source_url, target_dir=target_dir)
+    if not success:
+        raise ValueError(f"Failed to download skill from {item.source_url}")
+
+    logger.info("Installed %s from source URL to %s", item.extension_id, target_dir)
+    return target_dir
+
+
+def _install_file(item: ExtensionItem, commands_dir: Path, overwrite: bool) -> Path:
     """Write install_content to commands directory as {name}.md.
 
     Args:
-        item: CatalogItem with install_content.
+        item: ExtensionItem with install_content.
         commands_dir: Target directory for skill files.
         overwrite: If True, replace existing file.
 
@@ -77,15 +126,15 @@ def _install_file(item: CatalogItem, commands_dir: Path, overwrite: bool) -> Pat
         raise FileExistsError(f"File already exists: {target}. Use overwrite=true to replace.")
 
     target.write_text(item.install_content or "", encoding="utf-8")
-    logger.info("Installed %s to %s", item.item_id, target)
+    logger.info("Installed %s to %s", item.extension_id, target)
     return target
 
 
-def _install_hook(item: CatalogItem, settings_path: Path) -> Path:
+def _install_hook(item: ExtensionItem, settings_path: Path) -> Path:
     """Append hook entries to settings.json hooks object.
 
     Args:
-        item: CatalogItem with hook JSON in install_content.
+        item: ExtensionItem with hook JSON in install_content.
         settings_path: Path to settings.json.
 
     Returns:
@@ -101,15 +150,15 @@ def _install_hook(item: CatalogItem, settings_path: Path) -> Path:
         existing_entries.extend(entries)
 
     _write_settings(settings_path=settings_path, settings=settings)
-    logger.info("Installed hook %s to %s", item.item_id, settings_path)
+    logger.info("Installed hook %s to %s", item.extension_id, settings_path)
     return settings_path
 
 
-def _install_mcp(item: CatalogItem, settings_path: Path) -> Path:
+def _install_mcp(item: ExtensionItem, settings_path: Path) -> Path:
     """Merge MCP server config into settings.json mcpServers.
 
     Args:
-        item: CatalogItem with MCP JSON in install_content.
+        item: ExtensionItem with MCP JSON in install_content.
         settings_path: Path to settings.json.
 
     Returns:
@@ -123,7 +172,7 @@ def _install_mcp(item: CatalogItem, settings_path: Path) -> Path:
     existing_servers.update(servers)
 
     _write_settings(settings_path=settings_path, settings=settings)
-    logger.info("Installed MCP %s to %s", item.item_id, settings_path)
+    logger.info("Installed MCP %s to %s", item.extension_id, settings_path)
     return settings_path
 
 

@@ -13,12 +13,12 @@ from pathlib import Path
 
 from cachetools import TTLCache
 
-from vibelens.catalog import CatalogItem
 from vibelens.context import MetadataExtractor, sample_contexts
 from vibelens.deps import get_personalization_store
 from vibelens.llm.backend import InferenceBackend
 from vibelens.llm.cost_estimator import CostEstimate, estimate_analysis_cost
 from vibelens.llm.tokenizer import count_tokens
+from vibelens.models.extension import ExtensionItem
 from vibelens.models.llm.inference import InferenceRequest
 from vibelens.models.personalization.enums import PersonalizationMode
 from vibelens.models.personalization.recommendation import (
@@ -230,7 +230,7 @@ async def _run_pipeline(
     )
 
     # L2: Profile generation (1 LLM call)
-    profile, profile_cost = await _generate_profile(backend, digest, loaded_session_ids, log_dir)
+    profile, profile_metrics = await _generate_profile(backend, digest, loaded_session_ids, log_dir)
 
     # L3: Retrieval + scoring (no LLM)
     scored_candidates = _retrieve_and_score(catalog, profile)
@@ -244,16 +244,20 @@ async def _run_pipeline(
         )
 
     # L4: Rationale generation (1 LLM call)
-    rationale_output, rationale_cost = await _generate_rationales(
+    rationale_output, rationale_metrics = await _generate_rationales(
         backend, profile, scored_candidates, log_dir, top_n=top_n
     )
 
-    total_cost = profile_cost + rationale_cost
     ranked_items = _merge_and_rank(scored_candidates, rationale_output)
 
     title = f"Top {len(ranked_items)} recommendations for your workflow"
     if len(ranked_items) == 1:
         title = "1 recommendation for your workflow"
+
+    batch_metrics = [profile_metrics, rationale_metrics]
+    total_prompt = sum(m.prompt_tokens for m in batch_metrics)
+    total_completion = sum(m.completion_tokens for m in batch_metrics)
+    total_cost = sum(m.cost_usd or 0.0 for m in batch_metrics)
 
     return PersonalizationResult(
         id=analysis_id,
@@ -262,22 +266,23 @@ async def _run_pipeline(
         skipped_session_ids=skipped_session_ids,
         title=title,
         user_profile=profile,
-        ranked_recommendations=ranked_items,
+        recommendations=ranked_items,
         backend=backend.backend_id,
         model=backend.model,
         created_at=datetime.now(timezone.utc).isoformat(),
         batch_count=2,
-        batch_metrics=[
-            Metrics(cost_usd=profile_cost if profile_cost > 0 else None),
-            Metrics(cost_usd=rationale_cost if rationale_cost > 0 else None),
-        ],
-        final_metrics=FinalMetrics(total_cost_usd=total_cost if total_cost > 0 else None),
+        batch_metrics=batch_metrics,
+        final_metrics=FinalMetrics(
+            total_prompt_tokens=total_prompt,
+            total_completion_tokens=total_completion,
+            total_cost_usd=total_cost if total_cost > 0 else None,
+        ),
     )
 
 
 async def _generate_profile(
     backend: InferenceBackend, digest: str, session_ids: list[str], log_dir: Path
-) -> tuple[UserProfile, float]:
+) -> tuple[UserProfile, Metrics]:
     """L2: Generate user profile from session digest.
 
     Args:
@@ -287,7 +292,7 @@ async def _generate_profile(
         log_dir: Timestamped directory for saving prompts and outputs.
 
     Returns:
-        Tuple of (parsed UserProfile, cost in USD).
+        Tuple of (parsed UserProfile, step metrics).
     """
     system_kwargs = build_system_kwargs(RECOMMENDATION_PROFILE_PROMPT, backend)
     system_prompt = RECOMMENDATION_PROFILE_PROMPT.render_system(**system_kwargs)
@@ -316,19 +321,23 @@ async def _generate_profile(
     save_inference_log(log_dir, "profile_output.txt", result.text)
 
     profile = parse_llm_output(result.text, UserProfile, "recommendation profile")
-    cost = result.cost_usd or 0.0
+    metrics = Metrics(
+        prompt_tokens=result.usage.input_tokens if result.usage else 0,
+        completion_tokens=result.usage.output_tokens if result.usage else 0,
+        cost_usd=result.cost_usd,
+    )
     logger.info(
         "L2 profile: %d domains, %d languages, %d keywords",
         len(profile.domains),
         len(profile.languages),
         len(profile.search_keywords),
     )
-    return profile, cost
+    return profile, metrics
 
 
 def _retrieve_and_score(
     catalog: CatalogSnapshot, profile: UserProfile
-) -> list[tuple[CatalogItem, float]]:
+) -> list[tuple[ExtensionItem, float]]:
     """L3: TF-IDF retrieval then weighted scoring.
 
     Args:
@@ -336,7 +345,7 @@ def _retrieve_and_score(
         profile: User profile from L2.
 
     Returns:
-        Top-k scored (CatalogItem, composite_score) pairs.
+        Top-k scored (ExtensionItem, composite_score) pairs.
     """
     retrieval = KeywordRetrieval()
     retrieval.build_index(catalog.items)
@@ -357,25 +366,25 @@ def _retrieve_and_score(
 async def _generate_rationales(
     backend: InferenceBackend,
     profile: UserProfile,
-    scored_candidates: list[tuple[CatalogItem, float]],
+    scored_candidates: list[tuple[ExtensionItem, float]],
     log_dir: Path,
     top_n: int = RATIONALE_MAX_RESULTS,
-) -> tuple[RationaleOutput, float]:
+) -> tuple[RationaleOutput, Metrics]:
     """L4: Generate personalized rationales for top candidates.
 
     Args:
         backend: Configured inference backend.
         profile: User profile from L2.
-        scored_candidates: Scored (CatalogItem, score) pairs from L3.
+        scored_candidates: Scored (ExtensionItem, score) pairs from L3.
         log_dir: Timestamped directory for saving prompts and outputs.
         top_n: Maximum recommendations for L4 to return.
 
     Returns:
-        Tuple of (RationaleOutput, cost in USD).
+        Tuple of (RationaleOutput, step metrics).
     """
     candidates_for_template = [
         {
-            "item_id": item.item_id,
+            "item_id": item.extension_id,
             "name": item.name,
             "description": truncate(item.description, max_chars=DESCRIPTION_MAX_CHARS),
         }
@@ -405,13 +414,17 @@ async def _generate_rationales(
     save_inference_log(log_dir, "rationale_output.txt", result.text)
 
     rationale_output = parse_llm_output(result.text, RationaleOutput, "recommendation rationale")
-    cost = result.cost_usd or 0.0
+    metrics = Metrics(
+        prompt_tokens=result.usage.input_tokens if result.usage else 0,
+        completion_tokens=result.usage.output_tokens if result.usage else 0,
+        cost_usd=result.cost_usd,
+    )
     logger.info("L4 rationale: %d rationales generated", len(rationale_output.rationales))
-    return rationale_output, cost
+    return rationale_output, metrics
 
 
 def _merge_and_rank(
-    scored_candidates: list[tuple[CatalogItem, float]], rationale_output: RationaleOutput
+    scored_candidates: list[tuple[ExtensionItem, float]], rationale_output: RationaleOutput
 ) -> list[RankedRecommendationItem]:
     """Combine L3 scores with L4 ranked rationales into final recommendations.
 
@@ -419,15 +432,15 @@ def _merge_and_rank(
     Items in the rationale output that don't match a scored candidate are skipped.
 
     Args:
-        scored_candidates: Ranked (CatalogItem, score) pairs from L3.
+        scored_candidates: Ranked (ExtensionItem, score) pairs from L3.
         rationale_output: LLM rationales from L4 (ordered by rank).
 
     Returns:
         Ordered list of RankedRecommendationItem.
     """
-    score_map = {item.item_id: score for item, score in scored_candidates}
-    quality_map = {item.item_id: item.quality_score for item, _ in scored_candidates}
-    item_map = {item.item_id: item for item, _ in scored_candidates}
+    score_map = {item.extension_id: score for item, score in scored_candidates}
+    quality_map = {item.extension_id: item.quality_score for item, _ in scored_candidates}
+    item_map = {item.extension_id: item for item, _ in scored_candidates}
 
     results: list[RankedRecommendationItem] = []
     for r in rationale_output.rationales:
@@ -437,8 +450,8 @@ def _merge_and_rank(
         results.append(
             RankedRecommendationItem(
                 item=RecommendationItem(
-                    item_id=cat.item_id,
-                    item_type=cat.item_type,
+                    extension_id=cat.extension_id,
+                    extension_type=cat.extension_type,
                     name=cat.name,
                     description=cat.description,
                     tags=cat.tags,
@@ -479,7 +492,7 @@ def _build_empty_result(
         reason: Why no recommendations were generated.
 
     Returns:
-        PersonalizationResult with empty ranked_recommendations.
+        PersonalizationResult with empty recommendations.
     """
     return PersonalizationResult(
         id=analysis_id,
@@ -487,7 +500,7 @@ def _build_empty_result(
         session_ids=session_ids,
         skipped_session_ids=skipped_session_ids,
         title=reason,
-        ranked_recommendations=[],
+        recommendations=[],
         backend=backend.backend_id,
         model=backend.model,
         created_at=datetime.now(timezone.utc).isoformat(),

@@ -1,14 +1,15 @@
 """Tests for TF-IDF keyword retrieval backend."""
 
-from vibelens.catalog import CatalogItem, ItemType
+from vibelens.models.enums import AgentExtensionType
+from vibelens.models.extension import ExtensionItem
 from vibelens.services.recommendation.retrieval import KeywordRetrieval
 
 
-def _make_item(name: str, description: str, tags: list[str] | None = None) -> CatalogItem:
-    """Build a minimal CatalogItem for testing."""
-    return CatalogItem(
-        item_id=f"test/{name}",
-        item_type=ItemType.SKILL,
+def _make_item(name: str, description: str, tags: list[str] | None = None) -> ExtensionItem:
+    """Build a minimal ExtensionItem for testing."""
+    return ExtensionItem(
+        extension_id=f"test/{name}",
+        extension_type=AgentExtensionType.SKILL,
         name=name,
         description=description,
         tags=tags or [],
