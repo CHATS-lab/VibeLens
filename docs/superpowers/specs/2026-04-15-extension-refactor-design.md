@@ -93,11 +93,11 @@ src/vibelens/storage/extension/
 
 ### ConfigExtensionStore (new)
 
-Reads and writes hook/repo configs from `~/.claude/settings.json`:
+Reads and writes config-based extensions from `~/.claude/settings.json`:
 
 ```python
 class ConfigExtensionStore:
-    """Manages hook and repo (MCP) extensions stored in settings.json."""
+    """Manages config entries in settings.json (hooks, mcpServers)."""
 
     def list_hooks(self, settings_path: Path) -> list[InstalledHook]: ...
     def install_hook(self, hook_data: dict, settings_path: Path) -> None: ...
@@ -109,6 +109,8 @@ class ConfigExtensionStore:
 ```
 
 The existing `_read_settings()` / `_write_settings()` helpers from `services/catalog/install.py` move here.
+
+Note: Hooks are hybrid -- they can include both script files (e.g., `.claude/hooks/my-hook.sh`) AND config entries in `settings.json`. The `ConfigExtensionStore` handles only the settings.json side; file components are handled by the `HookHandler` service which coordinates both.
 
 ### Agent Extension Registry
 
@@ -135,7 +137,7 @@ src/vibelens/services/extensions/
   skill.py         -- SkillHandler(FileBasedHandler)
   subagent.py      -- SubagentHandler(FileBasedHandler)
   command.py       -- CommandHandler(FileBasedHandler)
-  hook.py          -- HookHandler (uses ConfigExtensionStore)
+  hook.py          -- HookHandler(FileBasedHandler) -- hybrid: files + settings.json config
   repo.py          -- RepoHandler (uses ConfigExtensionStore)
   registry.py      -- type -> handler mapping, dispatch functions
   platforms.py     -- platform directory configs (PLATFORM_DIRS)
@@ -143,7 +145,7 @@ src/vibelens/services/extensions/
 
 ### FileBasedHandler (base.py)
 
-Shared logic for skill, subagent, and command types:
+Shared logic for file-based extension types (skill, subagent, command, hook):
 
 ```python
 class FileBasedHandler:
@@ -165,7 +167,7 @@ class FileBasedHandler:
 - **SkillHandler**: Inherits FileBasedHandler. Adds skill-specific metadata parsing (SKILL.md frontmatter), central store import with source provenance injection. Absorbs logic from deleted `services/skill/importer.py` and `services/skill/download.py`.
 - **SubagentHandler**: Inherits FileBasedHandler. May have subagent-specific metadata or validation.
 - **CommandHandler**: Inherits FileBasedHandler. May have command-specific metadata or validation.
-- **HookHandler**: Independent handler. Uses ConfigExtensionStore to merge/list/remove hooks from settings.json.
+- **HookHandler**: Inherits FileBasedHandler. Hooks are hybrid -- they can include script files (written to disk like skills) AND config entries merged into `settings.json`. HookHandler overrides `install()` to handle both: write any script files via the base class, then merge the hook config entry into settings.json via ConfigExtensionStore. `list_installed()` reads both the hook files on disk and the settings.json config. `uninstall()` removes both.
 - **RepoHandler**: Independent handler. Uses ConfigExtensionStore to merge/list/remove MCP server configs and other repo-based installs from settings.json.
 
 ### Registry (registry.py)
@@ -222,6 +224,16 @@ The `services/recommendation/catalog.py` file (runtime catalog loader) updates:
 - Still reads `catalog.json` from disk (data file name unchanged)
 
 ## 7. Frontend
+
+### Scope: skill-only for this version
+
+The backend implements all 5 extension types, but the frontend only exposes **skill** in this version. Other types (subagent, command, hook, repo) are fully functional in the backend and API, but the UI filters them out or does not surface them. This keeps the UI focused while the backend is ready for future expansion.
+
+Specifically:
+- The explore tab filters to `extension_type=skill` by default (or hides the type filter entirely)
+- Creation/evolution modes only target skills (already the case)
+- The type badge/filter in the extension list is hidden (only one type visible, no need to filter)
+- Backend API still accepts all types for future use
 
 ### File renames
 
