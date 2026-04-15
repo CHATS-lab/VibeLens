@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 
 from vibelens.models.extension import ExtensionItem
-from vibelens.services.recommendation.catalog import load_catalog_from_path
+from vibelens.storage.extension.catalog import load_catalog_from_path
 
 
 def _build_test_catalog(item_count: int = 3) -> dict:

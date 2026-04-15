@@ -6,14 +6,14 @@ from pathlib import Path
 
 import pytest
 
-from vibelens.config import Settings
 from vibelens.ingest.parsers.claude_code import ClaudeCodeParser
+from vibelens.models.enums import AgentType
 from vibelens.storage.trajectory.local import LocalTrajectoryStore as LocalSource
 
 
 @pytest.fixture
 def test_settings(tmp_path):
-    """Create test settings with temporary Claude directory."""
+    """Create test data dirs with temporary Claude directory."""
     claude_dir = tmp_path / ".claude"
     claude_dir.mkdir()
 
@@ -23,16 +23,8 @@ def test_settings(tmp_path):
     test_project = projects_dir / "-Users-TestProject-Agent-Test"
     test_project.mkdir()
 
-    return (
-        Settings(
-            claude_dir=claude_dir,
-            codex_dir=tmp_path / ".codex",
-            gemini_dir=tmp_path / ".gemini",
-            openclaw_dir=tmp_path / ".openclaw",
-        ),
-        claude_dir,
-        test_project,
-    )
+    data_dirs = {AgentType.CLAUDE: claude_dir}
+    return data_dirs, claude_dir, test_project
 
 
 @pytest.fixture
@@ -168,16 +160,16 @@ class TestDataParsing:
 
     def test_local_source_loads_index(self, test_settings, sample_history):
         """Test LocalSource can load history index."""
-        settings, claude_dir, _ = test_settings
-        source = LocalSource(settings=settings)
+        data_dirs, claude_dir, _ = test_settings
+        source = LocalSource(data_dirs=data_dirs)
 
         summaries = source.list_metadata()
         assert len(summaries) == 0  # No sessions with files yet
 
     def test_local_source_with_session_files(self, test_settings, sample_history, sample_sessions):
         """Test LocalSource with actual session files."""
-        settings, claude_dir, _ = test_settings
-        source = LocalSource(settings=settings)
+        data_dirs, claude_dir, _ = test_settings
+        source = LocalSource(data_dirs=data_dirs)
 
         summaries = source.list_metadata()
         assert len(summaries) == 2
@@ -187,8 +179,8 @@ class TestDataParsing:
         self, test_settings, sample_history, sample_sessions
     ):
         """Test trajectory metadata is correctly computed."""
-        settings, claude_dir, _ = test_settings
-        source = LocalSource(settings=settings)
+        data_dirs, claude_dir, _ = test_settings
+        source = LocalSource(data_dirs=data_dirs)
 
         group = source.load("session-002")
         assert group is not None
@@ -204,8 +196,8 @@ class TestLocalStoreABC:
 
     def test_exists_known_session(self, test_settings, sample_history, sample_sessions):
         """exists() returns True for known sessions, False for unknown."""
-        settings, _, _ = test_settings
-        source = LocalSource(settings=settings)
+        data_dirs, _, _ = test_settings
+        source = LocalSource(data_dirs=data_dirs)
 
         assert source.exists("session-001") is True
         assert source.exists("session-002") is True
@@ -214,8 +206,8 @@ class TestLocalStoreABC:
 
     def test_session_count(self, test_settings, sample_history, sample_sessions):
         """session_count() matches len(list_metadata())."""
-        settings, _, _ = test_settings
-        source = LocalSource(settings=settings)
+        data_dirs, _, _ = test_settings
+        source = LocalSource(data_dirs=data_dirs)
 
         count = source.session_count()
         metadata_count = len(source.list_metadata())
@@ -224,8 +216,8 @@ class TestLocalStoreABC:
 
     def test_save_raises(self, test_settings):
         """save() raises NotImplementedError."""
-        settings, _, _ = test_settings
-        source = LocalSource(settings=settings)
+        data_dirs, _, _ = test_settings
+        source = LocalSource(data_dirs=data_dirs)
 
         with pytest.raises(NotImplementedError, match="read-only"):
             source.save([])
@@ -233,8 +225,8 @@ class TestLocalStoreABC:
 
     def test_get_metadata(self, test_settings, sample_history, sample_sessions):
         """get_metadata() returns summary dict for known session, None for unknown."""
-        settings, _, _ = test_settings
-        source = LocalSource(settings=settings)
+        data_dirs, _, _ = test_settings
+        source = LocalSource(data_dirs=data_dirs)
 
         meta = source.get_metadata("session-001")
         assert meta is not None
@@ -249,7 +241,7 @@ class TestLocalStoreErrorHandling:
 
     def test_malformed_jsonl_line(self, test_settings):
         """Test handling of malformed JSONL data."""
-        settings, claude_dir, test_project = test_settings
+        data_dirs, claude_dir, test_project = test_settings
 
         history_file = claude_dir / "history.jsonl"
         with open(history_file, "w") as f:
@@ -291,7 +283,7 @@ class TestLocalStoreErrorHandling:
                 + "\n"
             )
 
-        source = LocalSource(settings=settings)
+        source = LocalSource(data_dirs=data_dirs)
 
         # Should still parse valid lines
         group = source.load("session-bad")
@@ -301,13 +293,8 @@ class TestLocalStoreErrorHandling:
         """Test behavior with empty Claude directory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             base = Path(tmpdir)
-            settings = Settings(
-                claude_dir=base / ".claude",
-                codex_dir=base / ".codex",
-                gemini_dir=base / ".gemini",
-                openclaw_dir=base / ".openclaw",
-            )
-            source = LocalSource(settings=settings)
+            empty_dirs = {AgentType.CLAUDE: base / ".claude"}
+            source = LocalSource(data_dirs=empty_dirs)
 
             summaries = source.list_metadata()
             assert len(summaries) == 0
@@ -320,8 +307,8 @@ class TestLoadSnapshotPattern:
         self, test_settings, sample_history, sample_sessions
     ):
         """load() passes metadata_cache to _enrich_refs, not self._metadata_cache."""
-        settings, _, _ = test_settings
-        source = LocalSource(settings=settings)
+        data_dirs, _, _ = test_settings
+        source = LocalSource(data_dirs=data_dirs)
 
         # Load a session to warm the index
         group = source.load("session-001")
@@ -350,8 +337,8 @@ class TestCacheHitOrRebuild:
 
     def test_stale_file_triggers_full_rebuild(self, test_settings, sample_history, sample_sessions):
         """When any file changed since cache was written, _try_load_from_cache returns False."""
-        settings, _, test_project = test_settings
-        source = LocalSource(settings=settings)
+        data_dirs, _, test_project = test_settings
+        source = LocalSource(data_dirs=data_dirs)
 
         # Build initial index and warm cache
         source.list_metadata()

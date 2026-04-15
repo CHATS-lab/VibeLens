@@ -8,11 +8,13 @@ import pytest
 import vibelens.deps
 from vibelens.app import create_app
 from vibelens.config import Settings
+from vibelens.models.enums import AgentType
+from vibelens.storage.trajectory.local import LocalTrajectoryStore
 
 
 @pytest.fixture
 def test_settings(tmp_path):
-    """Create test settings with temporary Claude directory."""
+    """Create test data dirs with temporary Claude directory."""
     claude_dir = tmp_path / ".claude"
     claude_dir.mkdir()
 
@@ -22,18 +24,8 @@ def test_settings(tmp_path):
     test_project = projects_dir / "-Users-TestProject-Agent-Test"
     test_project.mkdir()
 
-    return (
-        Settings(
-            claude_dir=claude_dir,
-            codex_dir=tmp_path / ".codex",
-            gemini_dir=tmp_path / ".gemini",
-            openclaw_dir=tmp_path / ".openclaw",
-            examples_dir=tmp_path / ".vibelens" / "examples",
-            upload_dir=tmp_path / ".vibelens" / "uploads",
-        ),
-        claude_dir,
-        test_project,
-    )
+    data_dirs = {AgentType.CLAUDE: claude_dir}
+    return data_dirs, claude_dir, test_project
 
 
 @pytest.fixture
@@ -172,10 +164,17 @@ def sample_sessions(test_settings, sample_history):
 
 
 @pytest.fixture
-async def app_client(test_settings, monkeypatch):
-    """Create an async HTTP client with mocked settings."""
-    settings, _, _ = test_settings
+async def app_client(test_settings, tmp_path, monkeypatch):
+    """Create an async HTTP client with mocked settings and trajectory store."""
+    data_dirs, _, _ = test_settings
+    settings = Settings(
+        examples_dir=tmp_path / ".vibelens" / "examples",
+        upload_dir=tmp_path / ".vibelens" / "uploads",
+    )
     monkeypatch.setattr(vibelens.deps, "load_settings", lambda: settings)
+    vibelens.deps.reset_singletons()
+    vibelens.deps._registry["settings"] = settings
+    vibelens.deps._registry["store"] = LocalTrajectoryStore(data_dirs=data_dirs)
     app = create_app()
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"

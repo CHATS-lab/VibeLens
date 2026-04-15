@@ -4,9 +4,9 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+from vibelens.models.enums import AgentExtensionType
 from vibelens.models.llm.inference import BackendType
 from vibelens.models.personalization.enums import PersonalizationMode
-from vibelens.models.enums import AgentExtensionType
 from vibelens.models.personalization.recommendation import (
     RankedRecommendationItem,
     RecommendationItem,
