@@ -1,17 +1,17 @@
-# vibelens
+# @chats-lab/vibelens
 
 Agent trajectory analysis and visualization platform. Parses, normalizes, and visualizes conversation histories from Claude Code, Codex, Gemini CLI, and more.
 
 ## Install
 
 ```bash
-npx vibelens serve
+npx @chats-lab/vibelens serve
 ```
 
 Or install globally:
 
 ```bash
-npm install -g vibelens
+npm install -g @chats-lab/vibelens
 vibelens serve
 ```
 

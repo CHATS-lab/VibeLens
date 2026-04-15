@@ -142,10 +142,10 @@ uvx vibelens serve
 For Node.js users. Requires **Node.js 16+** and **Python 3.10+** with `pip install vibelens`.
 
 ```bash
-npx vibelens serve
+npx @chats-lab/vibelens serve
 ```
 
-Or install globally: `npm install -g vibelens`
+Or install globally: `npm install -g @chats-lab/vibelens`
 
 ### Developer setup
 

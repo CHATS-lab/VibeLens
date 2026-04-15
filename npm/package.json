@@ -1,5 +1,5 @@
 {
-  "name": "vibelens",
+  "name": "@chats-lab/vibelens",
   "version": "0.9.31",
   "description": "Agent trajectory analysis and visualization platform",
   "bin": {
