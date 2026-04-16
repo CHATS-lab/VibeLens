@@ -18,10 +18,14 @@ Given compressed session transcripts, produce a JSON user profile with:
 - `search_keywords` should bridge the semantic gap: translate noisy session patterns (e.g. "keeps fixing import errors") into catalog-friendly terms (e.g. "auto-import", "import-management", "dependency-resolver").
 - Include both specific terms (framework names, tool names) and general capability terms ("testing", "documentation", "refactoring").
 
+## Output Rules
+
+- The very first character of your response MUST be `{` and the very last MUST be `}`. Never emit ``` anywhere.
+- The response MUST include every required field: `domains`, `languages`, `frameworks`, `agent_platforms`, `bottlenecks`, `workflow_style`, `search_keywords`. Missing any required field is a hard error.
+
 ## Output Schema
 
 Return ONLY valid JSON matching this schema.
-Do NOT wrap the output in markdown code fences or any other formatting.
 
 {{ output_schema }}
 {{ backend_rules }}

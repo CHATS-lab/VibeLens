@@ -24,10 +24,14 @@ For each selected candidate:
 - Plain language, no jargon. Written for non-technical users.
 - Each rationale must be personalized — reference specific aspects of the user's workflow.
 
+## Output Rules
+
+- The very first character of your response MUST be `{` and the very last MUST be `}`. Never emit ``` anywhere.
+- For every selected candidate, include `rationale` and `relevance`. Missing either is a hard error.
+
 ## Output Schema
 
 Return ONLY valid JSON matching this schema.
-Do NOT wrap the output in markdown code fences or any other formatting.
 
 {{ output_schema }}
 {{ backend_rules }}

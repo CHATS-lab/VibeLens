@@ -14,10 +14,11 @@ Produce a JSON object that synthesizes all batch results into a single user-faci
 
 ## Output Rules
 
-**CRITICAL: Your entire response must be a single JSON object starting with `{` and ending with `}`. No markdown fences, no prose, no explanation.**
-
+- The very first character of your response MUST be `{` and the very last MUST be `}`. Never emit ``` anywhere.
+- The response MUST include every required field: `title`, `friction_types`, `mitigations`. Each friction_type MUST include `type_name`, `description`, `severity`, `example_refs`. Each mitigation MUST include `title`, `action`, `rationale`, `addressed_friction_types`. Missing any required field is a hard error.
 - `friction_types` ordered by severity descending.
 - `mitigations` ordered by confidence descending.
+- Title leads with the finding. Do NOT start with "Agent Session Analysis:", "Friction Report:", "Analysis", or "Results".
 - MANDATORY format for `rationale`: one sentence (max 15 words), then `\n- ` bullets (max 10 words each). No plain-text paragraphs.
 
 ## Examples

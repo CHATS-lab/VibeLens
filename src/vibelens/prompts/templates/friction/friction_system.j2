@@ -66,7 +66,7 @@ Friction is detected ONLY from user signals:
 
 ## Title Rules
 
-`title` must be a self-explanatory sentence (max 10 words) describing the main finding. The reader should understand the key issue without reading anything else.
+`title` must be a self-explanatory sentence (max 10 words) describing the main finding. The reader should understand the key issue without reading anything else. Lead with the finding. Do NOT start with "Agent Session Analysis:", "Friction Report:", "Analysis", or "Results".
 
 Good examples:
 - "Agent Changed Files You Didn't Ask About"
@@ -76,10 +76,15 @@ Bad examples:
 - "Scope Violations" (too vague, needs context)
 - "Multiple Issues Found" (says nothing specific)
 
+## Step Reference Rules
+
+- `example_refs` must reference real step IDs from the session data. Never fabricate.
+- `start_step_id` and `end_step_id` are the NUMBER shown after `step_id=` in each step header (e.g. for `[step_id=7] USER:` the value is `"7"`). Do NOT include the `step_id=` prefix, brackets, or any non-numeric text.
+
 ## Output Rules
 
-**CRITICAL: Your entire response must be a single JSON object. No markdown, no prose, no explanation — only raw JSON.**
-
+- The very first character of your response MUST be `{` and the very last MUST be `}`. Never emit ``` anywhere.
+- The response MUST include every required field: `title`, `friction_types`, `mitigations`. Each friction_type MUST include `type_name`, `description`, `severity`, `example_refs`. Each mitigation MUST include `title`, `action`, `rationale`, `addressed_friction_types`. Missing any required field is a hard error.
 - Report 2-4 friction types and 2-4 mitigations.
 - Each mitigation's `addressed_friction_types` must reference at least one `type_name` present in `friction_types`.
 - MANDATORY format for `rationale`: one sentence (max 15 words), then `\n- ` bullets (max 10 words each). No plain-text paragraphs.

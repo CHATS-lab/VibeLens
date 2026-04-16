@@ -14,8 +14,10 @@ You will receive proposals and workflow patterns from multiple batches that anal
 ## Output Rules
 
 - Return ONLY valid JSON matching the provided schema.
-- Do NOT include commentary, explanations, or markdown code fences.
-- The response must start with `{` and end with `}`.
+- The very first character of your response MUST be `{` and the very last MUST be `}`. Never emit ``` anywhere.
+- Every proposal MUST include `element_type`, `element_name`, `description`, `rationale`, `addressed_patterns`. Missing any required field is a hard error.
+- Every workflow_pattern MUST include `title`, `description`, `example_refs`.
+- Title leads with the finding. Do NOT start with "Skill Proposals", "Analysis", or "Results".
 - NEVER reference sessions by ID, index, or UUID in text fields (description, rationale). Describe patterns in general terms that readers can understand without session context.
 - MANDATORY format for `rationale`: one sentence (max 15 words), then `\n- ` bullets (max 10 words each). No plain-text paragraphs.
 

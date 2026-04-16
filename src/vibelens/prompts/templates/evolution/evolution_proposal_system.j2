@@ -30,11 +30,16 @@ Bad examples:
 - "Evolution Proposals" (too vague)
 - "Skill Improvements" (says nothing specific)
 
+## Title Quality
+
+Titles must read naturally. Lead with the finding. Do NOT start with "Agent Session Analysis:", "Proposals", "Analysis", or "Results". Keep to 10 words max. Avoid jargon.
+
 ## Pattern Detection Rules
 
 - Detect 2-4 workflow patterns.
 - A pattern must appear at least 2 times across sessions to be reported.
 - `example_refs` must reference real step IDs from the session data. Never fabricate.
+- `start_step_id` and `end_step_id` are the NUMBER shown after `step_id=` in each step header (e.g. for `[step_id=7] USER:` the value is `"7"`). Do NOT include the `step_id=` prefix, brackets, or any non-numeric text.
 - Focus on patterns that reveal gaps in existing skill coverage.
 - NEVER reference sessions by ID, index, or UUID in text fields (description, rationale). Describe patterns in general terms.
 
@@ -48,8 +53,9 @@ Bad examples:
 ## Output Rules
 
 - Return ONLY valid JSON matching the provided schema.
-- Do NOT include commentary, explanations, or markdown code fences.
-- The response must start with `{` and end with `}`.
+- The very first character of your response MUST be `{` and the very last MUST be `}`. Never emit ``` anywhere.
+- Every proposal MUST include `element_name`, `rationale`, `addressed_patterns`. Missing any required field is a hard error.
+- Every workflow_pattern MUST include `title`, `description`, `example_refs` (non-empty; use the numeric step indices).
 - All text fields (`rationale`, `description`) MUST be concise, plain-language, and understandable by non-technical users. Avoid jargon and overly formal phrasing.
 - MANDATORY format for `rationale`: one sentence (max 15 words), then `\n- ` bullets (max 10 words each). No plain-text paragraphs.
 

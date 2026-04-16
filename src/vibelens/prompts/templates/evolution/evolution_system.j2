@@ -23,8 +23,9 @@ Generate precise edits for the given skill based on the proposal and session evi
 ## Output Rules
 
 - Return ONLY valid JSON matching the provided schema.
-- Do NOT include commentary, explanations, or markdown code fences.
-- The response must start with `{` and end with `}`.
+- The very first character of your response MUST be `{` and the very last MUST be `}`. Never emit ``` anywhere.
+- The response MUST include every required field: `element_name`, `edits`, `rationale`. Missing any required field is a hard error.
+- Each edit MUST include `old_string` and `new_string`.
 - NEVER reference sessions by ID, index, or UUID in text fields (rationale). Describe patterns in general terms.
 - All text fields (`rationale`) MUST be concise, plain-language, and understandable by non-technical users. Avoid jargon and overly formal phrasing.
 - MANDATORY format for `rationale`: one sentence (max 15 words), then `\n- ` bullets (max 10 words each). No plain-text paragraphs.
