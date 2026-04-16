@@ -9,7 +9,7 @@ from vibelens.schemas.skills import (
     SkillListResponse,
     SkillModifyRequest,
     SkillSyncRequest,
-    SyncTargetResponse,
+    SkillSyncTargetResponse,
 )
 from vibelens.utils.log import get_logger
 
@@ -50,11 +50,8 @@ def list_skills(
         page=page,
         page_size=page_size,
         sync_targets=[
-            SyncTargetResponse(
-                key=t.key,
-                label=t.label,
-                skill_count=t.skill_count,
-                skills_dir=t.skills_dir,
+            SkillSyncTargetResponse(
+                agent=t.agent, skill_count=t.skill_count, skills_dir=t.skills_dir
             )
             for t in targets
         ],
@@ -70,11 +67,7 @@ def get_skill(name: str) -> SkillDetailResponse:
         content = service.get_skill_content(name)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Skill {name!r} not found") from None
-    return SkillDetailResponse(
-        skill=skill,
-        content=content,
-        path=str(service._central.root / name),
-    )
+    return SkillDetailResponse(skill=skill, content=content, path=str(service._central.root / name))
 
 
 @router.post("")
@@ -82,9 +75,7 @@ def install_skill(req: SkillInstallRequest) -> dict:
     """Install a new skill."""
     service = get_skill_service()
     try:
-        skill = service.install(
-            name=req.name, content=req.content, sync_to=req.sync_to
-        )
+        skill = service.install(name=req.name, content=req.content, sync_to=req.sync_to)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except FileExistsError as exc:

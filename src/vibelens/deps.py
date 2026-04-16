@@ -1,6 +1,7 @@
 """Dependency injection singletons for VibeLens."""
 
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from vibelens.config import (
@@ -89,23 +90,123 @@ def get_skill_service():
 
         settings = get_settings()
         central = SkillStore(settings.storage.managed_skills_dir, create=True)
-        agents = _build_agent_skill_stores()
-        return SkillService(central=central, agents=agents)
+        agent_skill_stores = _build_agent_skill_stores()
+        return SkillService(central=central, agents=agent_skill_stores)
 
     return _get_or_create("skill_service", _create)
 
 
 def _build_agent_skill_stores() -> dict:
     """Build agent SkillStore instances from platform registry."""
+    from vibelens.models.enums import AgentType
     from vibelens.services.extensions.platforms import PLATFORMS
     from vibelens.storage.extension.skill_store import SkillStore
 
-    stores: dict[str, SkillStore] = {}
+    stores: dict[AgentType, SkillStore] = {}
     for source, platform in PLATFORMS.items():
         resolved = platform.skills_dir.expanduser().resolve()
         if resolved.is_dir():
-            stores[source.value] = SkillStore(resolved)
+            stores[AgentType[source.name]] = SkillStore(resolved)
     return stores
+
+
+def get_command_service():
+    """Return cached CommandService singleton."""
+
+    def _create():
+        from vibelens.services.extensions.command_service import CommandService
+        from vibelens.storage.extension.command_store import CommandStore
+
+        settings = get_settings()
+        central = CommandStore(settings.storage.managed_commands_dir, create=True)
+        agent_command_stores = _build_agent_command_stores()
+        return CommandService(central=central, agents=agent_command_stores)
+
+    return _get_or_create("command_service", _create)
+
+
+def _build_agent_command_stores() -> dict:
+    """Build agent CommandStore instances from platform registry."""
+    from vibelens.models.enums import AgentType
+    from vibelens.services.extensions.platforms import PLATFORMS
+    from vibelens.storage.extension.command_store import CommandStore
+
+    stores: dict[AgentType, CommandStore] = {}
+    for source, platform in PLATFORMS.items():
+        if platform.commands_dir is None:
+            continue
+        resolved = platform.commands_dir.expanduser().resolve()
+        if resolved.is_dir():
+            stores[AgentType[source.name]] = CommandStore(resolved)
+    return stores
+
+
+def get_subagent_service():
+    """Return cached SubagentService singleton."""
+
+    def _create():
+        from vibelens.services.extensions.subagent_service import SubagentService
+        from vibelens.storage.extension.subagent_store import SubagentStore
+
+        settings = get_settings()
+        central = SubagentStore(settings.storage.managed_subagents_dir, create=True)
+        agent_subagent_stores = _build_agent_subagent_stores()
+        return SubagentService(central=central, agents=agent_subagent_stores)
+
+    return _get_or_create("subagent_service", _create)
+
+
+def _build_agent_subagent_stores() -> dict:
+    """Build agent SubagentStore instances from platform registry.
+
+    Subagents live in their own directory (``platform.subagents_dir``), not
+    shared with commands.
+    """
+    from vibelens.models.enums import AgentType
+    from vibelens.services.extensions.platforms import PLATFORMS
+    from vibelens.storage.extension.subagent_store import SubagentStore
+
+    stores: dict[AgentType, SubagentStore] = {}
+    for source, platform in PLATFORMS.items():
+        if platform.subagents_dir is None:
+            continue
+        resolved = platform.subagents_dir.expanduser().resolve()
+        if resolved.is_dir():
+            stores[AgentType[source.name]] = SubagentStore(resolved)
+    return stores
+
+
+def get_hook_service():
+    """Return cached HookService singleton."""
+
+    def _create():
+        from vibelens.services.extensions.hook_service import HookService
+        from vibelens.storage.extension.hook_store import HookStore
+
+        settings = get_settings()
+        central = HookStore(settings.storage.managed_hooks_dir, create=True)
+        agent_settings = _build_agent_settings_paths()
+        return HookService(central=central, agent_settings=agent_settings)
+
+    return _get_or_create("hook_service", _create)
+
+
+def _build_agent_settings_paths() -> dict:
+    """Build mapping of AgentType to each platform's settings.json path.
+
+    Only platforms with a non-None ``settings_path`` (CLAUDE, CODEX) are included.
+    The file does not need to exist yet — it will be created on first sync.
+    """
+    from vibelens.models.enums import AgentType
+    from vibelens.services.extensions.platforms import PLATFORMS
+
+    paths: dict[AgentType, Path] = {}
+    for source, platform in PLATFORMS.items():
+        if platform.settings_path is None:
+            continue
+        resolved = platform.settings_path.expanduser().resolve()
+        paths[AgentType[source.name]] = resolved
+    return paths
 
 
 def get_personalization_store():

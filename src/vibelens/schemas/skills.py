@@ -11,8 +11,7 @@ class SkillInstallRequest(BaseModel):
     name: str = Field(description="Kebab-case skill name.")
     content: str = Field(description="Full SKILL.md content.")
     sync_to: list[str] = Field(
-        default_factory=list,
-        description="Agent keys to sync to after install.",
+        default_factory=list, description="Agent keys to sync to after install."
     )
 
 
@@ -28,11 +27,10 @@ class SkillSyncRequest(BaseModel):
     agents: list[str] = Field(description="Agent keys to sync to.")
 
 
-class SyncTargetResponse(BaseModel):
+class SkillSyncTargetResponse(BaseModel):
     """An agent platform available for skill sync."""
 
-    key: str = Field(description="Agent identifier (e.g. 'claude').")
-    label: str = Field(description="Display name (e.g. 'Claude').")
+    agent: str = Field(description="Agent identifier (e.g. 'claude').")
     skill_count: int = Field(description="Number of skills in agent dir.")
     skills_dir: str = Field(description="Agent skills directory path.")
 
@@ -52,6 +50,6 @@ class SkillListResponse(BaseModel):
     total: int = Field(description="Total matching skills.")
     page: int = Field(description="Current page number.")
     page_size: int = Field(description="Items per page.")
-    sync_targets: list[SyncTargetResponse] = Field(
-        description="Agent platforms available for sync.",
+    sync_targets: list[SkillSyncTargetResponse] = Field(
+        description="Agent platforms available for sync."
     )
