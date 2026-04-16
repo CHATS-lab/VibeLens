@@ -25,6 +25,9 @@ def test_resolve_domain_extensions_covers_api_and_storage():
     assert _resolve_domain("vibelens.storage.extension.skill_store") == "extensions"
     assert _resolve_domain("vibelens.api.hook") == "extensions"
     assert _resolve_domain("vibelens.api.skill") == "extensions"
+    assert _resolve_domain("vibelens.api.command") == "extensions"
+    assert _resolve_domain("vibelens.api.subagent") == "extensions"
+    assert _resolve_domain("vibelens.api.extensions") == "extensions"
 
 
 def test_resolve_domain_unmatched_returns_none():
