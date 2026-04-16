@@ -1,6 +1,6 @@
 """Extension management services."""
 
-from vibelens.services.extensions.browse import (
+from vibelens.services.extensions.catalog import (
     get_extension_by_id,
     get_extension_metadata,
     install_extension,
