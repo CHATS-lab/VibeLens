@@ -1,53 +1,32 @@
 """Centralized logging configuration for VibeLens.
 
-Two-tier logging architecture:
-  - **Overall logger**: ``vibelens`` root logger writes ALL messages to
-    ``logs/vibelens.log`` and stderr — a single place to see everything.
-  - **Category loggers**: Specific modules get additional file handlers
-    that aggregate related output into category log files.
+Two-phase design:
+  - ``get_logger`` is safe at import time. First call attaches a stderr
+    handler to the ``vibelens`` root logger so early logs appear somewhere.
+  - ``configure_logging(LoggingConfig)`` runs once from the app entry point
+    and attaches file handlers (``vibelens.log``, ``errors.log``), per-domain
+    handlers (``{domain}.log``), applies per-domain level overrides, and
+    emits a startup summary.
 
-Category log files:
-  - ``parsers.log`` — all parser modules under ``vibelens.ingest.parsers.*``
-  - ``analysis-friction.log`` — friction analysis and friction store
-  - ``personalization.log`` — personalization analysis (creation, evolution)
-  - ``donation.log`` — donation send/receive endpoints and service
+Domain routing is driven by ``DOMAIN_PREFIXES``: first matching prefix wins.
 """
 
 import logging
-import os
 import sys
 from contextvars import ContextVar
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from vibelens.config.settings import LoggingConfig
+
+# Format string for all log handlers
+LOG_FORMAT = "%(asctime)s | %(name)s:%(lineno)d | %(levelname)s | %(message)s"
+LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 _analysis_id_var: ContextVar[str | None] = ContextVar("analysis_id", default=None)
 
-# Format string for all log handlers (timestamp | module:line | level | message)
-LOG_FORMAT = "%(asctime)s | %(name)s:%(lineno)d | %(levelname)s | %(message)s"
-# Date portion of the log format
-LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
-# Project-root logs/ directory for all log files
-DEFAULT_LOG_DIR = Path(__file__).resolve().parents[3] / "logs"
-# Rotate log files after reaching 10 MB
-LOG_MAX_BYTES = 10 * 1024 * 1024
-# Keep 3 rotated backup files per log
-LOG_BACKUP_COUNT = 3
-
-# Maps logger name prefix → log filename. Order matters: first match wins.
-# Prefix matching allows grouping related modules into one log file.
-CATEGORY_LOG_FILES: dict[str, str] = {
-    "vibelens.ingest.parsers.": "parsers.log",
-    "vibelens.services.personalization.": "personalization.log",
-    "vibelens.services.creation.": "personalization.log",
-    "vibelens.services.evolution.": "personalization.log",
-    "vibelens.services.friction.": "analysis-friction.log",
-    "vibelens.api.upload": "upload.log",
-    "vibelens.services.upload.": "upload.log",
-    "vibelens.storage.conversation.disk": "upload.log",
-    "vibelens.api.donation": "donation.log",
-    "vibelens.services.donation.": "donation.log",
-    "vibelens.services.session.donation": "donation.log",
-}
 
 # Domain -> prefixes that route to logs/{domain}.log.
 # Order matters: more specific prefixes first.
@@ -88,31 +67,22 @@ DOMAIN_PREFIXES: dict[str, tuple[str, ...]] = {
     "llm": ("vibelens.llm.",),
 }
 
+_bootstrapped: bool = False
+_configured: bool = False
+_domain_handlers: dict[str, logging.Handler] = {}
+_pending_loggers: set[str] = set()
+_per_domain_levels: dict[str, int] = {}
 
-def _resolve_domain(name: str) -> str | None:
-    """Return the domain for a logger name, or None if no domain matches.
-
-    First match wins. Callers rely on DOMAIN_PREFIXES insertion order.
-    """
-    for domain, prefixes in DOMAIN_PREFIXES.items():
-        for prefix in prefixes:
-            if name.startswith(prefix):
-                return domain
-    return None
-
-
-_root_configured = False
-_category_handlers: dict[str, logging.Handler] = {}
+# Rotation parameters read by handler builders; updated by configure_logging.
+_current_max_bytes: int = 10 * 1024 * 1024
+_current_backup_count: int = 3
 
 
 class _AnalysisIdFormatter(logging.Formatter):
-    """Formatter that prepends ``[analysis_id] `` when an analysis is running.
-
-    Reads the current analysis_id from a contextvar at format time,
-    so every log record is tagged regardless of which module emits it.
-    """
+    """Formatter that prepends ``[analysis_id] `` when an analysis is running."""
 
     def format(self, record: logging.LogRecord) -> str:
+        """Inject the active analysis_id into the message before formatting."""
         aid = _analysis_id_var.get(None)
         if aid:
             record.msg = f"[{aid}] {record.msg}"
@@ -129,88 +99,185 @@ def clear_analysis_id() -> None:
     _analysis_id_var.set(None)
 
 
-def _get_log_level() -> int:
-    """Read log level from LOG_LEVEL env var, defaulting to INFO."""
-    level_name = os.environ.get("LOG_LEVEL", "INFO").upper()
-    return getattr(logging, level_name, logging.INFO)
-
-
 def _build_formatter() -> logging.Formatter:
     """Create the shared log formatter with analysis_id injection."""
     return _AnalysisIdFormatter(fmt=LOG_FORMAT, datefmt=LOG_DATE_FORMAT)
 
 
-def _ensure_root_logger(log_dir: Path) -> None:
-    """Configure the ``vibelens`` root logger once.
+def _resolve_domain(name: str) -> str | None:
+    """Return the domain for a logger name, or None if no domain matches.
 
-    Adds a stderr console handler and a single ``vibelens.log`` file
-    handler so every child logger's output is captured in one place.
-
-    Args:
-        log_dir: Directory for the overall log file.
+    First match wins. Callers rely on DOMAIN_PREFIXES insertion order.
     """
-    global _root_configured
-    if _root_configured:
-        return
-
-    log_dir.mkdir(parents=True, exist_ok=True)
-    log_level = _get_log_level()
-    formatter = _build_formatter()
-
-    root = logging.getLogger("vibelens")
-    root.setLevel(log_level)
-
-    console = logging.StreamHandler(sys.stderr)
-    console.setLevel(log_level)
-    console.setFormatter(formatter)
-    root.addHandler(console)
-
-    overall_file = RotatingFileHandler(
-        log_dir / "vibelens.log", maxBytes=LOG_MAX_BYTES, backupCount=LOG_BACKUP_COUNT
-    )
-    overall_file.setLevel(log_level)
-    overall_file.setFormatter(formatter)
-    root.addHandler(overall_file)
-
-    _root_configured = True
-
-
-def _resolve_category_log(name: str) -> str | None:
-    """Find the category log filename for a logger name, if any."""
-    for prefix, filename in CATEGORY_LOG_FILES.items():
-        if name.startswith(prefix):
-            return filename
+    for domain, prefixes in DOMAIN_PREFIXES.items():
+        for prefix in prefixes:
+            if name.startswith(prefix):
+                return domain
     return None
 
 
-def _get_category_handler(log_dir: Path, filename: str) -> logging.Handler:
-    """Get or create a shared rotating file handler for a category log file.
+def _bootstrap_root() -> None:
+    """Phase 1 — attach a stderr handler to the ``vibelens`` root once.
 
-    Multiple modules sharing the same category (e.g. all parsers → parsers.log)
-    reuse a single handler to avoid duplicate writes.
-
-    Args:
-        log_dir: Directory for log files.
-        filename: Category log filename (e.g. "parsers.log").
-
-    Returns:
-        Shared RotatingFileHandler for the category.
+    Called lazily by ``get_logger`` so import-time logs still appear somewhere
+    before ``configure_logging`` runs.
     """
-    if filename in _category_handlers:
-        return _category_handlers[filename]
+    global _bootstrapped
+    if _bootstrapped:
+        return
 
-    log_dir.mkdir(parents=True, exist_ok=True)
+    root = logging.getLogger("vibelens")
+    root.setLevel(logging.INFO)
+
+    console = logging.StreamHandler(sys.stderr)
+    console.setLevel(logging.INFO)
+    console.setFormatter(_build_formatter())
+    console._vl_bootstrap = True  # type: ignore[attr-defined]
+    root.addHandler(console)
+
+    _bootstrapped = True
+
+
+def _find_bootstrap_stderr_handler() -> logging.Handler | None:
+    """Return the bootstrap-tagged stderr handler on the root, or None."""
+    root = logging.getLogger("vibelens")
+    for handler in root.handlers:
+        if getattr(handler, "_vl_bootstrap", False):
+            return handler
+    return None
+
+
+def _handler_filename(handler: logging.Handler) -> str | None:
+    """Return the basename of a handler's target file, or None if it has none."""
+    base = getattr(handler, "baseFilename", None)
+    if base is None:
+        return None
+    return Path(base).name
+
+
+def _ensure_root_file_handlers(log_dir: Path, level: int) -> None:
+    """Attach vibelens.log and errors.log to the root (idempotent by filename)."""
+    root = logging.getLogger("vibelens")
+    existing_files = {_handler_filename(h) for h in root.handlers}
+    formatter = _build_formatter()
+
+    if "vibelens.log" not in existing_files:
+        overall = RotatingFileHandler(
+            log_dir / "vibelens.log",
+            maxBytes=_current_max_bytes,
+            backupCount=_current_backup_count,
+        )
+        overall.setLevel(level)
+        overall.setFormatter(formatter)
+        root.addHandler(overall)
+
+    if "errors.log" not in existing_files:
+        errors = RotatingFileHandler(
+            log_dir / "errors.log",
+            maxBytes=_current_max_bytes,
+            backupCount=_current_backup_count,
+        )
+        errors.setLevel(logging.WARNING)
+        errors.setFormatter(formatter)
+        root.addHandler(errors)
+
+
+def _build_domain_handler(log_dir: Path, domain: str, level: int) -> logging.Handler:
+    """Create and cache a ``{domain}.log`` rotating handler."""
+    if domain in _domain_handlers:
+        return _domain_handlers[domain]
     handler = RotatingFileHandler(
-        log_dir / filename, maxBytes=LOG_MAX_BYTES, backupCount=LOG_BACKUP_COUNT
+        log_dir / f"{domain}.log",
+        maxBytes=_current_max_bytes,
+        backupCount=_current_backup_count,
     )
-    handler.setLevel(_get_log_level())
+    handler.setLevel(level)
     handler.setFormatter(_build_formatter())
-    _category_handlers[filename] = handler
+    _domain_handlers[domain] = handler
     return handler
 
 
+def _attach_domain_handler_for(logger: logging.Logger) -> None:
+    """Attach the matched domain handler to ``logger`` and apply level override."""
+    if getattr(logger, "_vl_domain_attached", False):
+        return
+    domain = _resolve_domain(logger.name)
+    if domain is None:
+        return
+    handler = _domain_handlers.get(domain)
+    if handler is None:
+        return
+    logger.addHandler(handler)
+    logger._vl_domain_attached = True  # type: ignore[attr-defined]
+    override = _per_domain_levels.get(domain)
+    if override is not None:
+        logger.setLevel(override)
+
+
+def configure_logging(config: "LoggingConfig") -> None:
+    """Phase 2 — attach file handlers, apply per-domain levels, emit summary.
+
+    Idempotent: repeat calls update levels but do not duplicate handlers.
+    Safe to call after any number of ``get_logger`` calls; pending loggers
+    are retroactively wired.
+
+    Args:
+        config: Active logging configuration loaded from settings.
+    """
+    global _configured, _current_max_bytes, _current_backup_count
+
+    _bootstrap_root()
+    log_dir = Path(config.dir)
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    level = logging.getLevelName(config.level)
+    assert isinstance(level, int), f"Invalid log level: {config.level}"
+    _current_max_bytes = config.max_bytes
+    _current_backup_count = config.backup_count
+
+    root = logging.getLogger("vibelens")
+    root.setLevel(level)
+
+    bootstrap_handler = _find_bootstrap_stderr_handler()
+    if bootstrap_handler is not None:
+        bootstrap_handler.setLevel(level)
+
+    _ensure_root_file_handlers(log_dir, level)
+
+    _per_domain_levels.clear()
+    for domain, level_name in config.per_domain.items():
+        _per_domain_levels[domain] = logging.getLevelName(level_name)
+
+    for domain in DOMAIN_PREFIXES:
+        handler_level = _per_domain_levels.get(domain, level)
+        _build_domain_handler(log_dir, domain, handler_level)
+        # If the handler already existed from a prior call, update its level.
+        _domain_handlers[domain].setLevel(handler_level)
+
+    # Retroactively wire loggers obtained before configure_logging ran.
+    for name in list(_pending_loggers):
+        logger = logging.getLogger(name)
+        _attach_domain_handler_for(logger)
+    _pending_loggers.clear()
+
+    _configured = True
+    _emit_startup_summary(config=config, log_dir=log_dir, level=level)
+
+
+def _emit_startup_summary(config: "LoggingConfig", log_dir: Path, level: int) -> None:
+    """Log one INFO line summarizing the active configuration."""
+    overrides = ", ".join(f"{d}={lv}" for d, lv in config.per_domain.items()) or "none"
+    size_mb = config.max_bytes // (1024 * 1024)
+    summary = (
+        f"Logging configured: level={logging.getLevelName(level)} "
+        f"dir={log_dir} rotation={size_mb}MB x{config.backup_count} "
+        f"domains={len(DOMAIN_PREFIXES)} overrides={overrides}"
+    )
+    logging.getLogger("vibelens").info(summary)
+
+
 def _module_name_from_path(filepath: str) -> str:
-    """Derive a dotted module name from a file path.
+    """Derive a dotted module name from a file path under ``src/``.
 
     Strips the ``src/`` prefix and ``.py`` suffix so that
     ``src/vibelens/ingest/claude_code.py`` becomes
@@ -226,38 +293,30 @@ def _module_name_from_path(filepath: str) -> str:
     return ".".join(parts[-3:]) if len(parts) > 3 else ".".join(parts)
 
 
-def get_logger(
-    name: str, filepath: str | None = None, log_dir: str | Path | None = None
-) -> logging.Logger:
-    """Create a named logger under the ``vibelens`` hierarchy.
+def get_logger(name: str, filepath: str | None = None) -> logging.Logger:
+    """Return a logger under the ``vibelens.*`` hierarchy.
 
-    All loggers propagate to the ``vibelens`` root logger which writes
-    to stderr and ``logs/vibelens.log``. Modules matching a category
-    prefix in CATEGORY_LOG_FILES additionally write to a shared
-    category log file (e.g. ``logs/parsers.log``).
+    Safe to call at import time. Before ``configure_logging`` runs, logs go to
+    stderr only; after, each matching domain logger also writes to
+    ``{domain}.log`` in the configured directory.
 
     Args:
         name: Logger name (typically ``__name__`` of the calling module).
-        filepath: Optional ``__file__`` of the calling module. Used to
-            derive a readable name when *name* is ``"__main__"``.
-        log_dir: Directory for log files. Defaults to ``logs/`` next
-            to the project root.
+        filepath: Optional ``__file__`` of the caller. Used to derive a
+            readable name when ``name`` is ``"__main__"``.
 
     Returns:
-        Configured logger that writes to stderr and the overall log file,
-        plus a category file for matched modules.
+        Configured logger. Propagates to the ``vibelens`` root.
     """
     if name == "__main__" and filepath:
         name = _module_name_from_path(filepath)
 
-    resolved_log_dir = Path(log_dir) if log_dir else DEFAULT_LOG_DIR
-    _ensure_root_logger(resolved_log_dir)
-
+    _bootstrap_root()
     logger = logging.getLogger(name)
 
-    category_file = _resolve_category_log(name)
-    if category_file and not logger.handlers:
-        handler = _get_category_handler(resolved_log_dir, category_file)
-        logger.addHandler(handler)
+    if _configured:
+        _attach_domain_handler_for(logger)
+    elif _resolve_domain(name) is not None:
+        _pending_loggers.add(name)
 
     return logger
