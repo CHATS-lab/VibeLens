@@ -57,11 +57,13 @@ export function AnalysisResultView({
   activeTab,
   onNew,
   fetchWithToken,
+  onInstalled,
 }: {
   result: PersonalizationResult;
   activeTab: PersonalizationTab;
   onNew: () => void;
   fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
+  onInstalled?: () => void;
 }) {
   const [syncTargets, setSkillSyncTargets] = useState<SkillSyncTarget[]>([]);
 
@@ -94,6 +96,7 @@ export function AnalysisResultView({
           recommendations={result.recommendations}
           fetchWithToken={fetchWithToken}
           syncTargets={syncTargets}
+          onInstalled={onInstalled}
         />
       )}
 
@@ -104,6 +107,7 @@ export function AnalysisResultView({
           workflowPatterns={result.workflow_patterns}
           fetchWithToken={fetchWithToken}
           syncTargets={syncTargets}
+          onInstalled={onInstalled}
         />
       )}
 
@@ -114,6 +118,7 @@ export function AnalysisResultView({
           workflowPatterns={result.workflow_patterns}
           fetchWithToken={fetchWithToken}
           syncTargets={syncTargets}
+          onInstalled={onInstalled}
         />
       )}
 

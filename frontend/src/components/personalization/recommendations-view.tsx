@@ -15,6 +15,7 @@ import type {
   SkillSyncTarget,
 } from "../../types";
 import { BulletText } from "../bullet-text";
+import { CollapsibleText } from "../collapsible-text";
 import { InstallLocallyDialog } from "../install-locally-dialog";
 import { Tooltip } from "../tooltip";
 import { useDemoGuard } from "../../hooks/use-demo-guard";
@@ -26,10 +27,12 @@ export function RecommendationSection({
   recommendations,
   fetchWithToken,
   syncTargets,
+  onInstalled,
 }: {
   recommendations: RankedRecommendationItem[];
   fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
   syncTargets: SkillSyncTarget[];
+  onInstalled?: () => void;
 }) {
   return (
     <section>
@@ -45,6 +48,7 @@ export function RecommendationSection({
             rec={rec}
             fetchWithToken={fetchWithToken}
             syncTargets={syncTargets}
+            onInstalled={onInstalled}
           />
         ))}
       </div>
@@ -56,10 +60,12 @@ function RecommendationCard({
   rec,
   fetchWithToken,
   syncTargets,
+  onInstalled,
 }: {
   rec: RankedRecommendationItem;
   fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
   syncTargets: SkillSyncTarget[];
+  onInstalled?: () => void;
 }) {
   const { guardAction, showInstallDialog, setShowInstallDialog } = useDemoGuard();
   const [showDetail, setShowDetail] = useState(false);
@@ -99,8 +105,9 @@ function RecommendationCard({
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setInstalled(true);
+      onInstalled?.();
     },
-    [fetchWithToken, rec.item.name],
+    [fetchWithToken, rec.item.name, onInstalled],
   );
 
   // Virtual Skill shape for ExtensionDetailPopup reuse
@@ -114,7 +121,7 @@ function RecommendationCard({
   };
 
   return (
-    <div className="border border-default rounded-xl bg-control/20 overflow-hidden">
+    <div className="border border-default rounded-xl bg-subtle overflow-hidden">
       {/* Header: Name + Relevance + Action */}
       <div className="px-5 pt-4 pb-3">
         <div className="flex items-center justify-between gap-3">
@@ -141,9 +148,14 @@ function RecommendationCard({
           </div>
           <div className="flex items-center gap-2.5 shrink-0">
             {installed ? (
-              <span className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-accent-teal bg-accent-teal-subtle rounded-lg border border-accent-teal">
-                <Check className="w-3.5 h-3.5" /> Installed
-              </span>
+              <Tooltip text="Installed — click to update sync targets">
+                <button
+                  onClick={() => guardAction(handleOpenDetail)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-accent-emerald bg-accent-emerald-subtle hover:bg-emerald-100 dark:hover:bg-emerald-900/25 rounded-lg border border-accent-emerald-border transition"
+                >
+                  <Check className="w-3.5 h-3.5" /> Installed
+                </button>
+              </Tooltip>
             ) : (
               <Tooltip text="View details and install">
                 <button
@@ -158,16 +170,18 @@ function RecommendationCard({
           </div>
         </div>
         {rec.item.description && (
-          <p className="text-sm text-secondary leading-relaxed mt-2 line-clamp-3">
-            {rec.item.description}
-          </p>
+          <CollapsibleText
+            text={rec.item.description}
+            label="Description:"
+            className="text-sm text-secondary leading-relaxed mt-2"
+          />
         )}
         <p className="text-xs text-dimmed mt-1.5">{rec.item.repo_name}</p>
         {tags.length > 0 && <TagList tags={tags} />}
       </div>
 
       {/* Why this helps */}
-      <div className="px-5 py-3 border-t border-default/20">
+      <div className="px-5 py-3 border-t border-default">
         <button
           onClick={() => setRationaleExpanded(!rationaleExpanded)}
           className="flex items-center gap-1.5 text-xs hover:bg-control/40 rounded transition"

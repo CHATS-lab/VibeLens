@@ -14,6 +14,7 @@ import type {
   WorkflowPattern,
 } from "../../types";
 import { BulletText } from "../bullet-text";
+import { CollapsibleText } from "../collapsible-text";
 import { InstallLocallyDialog } from "../install-locally-dialog";
 import { Tooltip } from "../tooltip";
 import { useDemoGuard } from "../../hooks/use-demo-guard";
@@ -26,11 +27,13 @@ export function CreationSection({
   workflowPatterns,
   fetchWithToken,
   syncTargets,
+  onInstalled,
 }: {
   skills: Creation[];
   workflowPatterns: WorkflowPattern[];
   fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
   syncTargets: SkillSyncTarget[];
+  onInstalled?: () => void;
 }) {
   return (
     <section>
@@ -48,6 +51,7 @@ export function CreationSection({
             workflowPatterns={workflowPatterns}
             fetchWithToken={fetchWithToken}
             syncTargets={syncTargets}
+            onInstalled={onInstalled}
           />
         ))}
       </div>
@@ -60,11 +64,13 @@ function CreatedSkillCard({
   workflowPatterns,
   fetchWithToken,
   syncTargets,
+  onInstalled,
 }: {
   skill: Creation;
   workflowPatterns: WorkflowPattern[];
   fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
   syncTargets: SkillSyncTarget[];
+  onInstalled?: () => void;
 }) {
   const { guardAction, showInstallDialog, setShowInstallDialog } = useDemoGuard();
   const [showPreview, setShowPreview] = useState(false);
@@ -87,16 +93,17 @@ function CreatedSkillCard({
         });
         if (!res.ok) return;
         setInstalled(true);
+        onInstalled?.();
       } catch {
         /* ignore */
       }
       setShowPreview(false);
     },
-    [fetchWithToken, skill.element_name],
+    [fetchWithToken, skill.element_name, onInstalled],
   );
 
   return (
-    <div className="border border-default rounded-xl bg-control/20 overflow-hidden">
+    <div className="border border-default rounded-xl bg-subtle overflow-hidden">
       {/* Header: Name + Confidence + Action */}
       <div className="px-5 pt-4 pb-3">
         <div className="flex items-center justify-between">
@@ -106,9 +113,14 @@ function CreatedSkillCard({
           </div>
           <div className="flex items-center gap-2">
             {installed ? (
-              <span className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-accent-emerald bg-accent-emerald-subtle rounded-lg border border-accent-emerald">
-                <Check className="w-3.5 h-3.5" /> Installed
-              </span>
+              <Tooltip text="Installed — click to update sync targets">
+                <button
+                  onClick={() => guardAction(() => setShowPreview(true))}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-accent-emerald bg-accent-emerald-subtle hover:bg-emerald-100 dark:hover:bg-emerald-900/25 rounded-lg border border-accent-emerald-border transition"
+                >
+                  <Check className="w-3.5 h-3.5" /> Installed
+                </button>
+              </Tooltip>
             ) : (
               <Tooltip text="Preview and install skill">
                 <button
@@ -122,14 +134,18 @@ function CreatedSkillCard({
             )}
           </div>
         </div>
-        <p className="text-sm text-secondary leading-relaxed mt-1.5">
-          <span className="font-semibold text-secondary">Skill Description: </span>
-          {skill.description}
-        </p>
+        {skill.description && (
+          <CollapsibleText
+            text={skill.description}
+            label="Description:"
+            className="text-sm text-secondary leading-relaxed mt-1.5"
+            toggleClassName="text-accent-emerald"
+          />
+        )}
       </div>
 
       {/* Why this helps */}
-      <div className="px-5 py-3 border-t border-default/20">
+      <div className="px-5 py-3 border-t border-default">
         <button
           onClick={() => setRationaleExpanded(!rationaleExpanded)}
           className="flex items-center gap-1.5 text-xs hover:bg-control/40 rounded transition"
@@ -147,7 +163,7 @@ function CreatedSkillCard({
 
       {/* Toggleable What this covers */}
       {matchedPatterns.length > 0 && (
-        <div className="px-5 py-3 border-t border-default/20">
+        <div className="px-5 py-3 border-t border-default">
           <button
             onClick={() => setPatternsExpanded(!patternsExpanded)}
             className="flex items-center gap-1.5 text-xs hover:bg-control/40 rounded transition"

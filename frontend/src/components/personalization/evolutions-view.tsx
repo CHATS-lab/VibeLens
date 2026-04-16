@@ -16,6 +16,7 @@ import type {
   WorkflowPattern,
 } from "../../types";
 import { BulletText } from "../bullet-text";
+import { CollapsibleText } from "../collapsible-text";
 import { InstallLocallyDialog } from "../install-locally-dialog";
 import { Tooltip } from "../tooltip";
 import { useDemoGuard } from "../../hooks/use-demo-guard";
@@ -30,11 +31,13 @@ export function EvolutionSection({
   workflowPatterns,
   fetchWithToken,
   syncTargets,
+  onInstalled,
 }: {
   suggestions: Evolution[];
   workflowPatterns: WorkflowPattern[];
   fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
   syncTargets: SkillSyncTarget[];
+  onInstalled?: () => void;
 }) {
   return (
     <section>
@@ -52,6 +55,7 @@ export function EvolutionSection({
             workflowPatterns={workflowPatterns}
             fetchWithToken={fetchWithToken}
             syncTargets={syncTargets}
+            onInstalled={onInstalled}
           />
         ))}
       </div>
@@ -64,11 +68,13 @@ function EvolutionCard({
   workflowPatterns,
   fetchWithToken,
   syncTargets,
+  onInstalled,
 }: {
   suggestion: Evolution;
   workflowPatterns: WorkflowPattern[];
   fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
   syncTargets: SkillSyncTarget[];
+  onInstalled?: () => void;
 }) {
   const { guardAction, showInstallDialog, setShowInstallDialog } = useDemoGuard();
   const [expanded, setExpanded] = useState(false);
@@ -143,14 +149,15 @@ function EvolutionCard({
         });
       }
       setUpdated(true);
+      onInstalled?.();
     } catch {
       /* ignore */
     }
     setShowPreview(false);
-  }, [fetchWithToken, suggestion.element_name]);
+  }, [fetchWithToken, suggestion.element_name, onInstalled]);
 
   return (
-    <div className="border border-default rounded-xl bg-control/20 overflow-hidden">
+    <div className="border border-default rounded-xl bg-subtle overflow-hidden">
       {/* Header: Name + Badges + Confidence + Action */}
       <div className="px-5 pt-4 pb-3">
         <div className="flex items-center justify-between">
@@ -166,9 +173,18 @@ function EvolutionCard({
           </div>
           <div className="flex items-center gap-2.5">
             {updated ? (
-              <span className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-accent-teal bg-accent-teal-subtle rounded-lg border border-accent-teal">
-                <Check className="w-3.5 h-3.5" /> Updated
-              </span>
+              <Tooltip text="Updated — click to re-open and adjust sync targets">
+                <button
+                  onClick={() => guardAction(handlePreview)}
+                  disabled={loadingOriginal}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-accent-emerald bg-accent-emerald-subtle hover:bg-emerald-100 dark:hover:bg-emerald-900/25 rounded-lg border border-accent-emerald-border transition disabled:opacity-50"
+                >
+                  {loadingOriginal
+                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    : <Check className="w-3.5 h-3.5" />}
+                  Updated
+                </button>
+              </Tooltip>
             ) : (
               <Tooltip text="Preview merged result">
                 <button
@@ -188,14 +204,15 @@ function EvolutionCard({
         </div>
       </div>
       {suggestion.description && (
-        <p className="px-5 pb-3 text-sm text-secondary leading-relaxed">
-          <span className="font-semibold text-secondary">Description: </span>
-          {suggestion.description}
-        </p>
+        <CollapsibleText
+          text={suggestion.description}
+          label="Description:"
+          className="px-5 pb-3 text-sm text-secondary leading-relaxed"
+        />
       )}
 
       {/* Proposed Edits */}
-      <div className="px-5 py-3 border-t border-default/20">
+      <div className="px-5 py-3 border-t border-default">
         <button
           onClick={handleExpand}
           className="flex items-center gap-1.5 text-xs hover:bg-control/40 rounded transition"
@@ -219,7 +236,7 @@ function EvolutionCard({
       </div>
 
       {/* Why this helps */}
-      <div className="px-5 py-3 border-t border-default/20">
+      <div className="px-5 py-3 border-t border-default">
         <button
           onClick={() => setRationaleExpanded(!rationaleExpanded)}
           className="flex items-center gap-1.5 text-xs hover:bg-control/40 rounded transition"
@@ -237,7 +254,7 @@ function EvolutionCard({
 
       {/* What this covers */}
       {matchedPatterns.length > 0 && (
-        <div className="px-5 py-3 border-t border-default/20">
+        <div className="px-5 py-3 border-t border-default">
           <button
             onClick={() => setPatternsExpanded(!patternsExpanded)}
             className="flex items-center gap-1.5 text-xs hover:bg-control/40 rounded transition"

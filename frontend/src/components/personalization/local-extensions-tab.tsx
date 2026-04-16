@@ -30,7 +30,7 @@ interface EditorState {
 
 const EDITOR_CLOSED: EditorState = { open: false, mode: "create", name: "", content: "" };
 
-export function LocalExtensionsTab() {
+export function LocalExtensionsTab({ refreshTrigger = 0 }: { refreshTrigger?: number } = {}) {
   const { fetchWithToken } = useAppContext();
   const { guardAction, showInstallDialog, setShowInstallDialog } = useDemoGuard();
   const [skills, setSkills] = useState<Skill[]>([]);
@@ -73,6 +73,12 @@ export function LocalExtensionsTab() {
   useEffect(() => {
     fetchSkills();
   }, [fetchSkills]);
+
+  // External refresh trigger (e.g., after installing a skill from an analysis view).
+  useEffect(() => {
+    if (refreshTrigger === 0) return;
+    fetchSkills();
+  }, [refreshTrigger, fetchSkills]);
 
   // Apply source filter + search query
   useEffect(() => {

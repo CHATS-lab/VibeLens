@@ -123,6 +123,47 @@ export function ExtensionDetailView({ item, isInstalled, onBack, onInstalled, sy
     }
   }, [fetchWithToken, item.extension_id, onInstalled]);
 
+  const handleDialogSubmit = useCallback(
+    async (toAdd: string[], toRemove: string[]) => {
+      setInstalling(true);
+      setInstallError(null);
+      try {
+        if (toAdd.length > 0) {
+          const res = await fetchWithToken(
+            `/api/extensions/${encodeURIComponent(item.extension_id)}/install`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ target_platforms: toAdd, overwrite: true }),
+            },
+          );
+          if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            throw new Error(body.detail || `HTTP ${res.status}`);
+          }
+        }
+        for (const agent of toRemove) {
+          const res = await fetchWithToken(
+            `/api/skills/${encodeURIComponent(item.name)}/agents/${encodeURIComponent(agent)}`,
+            { method: "DELETE" },
+          );
+          if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            throw new Error(body.detail || `HTTP ${res.status}`);
+          }
+        }
+        setInstalled(true);
+        onInstalled(item.extension_id);
+        setShowTargetDialog(false);
+      } catch (err) {
+        setInstallError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setInstalling(false);
+      }
+    },
+    [fetchWithToken, item.extension_id, item.name, onInstalled],
+  );
+
   const handleInstall = useCallback(() => {
     if (syncTargets.length > 0) {
       setShowTargetDialog(true);
@@ -317,7 +358,7 @@ export function ExtensionDetailView({ item, isInstalled, onBack, onInstalled, sy
         <InstallTargetDialog
           skillName={item.name}
           syncTargets={syncTargets}
-          onInstall={(targets) => doInstall(targets.length > 0 ? targets : ["claude_code"])}
+          onInstall={handleDialogSubmit}
           onCancel={() => setShowTargetDialog(false)}
         />
       )}

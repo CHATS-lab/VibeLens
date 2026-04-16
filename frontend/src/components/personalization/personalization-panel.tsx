@@ -94,6 +94,7 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(true);
   const [historyRefresh, setHistoryRefresh] = useState(0);
+  const [localRefresh, setLocalRefresh] = useState(0);
   const [exploreResetKey, setExploreResetKey] = useState(0);
   const [llmStatus, setLlmStatus] = useState<LLMStatus | null>(null);
   const [estimate, setEstimate] = useState<CostEstimate | null>(null);
@@ -341,6 +342,12 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
     setAnalysisError(null);
   }, []);
 
+  // Bump both counters after install/update so LocalExtensionsTab and PersonalizationHistory refresh.
+  const handleSkillInstalled = useCallback(() => {
+    setLocalRefresh((n) => n + 1);
+    setHistoryRefresh((n) => n + 1);
+  }, []);
+
   // Poll for job completion when activeJobId is set
   useEffect(() => {
     if (!activeJobId) return;
@@ -430,7 +437,7 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
               <TutorialBanner tutorial={MODE_DESCRIPTIONS[currentMode].tutorial} accentColor="teal" />
             </div>
           )}
-          {activeTab === "local" && <LocalExtensionsTab />}
+          {activeTab === "local" && <LocalExtensionsTab refreshTrigger={localRefresh} />}
           {activeTab === "explore" && <ExtensionExploreTab resetKey={exploreResetKey} />}
           {isAnalysisTab && (analysisLoading || estimating) && (
             <div className="flex items-center justify-center pt-16">
@@ -477,6 +484,7 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
               activeTab={activeTab}
               onNew={handleNewAnalysis}
               fetchWithToken={fetchWithToken}
+              onInstalled={handleSkillInstalled}
             />
           )}
         </div>
