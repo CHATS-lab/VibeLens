@@ -160,13 +160,41 @@ def _build_messages(request: InferenceRequest) -> list[dict]:
 
 
 def _parse_metrics(response) -> Metrics:
-    """Extract token usage from a litellm response into a Metrics."""
+    """Extract token usage from a litellm response into a Metrics.
+
+    Token bookkeeping matches the parser-side convention (see
+    ``vibelens.ingest.parsers.base._compute_final_metrics``):
+
+    - ``prompt_tokens`` holds only the non-cached input portion.
+    - Anthropic-style cache fields (``cache_read_input_tokens``,
+      ``cache_creation_input_tokens``) are captured separately.
+    - OpenAI-style ``prompt_tokens_details.cached_tokens`` is used as a
+      fallback when the provider is OpenAI-compatible.
+
+    LiteLLM normalizes provider usage dicts into the response object,
+    but cache fields may live at the top level or nested under
+    ``prompt_tokens_details``, so both locations are checked.
+    """
     usage = getattr(response, "usage", None)
     if not usage:
         return Metrics()
+    prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
+    completion_tokens = getattr(usage, "completion_tokens", 0) or 0
+    cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
+    cache_create = getattr(usage, "cache_creation_input_tokens", 0) or 0
+    if not cache_read:
+        details = getattr(usage, "prompt_tokens_details", None)
+        if details is not None:
+            cache_read = getattr(details, "cached_tokens", 0) or 0
+    # When the provider reports cache tokens nested inside prompt_tokens
+    # (OpenAI convention), subtract them so prompt_tokens stays "new-only".
+    if cache_read and cache_read <= prompt_tokens:
+        prompt_tokens -= cache_read
     return Metrics(
-        prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
-        completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        cached_tokens=cache_read,
+        cache_creation_tokens=cache_create,
     )
 
 

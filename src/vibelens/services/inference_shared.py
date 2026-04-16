@@ -62,14 +62,32 @@ def metrics_from_result(result: InferenceResult) -> Metrics:
 def aggregate_final_metrics(
     batch_metrics: list[Metrics], duration_seconds: int = 0
 ) -> FinalMetrics:
-    """Sum per-batch Metrics into a single FinalMetrics aggregate."""
-    total_prompt = sum(m.prompt_tokens for m in batch_metrics)
+    """Sum per-batch Metrics into a single FinalMetrics aggregate.
+
+    Matches the canonical aggregation used by ingest parsers
+    (see ``vibelens.ingest.parsers.base._compute_final_metrics``):
+    cache tokens are rolled into ``total_prompt_tokens`` so the number
+    reflects the true input volume, and also retained separately in
+    ``total_cache_read`` / ``total_cache_write``. Anthropic CLIs report
+    the cached portion as ``cache_read_input_tokens`` and the non-cached
+    portion as ``input_tokens``; summing them here makes the aggregate
+    consistent with ingest-side metrics.
+
+    ``total_steps`` counts the LLM calls aggregated (one per batch).
+    """
+    total_prompt_new = sum(m.prompt_tokens for m in batch_metrics)
+    total_cache_read = sum(m.cached_tokens for m in batch_metrics)
+    total_cache_write = sum(m.cache_creation_tokens for m in batch_metrics)
+    total_prompt = total_prompt_new + total_cache_read + total_cache_write
     total_completion = sum(m.completion_tokens for m in batch_metrics)
     total_cost = sum(m.cost_usd or 0.0 for m in batch_metrics)
     return FinalMetrics(
         total_prompt_tokens=total_prompt if total_prompt else None,
         total_completion_tokens=total_completion if total_completion else None,
+        total_cache_read=total_cache_read,
+        total_cache_write=total_cache_write,
         total_cost_usd=total_cost if total_cost > 0 else None,
+        total_steps=len(batch_metrics) if batch_metrics else None,
         duration=duration_seconds,
     )
 
