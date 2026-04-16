@@ -12,9 +12,13 @@ from vibelens.services.extensions.catalog_install import (
     install_from_source_url,
     uninstall_extension,
 )
+from vibelens.services.extensions.hook_service import HookService
 from vibelens.services.extensions.platforms import AgentPlatform
 from vibelens.services.extensions.skill_service import SkillService
+from vibelens.services.extensions.subagent_service import SubagentService
+from vibelens.storage.extension.hook_store import HookStore
 from vibelens.storage.extension.skill_store import SkillStore
+from vibelens.storage.extension.subagent_store import SubagentStore
 
 DEFAULT_SKILL_CONTENT = "# Test Skill\nContent"
 
@@ -183,7 +187,13 @@ def test_install_skill_creates_file(tmp_path: Path):
 def test_install_subagent_routes_to_agents_dir(tmp_path: Path):
     """Installing a SUBAGENT lands in .claude/agents/{name}.md, not commands/."""
     platforms = _make_platforms(tmp_path=tmp_path)
-    with patch(f"{INSTALL_MODULE}.INSTALLABLE_PLATFORMS", platforms):
+    central = SubagentStore(root=tmp_path / "central-subagents", create=True)
+    agent_store = SubagentStore(root=platforms["claude_code"].subagents_dir, create=True)
+    service = SubagentService(central=central, agents={"claude_code": agent_store})
+    with (
+        patch(f"{INSTALL_MODULE}.INSTALLABLE_PLATFORMS", platforms),
+        patch(f"{INSTALL_MODULE}.get_subagent_service", return_value=service),
+    ):
         item = _make_subagent_item()
         installed = install_catalog_item(item=item, target_platform="claude_code")
         expected = tmp_path / ".claude" / "agents" / "test-subagent.md"
@@ -217,9 +227,7 @@ def test_install_skill_allows_overwrite(tmp_path: Path):
     (commands_dir / "test-skill.md").write_text("old content")
     with patch(f"{INSTALL_MODULE}.INSTALLABLE_PLATFORMS", platforms):
         item = _make_skill_item()
-        installed = install_catalog_item(
-            item=item, target_platform="claude_code", overwrite=True
-        )
+        installed = install_catalog_item(item=item, target_platform="claude_code", overwrite=True)
         assert installed.read_text() == DEFAULT_SKILL_CONTENT
     print("Overwrite succeeded")
 
@@ -231,7 +239,12 @@ def test_install_hook_appends_to_settings(tmp_path: Path):
     claude_dir.mkdir(parents=True)
     settings_path = claude_dir / "settings.json"
     settings_path.write_text(json.dumps({"hooks": {}}))
-    with patch(f"{INSTALL_MODULE}.INSTALLABLE_PLATFORMS", platforms):
+    central = HookStore(root=tmp_path / "central-hooks", create=True)
+    service = HookService(central=central, agent_settings={"claude_code": settings_path})
+    with (
+        patch(f"{INSTALL_MODULE}.INSTALLABLE_PLATFORMS", platforms),
+        patch(f"{INSTALL_MODULE}.get_hook_service", return_value=service),
+    ):
         item = _make_hook_item()
         install_catalog_item(item=item, target_platform="claude_code")
         settings = json.loads(settings_path.read_text())
@@ -295,9 +308,7 @@ def test_install_from_source_url_rejects_existing_dir(tmp_path: Path):
 
     with patch(f"{INSTALL_MODULE}.INSTALLABLE_PLATFORMS", platforms):
         try:
-            install_from_source_url(
-                item=item, target_platform="claude_code", overwrite=False
-            )
+            install_from_source_url(item=item, target_platform="claude_code", overwrite=False)
             raise AssertionError("Expected FileExistsError")
         except FileExistsError:
             pass

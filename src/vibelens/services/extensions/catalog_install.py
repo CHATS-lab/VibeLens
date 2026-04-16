@@ -4,7 +4,12 @@ import json
 import shutil
 from pathlib import Path
 
-from vibelens.deps import get_skill_service
+from vibelens.deps import (
+    get_command_service,
+    get_hook_service,
+    get_skill_service,
+    get_subagent_service,
+)
 from vibelens.models.enums import AgentExtensionType
 from vibelens.models.extension import ExtensionItem
 from vibelens.services.extensions.platforms import INSTALLABLE_PLATFORMS, AgentPlatform
@@ -12,12 +17,6 @@ from vibelens.utils.github import GITHUB_TREE_RE, download_directory
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
-
-FILE_INSTALL_TYPES = {
-    AgentExtensionType.SKILL,
-    AgentExtensionType.SUBAGENT,
-    AgentExtensionType.COMMAND,
-}
 
 
 def _resolve_platform(target_platform: str) -> AgentPlatform:
@@ -45,9 +44,10 @@ def install_catalog_item(
     """Install a catalog item to the target agent platform.
 
     Routes to the correct installer based on extension type:
-    - SKILL/COMMAND → writes {name}.md to commands dir
-    - SUBAGENT → writes {name}.md to subagents dir
-    - HOOK → merges hook JSON into settings.json
+    - SKILL → writes {name}.md to commands dir (legacy single-file path)
+    - SUBAGENT → SubagentService.install (central + agent sync)
+    - COMMAND → CommandService.install (central + agent sync)
+    - HOOK → HookService.install (central + tagged merge into settings.json)
     - MCP (install_method="mcp_config") → merges into settings.json mcpServers
 
     Args:
@@ -56,7 +56,7 @@ def install_catalog_item(
         overwrite: If True, overwrite existing files.
 
     Returns:
-        Path where the item was installed.
+        Path where the item was installed on the agent side.
 
     Raises:
         ValueError: If platform is unknown or item type is not installable.
@@ -67,15 +67,34 @@ def install_catalog_item(
     if item.extension_type == AgentExtensionType.SUBAGENT:
         if not platform.subagents_dir:
             raise ValueError(f"Platform {target_platform} has no subagents directory")
-        return _install_file(item=item, target_dir=platform.subagents_dir, overwrite=overwrite)
-    elif item.extension_type in FILE_INSTALL_TYPES:
+        return _install_subagent(
+            item=item,
+            target_platform=target_platform,
+            agent_dir=platform.subagents_dir,
+            overwrite=overwrite,
+        )
+    elif item.extension_type == AgentExtensionType.COMMAND:
+        if not platform.commands_dir:
+            raise ValueError(f"Platform {target_platform} has no commands directory")
+        return _install_command(
+            item=item,
+            target_platform=target_platform,
+            agent_dir=platform.commands_dir,
+            overwrite=overwrite,
+        )
+    elif item.extension_type == AgentExtensionType.SKILL:
         if not platform.commands_dir:
             raise ValueError(f"Platform {target_platform} has no commands directory")
         return _install_file(item=item, target_dir=platform.commands_dir, overwrite=overwrite)
     elif item.extension_type == AgentExtensionType.HOOK:
         if not platform.settings_path:
             raise ValueError(f"Platform {target_platform} has no settings file")
-        return _install_hook(item=item, settings_path=platform.settings_path)
+        return _install_hook_via_service(
+            item=item,
+            target_platform=target_platform,
+            settings_path=platform.settings_path,
+            overwrite=overwrite,
+        )
     elif item.install_method == "mcp_config":
         if not platform.settings_path:
             raise ValueError(f"Platform {target_platform} has no settings file")
@@ -203,26 +222,95 @@ def _install_file(item: ExtensionItem, target_dir: Path, overwrite: bool) -> Pat
     return target
 
 
-def _install_hook(item: ExtensionItem, settings_path: Path) -> Path:
-    """Append hook entries to settings.json hooks object.
+def _install_subagent(
+    item: ExtensionItem, target_platform: str, agent_dir: Path, overwrite: bool
+) -> Path:
+    """Install a SUBAGENT via SubagentService; populate central + agent dir.
+
+    Args:
+        item: ExtensionItem with install_content.
+        target_platform: Platform install key used as the service agent key.
+        agent_dir: Platform's subagents directory (used for the return path).
+        overwrite: If True, overwrite existing central content.
+
+    Returns:
+        Path to the agent-side .md file.
+    """
+    service = get_subagent_service()
+    content = item.install_content or ""
+    try:
+        service.install(name=item.name, content=content, sync_to=[target_platform])
+    except FileExistsError:
+        if overwrite:
+            service.modify(name=item.name, content=content)
+        service.sync_to_agents(name=item.name, agents=[target_platform])
+
+    installed = agent_dir / f"{item.name}.md"
+    logger.info("Installed subagent %s to %s", item.extension_id, installed)
+    return installed
+
+
+def _install_command(
+    item: ExtensionItem, target_platform: str, agent_dir: Path, overwrite: bool
+) -> Path:
+    """Install a COMMAND via CommandService; populate central + agent dir.
+
+    Args:
+        item: ExtensionItem with install_content.
+        target_platform: Platform install key used as the service agent key.
+        agent_dir: Platform's commands directory (used for the return path).
+        overwrite: If True, overwrite existing central content.
+
+    Returns:
+        Path to the agent-side .md file.
+    """
+    service = get_command_service()
+    content = item.install_content or ""
+    try:
+        service.install(name=item.name, content=content, sync_to=[target_platform])
+    except FileExistsError:
+        if overwrite:
+            service.modify(name=item.name, content=content)
+        service.sync_to_agents(name=item.name, agents=[target_platform])
+
+    installed = agent_dir / f"{item.name}.md"
+    logger.info("Installed command %s to %s", item.extension_id, installed)
+    return installed
+
+
+def _install_hook_via_service(
+    item: ExtensionItem, target_platform: str, settings_path: Path, overwrite: bool
+) -> Path:
+    """Install a HOOK via HookService; populate central + tagged merge into settings.
 
     Args:
         item: ExtensionItem with hook JSON in install_content.
-        settings_path: Path to settings.json.
+        target_platform: Platform install key used as the service agent key.
+        settings_path: Path to the agent settings.json (used for the return path).
+        overwrite: If True, overwrite existing central hook config.
 
     Returns:
-        Path to the settings file.
+        Path to the agent settings.json.
     """
-    settings = _read_settings(settings_path=settings_path)
-    hook_data = json.loads(item.install_content or "{}")
-    hooks_to_add = hook_data.get("hooks") or {}
+    service = get_hook_service()
+    blob = json.loads(item.install_content or "{}")
+    hook_config = blob.get("hooks", blob)
+    if not isinstance(hook_config, dict):
+        raise ValueError(f"Hook {item.name!r} install_content has no hook groups")
 
-    existing_hooks = settings.setdefault("hooks", {})
-    for event_type, entries in hooks_to_add.items():
-        existing_entries = existing_hooks.setdefault(event_type, [])
-        existing_entries.extend(entries)
+    try:
+        service.install(
+            name=item.name,
+            description=item.description or "",
+            tags=list(item.tags or []),
+            hook_config=hook_config,
+            sync_to=[target_platform],
+        )
+    except FileExistsError:
+        if overwrite:
+            service.modify(name=item.name, hook_config=hook_config)
+        service.sync_to_agents(name=item.name, agents=[target_platform])
 
-    _write_settings(settings_path=settings_path, settings=settings)
     logger.info("Installed hook %s to %s", item.extension_id, settings_path)
     return settings_path
 
