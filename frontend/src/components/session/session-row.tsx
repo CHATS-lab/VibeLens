@@ -63,7 +63,7 @@ export function SessionRow({
               {!!session.extra?._anonymized && (
                 <span title="Session anonymized"><ShieldCheck className="w-3 h-3 text-accent-emerald" /></span>
               )}
-              {(session.last_trajectory_ref || session.continued_trajectory_ref || session.parent_trajectory_ref) && (
+              {(session.prev_trajectory_ref || session.next_trajectory_ref || session.parent_trajectory_ref) && (
                 <span title="Part of continuation chain"><Link2 className="w-3 h-3 text-accent-violet" /></span>
               )}
               <span className="text-xs text-muted whitespace-nowrap">
@@ -83,7 +83,7 @@ export function SessionRow({
             {!showProject && !!session.extra?._anonymized && (
               <span title="Session anonymized"><ShieldCheck className="w-3 h-3 text-accent-emerald" /></span>
             )}
-            {!showProject && (session.last_trajectory_ref || session.continued_trajectory_ref || session.parent_trajectory_ref) && (
+            {!showProject && (session.prev_trajectory_ref || session.next_trajectory_ref || session.parent_trajectory_ref) && (
               <span title="Part of continuation chain"><Link2 className="w-3 h-3 text-accent-violet" /></span>
             )}
             {!showProject && (

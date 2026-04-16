@@ -1,12 +1,12 @@
 import { Check, Download, Loader2, Monitor } from "lucide-react";
 import { useCallback, useState } from "react";
-import type { SkillSourceInfo } from "../../types";
+import type { SkillSyncTarget } from "../../types";
 import { Modal, ModalBody, ModalFooter, ModalHeader } from "../modal";
-import { SOURCE_LABELS } from "./skill-constants";
+import { SOURCE_LABELS } from "./constants";
 
 interface InstallTargetDialogProps {
   skillName: string;
-  agentSources: SkillSourceInfo[];
+  syncTargets: SkillSyncTarget[];
   onInstall: (targets: string[]) => void;
   onCancel: () => void;
 }
@@ -17,11 +17,13 @@ interface InstallTargetDialogProps {
  */
 export function InstallTargetDialog({
   skillName,
-  agentSources,
+  syncTargets,
   onInstall,
   onCancel,
 }: InstallTargetDialogProps) {
-  const [selectedTargets, setSelectedTargets] = useState<Set<string>>(new Set());
+  const [selectedTargets, setSelectedTargets] = useState<Set<string>>(
+    () => new Set()
+  );
   const [installing, setInstalling] = useState(false);
 
   const toggleTarget = useCallback((key: string) => {
@@ -46,7 +48,7 @@ export function InstallTargetDialog({
       <ModalHeader title={`Install "${skillName}"`} onClose={onCancel} />
       <ModalBody>
         <p className="text-sm text-muted leading-relaxed">
-          The skill will be saved to the VibeLens central store. Optionally sync it to your agent interfaces:
+          The skill will be saved to the VibeLens central store. Select at least one agent interface to sync to:
         </p>
 
         {/* Central store — always selected */}
@@ -60,14 +62,14 @@ export function InstallTargetDialog({
         </div>
 
         {/* Agent interface checkboxes */}
-        {agentSources.length > 0 && (
+        {syncTargets.length > 0 && (
           <div className="space-y-2">
-            {agentSources.map((src) => {
-              const isSelected = selectedTargets.has(src.key);
+            {syncTargets.map((target) => {
+              const isSelected = selectedTargets.has(target.agent);
               return (
                 <button
-                  key={src.key}
-                  onClick={() => toggleTarget(src.key)}
+                  key={target.agent}
+                  onClick={() => toggleTarget(target.agent)}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg border transition text-left ${
                     isSelected
                       ? "bg-control border-teal-600/40"
@@ -84,12 +86,12 @@ export function InstallTargetDialog({
                   <Monitor className="w-4 h-4 text-muted shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-secondary">
-                      {SOURCE_LABELS[src.key] || src.label}
+                      {SOURCE_LABELS[target.agent] || target.agent}
                     </p>
-                    <p className="text-xs text-dimmed truncate">{src.skills_dir}</p>
+                    <p className="text-xs text-dimmed truncate">{target.skills_dir}</p>
                   </div>
                   <span className="text-[10px] text-dimmed">
-                    {src.skill_count} skill{src.skill_count !== 1 ? "s" : ""}
+                    {target.skill_count} skill{target.skill_count !== 1 ? "s" : ""}
                   </span>
                 </button>
               );
@@ -97,7 +99,7 @@ export function InstallTargetDialog({
           </div>
         )}
 
-        {agentSources.length === 0 && (
+        {syncTargets.length === 0 && (
           <p className="text-xs text-dimmed italic">
             No agent interfaces detected. The skill will only be saved to the central store.
           </p>
@@ -113,15 +115,15 @@ export function InstallTargetDialog({
         </button>
         <button
           onClick={handleInstall}
-          disabled={installing}
-          className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded transition disabled:opacity-50"
+          disabled={installing || selectedTargets.size === 0}
+          className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {installing
             ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
             : <Download className="w-3.5 h-3.5" />}
           {selectedTargets.size > 0
             ? `Install & Sync to ${selectedTargets.size} interface${selectedTargets.size !== 1 ? "s" : ""}`
-            : "Install to Central"}
+            : "Select an interface"}
         </button>
       </ModalFooter>
     </Modal>

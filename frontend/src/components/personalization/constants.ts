@@ -97,23 +97,4 @@ export const SUBDIR_DESCRIPTIONS: Record<string, string> = {
   assets: "Templates and config files",
 };
 
-/** All supported agent sync targets (key + label). */
-export const ALL_SYNC_TARGETS: { key: string; label: string }[] = [
-  { key: "claude", label: "Claude" },
-  { key: "codex", label: "Codex" },
-  { key: "copilot", label: "Copilot" },
-  { key: "openclaw", label: "OpenClaw" },
-];
-
-/** Color classes for featured skill categories. */
-export const CATEGORY_COLORS: Record<string, string> = {
-  "ai-assistant": "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400 dark:border-indigo-700/30",
-  development: "bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/30 dark:text-teal-400 dark:border-teal-700/30",
-};
-
-/** Human-readable labels for featured skill categories. */
-export const CATEGORY_LABELS: Record<string, string> = {
-  "ai-assistant": "AI Assistant",
-  development: "Development",
-};
 

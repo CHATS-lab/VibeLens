@@ -1,9 +1,9 @@
 import { Filter, Search, X } from "lucide-react";
 import { Tooltip } from "../tooltip";
-import { normalizeSourceType, SOURCE_COLORS, SOURCE_LABELS } from "./skill-constants";
+import { normalizeSourceType, SOURCE_COLORS, SOURCE_LABELS } from "./constants";
 
 /** Search input with icon and clear button. */
-export function SkillSearchBar({
+export function SearchBar({
   value,
   onChange,
   placeholder = "Search skills...",
@@ -102,7 +102,7 @@ export function NoResultsState() {
 }
 
 /** Small counter showing "X of Y skills". */
-export function SkillCount({ filtered, total }: { filtered: number; total: number }) {
+export function ResultCount({ filtered, total }: { filtered: number; total: number }) {
   return (
     <div className="text-sm text-secondary mb-3">
       {filtered} of {total} skill{total !== 1 ? "s" : ""}

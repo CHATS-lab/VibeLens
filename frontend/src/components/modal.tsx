@@ -1,4 +1,5 @@
 import { X } from "lucide-react";
+import { createPortal } from "react-dom";
 
 interface ModalProps {
   children: React.ReactNode;
@@ -10,17 +11,28 @@ interface ModalProps {
 /**
  * Full-screen overlay modal with consistent styling across the app.
  * Renders a backdrop, centered card, and optional close-on-backdrop.
+ *
+ * Portaled to document.body so modal DOM escapes ancestor stacking contexts
+ * and overflow clipping. Stops click propagation at the overlay root so
+ * React synthetic events don't bubble to a click-handling ancestor in the
+ * React tree (e.g. a card that navigates to a detail view). React synthetic
+ * events propagate along the JSX tree, not the DOM tree, so the portal alone
+ * is not enough.
  */
 export function Modal({ children, onClose, maxWidth = "max-w-2xl" }: ModalProps) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      onClick={(e) => e.stopPropagation()}
+    >
       <div className="absolute inset-0 bg-overlay backdrop-blur-sm" onClick={onClose} />
       <div
         className={`relative bg-panel border border-card rounded-lg shadow-2xl w-full ${maxWidth} mx-4 flex flex-col max-h-[85vh]`}
       >
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

@@ -346,7 +346,7 @@ export function App() {
           donateLines.push("");
           donateLines.push(`Errors: ${dr.errors.length}`);
           for (const e of dr.errors.slice(0, 3)) {
-            donateLines.push(`  ${e.session_id || "—"}: ${e.error}`);
+            donateLines.push(`  ${e.session_id || "(unknown)"}: ${e.error}`);
           }
         }
         return (
@@ -377,7 +377,7 @@ export function App() {
             </div>
             <div className="flex items-center gap-2">
               <a href="https://github.com/CHATS-lab/VibeLens" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:bg-control/30 rounded px-1 -mx-1 transition">
-                <img src="/icon.png" alt="VibeLens" className="w-6 h-6" />
+                <img src="/logo.svg" alt="VibeLens" className="w-6 h-6" />
                 <span className="text-sm font-bold text-accent-cyan">VibeLens</span>
               </a>
             </div>
@@ -427,7 +427,7 @@ export function App() {
             <div data-tour="sidebar-header" className="flex items-center justify-between px-4 h-[75px] border-b border-default sticky top-0">
               <div className="flex items-center gap-3">
                 <a href="https://github.com/CHATS-lab/VibeLens" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 hover:bg-control/30 rounded px-1 -mx-1 transition">
-                  <img src="/icon.png" alt="VibeLens" className="w-12 h-12" />
+                  <img src="/logo.svg" alt="VibeLens" className="w-12 h-12" />
                   <h1 className="text-2xl font-bold text-accent-cyan">VibeLens</h1>
                 </a>
               </div>
@@ -626,7 +626,7 @@ export function App() {
           <RecommendationWelcomeDialog
             onTryNow={() => {
               setShowRecWelcome(false);
-              localStorage.setItem("vibelens-skills-tab", "retrieve");
+              localStorage.setItem("vibelens-personalization-tab", "retrieve");
               setMainView("skills");
             }}
             onDismiss={() => setShowRecWelcome(false)}

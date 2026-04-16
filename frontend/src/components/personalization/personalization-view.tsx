@@ -2,43 +2,43 @@ import { BarChart3, Plus, Timer } from "lucide-react";
 import { useEffect, useState } from "react";
 import type {
   PersonalizationResult,
-  SkillMode,
-  SkillSourceInfo,
+  PersonalizationMode,
+  SkillSyncTarget,
 } from "../../types";
 import { DemoBanner } from "../demo-banner";
 import { LoadingSpinnerRings } from "../loading-spinner";
 import { Tooltip } from "../tooltip";
 import { SHOW_ANALYSIS_DETAIL_SECTIONS } from "../../constants";
 import { WarningsBanner } from "../warnings-banner";
-import { CreationSection } from "./skill-creations-view";
-import { EvolutionSection } from "./skill-evolutions-view";
-import { PatternSection } from "./skill-patterns-view";
-import { RecommendationSection } from "./skill-recommendations-view";
+import { CreationSection } from "./creations-view";
+import { EvolutionSection } from "./evolutions-view";
+import { PatternSection } from "./patterns-view";
+import { RecommendationSection } from "./recommendations-view";
 
-export type SkillTab = "local" | "explore" | "retrieve" | "create" | "evolve";
+export type PersonalizationTab = "local" | "explore" | "retrieve" | "create" | "evolve";
 
 // Re-export SectionHeader so consumers that were importing from this file still work.
-export { SectionHeader } from "./skill-shared";
+export { SectionHeader } from "./shared";
 
-const MODE_TITLES: Record<SkillMode, string> = {
+const MODE_TITLES: Record<PersonalizationMode, string> = {
   recommendation: "Skill Recommendation",
   creation: "Custom Skill Generation",
   evolution: "Installed Skill Evolution",
 };
 
-const MODE_ITEM_LABELS: Record<SkillMode, string> = {
+const MODE_ITEM_LABELS: Record<PersonalizationMode, string> = {
   recommendation: "recommended skill",
   creation: "custom skill",
   evolution: "evolved skill",
 };
 
-const MODE_SUBLABELS: Record<SkillMode, string> = {
+const MODE_SUBLABELS: Record<PersonalizationMode, string> = {
   recommendation: "Discovering skills that match your coding patterns",
   creation: "Generating custom skills from your workflow",
   evolution: "Checking installed skills against your usage",
 };
 
-export function AnalysisLoadingState({ mode, sessionCount }: { mode: SkillMode; sessionCount: number }) {
+export function AnalysisLoadingState({ mode, sessionCount }: { mode: PersonalizationMode; sessionCount: number }) {
   return (
     <div className="flex flex-col items-center gap-5">
       <LoadingSpinnerRings color="teal" />
@@ -59,17 +59,20 @@ export function AnalysisResultView({
   fetchWithToken,
 }: {
   result: PersonalizationResult;
-  activeTab: SkillTab;
+  activeTab: PersonalizationTab;
   onNew: () => void;
   fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
 }) {
-  const [agentSources, setAgentSources] = useState<SkillSourceInfo[]>([]);
+  const [syncTargets, setSkillSyncTargets] = useState<SkillSyncTarget[]>([]);
 
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetchWithToken("/api/skills/sources");
-        if (res.ok) setAgentSources(await res.json());
+        const res = await fetchWithToken("/api/skills?page_size=1");
+        if (res.ok) {
+          const data = await res.json();
+          setSkillSyncTargets(data.sync_targets ?? []);
+        }
       } catch {
         /* ignore */
       }
@@ -90,7 +93,7 @@ export function AnalysisResultView({
         <RecommendationSection
           recommendations={result.recommendations}
           fetchWithToken={fetchWithToken}
-          agentSources={agentSources}
+          syncTargets={syncTargets}
         />
       )}
 
@@ -100,7 +103,7 @@ export function AnalysisResultView({
           skills={result.creations}
           workflowPatterns={result.workflow_patterns}
           fetchWithToken={fetchWithToken}
-          agentSources={agentSources}
+          syncTargets={syncTargets}
         />
       )}
 
@@ -110,7 +113,7 @@ export function AnalysisResultView({
           suggestions={result.evolutions}
           workflowPatterns={result.workflow_patterns}
           fetchWithToken={fetchWithToken}
-          agentSources={agentSources}
+          syncTargets={syncTargets}
         />
       )}
 
@@ -125,7 +128,7 @@ export function AnalysisResultView({
   );
 }
 
-function getItemCount(result: PersonalizationResult, mode: SkillMode): number {
+function getItemCount(result: PersonalizationResult, mode: PersonalizationMode): number {
   if (mode === "recommendation") return result.recommendations.length;
   if (mode === "creation") return result.creations.length;
   return result.evolutions.length;
@@ -138,7 +141,7 @@ function ResultHeader({
 }: {
   result: PersonalizationResult;
   onNew: () => void;
-  mode: SkillMode;
+  mode: PersonalizationMode;
 }) {
   const itemCount = getItemCount(result, mode);
   const itemLabel = MODE_ITEM_LABELS[mode];

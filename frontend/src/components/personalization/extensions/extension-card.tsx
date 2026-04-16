@@ -14,9 +14,10 @@ import {
 } from "lucide-react";
 import { formatCount, formatRelativeDate } from "./extension-format";
 import { useCallback, useState } from "react";
-import { useAppContext } from "../../app";
-import type { ExtensionItemSummary } from "../../types";
-import { Tooltip } from "../tooltip";
+import { useAppContext } from "../../../app";
+import type { ExtensionItemSummary, SkillSyncTarget } from "../../../types";
+import { InstallTargetDialog } from "../install-target-dialog";
+import { Tooltip } from "../../tooltip";
 import {
   CARD_VIEW_MAX_TAGS,
   ITEM_TYPE_COLORS,
@@ -98,6 +99,7 @@ interface ExtensionCardProps {
   onInstalled: (itemId: string) => void;
   onViewDetail: (item: ExtensionItemSummary) => void;
   viewMode?: ExtensionViewMode;
+  syncTargets?: SkillSyncTarget[];
 }
 
 export function ExtensionCard({
@@ -106,43 +108,50 @@ export function ExtensionCard({
   onInstalled,
   onViewDetail,
   viewMode = "list",
+  syncTargets = [],
 }: ExtensionCardProps) {
   const { fetchWithToken } = useAppContext();
   const [installing, setInstalling] = useState(false);
   const [installed, setInstalled] = useState(isInstalled);
   const [error, setError] = useState<string | null>(null);
+  const [showTargetDialog, setShowTargetDialog] = useState(false);
 
-  const handleInstall = useCallback(
-    async (e: React.MouseEvent) => {
-      e.stopPropagation();
+  const doInstall = useCallback(
+    async (platforms: string[]) => {
       setInstalling(true);
       setError(null);
       try {
-        const res = await fetchWithToken(`/api/extensions/${encodeURIComponent(item.item_id)}/install`, {
+        const res = await fetchWithToken(`/api/extensions/${encodeURIComponent(item.extension_id)}/install`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ target_platform: "claude_code" }),
+          body: JSON.stringify({ target_platforms: platforms, overwrite: true }),
         });
-        if (res.status === 409) {
-          const retry = await fetchWithToken(`/api/extensions/${encodeURIComponent(item.item_id)}/install`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ target_platform: "claude_code", overwrite: true }),
-          });
-          if (!retry.ok) throw new Error((await retry.json().catch(() => ({}))).detail || `HTTP ${retry.status}`);
-        } else if (!res.ok) {
+        if (!res.ok) {
           const body = await res.json().catch(() => ({}));
           throw new Error(body.detail || `HTTP ${res.status}`);
         }
         setInstalled(true);
-        onInstalled(item.item_id);
+        onInstalled(item.extension_id);
+        setShowTargetDialog(false);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       } finally {
         setInstalling(false);
       }
     },
-    [fetchWithToken, item.item_id, onInstalled],
+    [fetchWithToken, item.extension_id, onInstalled],
+  );
+
+  const handleInstall = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (syncTargets.length > 0) {
+        setShowTargetDialog(true);
+      } else {
+        doInstall(["claude"]);
+      }
+    },
+    [syncTargets.length, doInstall],
   );
 
   const borderClass = installed
@@ -151,70 +160,80 @@ export function ExtensionCard({
 
   if (viewMode === "card") {
     return (
-      <div
-        className={`border rounded-lg transition cursor-pointer flex flex-col h-full ${borderClass}`}
-        onClick={() => onViewDetail(item)}
-      >
-        <div className="px-4 pt-3 pb-2 flex flex-col flex-1 min-w-0">
-          <div className="flex items-start gap-2.5">
-            <ItemTypeIcon itemType={item.item_type} />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <TypeBadge itemType={item.item_type} />
-                <span className="font-mono text-sm font-bold text-primary truncate">{item.name}</span>
+      <>
+        <div
+          className={`border rounded-lg transition cursor-pointer flex flex-col h-full ${borderClass}`}
+          onClick={() => onViewDetail(item)}
+        >
+          <div className="px-4 pt-3 pb-2 flex flex-col flex-1 min-w-0">
+            <div className="flex items-start gap-2.5">
+              <ItemTypeIcon itemType={item.extension_type} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <TypeBadge itemType={item.extension_type} />
+                  <span className="font-mono text-sm font-bold text-primary truncate">{item.name}</span>
+                  {installed && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent-emerald-subtle text-accent-emerald border border-accent-emerald-border font-medium">
+                      Installed
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+            <p className="text-sm text-secondary mt-1.5 line-clamp-3">{item.description}</p>
+            <TagList tags={item.tags} max={CARD_VIEW_MAX_TAGS} />
+            {error && <p className="text-[10px] text-red-500 mt-1">{error}</p>}
+            <div className="flex items-center justify-between mt-auto pt-3 text-[10px] text-muted">
+              <div className="flex items-center gap-2.5">
+                <span>{item.category}</span>
+                {item.stars > 0 && (
+                  <span className="flex items-center gap-0.5">
+                    <Star className="w-2.5 h-2.5 text-amber-400 fill-amber-400" />
+                    {formatCount(item.stars)}
+                  </span>
+                )}
+                <QualityBar score={item.quality_score} />
+              </div>
+              <div className="flex items-center gap-1.5">
+                {item.source_url && (
+                  <a
+                    href={item.source_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="p-1 text-faint hover:text-secondary rounded transition"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                )}
+                {item.is_file_based && !installed && (
+                  <button
+                    onClick={handleInstall}
+                    disabled={installing}
+                    className="flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-white bg-teal-600 hover:bg-teal-500 rounded-md transition disabled:opacity-50"
+                  >
+                    {installing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+                    Install
+                  </button>
+                )}
                 {installed && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent-emerald-subtle text-accent-emerald border border-accent-emerald-border font-medium">
-                    Installed
+                  <span className="flex items-center gap-1 text-[10px] font-medium text-accent-emerald">
+                    <Check className="w-3 h-3" />
                   </span>
                 )}
               </div>
             </div>
           </div>
-          <p className="text-sm text-secondary mt-1.5 line-clamp-3">{item.description}</p>
-          <TagList tags={item.tags} max={CARD_VIEW_MAX_TAGS} />
-          {error && <p className="text-[10px] text-red-500 mt-1">{error}</p>}
-          <div className="flex items-center justify-between mt-auto pt-3 text-[10px] text-muted">
-            <div className="flex items-center gap-2.5">
-              <span>{item.category}</span>
-              {item.stars > 0 && (
-                <span className="flex items-center gap-0.5">
-                  <Star className="w-2.5 h-2.5 text-amber-400 fill-amber-400" />
-                  {formatCount(item.stars)}
-                </span>
-              )}
-              <QualityBar score={item.quality_score} />
-            </div>
-            <div className="flex items-center gap-1.5">
-              {item.source_url && (
-                <a
-                  href={item.source_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="p-1 text-faint hover:text-secondary rounded transition"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
-              )}
-              {item.is_file_based && !installed && (
-                <button
-                  onClick={handleInstall}
-                  disabled={installing}
-                  className="flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-white bg-teal-600 hover:bg-teal-500 rounded-md transition disabled:opacity-50"
-                >
-                  {installing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
-                  Install
-                </button>
-              )}
-              {installed && (
-                <span className="flex items-center gap-1 text-[10px] font-medium text-accent-emerald">
-                  <Check className="w-3 h-3" />
-                </span>
-              )}
-            </div>
-          </div>
         </div>
-      </div>
+        {showTargetDialog && (
+          <InstallTargetDialog
+            skillName={item.name}
+            syncTargets={syncTargets}
+            onInstall={(targets) => doInstall(targets.length > 0 ? targets : ["claude_code"])}
+            onCancel={() => setShowTargetDialog(false)}
+          />
+        )}
+      </>
     );
   }
 
@@ -227,11 +246,11 @@ export function ExtensionCard({
       <div className="flex items-start">
         <div className="flex-1 text-left px-4 py-3 flex items-start gap-3 min-w-0">
           <div className="mt-0.5">
-            <ItemTypeIcon itemType={item.item_type} />
+            <ItemTypeIcon itemType={item.extension_type} />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <TypeBadge itemType={item.item_type} />
+              <TypeBadge itemType={item.extension_type} />
               <span className="font-mono text-base font-bold text-primary">{item.name}</span>
               {installed && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent-emerald-subtle text-accent-emerald border border-accent-emerald-border font-medium">
@@ -284,7 +303,7 @@ export function ExtensionCard({
             </Tooltip>
           )}
           {item.is_file_based && !installed && (
-            <Tooltip text={`Install ${ITEM_TYPE_LABELS[item.item_type] || item.item_type}`}>
+            <Tooltip text={`Install ${ITEM_TYPE_LABELS[item.extension_type] || item.extension_type}`}>
               <button
                 onClick={handleInstall}
                 disabled={installing}
@@ -302,6 +321,14 @@ export function ExtensionCard({
           )}
         </div>
       </div>
+      {showTargetDialog && (
+        <InstallTargetDialog
+          skillName={item.name}
+          syncTargets={syncTargets}
+          onInstall={(targets) => doInstall(targets.length > 0 ? targets : ["claude_code"])}
+          onCancel={() => setShowTargetDialog(false)}
+        />
+      )}
     </div>
   );
 }

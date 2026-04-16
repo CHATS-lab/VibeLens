@@ -1,11 +1,11 @@
-import type { SkillEdit } from "../../types";
+import type { CreationEdit } from "../../types";
 
 /**
- * Best-effort application of SkillEdit[] to original SKILL.md content.
+ * Best-effort application of CreationEdit[] to original SKILL.md content.
  * Edits that cannot locate their old_string are silently skipped — the user
  * can fix them in the editor afterwards.
  */
-export function applySkillEdits(original: string, edits: SkillEdit[]): string {
+export function applyEdits(original: string, edits: CreationEdit[]): string {
   let result = original;
 
   for (const edit of edits) {

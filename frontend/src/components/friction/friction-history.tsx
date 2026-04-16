@@ -1,4 +1,4 @@
-import { Calendar, Clock, Coins, History, Layers, Loader2, Timer, Trash2 } from "lucide-react";
+import { Calendar, Clock, Coins, History, Layers, Loader2, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useAppContext } from "../../app";
 import { useDemoGuard } from "../../hooks/use-demo-guard";
@@ -6,11 +6,6 @@ import type { FrictionAnalysisResult, FrictionMeta } from "../../types";
 import { formatCost } from "../../utils";
 import { ConfirmDialog } from "../confirm-dialog";
 import { InstallLocallyDialog } from "../install-locally-dialog";
-
-function formatDuration(seconds: number): string {
-  if (seconds < 60) return `${seconds.toFixed(1)}s`;
-  return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
-}
 
 interface FrictionHistoryProps {
   onSelect: (result: FrictionAnalysisResult) => void;
@@ -55,7 +50,7 @@ export function FrictionHistory({ onSelect, refreshTrigger, activeJobId }: Frict
       const res = await fetchWithToken(`/api/analysis/friction/${analysisId}`, {
         method: "DELETE",
       });
-      if (res.ok) setItems((prev) => prev.filter((i) => i.analysis_id !== analysisId));
+      if (res.ok) setItems((prev) => prev.filter((i) => i.id !== analysisId));
     } catch {
       /* best-effort */
     } finally {
@@ -92,11 +87,11 @@ export function FrictionHistory({ onSelect, refreshTrigger, activeJobId }: Frict
       )}
       {items.map((item) => (
         <HistoryCard
-          key={item.analysis_id}
+          key={item.id}
           item={item}
-          deleting={deletingId === item.analysis_id}
-          onSelect={() => handleSelect(item.analysis_id)}
-          onDelete={() => handleDelete(item.analysis_id)}
+          deleting={deletingId === item.id}
+          onSelect={() => handleSelect(item.id)}
+          onDelete={() => handleDelete(item.id)}
         />
       ))}
     </div>
@@ -132,31 +127,25 @@ function HistoryCard({
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0 space-y-1">
           <p className="text-xs text-secondary font-semibold truncate">
-            {item.title || `Analysis · ${item.session_ids.length} sessions`}
+            {item.title || `Analysis · ${item.session_count} sessions`}
           </p>
           <div className="flex items-center gap-1.5">
             <span className="inline-flex items-center gap-1 text-[10px] text-accent-cyan/70">
               <Layers className="w-2.5 h-2.5" />
-              {item.session_ids.length} session{item.session_ids.length !== 1 ? "s" : ""}
+              {item.session_count} session{item.session_count !== 1 ? "s" : ""}
             </span>
             {(item.is_example || item.model.startsWith("mock/")) && (
               <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-accent-amber-subtle border border-accent-amber-border text-accent-amber">Example</span>
             )}
           </div>
-          <div className="flex items-center gap-2.5 text-[10px] text-muted">
-            {item.cost_usd != null && (
+          {item.final_metrics.total_cost_usd != null && (
+            <div className="flex items-center gap-2.5 text-[10px] text-muted">
               <span className="inline-flex items-center gap-1">
                 <Coins className="w-2.5 h-2.5" />
-                {formatCost(item.cost_usd)}
+                {formatCost(item.final_metrics.total_cost_usd)}
               </span>
-            )}
-            {item.duration_seconds != null && (
-              <span className="inline-flex items-center gap-1">
-                <Timer className="w-2.5 h-2.5" />
-                {formatDuration(item.duration_seconds)}
-              </span>
-            )}
-          </div>
+            </div>
+          )}
           <div className="flex items-center gap-2 text-[10px] text-muted">
             <span className="inline-flex items-center gap-1">
               <Calendar className="w-2.5 h-2.5" />

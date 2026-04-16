@@ -2,7 +2,7 @@ import { Check, Loader2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Modal } from "../modal";
 
-interface SkillEditorDialogProps {
+interface EditorDialogProps {
   mode: "create" | "edit";
   initialName: string;
   initialContent: string;
@@ -11,14 +11,14 @@ interface SkillEditorDialogProps {
   saving: boolean;
 }
 
-export function SkillEditorDialog({
+export function EditorDialog({
   mode,
   initialName,
   initialContent,
   onSave,
   onCancel,
   saving,
-}: SkillEditorDialogProps) {
+}: EditorDialogProps) {
   const [name, setName] = useState(initialName);
   const [content, setContent] = useState(initialContent);
   const textareaRef = useRef<HTMLTextAreaElement>(null);

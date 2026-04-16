@@ -39,7 +39,7 @@ export function LLMConfigForm({
   const [cliModel, setCliModel] = useState("");
   const [baseUrl, setBaseUrl] = useState(llmStatus?.base_url ?? "");
   const [timeout, setTimeout_] = useState(llmStatus?.timeout ?? 120);
-  const [maxTokens, setMaxTokens] = useState(llmStatus?.max_tokens ?? 4096);
+  const [maxTokens, setMaxTokens] = useState(llmStatus?.max_output_tokens ?? 4096);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
@@ -83,7 +83,7 @@ export function LLMConfigForm({
         payload.api_key = apiKey.trim();
         payload.model = model.trim();
         payload.timeout = timeout;
-        payload.max_tokens = maxTokens;
+        payload.max_output_tokens = maxTokens;
         if (baseUrl.trim()) payload.base_url = baseUrl.trim();
       }
       const res = await fetchWithToken("/api/llm/configure", {

@@ -8,6 +8,7 @@ interface ConfirmDialogProps {
   onConfirm: () => void;
   onCancel: () => void;
   loading?: boolean;
+  children?: React.ReactNode;
 }
 
 export function ConfirmDialog({
@@ -18,12 +19,14 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
   loading = false,
+  children,
 }: ConfirmDialogProps) {
   return (
     <Modal onClose={onCancel} maxWidth="max-w-md">
       <ModalHeader title={title} onClose={onCancel} />
       <ModalBody>
         <p className="text-sm text-secondary whitespace-pre-line">{message}</p>
+        {children}
       </ModalBody>
       <ModalFooter>
         <button

@@ -3,7 +3,7 @@ import { useCallback, useState } from "react";
 import type { StepRef, WorkflowPattern } from "../../types";
 import { BulletText } from "../bullet-text";
 import { Tooltip } from "../tooltip";
-import { SectionHeader } from "./skill-shared";
+import { SectionHeader } from "./shared";
 
 export function PatternSection({ patterns }: { patterns: WorkflowPattern[] }) {
   return (

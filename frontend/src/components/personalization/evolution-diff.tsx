@@ -1,5 +1,5 @@
 import { FileText } from "lucide-react";
-import type { SkillEdit } from "../../types";
+import type { CreationEdit } from "../../types";
 
 type DiffRow =
   | { type: "hunk-header"; index: number }
@@ -10,7 +10,7 @@ type DiffRow =
 
 interface EvolutionDiffViewProps {
   skillName: string;
-  edits: SkillEdit[];
+  edits: CreationEdit[];
   /** Original SKILL.md content for computing real line numbers. */
   originalContent?: string;
 }
@@ -145,7 +145,7 @@ function computeContextBounds(oldLines: string[], newLines: string[]): { prefixL
   return { prefixLen, suffixLen };
 }
 
-function buildDiffRows(edits: SkillEdit[], originalContent?: string): DiffRow[] {
+function buildDiffRows(edits: CreationEdit[], originalContent?: string): DiffRow[] {
   const rows: DiffRow[] = [];
 
   edits.forEach((edit, idx) => {

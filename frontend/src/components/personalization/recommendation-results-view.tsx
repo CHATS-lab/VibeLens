@@ -1,6 +1,6 @@
 import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import type { ExtensionRecommendation, RecommendationResult } from "../../types";
+import type { PersonalizationResult, RankedRecommendationItem } from "../../types";
 import { RecommendationCard } from "./recommendation-card";
 
 interface RecommendationResultsViewProps {
@@ -8,7 +8,7 @@ interface RecommendationResultsViewProps {
   fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
 }
 
-function ProfilePills({ profile }: { profile: RecommendationResult["user_profile"] }) {
+function ProfilePills({ profile }: { profile: NonNullable<PersonalizationResult["user_profile"]> }) {
   return (
     <div className="flex flex-wrap gap-1.5">
       {profile.domains.map((d) => (
@@ -30,7 +30,7 @@ function ProfilePills({ profile }: { profile: RecommendationResult["user_profile
   );
 }
 
-function MetadataLine({ result }: { result: RecommendationResult }) {
+function MetadataLine({ result }: { result: PersonalizationResult }) {
   const costStr = result.final_metrics?.total_cost_usd != null ? `$${result.final_metrics.total_cost_usd.toFixed(2)}` : "";
   const durationStr = result.final_metrics?.duration ? `${result.final_metrics.duration}s` : "";
   const metaParts = [
@@ -43,7 +43,7 @@ function MetadataLine({ result }: { result: RecommendationResult }) {
 }
 
 export function RecommendationView({ analysisId, fetchWithToken }: RecommendationResultsViewProps) {
-  const [result, setResult] = useState<RecommendationResult | null>(null);
+  const [result, setResult] = useState<PersonalizationResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,9 +60,9 @@ export function RecommendationView({ analysisId, fetchWithToken }: Recommendatio
       .finally(() => setLoading(false));
   }, [analysisId, fetchWithToken]);
 
-  const handleInstall = useCallback((rec: ExtensionRecommendation) => {
-    if (rec.install_command) {
-      navigator.clipboard.writeText(rec.install_command);
+  const handleInstall = useCallback((rec: RankedRecommendationItem) => {
+    if (rec.item.install_command) {
+      navigator.clipboard.writeText(rec.item.install_command);
     }
   }, []);
 
@@ -87,8 +87,7 @@ export function RecommendationView({ analysisId, fetchWithToken }: Recommendatio
       {/* Header */}
       <div className="border-b border-default px-6 py-4 space-y-2 shrink-0">
         <h1 className="text-xl font-semibold text-primary">{result.title}</h1>
-        <p className="text-sm text-secondary">{result.summary}</p>
-        <ProfilePills profile={result.user_profile} />
+        {result.user_profile && <ProfilePills profile={result.user_profile} />}
         <MetadataLine result={result} />
       </div>
 
@@ -101,7 +100,7 @@ export function RecommendationView({ analysisId, fetchWithToken }: Recommendatio
         ) : (
           result.recommendations.map((rec, idx) => (
             <RecommendationCard
-              key={rec.item_id}
+              key={rec.item.extension_id}
               recommendation={rec}
               rank={idx + 1}
               onInstall={handleInstall}

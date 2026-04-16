@@ -1,16 +1,16 @@
 import { Check, ChevronDown, Compass, LayoutGrid, List, Package, RefreshCw, Search, SlidersHorizontal, Tag } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAppContext } from "../../app";
-import { TOGGLE_ACTIVE, TOGGLE_BUTTON_BASE, TOGGLE_CONTAINER, TOGGLE_INACTIVE } from "../../styles";
-import type { ExtensionItemSummary, ExtensionListResponse, ExtensionMetaResponse } from "../../types";
-import { EmptyState } from "../empty-state";
-import { ErrorBanner } from "../error-banner";
-import { LoadingState } from "../loading-state";
+import { useAppContext } from "../../../app";
+import { TOGGLE_ACTIVE, TOGGLE_BUTTON_BASE, TOGGLE_CONTAINER, TOGGLE_INACTIVE } from "../../../styles";
+import type { ExtensionItemSummary, ExtensionListResponse, ExtensionMetaResponse, SkillSyncTarget } from "../../../types";
+import { EmptyState } from "../../empty-state";
+import { ErrorBanner } from "../../error-banner";
+import { LoadingState } from "../../loading-state";
 import { ExtensionCard } from "./extension-card";
 import { EXTENSION_PAGE_SIZE, ITEM_TYPE_LABELS, SORT_OPTIONS, type ExtensionViewMode } from "./extension-constants";
 import { ExtensionDetailView } from "./extension-detail-view";
 import { ExtensionPagination } from "./extension-pagination";
-import { NoResultsState } from "./skill-shared";
+import { NoResultsState } from "../shared";
 
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -97,13 +97,14 @@ export function ExtensionExploreTab({ resetKey = 0 }: ExtensionExploreTabProps) 
 
   const [installedIds, setInstalledIds] = useState<Set<string>>(new Set());
   const [detailItem, setDetailItem] = useState<ExtensionItemSummary | null>(null);
+  const [syncTargets, setSkillSyncTargets] = useState<SkillSyncTarget[]>([]);
 
   // Reset to list view when the explore tab is re-clicked
   useEffect(() => {
     if (resetKey > 0) setDetailItem(null);
   }, [resetKey]);
 
-  // Load catalog metadata once on mount
+  // Load catalog metadata and agent sources once on mount
   useEffect(() => {
     fetchWithToken("/api/extensions/meta")
       .then((res) => res.json())
@@ -111,6 +112,10 @@ export function ExtensionExploreTab({ resetKey = 0 }: ExtensionExploreTabProps) 
         setCategories(data.categories);
         setHasProfile(data.has_profile);
       })
+      .catch(() => {});
+    fetchWithToken("/api/skills?page_size=1")
+      .then((res) => res.ok ? res.json() : { sync_targets: [] })
+      .then((data: { sync_targets?: SkillSyncTarget[] }) => setSkillSyncTargets(data.sync_targets ?? []))
       .catch(() => {});
   }, [fetchWithToken]);
 
@@ -187,9 +192,10 @@ export function ExtensionExploreTab({ resetKey = 0 }: ExtensionExploreTabProps) 
     return (
       <ExtensionDetailView
         item={detailItem}
-        isInstalled={installedIds.has(detailItem.item_id)}
+        isInstalled={installedIds.has(detailItem.extension_id)}
         onBack={() => setDetailItem(null)}
         onInstalled={handleInstalled}
+        syncTargets={syncTargets}
       />
     );
   }
@@ -288,12 +294,13 @@ export function ExtensionExploreTab({ resetKey = 0 }: ExtensionExploreTabProps) 
           <div className={viewMode === "card" ? "grid grid-cols-2 lg:grid-cols-3 gap-3" : "space-y-2"}>
             {items.map((item) => (
               <ExtensionCard
-                key={item.item_id}
+                key={item.extension_id}
                 item={item}
-                isInstalled={installedIds.has(item.item_id)}
+                isInstalled={installedIds.has(item.extension_id)}
                 onInstalled={handleInstalled}
                 onViewDetail={setDetailItem}
                 viewMode={viewMode}
+                syncTargets={syncTargets}
               />
             ))}
           </div>

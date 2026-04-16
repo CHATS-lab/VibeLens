@@ -75,8 +75,8 @@ export interface Trajectory {
   first_message?: string | null;
   agent: Agent;
   final_metrics?: FinalMetrics | null;
-  last_trajectory_ref?: TrajectoryRef | null;
-  continued_trajectory_ref?: TrajectoryRef | null;
+  prev_trajectory_ref?: TrajectoryRef | null;
+  next_trajectory_ref?: TrajectoryRef | null;
   parent_trajectory_ref?: TrajectoryRef | null;
   extra?: Record<string, unknown> | null;
   steps?: Step[];
@@ -111,7 +111,7 @@ export interface TimePattern {
   hour_distribution: Record<number, number>;
   weekday_distribution: Record<number, number>;
   avg_session_duration: number;
-  avg_steps_per_session: number;
+  avg_messages_per_session: number;
 }
 
 export interface UserPreferenceResult {
@@ -253,31 +253,32 @@ export interface FrictionType {
 }
 
 export interface FrictionAnalysisResult {
-  analysis_id: string | null;
+  id: string;
   title?: string | null;
   mitigations: Mitigation[];
   friction_types: FrictionType[];
   session_ids: string[];
   skipped_session_ids: string[];
   warnings?: string[];
-  backend_id: string;
+  backend: string;
   model: string;
-  metrics: { cost_usd: number | null };
-  duration_seconds: number | null;
   batch_count: number;
+  batch_metrics: Metrics[];
+  final_metrics: FinalMetrics;
   created_at: string;
   is_example?: boolean;
 }
 
 export interface FrictionMeta {
-  analysis_id: string;
+  id: string;
   title?: string | null;
-  session_ids: string[];
-  created_at: string;
-  model: string;
-  cost_usd: number | null;
+  session_count: number;
   batch_count: number;
-  duration_seconds: number | null;
+  item_count: number;
+  backend: string;
+  model: string;
+  created_at: string;
+  final_metrics: FinalMetrics;
   is_example?: boolean;
 }
 
@@ -300,7 +301,7 @@ export interface LLMStatus {
   api_key_masked: string | null;
   base_url: string | null;
   timeout: number;
-  max_tokens: number;
+  max_output_tokens: number;
   pricing: { input_per_mtok: number; output_per_mtok: number } | null;
 }
 
@@ -316,47 +317,22 @@ export interface CliBackendModels {
   supports_freeform: boolean;
 }
 
-export interface SkillSource {
-  source_type: string;
-  source_path: string;
-}
-
-export interface SkillSourceInfo {
-  key: string;
-  label: string;
+export interface SkillSyncTarget {
+  agent: string;
   skill_count: number;
   skills_dir: string;
 }
 
-export interface SkillInfo {
+export interface Skill {
   name: string;
   description: string;
-  sources: SkillSource[];
-  central_path: string | null;
-  content_hash: string;
-  metadata: Record<string, unknown>;
-}
-
-export interface FeaturedSkill {
-  slug: string;
-  name: string;
-  summary: string;
-  downloads: number;
-  stars: number;
-  category: string;
   tags: string[];
-  source_url: string;
-  updated_at: string;
+  allowed_tools: string[];
+  content_hash: string;
+  installed_in: string[];
 }
 
-export interface FeaturedSkillsResponse {
-  updated_at: string | null;
-  total: number;
-  categories: string[];
-  skills: FeaturedSkill[];
-}
-
-export type SkillMode = "recommendation" | "creation" | "evolution";
+export type PersonalizationMode = "recommendation" | "creation" | "evolution";
 
 export interface WorkflowPattern {
   title: string;
@@ -365,17 +341,9 @@ export interface WorkflowPattern {
   frequency: number;
 }
 
-export interface SkillRecommendation {
-  skill_name: string;
-  description: string;
-  rationale: string;
-  addressed_patterns: string[];
-  confidence: number;
-}
-
 export interface RecommendationItem {
-  item_id: string;
-  item_type: string;
+  extension_id: string;
+  extension_type: string;
   name: string;
   repo_name: string;
   source_url: string;
@@ -395,7 +363,7 @@ export interface RankedRecommendationItem {
   scores: Record<string, number>;
 }
 
-export interface SkillCreation {
+export interface Creation {
   element_type: string;
   element_name: string;
   description: string;
@@ -406,15 +374,17 @@ export interface SkillCreation {
   confidence: number;
 }
 
-export interface SkillEdit {
+export interface CreationEdit {
   old_string: string;
   new_string: string;
   replace_all: boolean;
 }
 
-export interface SkillEvolution {
+export interface Evolution {
+  element_type: string;
   element_name: string;
-  edits: SkillEdit[];
+  description: string;
+  edits: CreationEdit[];
   rationale: string;
   addressed_patterns: string[];
   confidence: number;
@@ -422,17 +392,19 @@ export interface SkillEvolution {
 
 export interface PersonalizationResult {
   id: string | null;
-  mode: SkillMode;
+  mode: PersonalizationMode;
   title: string;
   workflow_patterns: WorkflowPattern[];
   recommendations: RankedRecommendationItem[];
-  creations: SkillCreation[];
-  evolutions: SkillEvolution[];
+  user_profile?: UserProfile | null;
+  creations: Creation[];
+  evolutions: Evolution[];
   session_ids: string[];
   skipped_session_ids: string[];
   warnings?: string[];
   backend: string;
   model: string;
+  batch_count?: number;
   final_metrics: PersonalizationFinalMetrics;
   created_at: string;
   is_example?: boolean;
@@ -448,7 +420,7 @@ export interface PersonalizationFinalMetrics {
 
 export interface PersonalizationMeta {
   id: string;
-  mode: SkillMode;
+  mode: PersonalizationMode;
   session_count: number;
   title: string;
   item_count: number;
@@ -504,42 +476,10 @@ export interface UserProfile {
   search_keywords: string[];
 }
 
-export interface ExtensionRecommendation {
-  item_id: string;
-  item_type: string;
-  user_label: string;
-  name: string;
-  description: string;
-  rationale: string;
-  confidence: number;
-  quality_score: number;
-  score: number;
-  install_method: string | null;
-  install_command: string | null;
-  has_content: boolean;
-  source_url: string | null;
-  tags: string[];
-  category: string;
-}
-
-export interface RecommendationResult {
-  id: string;
-  title: string;
-  summary: string;
-  user_profile: UserProfile;
-  recommendations: ExtensionRecommendation[];
-  session_ids: string[];
-  skipped_session_ids: string[];
-  backend: string;
-  model: string;
-  created_at: string;
-  final_metrics: PersonalizationFinalMetrics;
-  catalog_version: string;
-}
 
 export interface ExtensionItemSummary {
-  item_id: string;
-  item_type: string;
+  extension_id: string;
+  extension_type: string;
   name: string;
   description: string;
   tags: string[];

@@ -16,10 +16,11 @@ import {
 } from "lucide-react";
 import { formatCount, formatRelativeDate } from "./extension-format";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useAppContext } from "../../app";
-import type { ExtensionItemSummary } from "../../types";
-import { Tooltip } from "../tooltip";
-import { CopyButton } from "../copy-button";
+import { useAppContext } from "../../../app";
+import type { ExtensionItemSummary, SkillSyncTarget } from "../../../types";
+import { InstallTargetDialog } from "../install-target-dialog";
+import { Tooltip } from "../../tooltip";
+import { CopyButton } from "../../copy-button";
 import { ExtensionDetailContent, stripFrontmatter, type TocEntry } from "./extension-detail-content";
 import { TypeBadge } from "./extension-card";
 import { ITEM_TYPE_ICON_COLORS, PLATFORM_LABELS } from "./extension-constants";
@@ -53,9 +54,10 @@ interface ExtensionDetailViewProps {
   isInstalled: boolean;
   onBack: () => void;
   onInstalled: (itemId: string) => void;
+  syncTargets?: SkillSyncTarget[];
 }
 
-export function ExtensionDetailView({ item, isInstalled, onBack, onInstalled }: ExtensionDetailViewProps) {
+export function ExtensionDetailView({ item, isInstalled, onBack, onInstalled, syncTargets = [] }: ExtensionDetailViewProps) {
   const { fetchWithToken } = useAppContext();
 
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -65,26 +67,27 @@ export function ExtensionDetailView({ item, isInstalled, onBack, onInstalled }: 
   const [displayContent, setDisplayContent] = useState<string | null>(null);
   const [contentLoading, setContentLoading] = useState(false);
   const [contentError, setContentError] = useState<string | null>(null);
+  const [showTargetDialog, setShowTargetDialog] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetchWithToken(`/api/extensions/${encodeURIComponent(item.item_id)}`);
+        const res = await fetchWithToken(`/api/extensions/${encodeURIComponent(item.extension_id)}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
       } catch (err) {
         if (!cancelled) setLoadError(err instanceof Error ? err.message : String(err));
       }
     })();
     return () => { cancelled = true; };
-  }, [fetchWithToken, item.item_id]);
+  }, [fetchWithToken, item.extension_id]);
 
   useEffect(() => {
     let cancelled = false;
     setContentLoading(true);
     (async () => {
       try {
-        const res = await fetchWithToken(`/api/extensions/${encodeURIComponent(item.item_id)}/content`);
+        const res = await fetchWithToken(`/api/extensions/${encodeURIComponent(item.extension_id)}/content`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (!cancelled) setDisplayContent(data.content);
@@ -95,44 +98,46 @@ export function ExtensionDetailView({ item, isInstalled, onBack, onInstalled }: 
       }
     })();
     return () => { cancelled = true; };
-  }, [fetchWithToken, item.item_id]);
+  }, [fetchWithToken, item.extension_id]);
 
-  const handleInstall = useCallback(async () => {
+  const doInstall = useCallback(async (platforms: string[]) => {
     setInstalling(true);
     setInstallError(null);
     try {
-      const res = await fetchWithToken(`/api/extensions/${encodeURIComponent(item.item_id)}/install`, {
+      const res = await fetchWithToken(`/api/extensions/${encodeURIComponent(item.extension_id)}/install`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ target_platform: "claude_code" }),
+        body: JSON.stringify({ target_platforms: platforms, overwrite: true }),
       });
-      if (res.status === 409) {
-        const retry = await fetchWithToken(`/api/extensions/${encodeURIComponent(item.item_id)}/install`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ target_platform: "claude_code", overwrite: true }),
-        });
-        if (!retry.ok) throw new Error((await retry.json().catch(() => ({}))).detail || `HTTP ${retry.status}`);
-      } else if (!res.ok) {
+      if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.detail || `HTTP ${res.status}`);
       }
       setInstalled(true);
-      onInstalled(item.item_id);
+      onInstalled(item.extension_id);
+      setShowTargetDialog(false);
     } catch (err) {
       setInstallError(err instanceof Error ? err.message : String(err));
     } finally {
       setInstalling(false);
     }
-  }, [fetchWithToken, item.item_id, onInstalled]);
+  }, [fetchWithToken, item.extension_id, onInstalled]);
+
+  const handleInstall = useCallback(() => {
+    if (syncTargets.length > 0) {
+      setShowTargetDialog(true);
+    } else {
+      doInstall(["claude"]);
+    }
+  }, [syncTargets.length, doInstall]);
 
   const tocEntries = useMemo(
     () => (displayContent ? extractTocEntries(stripFrontmatter(displayContent)) : []),
     [displayContent],
   );
 
-  const Icon = ITEM_TYPE_ICONS[item.item_type] || Package;
-  const iconColors = ITEM_TYPE_ICON_COLORS[item.item_type] || ITEM_TYPE_ICON_COLORS.skill;
+  const Icon = ITEM_TYPE_ICONS[item.extension_type] || Package;
+  const iconColors = ITEM_TYPE_ICON_COLORS[item.extension_type] || ITEM_TYPE_ICON_COLORS.skill;
   const platformLabel = item.platforms.map((p) => PLATFORM_LABELS[p] || p).join(", ");
 
   return (
@@ -156,7 +161,7 @@ export function ExtensionDetailView({ item, isInstalled, onBack, onInstalled }: 
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-3 flex-wrap mb-1.5">
-                  <TypeBadge itemType={item.item_type} />
+                  <TypeBadge itemType={item.extension_type} />
                   <h1 className="text-xl font-bold font-mono text-primary">{item.name}</h1>
                   {installed && (
                     <span className="text-[10px] px-2 py-0.5 rounded bg-accent-emerald-subtle text-accent-emerald border border-accent-emerald-border font-medium">
@@ -306,6 +311,15 @@ export function ExtensionDetailView({ item, isInstalled, onBack, onInstalled }: 
             <span> Use the install command above to add it manually.</span>
           )}
         </div>
+      )}
+
+      {showTargetDialog && (
+        <InstallTargetDialog
+          skillName={item.name}
+          syncTargets={syncTargets}
+          onInstall={(targets) => doInstall(targets.length > 0 ? targets : ["claude_code"])}
+          onCancel={() => setShowTargetDialog(false)}
+        />
       )}
     </div>
   );

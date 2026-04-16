@@ -157,9 +157,9 @@ export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: Fricti
       try {
         const res = await fetchWithToken("/api/analysis/friction/history");
         if (!res.ok) return;
-        const history: { analysis_id: string }[] = await res.json();
+        const history: { id: string }[] = await res.json();
         if (history.length === 0) return;
-        const loadRes = await fetchWithToken(`/api/analysis/friction/${history[0].analysis_id}`);
+        const loadRes = await fetchWithToken(`/api/analysis/friction/${history[0].id}`);
         if (!loadRes.ok) return;
         handleHistorySelect(await loadRes.json());
       } catch {
@@ -354,7 +354,7 @@ export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: Fricti
           <TutorialBanner tutorial={FRICTION_TUTORIAL} accentColor="cyan" />
         </div>
         <div className="max-w-4xl mx-auto px-6 py-8 space-y-8">
-          {result.backend_id === "mock" && <DemoBanner />}
+          {result.backend === "mock" && <DemoBanner />}
           <ResultHeader result={result} onNew={handleNewAnalysis} />
           {result.warnings && result.warnings.length > 0 && (
             <WarningsBanner warnings={result.warnings} />
@@ -389,7 +389,7 @@ function ResultHeader({
         <Activity className="w-6 h-6 text-accent-amber" />
         <div>
           <div className="flex items-center gap-2.5">
-            {(result.is_example || result.backend_id === "mock") && (
+            {(result.is_example || result.backend === "mock") && (
               <span className="px-2 py-0.5 rounded border text-[11px] font-semibold bg-accent-amber-subtle border-accent-amber text-accent-amber">
                 Example
               </span>
@@ -434,10 +434,10 @@ function AnalysisMeta({ result }: { result: FrictionAnalysisResult }) {
     <Tooltip text="Inference backend, model, and estimated API cost for this analysis run">
       <div className="border-t border-card pt-4 text-xs text-dimmed flex items-center justify-between gap-4">
         <div className="flex items-center gap-2 flex-wrap">
-          <span>{result.backend_id}/{result.model}</span>
-          {result.metrics.cost_usd != null && (
+          <span>{result.backend}/{result.model}</span>
+          {result.final_metrics.total_cost_usd != null && (
             <span className="border-l border-card pl-2">
-              {formatCost(result.metrics.cost_usd)}
+              {formatCost(result.final_metrics.total_cost_usd)}
             </span>
           )}
           {result.batch_count > 1 && (

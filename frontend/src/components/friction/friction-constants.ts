@@ -7,11 +7,11 @@ export const SEVERITY_LABELS: Record<number, string> = {
 };
 
 export const SEVERITY_DESCRIPTIONS: Record<number, string> = {
-  1: "Minor — Small correction, resolved immediately",
-  2: "Low — Needed to explain once more",
-  3: "Moderate — Multiple corrections or visible frustration",
-  4: "High — Had to take over or revert changes",
-  5: "Critical — Gave up on the task entirely",
+  1: "Minor: Small correction, resolved immediately",
+  2: "Low: Needed to explain once more",
+  3: "Moderate: Multiple corrections or visible frustration",
+  4: "High: Had to take over or revert changes",
+  5: "Critical: Gave up on the task entirely",
 };
 
 export const POLL_INTERVAL_MS = 3000;

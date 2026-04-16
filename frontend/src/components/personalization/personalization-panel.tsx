@@ -1,22 +1,22 @@
 import { Check, History, Info, PanelRightClose, PanelRightOpen, Search, Sparkles, Square, TrendingUp } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppContext } from "../../app";
-import type { AnalysisJobResponse, AnalysisJobStatus, CostEstimate, LLMStatus, PersonalizationResult, SkillInfo, SkillMode } from "../../types";
+import type { AnalysisJobResponse, AnalysisJobStatus, CostEstimate, LLMStatus, PersonalizationResult, Skill, PersonalizationMode } from "../../types";
 import { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "../../styles";
 import { AnalysisWelcomePage, TutorialBanner } from "../analysis-welcome";
 import { CostEstimateDialog } from "../cost-estimate-dialog";
 import { Modal, ModalBody, ModalFooter, ModalHeader } from "../modal";
 import { Tooltip } from "../tooltip";
-import { ExtensionExploreTab } from "./extension-explore-tab";
-import { LocalSkillsTab } from "./local-skills-tab";
+import { ExtensionExploreTab } from "./extensions/extension-explore-tab";
+import { LocalExtensionsTab } from "./local-extensions-tab";
 import {
   AnalysisLoadingState,
   AnalysisResultView,
-  type SkillTab,
+  type PersonalizationTab,
 } from "./personalization-view";
 import { PersonalizationHistory } from "./personalization-history";
 
-const TAB_CONFIG: { id: SkillTab; label: string; tooltip: string }[] = [
+const TAB_CONFIG: { id: PersonalizationTab; label: string; tooltip: string }[] = [
   { id: "local", label: "Local Skills", tooltip: "Manage installed SKILL.md files" },
   { id: "explore", label: "Explore", tooltip: "Browse community skills" },
   { id: "retrieve", label: "Recommend", tooltip: "Find skills matching your workflow" },
@@ -27,7 +27,7 @@ const TAB_CONFIG: { id: SkillTab; label: string; tooltip: string }[] = [
 const ACTIVE_TAB_STYLE = "bg-control/70 text-primary";
 const INACTIVE_TAB_STYLE = "text-muted hover:text-secondary hover:bg-control/40";
 
-const MODE_MAP: Record<string, SkillMode> = {
+const MODE_MAP: Record<string, PersonalizationMode> = {
   retrieve: "recommendation",
   create: "creation",
   evolve: "evolution",
@@ -39,7 +39,7 @@ const API_BASE_MAP: Record<string, string> = {
   evolve: "/api/evolution",
 };
 
-const MODE_DESCRIPTIONS: Record<SkillMode, {
+const MODE_DESCRIPTIONS: Record<PersonalizationMode, {
   title: string;
   desc: string;
   icon: React.ReactNode;
@@ -84,9 +84,9 @@ interface PersonalizationPanelProps {
 
 export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }: PersonalizationPanelProps) {
   const { fetchWithToken, appMode, maxSessions } = useAppContext();
-  const [activeTab, setActiveTab] = useState<SkillTab>(() => {
-    const stored = localStorage.getItem("vibelens-skills-tab");
-    if (stored && TAB_CONFIG.some((t) => t.id === stored)) return stored as SkillTab;
+  const [activeTab, setActiveTab] = useState<PersonalizationTab>(() => {
+    const stored = localStorage.getItem("vibelens-personalization-tab");
+    if (stored && TAB_CONFIG.some((t) => t.id === stored)) return stored as PersonalizationTab;
     return "local";
   });
   const [analysisResult, setAnalysisResult] = useState<PersonalizationResult | null>(null);
@@ -143,7 +143,7 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
     refreshLlmStatus();
   }, [refreshLlmStatus]);
 
-  const pendingModeRef = useRef<SkillMode>("recommendation");
+  const pendingModeRef = useRef<PersonalizationMode>("recommendation");
   const selectedSkillNamesRef = useRef<string[] | undefined>(undefined);
   const resolvedSessionIdsRef = useRef<string[]>([]);
   const [showSkillSelector, setShowSkillSelector] = useState(false);
@@ -156,7 +156,7 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
   }, [fetchWithToken]);
 
   const proceedToEstimate = useCallback(
-    async (mode: SkillMode, overrideSessionIds?: string[]) => {
+    async (mode: PersonalizationMode, overrideSessionIds?: string[]) => {
       setEstimating(true);
       setAnalysisError(null);
       try {
@@ -225,7 +225,7 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
   }, [checkedIds, fetchWithToken, onJobIdChange]);
 
   const handleRequestEstimate = useCallback(
-    async (mode: SkillMode) => {
+    async (mode: PersonalizationMode) => {
       if (checkedIds.size === 0) return;
       pendingModeRef.current = mode;
       selectedSkillNamesRef.current = undefined;
@@ -268,7 +268,7 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
   );
 
   const handleHistorySelect = useCallback((loaded: PersonalizationResult) => {
-    const tabMap: Record<SkillMode, SkillTab> = {
+    const tabMap: Record<PersonalizationMode, PersonalizationTab> = {
       recommendation: "retrieve",
       creation: "create",
       evolution: "evolve",
@@ -276,14 +276,14 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
     const tab = tabMap[loaded.mode] || "retrieve";
     setAnalysisResult(loaded);
     setActiveTab(tab);
-    localStorage.setItem("vibelens-skills-tab", tab);
+    localStorage.setItem("vibelens-personalization-tab", tab);
   }, []);
 
   // In demo mode, auto-load the most recent analysis for a given mode
-  const demoHistoryRef = useRef<{ id: string; mode: SkillMode }[] | null>(null);
+  const demoHistoryRef = useRef<{ id: string; mode: PersonalizationMode }[] | null>(null);
 
   const loadDemoAnalysis = useCallback(
-    async (mode: SkillMode) => {
+    async (mode: PersonalizationMode) => {
       if (appMode !== "demo") return;
       const tabKey = Object.entries(MODE_MAP).find(([, v]) => v === mode)?.[0] ?? "retrieve";
       const apiBase = API_BASE_MAP[tabKey];
@@ -312,7 +312,7 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
     demoLoadedRef.current = true;
 
     // Only auto-load for analysis tabs (not local/explore)
-    const storedTab = localStorage.getItem("vibelens-skills-tab");
+    const storedTab = localStorage.getItem("vibelens-personalization-tab");
     const targetMode = storedTab && MODE_MAP[storedTab] ? MODE_MAP[storedTab] : null;
     if (!targetMode) return;
 
@@ -322,7 +322,7 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
       try {
         const res = await fetchWithToken(`${apiBase}/history`);
         if (!res.ok) return;
-        const history: { id: string; mode: SkillMode }[] = await res.json();
+        const history: { id: string; mode: PersonalizationMode }[] = await res.json();
         demoHistoryRef.current = history;
         if (history.length === 0) return;
         const match = history.find((h) => h.mode === targetMode) ?? history[0];
@@ -410,7 +410,7 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
                   }
                 }
                 setActiveTab(tab.id);
-                localStorage.setItem("vibelens-skills-tab", tab.id);
+                localStorage.setItem("vibelens-personalization-tab", tab.id);
               }}
               className={`w-full px-3 py-1.5 text-sm font-semibold rounded-md transition text-center ${
                 activeTab === tab.id ? ACTIVE_TAB_STYLE : INACTIVE_TAB_STYLE
@@ -430,7 +430,7 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
               <TutorialBanner tutorial={MODE_DESCRIPTIONS[currentMode].tutorial} accentColor="teal" />
             </div>
           )}
-          {activeTab === "local" && <LocalSkillsTab />}
+          {activeTab === "local" && <LocalExtensionsTab />}
           {activeTab === "explore" && <ExtensionExploreTab resetKey={exploreResetKey} />}
           {isAnalysisTab && (analysisLoading || estimating) && (
             <div className="flex items-center justify-center pt-16">
@@ -447,7 +447,7 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
                     </button>
                     <div className="text-center space-y-1">
                       <p className="text-sm text-muted">Usually takes 2-5 minutes</p>
-                      <p className="text-sm text-muted">Running in background — you can switch tabs</p>
+                      <p className="text-sm text-muted">Running in background. You can switch tabs.</p>
                     </div>
                   </div>
                 )}
@@ -552,7 +552,7 @@ function SkillSelectionDialog({
   onConfirm: (skillNames: string[]) => void;
   onCancel: () => void;
 }) {
-  const [skills, setSkills] = useState<SkillInfo[]>([]);
+  const [skills, setSkills] = useState<Skill[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -560,10 +560,10 @@ function SkillSelectionDialog({
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetchWithToken("/api/skills/local?page_size=200");
+        const res = await fetchWithToken("/api/skills?page_size=200");
         if (!res.ok) throw new Error("Failed to load skills");
         const data = await res.json();
-        const items: SkillInfo[] = data.items ?? [];
+        const items: Skill[] = data.items ?? [];
         setSkills(items);
         setSelected(new Set());
       } catch (err) {

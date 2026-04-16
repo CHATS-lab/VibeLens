@@ -2,22 +2,21 @@ import { ChevronLeft, ChevronRight, Code2, Info, Package, Plus, RefreshCw } from
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppContext } from "../../app";
 import { useDemoGuard } from "../../hooks/use-demo-guard";
-import type { SkillInfo, SkillSourceInfo } from "../../types";
+import type { Skill, SkillSyncTarget } from "../../types";
 import { SEARCH_DEBOUNCE_MS } from "../../constants";
 import { ConfirmDialog } from "../confirm-dialog";
 import { InstallLocallyDialog } from "../install-locally-dialog";
-import { SkillCard, SkillDetailPopup } from "./skill-cards";
-import { SkillEditorDialog } from "./skill-editor-dialog";
-import { SyncAfterSaveDialog } from "./sync-after-save-dialog";
+import { ExtensionCard, ExtensionDetailPopup } from "./cards";
+import { EditorDialog } from "./editor-dialog";
 import { EmptyState } from "../empty-state";
 import { ErrorBanner } from "../error-banner";
 import { LoadingState } from "../loading-state";
 import {
   NoResultsState,
-  SkillCount,
-  SkillSearchBar,
+  ResultCount,
+  SearchBar,
   SourceFilterBar,
-} from "./skill-shared";
+} from "./shared";
 
 const DEFAULT_PAGE_SIZE = 50;
 const PAGE_SIZE_OPTIONS = [25, 50, 100];
@@ -31,22 +30,21 @@ interface EditorState {
 
 const EDITOR_CLOSED: EditorState = { open: false, mode: "create", name: "", content: "" };
 
-export function LocalSkillsTab() {
+export function LocalExtensionsTab() {
   const { fetchWithToken } = useAppContext();
   const { guardAction, showInstallDialog, setShowInstallDialog } = useDemoGuard();
-  const [skills, setSkills] = useState<SkillInfo[]>([]);
+  const [skills, setSkills] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [filteredSkills, setFilteredSkills] = useState<SkillInfo[]>([]);
+  const [filteredSkills, setFilteredSkills] = useState<Skill[]>([]);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [editorState, setEditorState] = useState<EditorState>(EDITOR_CLOSED);
   const [saving, setSaving] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
-  const [detailSkill, setDetailSkill] = useState<SkillInfo | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Skill | null>(null);
+  const [detailSkill, setDetailSkill] = useState<Skill | null>(null);
   const [sourceFilter, setSourceFilter] = useState<string | null>(null);
-  const [agentSources, setAgentSources] = useState<SkillSourceInfo[]>([]);
-  const [syncPromptSkill, setSyncPromptSkill] = useState<string | null>(null);
+  const [syncTargets, setSkillSyncTargets] = useState<SkillSyncTarget[]>([]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [totalSkills, setTotalSkills] = useState(0);
@@ -57,13 +55,14 @@ export function LocalSkillsTab() {
     try {
       const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
       if (forceRefresh) params.set("refresh", "true");
-      const res = await fetchWithToken(`/api/skills/local?${params}`);
+      const res = await fetchWithToken(`/api/skills?${params}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
       const data = await res.json();
-      const items: SkillInfo[] = data.items ?? data;
+      const items: Skill[] = data.items ?? data;
       setSkills(items);
       setFilteredSkills(items);
       setTotalSkills(data.total ?? items.length);
+      if (data.sync_targets) setSkillSyncTargets(data.sync_targets);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -71,27 +70,15 @@ export function LocalSkillsTab() {
     }
   }, [fetchWithToken, page, pageSize]);
 
-  const fetchSources = useCallback(async () => {
-    try {
-      const res = await fetchWithToken("/api/skills/sources");
-      if (res.ok) setAgentSources(await res.json());
-    } catch {
-      /* ignore */
-    }
-  }, [fetchWithToken]);
-
   useEffect(() => {
     fetchSkills();
-    fetchSources();
-  }, [fetchSkills, fetchSources]);
+  }, [fetchSkills]);
 
   // Apply source filter + search query
   useEffect(() => {
     let result = skills;
     if (sourceFilter) {
-      result = result.filter((s) =>
-        s.sources.some((src) => src.source_type === sourceFilter),
-      );
+      result = result.filter((s) => s.installed_in.includes(sourceFilter));
     }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -115,17 +102,25 @@ export function LocalSkillsTab() {
 
       searchTimerRef.current = setTimeout(async () => {
         try {
-          const res = await fetchWithToken(`/api/skills/search?q=${encodeURIComponent(query)}`);
+          const params = new URLSearchParams({
+            search: query,
+            page: "1",
+            page_size: String(pageSize),
+          });
+          const res = await fetchWithToken(`/api/skills?${params}`);
           if (res.ok) {
-            const data: SkillInfo[] = await res.json();
-            setSkills(data);
+            const data = await res.json();
+            const items: Skill[] = data.items ?? data;
+            setSkills(items);
+            setTotalSkills(data.total ?? items.length);
+            if (data.sync_targets) setSkillSyncTargets(data.sync_targets);
           }
         } catch {
           /* fallback to local filter */
         }
       }, SEARCH_DEBOUNCE_MS);
     },
-    [fetchWithToken, fetchSkills],
+    [fetchWithToken, fetchSkills, pageSize],
   );
 
   const handleSave = useCallback(
@@ -134,39 +129,46 @@ export function LocalSkillsTab() {
       setError(null);
       try {
         const isCreate = editorState.mode === "create";
-        const url = isCreate ? "/api/skills/install" : `/api/skills/local/${name}`;
+        const url = isCreate ? "/api/skills" : `/api/skills/${name}`;
         const method = isCreate ? "POST" : "PUT";
+        const body = isCreate ? { name, content } : { content };
         const res = await fetchWithToken(url, {
           method,
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, content }),
+          body: JSON.stringify(body),
         });
         if (!res.ok) {
-          const body = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
-          throw new Error(body.detail || `HTTP ${res.status}`);
+          const respBody = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+          throw new Error(respBody.detail || `HTTP ${res.status}`);
         }
-        const savedName = name;
+        const data = await res.json();
         const wasEdit = !isCreate;
         setEditorState(EDITOR_CLOSED);
-        await fetchSkills();
-        // After editing, prompt to sync to agent interfaces
-        if (wasEdit && agentSources.length > 0) {
-          setSyncPromptSkill(savedName);
+
+        // Auto-sync to all previously synced agent interfaces
+        if (wasEdit && data.skill?.installed_in?.length > 0) {
+          fetchWithToken(`/api/skills/${name}/agents`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agents: data.skill.installed_in }),
+          }).catch(() => {});
         }
+
+        await fetchSkills();
       } catch (err) {
         setError(String(err));
       } finally {
         setSaving(false);
       }
     },
-    [editorState.mode, fetchWithToken, fetchSkills, agentSources.length],
+    [editorState.mode, fetchWithToken, fetchSkills],
   );
 
   const handleDelete = useCallback(
-    async (name: string) => {
+    async (skill: Skill) => {
       setError(null);
       try {
-        const res = await fetchWithToken(`/api/skills/local/${name}`, { method: "DELETE" });
+        const res = await fetchWithToken(`/api/skills/${skill.name}`, { method: "DELETE" });
         if (!res.ok) {
           const body = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
           throw new Error(body.detail || `HTTP ${res.status}`);
@@ -182,9 +184,9 @@ export function LocalSkillsTab() {
   );
 
   const openEditDialog = useCallback(
-    async (skill: SkillInfo) => {
+    async (skill: Skill) => {
       try {
-        const res = await fetchWithToken(`/api/skills/local/${skill.name}`);
+        const res = await fetchWithToken(`/api/skills/${skill.name}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         setEditorState({ open: true, mode: "edit", name: skill.name, content: data.content || "" });
@@ -196,8 +198,8 @@ export function LocalSkillsTab() {
   );
 
   const availableSourceTypes = Array.from(
-    new Set(skills.flatMap((s) => s.sources.map((src) => src.source_type))),
-  ).filter((t) => t !== "central");
+    new Set(skills.flatMap((s) => s.installed_in)),
+  );
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-8">
@@ -221,7 +223,7 @@ export function LocalSkillsTab() {
             New Skill
           </button>
           <button
-            onClick={() => { fetchSkills(true); fetchSources(); }}
+            onClick={() => fetchSkills(true)}
             disabled={loading}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-secondary hover:text-primary bg-control hover:bg-control-hover border border-card rounded-md transition disabled:opacity-50"
           >
@@ -251,11 +253,11 @@ export function LocalSkillsTab() {
         onSelect={setSourceFilter}
         totalCount={skills.length}
         countByKey={(key) =>
-          skills.filter((s) => s.sources.some((src) => src.source_type === key)).length
+          skills.filter((s) => s.installed_in.includes(key)).length
         }
       />
 
-      <SkillSearchBar value={searchQuery} onChange={handleSearchChange} />
+      <SearchBar value={searchQuery} onChange={handleSearchChange} />
 
       {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
 
@@ -281,13 +283,13 @@ export function LocalSkillsTab() {
 
       {filteredSkills.length > 0 && (
         <div className="space-y-2">
-          <SkillCount filtered={filteredSkills.length} total={totalSkills} />
+          <ResultCount filtered={filteredSkills.length} total={totalSkills} />
           {filteredSkills.map((skill) => (
-            <SkillCard
+            <ExtensionCard
               key={skill.name}
               skill={skill}
               onEdit={(s) => guardAction(() => openEditDialog(s))}
-              onDelete={(name) => guardAction(() => setDeleteTarget(name))}
+              onDelete={() => guardAction(() => setDeleteTarget(skill))}
               onViewDetail={setDetailSkill}
             />
           ))}
@@ -302,7 +304,7 @@ export function LocalSkillsTab() {
       )}
 
       {editorState.open && (
-        <SkillEditorDialog
+        <EditorDialog
           mode={editorState.mode}
           initialName={editorState.name}
           initialContent={editorState.content}
@@ -314,31 +316,37 @@ export function LocalSkillsTab() {
 
       {deleteTarget && (
         <ConfirmDialog
-          title="Delete Skill"
-          message={`Delete "${deleteTarget}"? This removes the skill directory and all its files.`}
+          title={`Delete "${deleteTarget.name}"?`}
+          message="This removes the skill from the central store."
           confirmLabel="Delete"
           cancelLabel="Cancel"
           onConfirm={() => handleDelete(deleteTarget)}
           onCancel={() => setDeleteTarget(null)}
-        />
+        >
+          {deleteTarget.installed_in.length > 0 && (
+            <div className="mt-3">
+              <p className="text-xs font-medium text-secondary mb-2">
+                The skill will also be removed from these agents:
+              </p>
+              <ul className="space-y-1">
+                {deleteTarget.installed_in.map((agent) => (
+                  <li key={agent} className="flex items-center gap-2 text-xs text-muted px-2 py-1.5 rounded bg-control border border-card">
+                    <span className="font-medium text-secondary">{agent}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </ConfirmDialog>
       )}
 
       {detailSkill && (
-        <SkillDetailPopup
+        <ExtensionDetailPopup
           skill={detailSkill}
-          agentSources={agentSources}
+          syncTargets={syncTargets}
           onClose={() => setDetailSkill(null)}
           fetchWithToken={fetchWithToken}
           onRefresh={fetchSkills}
-        />
-      )}
-
-      {syncPromptSkill && (
-        <SyncAfterSaveDialog
-          skillName={syncPromptSkill}
-          agentSources={agentSources}
-          fetchWithToken={fetchWithToken}
-          onClose={() => setSyncPromptSkill(null)}
         />
       )}
 

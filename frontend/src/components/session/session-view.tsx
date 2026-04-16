@@ -609,7 +609,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
           </div>
 
           {/* Row 2.5: Continuation Chain Nav */}
-          {(main.last_trajectory_ref || main.continued_trajectory_ref || main.parent_trajectory_ref) && (
+          {(main.prev_trajectory_ref || main.next_trajectory_ref || main.parent_trajectory_ref) && (
             <div className="flex flex-wrap items-center gap-1.5 mb-3">
               {main.parent_trajectory_ref && onNavigateSession && (
                 <button
@@ -624,29 +624,29 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
                   </span>
                 </button>
               )}
-              {main.last_trajectory_ref && onNavigateSession && (
+              {main.prev_trajectory_ref && onNavigateSession && (
                 <button
-                  onClick={() => onNavigateSession(main.last_trajectory_ref!.session_id)}
+                  onClick={() => onNavigateSession(main.prev_trajectory_ref!.session_id)}
                   className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent-violet-subtle border border-accent-violet text-xs text-accent-violet hover:bg-violet-100 dark:hover:bg-violet-800/40 hover:border-violet-300 dark:hover:border-violet-600/50 transition-colors"
-                  title={`Navigate to previous session: ${main.last_trajectory_ref.session_id}`}
+                  title={`Navigate to previous session: ${main.prev_trajectory_ref.session_id}`}
                 >
                   <ArrowUpRight className="w-3 h-3" />
                   <span>Continued from</span>
                   <span className="text-accent-violet font-medium truncate max-w-[200px]">
-                    {_lookupFirstMessage(main.last_trajectory_ref.session_id, allSessions)}
+                    {_lookupFirstMessage(main.prev_trajectory_ref.session_id, allSessions)}
                   </span>
                 </button>
               )}
-              {main.continued_trajectory_ref && onNavigateSession && (
+              {main.next_trajectory_ref && onNavigateSession && (
                 <button
-                  onClick={() => onNavigateSession(main.continued_trajectory_ref!.session_id)}
+                  onClick={() => onNavigateSession(main.next_trajectory_ref!.session_id)}
                   className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent-violet-subtle border border-accent-violet text-xs text-accent-violet hover:bg-violet-100 dark:hover:bg-violet-800/40 hover:border-violet-300 dark:hover:border-violet-600/50 transition-colors"
-                  title={`Navigate to next session: ${main.continued_trajectory_ref.session_id}`}
+                  title={`Navigate to next session: ${main.next_trajectory_ref.session_id}`}
                 >
                   <ArrowDownRight className="w-3 h-3" />
                   <span>Continues in</span>
                   <span className="text-accent-violet font-medium truncate max-w-[200px]">
-                    {_lookupFirstMessage(main.continued_trajectory_ref.session_id, allSessions)}
+                    {_lookupFirstMessage(main.next_trajectory_ref.session_id, allSessions)}
                   </span>
                 </button>
               )}

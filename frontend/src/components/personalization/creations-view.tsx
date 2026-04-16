@@ -9,28 +9,28 @@ import {
 } from "lucide-react";
 import { useCallback, useState } from "react";
 import type {
-  SkillCreation,
-  SkillSourceInfo,
+  Creation,
+  SkillSyncTarget,
   WorkflowPattern,
 } from "../../types";
 import { BulletText } from "../bullet-text";
 import { InstallLocallyDialog } from "../install-locally-dialog";
 import { Tooltip } from "../tooltip";
 import { useDemoGuard } from "../../hooks/use-demo-guard";
-import { ConfidenceBar, SectionHeader } from "./skill-shared";
-import { StepRefList } from "./skill-patterns-view";
-import { SkillPreviewDialog } from "./skill-preview-dialog";
+import { ConfidenceBar, SectionHeader } from "./shared";
+import { StepRefList } from "./patterns-view";
+import { PreviewDialog } from "./preview-dialog";
 
 export function CreationSection({
   skills,
   workflowPatterns,
   fetchWithToken,
-  agentSources,
+  syncTargets,
 }: {
-  skills: SkillCreation[];
+  skills: Creation[];
   workflowPatterns: WorkflowPattern[];
   fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
-  agentSources: SkillSourceInfo[];
+  syncTargets: SkillSyncTarget[];
 }) {
   return (
     <section>
@@ -47,7 +47,7 @@ export function CreationSection({
             skill={skill}
             workflowPatterns={workflowPatterns}
             fetchWithToken={fetchWithToken}
-            agentSources={agentSources}
+            syncTargets={syncTargets}
           />
         ))}
       </div>
@@ -59,12 +59,12 @@ function CreatedSkillCard({
   skill,
   workflowPatterns,
   fetchWithToken,
-  agentSources,
+  syncTargets,
 }: {
-  skill: SkillCreation;
+  skill: Creation;
   workflowPatterns: WorkflowPattern[];
   fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
-  agentSources: SkillSourceInfo[];
+  syncTargets: SkillSyncTarget[];
 }) {
   const { guardAction, showInstallDialog, setShowInstallDialog } = useDemoGuard();
   const [showPreview, setShowPreview] = useState(false);
@@ -80,20 +80,12 @@ function CreatedSkillCard({
   const handleInstall = useCallback(
     async (content: string, targets: string[]) => {
       try {
-        const res = await fetchWithToken("/api/skills/install", {
+        const res = await fetchWithToken("/api/skills", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: skill.element_name, content }),
+          body: JSON.stringify({ name: skill.element_name, content, sync_to: targets }),
         });
         if (!res.ok) return;
-
-        if (targets.length > 0) {
-          await fetchWithToken(`/api/skills/sync/${skill.element_name}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ targets }),
-          });
-        }
         setInstalled(true);
       } catch {
         /* ignore */
@@ -146,7 +138,7 @@ function CreatedSkillCard({
             ? <ChevronDown className="w-3.5 h-3.5 text-accent-emerald" />
             : <ChevronRight className="w-3.5 h-3.5 text-accent-emerald" />}
           <Lightbulb className="w-3.5 h-3.5 text-accent-emerald" />
-          <span className="text-sm font-semibold text-accent-emerald uppercase tracking-wide">Why this helps</span>
+          <span className="text-sm font-semibold text-accent-emerald">Why this helps</span>
         </button>
         {rationaleExpanded && (
           <BulletText text={skill.rationale} className="text-sm text-secondary leading-relaxed mt-1.5" />
@@ -164,7 +156,7 @@ function CreatedSkillCard({
               ? <ChevronDown className="w-3.5 h-3.5 text-accent-emerald" />
               : <ChevronRight className="w-3.5 h-3.5 text-accent-emerald" />}
             <Target className="w-3.5 h-3.5 text-accent-emerald" />
-            <span className="text-sm font-semibold text-accent-emerald uppercase tracking-wide">What this covers</span>
+            <span className="text-sm font-semibold text-accent-emerald">What this covers</span>
             <span className="text-dimmed">({matchedPatterns.length})</span>
           </button>
           {patternsExpanded && (
@@ -181,13 +173,13 @@ function CreatedSkillCard({
         </div>
       )}
       {showPreview && (
-        <SkillPreviewDialog
+        <PreviewDialog
           skillName={skill.element_name}
           content={editedContent}
           onContentChange={setEditedContent}
           onInstall={handleInstall}
           onCancel={() => setShowPreview(false)}
-          agentSources={agentSources}
+          syncTargets={syncTargets}
         />
       )}
       {showInstallDialog && (

@@ -27,7 +27,7 @@ export const ITEM_TYPE_ICON_COLORS: Record<string, { bg: string; text: string }>
 
 /** Platform display labels. */
 export const PLATFORM_LABELS: Record<string, string> = {
-  claude_code: "Claude Code",
+  claude: "Claude Code",
   codex: "Codex",
   gemini: "Gemini",
 };

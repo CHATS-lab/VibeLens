@@ -11,30 +11,30 @@ import {
 } from "lucide-react";
 import { useCallback, useState } from "react";
 import type {
-  SkillEvolution,
-  SkillSourceInfo,
+  Evolution,
+  SkillSyncTarget,
   WorkflowPattern,
 } from "../../types";
 import { BulletText } from "../bullet-text";
 import { InstallLocallyDialog } from "../install-locally-dialog";
 import { Tooltip } from "../tooltip";
 import { useDemoGuard } from "../../hooks/use-demo-guard";
-import { ConfidenceBar, SectionHeader } from "./skill-shared";
-import { StepRefList } from "./skill-patterns-view";
-import { applySkillEdits } from "./skill-edit-utils";
-import { EvolutionDiffView } from "./skill-evolution-diff";
-import { SkillPreviewDialog } from "./skill-preview-dialog";
+import { ConfidenceBar, SectionHeader } from "./shared";
+import { StepRefList } from "./patterns-view";
+import { applyEdits } from "./edit-utils";
+import { EvolutionDiffView } from "./evolution-diff";
+import { PreviewDialog } from "./preview-dialog";
 
 export function EvolutionSection({
   suggestions,
   workflowPatterns,
   fetchWithToken,
-  agentSources,
+  syncTargets,
 }: {
-  suggestions: SkillEvolution[];
+  suggestions: Evolution[];
   workflowPatterns: WorkflowPattern[];
   fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
-  agentSources: SkillSourceInfo[];
+  syncTargets: SkillSyncTarget[];
 }) {
   return (
     <section>
@@ -51,7 +51,7 @@ export function EvolutionSection({
             suggestion={sug}
             workflowPatterns={workflowPatterns}
             fetchWithToken={fetchWithToken}
-            agentSources={agentSources}
+            syncTargets={syncTargets}
           />
         ))}
       </div>
@@ -63,12 +63,12 @@ function EvolutionCard({
   suggestion,
   workflowPatterns,
   fetchWithToken,
-  agentSources,
+  syncTargets,
 }: {
-  suggestion: SkillEvolution;
+  suggestion: Evolution;
   workflowPatterns: WorkflowPattern[];
   fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
-  agentSources: SkillSourceInfo[];
+  syncTargets: SkillSyncTarget[];
 }) {
   const { guardAction, showInstallDialog, setShowInstallDialog } = useDemoGuard();
   const [expanded, setExpanded] = useState(false);
@@ -90,7 +90,7 @@ function EvolutionCard({
     setLoadingOriginal(true);
     setFetchError(null);
     try {
-      const res = await fetchWithToken(`/api/skills/local/${suggestion.element_name}`);
+      const res = await fetchWithToken(`/api/skills/${suggestion.element_name}`);
       if (res.status === 404) {
         setFetchError("Skill not found in central store");
         return null;
@@ -121,25 +121,25 @@ function EvolutionCard({
   const handlePreview = useCallback(async () => {
     const content = await fetchOriginal();
     if (!content) return;
-    const merged = applySkillEdits(content, suggestion.edits);
+    const merged = applyEdits(content, suggestion.edits);
     setMergedContent(merged);
     setShowPreview(true);
   }, [fetchOriginal, suggestion.edits]);
 
   const handleUpdate = useCallback(async (content: string, targets: string[]) => {
     try {
-      const res = await fetchWithToken(`/api/skills/local/${suggestion.element_name}`, {
+      const res = await fetchWithToken(`/api/skills/${suggestion.element_name}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: suggestion.element_name, content }),
+        body: JSON.stringify({ content }),
       });
       if (!res.ok) return;
 
       if (targets.length > 0) {
-        await fetchWithToken(`/api/skills/sync/${suggestion.element_name}`, {
+        await fetchWithToken(`/api/skills/${suggestion.element_name}/agents`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ targets }),
+          body: JSON.stringify({ agents: targets }),
         });
       }
       setUpdated(true);
@@ -187,6 +187,36 @@ function EvolutionCard({
           </div>
         </div>
       </div>
+      {suggestion.description && (
+        <p className="px-5 pb-3 text-sm text-secondary leading-relaxed">
+          <span className="font-semibold text-secondary">Description: </span>
+          {suggestion.description}
+        </p>
+      )}
+
+      {/* Proposed Edits */}
+      <div className="px-5 py-3 border-t border-default/20">
+        <button
+          onClick={handleExpand}
+          className="flex items-center gap-1.5 text-xs hover:bg-control/40 rounded transition"
+        >
+          {expanded
+            ? <ChevronDown className="w-3.5 h-3.5 text-accent-teal" />
+            : <ChevronRight className="w-3.5 h-3.5 text-accent-teal" />}
+          <Pencil className="w-3.5 h-3.5 text-accent-teal" />
+          <span className="text-sm font-semibold text-accent-teal tracking-wide">Proposed Edits</span>
+          <span className="text-dimmed">({suggestion.edits.length})</span>
+        </button>
+        {expanded && suggestion.edits.length > 0 && (
+          <div className="mt-2.5">
+            <EvolutionDiffView
+              skillName={suggestion.element_name}
+              edits={suggestion.edits}
+              originalContent={originalContent ?? undefined}
+            />
+          </div>
+        )}
+      </div>
 
       {/* Why this helps */}
       <div className="px-5 py-3 border-t border-default/20">
@@ -198,14 +228,14 @@ function EvolutionCard({
             ? <ChevronDown className="w-3.5 h-3.5 text-accent-teal" />
             : <ChevronRight className="w-3.5 h-3.5 text-accent-teal" />}
           <Lightbulb className="w-3.5 h-3.5 text-accent-teal" />
-          <span className="text-sm font-semibold text-accent-teal uppercase tracking-wide">Why this helps</span>
+          <span className="text-sm font-semibold text-accent-teal">Why this helps</span>
         </button>
         {rationaleExpanded && (
           <BulletText text={suggestion.rationale} className="text-sm text-secondary leading-relaxed mt-1.5" />
         )}
       </div>
 
-      {/* Toggleable What this covers */}
+      {/* What this covers */}
       {matchedPatterns.length > 0 && (
         <div className="px-5 py-3 border-t border-default/20">
           <button
@@ -216,7 +246,7 @@ function EvolutionCard({
               ? <ChevronDown className="w-3.5 h-3.5 text-accent-teal" />
               : <ChevronRight className="w-3.5 h-3.5 text-accent-teal" />}
             <Target className="w-3.5 h-3.5 text-accent-teal" />
-            <span className="text-sm font-semibold text-accent-teal uppercase tracking-wide">What this covers</span>
+            <span className="text-sm font-semibold text-accent-teal">What this covers</span>
             <span className="text-dimmed">({matchedPatterns.length})</span>
           </button>
           {patternsExpanded && (
@@ -232,38 +262,14 @@ function EvolutionCard({
           )}
         </div>
       )}
-
-      {/* Toggleable Proposed Edits */}
-      <div className="px-5 py-3 border-t border-default/20">
-        <button
-          onClick={handleExpand}
-          className="flex items-center gap-1.5 text-xs hover:bg-control/40 rounded transition"
-        >
-          {expanded
-            ? <ChevronDown className="w-3.5 h-3.5 text-accent-teal" />
-            : <ChevronRight className="w-3.5 h-3.5 text-accent-teal" />}
-          <Pencil className="w-3.5 h-3.5 text-accent-teal" />
-          <span className="text-sm font-semibold text-accent-teal uppercase tracking-wide">Proposed Edits</span>
-          <span className="text-dimmed">({suggestion.edits.length})</span>
-        </button>
-        {expanded && suggestion.edits.length > 0 && (
-          <div className="mt-2.5">
-            <EvolutionDiffView
-              skillName={suggestion.element_name}
-              edits={suggestion.edits}
-              originalContent={originalContent ?? undefined}
-            />
-          </div>
-        )}
-      </div>
       {showPreview && mergedContent !== null && (
-        <SkillPreviewDialog
+        <PreviewDialog
           skillName={suggestion.element_name}
           content={mergedContent}
           onContentChange={setMergedContent}
           onInstall={handleUpdate}
           onCancel={() => setShowPreview(false)}
-          agentSources={agentSources}
+          syncTargets={syncTargets}
           variant="update"
         />
       )}

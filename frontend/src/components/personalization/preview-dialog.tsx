@@ -1,16 +1,16 @@
 import { Check, Download, Loader2, Monitor, RotateCcw, Upload } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import type { SkillSourceInfo } from "../../types";
+import type { SkillSyncTarget } from "../../types";
 import { Modal, ModalBody, ModalFooter, ModalHeader } from "../modal";
-import { SOURCE_LABELS } from "./skill-constants";
+import { SOURCE_LABELS } from "./constants";
 
-interface SkillPreviewDialogProps {
+interface PreviewDialogProps {
   skillName: string;
   content: string;
   onContentChange?: (content: string) => void;
   onInstall: (content: string, targets: string[]) => void;
   onCancel: () => void;
-  agentSources: SkillSourceInfo[];
+  syncTargets: SkillSyncTarget[];
   loading?: boolean;
   /** Use "install" for new skills (emerald), "update" for existing (amber). */
   variant?: "install" | "update";
@@ -21,16 +21,16 @@ interface SkillPreviewDialogProps {
  * Shows a scrollable, optionally editable textarea with install/update actions
  * and target agent selection.
  */
-export function SkillPreviewDialog({
+export function PreviewDialog({
   skillName,
   content,
   onContentChange,
   onInstall,
   onCancel,
-  agentSources,
+  syncTargets,
   loading = false,
   variant = "install",
-}: SkillPreviewDialogProps) {
+}: PreviewDialogProps) {
   const [localContent, setLocalContent] = useState(content);
   const [selectedTargets, setSelectedTargets] = useState<Set<string>>(new Set());
   const [installing, setInstalling] = useState(false);
@@ -122,14 +122,14 @@ export function SkillPreviewDialog({
             </div>
 
             {/* Agent interface checkboxes */}
-            {agentSources.length > 0 && (
+            {syncTargets.length > 0 && (
               <div className="space-y-2">
-                {agentSources.map((src) => {
-                  const isSelected = selectedTargets.has(src.key);
+                {syncTargets.map((target) => {
+                  const isSelected = selectedTargets.has(target.agent);
                   return (
                     <button
-                      key={src.key}
-                      onClick={() => toggleTarget(src.key)}
+                      key={target.agent}
+                      onClick={() => toggleTarget(target.agent)}
                       className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg border transition text-left ${
                         isSelected
                           ? `bg-control ${accentBorder}`
@@ -146,12 +146,12 @@ export function SkillPreviewDialog({
                       <Monitor className="w-4 h-4 text-muted shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-secondary">
-                          {SOURCE_LABELS[src.key] || src.label}
+                          {SOURCE_LABELS[target.agent] || target.agent}
                         </p>
-                        <p className="text-xs text-dimmed truncate">{src.skills_dir}</p>
+                        <p className="text-xs text-dimmed truncate">{target.skills_dir}</p>
                       </div>
                       <span className="text-[10px] text-dimmed">
-                        {src.skill_count} skill{src.skill_count !== 1 ? "s" : ""}
+                        {target.skill_count} skill{target.skill_count !== 1 ? "s" : ""}
                       </span>
                     </button>
                   );

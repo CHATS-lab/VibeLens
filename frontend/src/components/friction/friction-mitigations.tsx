@@ -84,7 +84,7 @@ export function MitigationCard({ mitigation, frictionTypes }: { mitigation: Miti
               ? <ChevronDown className="w-3.5 h-3.5 text-accent-amber" />
               : <ChevronRight className="w-3.5 h-3.5 text-accent-amber" />}
             <Lightbulb className="w-3.5 h-3.5 text-accent-amber" />
-            <span className="text-sm font-semibold text-accent-amber uppercase tracking-wide">Why this helps</span>
+            <span className="text-sm font-semibold text-accent-amber">Why this helps</span>
           </button>
           {rationaleExpanded && (
             <BulletText text={mitigation.rationale} className="text-sm text-secondary leading-relaxed mt-1.5" />
@@ -103,7 +103,7 @@ export function MitigationCard({ mitigation, frictionTypes }: { mitigation: Miti
               ? <ChevronDown className="w-3.5 h-3.5 text-accent-amber" />
               : <ChevronRight className="w-3.5 h-3.5 text-accent-amber" />}
             <Target className="w-3.5 h-3.5 text-accent-amber" />
-            <span className="text-sm font-semibold text-accent-amber uppercase tracking-wide">What this fixes</span>
+            <span className="text-sm font-semibold text-accent-amber">What this fixes</span>
             <span className="text-dimmed">({matchedTypes.length})</span>
           </button>
           {typesExpanded && (

@@ -2,17 +2,17 @@ import { Calendar, Clock, Coins, Layers, Loader2, Timer, Trash2, Workflow } from
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAppContext } from "../../app";
 import { useDemoGuard } from "../../hooks/use-demo-guard";
-import type { PersonalizationMeta, PersonalizationResult, SkillMode } from "../../types";
+import type { PersonalizationMeta, PersonalizationResult, PersonalizationMode } from "../../types";
 import { ConfirmDialog } from "../confirm-dialog";
 import { InstallLocallyDialog } from "../install-locally-dialog";
 
-const MODE_LABELS: Record<SkillMode, string> = {
+const MODE_LABELS: Record<PersonalizationMode, string> = {
   recommendation: "Discover",
   creation: "Customize",
   evolution: "Evolve",
 };
 
-const MODE_API_BASE: Record<SkillMode, string> = {
+const MODE_API_BASE: Record<PersonalizationMode, string> = {
   recommendation: "/api/recommendation",
   creation: "/api/creation",
   evolution: "/api/evolution",
@@ -155,7 +155,7 @@ export function PersonalizationHistory({
 }: {
   onSelect: (result: PersonalizationResult) => void;
   refreshTrigger: number;
-  filterMode: SkillMode | null;
+  filterMode: PersonalizationMode | null;
   activeJobId?: string | null;
 }) {
   const { fetchWithToken } = useAppContext();
@@ -208,7 +208,7 @@ export function PersonalizationHistory({
   );
 
   const handleDelete = useCallback(
-    async (analysisId: string, mode: SkillMode) => {
+    async (analysisId: string, mode: PersonalizationMode) => {
       try {
         const apiBase = MODE_API_BASE[mode];
         await fetchWithToken(`${apiBase}/${analysisId}`, {
