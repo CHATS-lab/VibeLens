@@ -298,7 +298,7 @@ export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: Fricti
               </button>
               <div className="text-center space-y-1">
                 <p className="text-sm text-muted">Usually takes 2-5 minutes</p>
-                <p className="text-sm text-muted">Running in background — you can switch tabs</p>
+                <p className="text-sm text-muted">Running in background. You can switch tabs.</p>
               </div>
             </div>
           </div>

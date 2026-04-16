@@ -554,14 +554,14 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
               icon={<MessageSquare className="w-3 h-3" />}
               label={`${promptCount} prompt${promptCount !== 1 ? "s" : ""}`}
               color="text-accent-blue"
-              tooltip="User prompts — messages typed by the human operator"
+              tooltip="User prompts: messages typed by the human operator"
             />
             {skillCount > 0 && (
               <MetaPill
                 icon={<Zap className="w-3 h-3" />}
                 label={`${skillCount} skill${skillCount !== 1 ? "s" : ""}`}
                 color="text-accent-amber"
-                tooltip="Skill invocations — reusable prompts auto-injected by the agent"
+                tooltip="Skill invocations: reusable prompts auto-injected by the agent"
               />
             )}
             {metrics && (
