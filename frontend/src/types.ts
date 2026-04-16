@@ -325,6 +325,13 @@ export interface CliBackendModels {
   models: CliModelInfo[];
   default_model: string | null;
   supports_freeform: boolean;
+  available?: boolean;
+}
+
+export interface LiteLLMPreset {
+  name: string;
+  input_per_mtok?: number;
+  output_per_mtok?: number;
 }
 
 export interface SkillSyncTarget {

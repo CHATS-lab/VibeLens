@@ -1,15 +1,5 @@
-export const MODEL_PRESETS = [
-  "anthropic/claude-haiku-4-5",
-  "anthropic/claude-sonnet-4-5",
-  "openai/gpt-4.1",
-  "openai/gpt-4.1-mini",
-  "google/gemini-2.5-flash",
-  "deepseek/deepseek-chat",
-  "openrouter/anthropic/claude-sonnet-4-5",
-];
-
 export const BACKEND_OPTIONS = [
-  { value: "litellm", label: "LiteLLM (recommended)" },
+  { value: "litellm", label: "LiteLLM" },
   { value: "aider", label: "Aider" },
   { value: "amp", label: "Amp" },
   { value: "claude_code", label: "Claude Code" },

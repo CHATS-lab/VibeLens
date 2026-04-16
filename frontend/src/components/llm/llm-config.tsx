@@ -1,12 +1,6 @@
-import {
-  Check,
-  ChevronDown,
-  ChevronRight,
-  Loader2,
-  Pencil,
-} from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
-import type { CliBackendModels, LLMStatus } from "../../types";
+import { Check, Loader2, Pencil } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { CliBackendModels, LiteLLMPreset, LLMStatus } from "../../types";
 import {
   ACCENT_STYLES,
   BACKEND_OPTIONS,
@@ -21,6 +15,32 @@ import {
 } from "./llm-config-selectors";
 
 export type { AccentColor };
+
+// Order that determines which installed CLI agent is auto-selected when
+// the user hasn't configured a backend yet. First installed entry wins;
+// if none match, the form stays on LiteLLM.
+const BACKEND_AUTO_SELECT_PRIORITY = [
+  "claude_code",
+  "codex",
+  "gemini",
+  "cursor",
+  "kimi",
+  "aider",
+  "amp",
+  "opencode",
+  "openclaw",
+];
+
+function pickInstalledBackend(
+  cliModels: Record<string, CliBackendModels>,
+): string | null {
+  for (const candidate of BACKEND_AUTO_SELECT_PRIORITY) {
+    if (cliModels[candidate]?.available === true) {
+      return candidate;
+    }
+  }
+  return null;
+}
 
 export function LLMConfigForm({
   fetchWithToken,
@@ -38,12 +58,14 @@ export function LLMConfigForm({
   const [model, setModel] = useState(llmStatus?.model ?? "");
   const [cliModel, setCliModel] = useState("");
   const [baseUrl, setBaseUrl] = useState(llmStatus?.base_url ?? "");
-  const [timeout, setTimeout_] = useState(llmStatus?.timeout ?? 120);
-  const [maxTokens, setMaxTokens] = useState(llmStatus?.max_output_tokens ?? 4096);
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
   const [cliModels, setCliModels] = useState<Record<string, CliBackendModels>>({});
+  const [litellmPresets, setLitellmPresets] = useState<LiteLLMPreset[]>([]);
+  // Track whether the user has an existing saved config; if not, we may
+  // auto-select an installed CLI once availability data loads.
+  const hasSavedConfig = useRef(!!llmStatus?.backend_id && llmStatus.backend_id !== "mock");
+  const autoSelected = useRef(false);
 
   const accent = ACCENT_STYLES[accentColor];
   const isCliBackend = CLI_BACKENDS.has(backend);
@@ -56,7 +78,26 @@ export function LLMConfigForm({
         if (data) setCliModels(data);
       })
       .catch(() => {});
+    fetchWithToken("/api/llm/litellm-presets")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data?.models) setLitellmPresets(data.models);
+      })
+      .catch(() => {});
   }, [fetchWithToken]);
+
+  // Auto-select an installed CLI backend on first load when no config
+  // has been saved. Runs once after cliModels arrives.
+  useEffect(() => {
+    if (autoSelected.current) return;
+    if (hasSavedConfig.current) return;
+    if (Object.keys(cliModels).length === 0) return;
+    const picked = pickInstalledBackend(cliModels);
+    if (picked) {
+      setBackend(picked);
+    }
+    autoSelected.current = true;
+  }, [cliModels]);
 
   // Auto-select default model when switching to a CLI backend
   useEffect(() => {
@@ -82,8 +123,6 @@ export function LLMConfigForm({
       } else if (backend !== "disabled") {
         payload.api_key = apiKey.trim();
         payload.model = model.trim();
-        payload.timeout = timeout;
-        payload.max_output_tokens = maxTokens;
         if (baseUrl.trim()) payload.base_url = baseUrl.trim();
       }
       const res = await fetchWithToken("/api/llm/configure", {
@@ -101,19 +140,20 @@ export function LLMConfigForm({
     } finally {
       setSubmitting(false);
     }
-  }, [backend, apiKey, model, cliModel, baseUrl, timeout, maxTokens, isCliBackend, hasExistingKey, fetchWithToken, onConfigured]);
+  }, [backend, apiKey, model, cliModel, baseUrl, isCliBackend, hasExistingKey, fetchWithToken, onConfigured]);
 
   const cliMeta = cliModels[backend];
   const hasCliModels = cliMeta && cliMeta.models.length > 0;
+  const showLiteLLMFields = !isCliBackend && backend !== "disabled";
 
   return (
     <div className="space-y-3">
       <div>
         <label className="block text-xs font-medium text-secondary mb-1">Backend</label>
-        <BackendDropdown value={backend} onChange={setBackend} accentColor={accentColor} />
+        <BackendDropdown value={backend} onChange={setBackend} cliModels={cliModels} accentColor={accentColor} />
       </div>
 
-      {!isCliBackend && backend !== "disabled" && (
+      {showLiteLLMFields && (
         <div>
           <label className="block text-xs font-medium text-secondary mb-1">API Key</label>
           <input
@@ -131,10 +171,25 @@ export function LLMConfigForm({
         </div>
       )}
 
-      {!isCliBackend && backend !== "disabled" && (
+      {showLiteLLMFields && (
         <div>
           <label className="block text-xs font-medium text-secondary mb-1">Model</label>
-          <ModelCombobox value={model} onChange={setModel} accentColor={accentColor} />
+          <ModelCombobox value={model} onChange={setModel} presets={litellmPresets} accentColor={accentColor} />
+        </div>
+      )}
+
+      {showLiteLLMFields && (
+        <div>
+          <label className="block text-xs font-medium text-secondary mb-1">
+            Base URL <span className="text-dimmed">(auto-resolved if empty)</span>
+          </label>
+          <input
+            type="text"
+            value={baseUrl}
+            onChange={(e) => setBaseUrl(e.target.value)}
+            placeholder="https://api.anthropic.com"
+            className={`w-full px-3 py-2 bg-control border border-card rounded-lg text-sm text-secondary placeholder-zinc-500 focus:outline-none ${accent.focus}`}
+          />
         </div>
       )}
 
@@ -155,58 +210,6 @@ export function LLMConfigForm({
         <p className="text-xs text-muted">
           Uses your local {BACKEND_OPTIONS.find((o) => o.value === backend)?.label ?? backend} installation. No model selection available.
         </p>
-      )}
-
-      {!isCliBackend && backend !== "disabled" && (
-        <button
-          type="button"
-          onClick={() => setShowAdvanced((v) => !v)}
-          className="flex items-center gap-1 text-xs text-muted hover:text-secondary hover:bg-control/30 rounded px-1 -mx-1 transition"
-        >
-          {showAdvanced ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-          Advanced
-        </button>
-      )}
-
-      {showAdvanced && !isCliBackend && backend !== "disabled" && (
-        <div className="space-y-3 pl-3 border-l-2 border-card">
-          <div>
-            <label className="block text-xs font-medium text-secondary mb-1">
-              Base URL <span className="text-dimmed">(auto-resolved if empty)</span>
-            </label>
-            <input
-              type="text"
-              value={baseUrl}
-              onChange={(e) => setBaseUrl(e.target.value)}
-              placeholder="https://api.anthropic.com"
-              className={`w-full px-3 py-2 bg-control border border-card rounded-lg text-sm text-secondary placeholder-zinc-500 focus:outline-none ${accent.focus}`}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-secondary mb-1">Timeout (s)</label>
-              <input
-                type="number"
-                value={timeout}
-                onChange={(e) => setTimeout_(parseInt(e.target.value) || 120)}
-                min={10}
-                max={600}
-                className={`w-full px-3 py-2 bg-control border border-card rounded-lg text-sm text-secondary focus:outline-none ${accent.focus}`}
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-secondary mb-1">Max Tokens</label>
-              <input
-                type="number"
-                value={maxTokens}
-                onChange={(e) => setMaxTokens(parseInt(e.target.value) || 4096)}
-                min={256}
-                max={32768}
-                className={`w-full px-3 py-2 bg-control border border-card rounded-lg text-sm text-secondary focus:outline-none ${accent.focus}`}
-              />
-            </div>
-          </div>
-        </div>
       )}
 
       {configError && (
@@ -245,6 +248,7 @@ export function LLMConfigSection({
 
   if (isConnected && !showForm) {
     const pricing = llmStatus.pricing;
+    const showPricing = pricing && llmStatus.backend_id === "litellm";
     return (
       <div className="flex items-center justify-between px-4 py-2.5 bg-control/60 border border-card rounded-lg mb-6">
         <div>
@@ -252,7 +256,7 @@ export function LLMConfigSection({
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5 align-middle" />
             {llmStatus.backend_id} / {llmStatus.model}
           </span>
-          {pricing && (
+          {showPricing && (
             <span className="text-xs text-dimmed ml-2">
               (${formatPrice(pricing.input_per_mtok)} / ${formatPrice(pricing.output_per_mtok)} per MTok)
             </span>
