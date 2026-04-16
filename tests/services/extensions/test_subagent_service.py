@@ -3,7 +3,10 @@
 import pytest
 
 from vibelens.models.enums import AgentType
-from vibelens.services.extensions.subagent_service import SubagentService, SubagentSyncTarget
+from vibelens.services.extensions.subagent_service import (
+    SubagentService,
+    SubagentSyncTarget,
+)
 from vibelens.storage.extension.subagent_store import SubagentStore
 
 SAMPLE_SUBAGENT_MD = """\
@@ -91,9 +94,7 @@ class TestUninstall:
         assert not service._central.exists("my-subagent")
 
     def test_uninstall_cascades_to_agents(self, service):
-        service.install(
-            name="my-subagent", content=SAMPLE_SUBAGENT_MD, sync_to=["claude", "codex"]
-        )
+        service.install(name="my-subagent", content=SAMPLE_SUBAGENT_MD, sync_to=["claude", "codex"])
         removed = service.uninstall("my-subagent")
         assert "claude" in removed
         assert "codex" in removed
@@ -104,9 +105,7 @@ class TestUninstall:
             service.uninstall("nonexistent")
 
     def test_uninstall_from_agent(self, service):
-        service.install(
-            name="my-subagent", content=SAMPLE_SUBAGENT_MD, sync_to=["claude"]
-        )
+        service.install(name="my-subagent", content=SAMPLE_SUBAGENT_MD, sync_to=["claude"])
         service.uninstall_from_agent("my-subagent", "claude")
         assert not service._agents["claude"].exists("my-subagent")
         assert service._central.exists("my-subagent")
@@ -140,9 +139,7 @@ class TestQuery:
         assert subagents[0].name == "alpha"
 
     def test_list_subagents_populates_installed_in(self, service):
-        service.install(
-            name="my-subagent", content=SAMPLE_SUBAGENT_MD, sync_to=["claude"]
-        )
+        service.install(name="my-subagent", content=SAMPLE_SUBAGENT_MD, sync_to=["claude"])
         subagents, _ = service.list_subagents()
         assert "claude" in subagents[0].installed_in
 
@@ -165,9 +162,7 @@ class TestQuery:
             service.get_subagent_content("nonexistent")
 
     def test_find_installed_agents(self, service):
-        service.install(
-            name="my-subagent", content=SAMPLE_SUBAGENT_MD, sync_to=["claude", "codex"]
-        )
+        service.install(name="my-subagent", content=SAMPLE_SUBAGENT_MD, sync_to=["claude", "codex"])
         agents = service.find_installed_agents("my-subagent")
         assert sorted(agents) == ["claude", "codex"]
 
@@ -186,9 +181,7 @@ class TestModify:
         assert subagent.description == "Updated subagent"
 
     def test_modify_auto_syncs(self, service):
-        service.install(
-            name="my-subagent", content=SAMPLE_SUBAGENT_MD, sync_to=["claude"]
-        )
+        service.install(name="my-subagent", content=SAMPLE_SUBAGENT_MD, sync_to=["claude"])
         service.modify("my-subagent", UPDATED_SUBAGENT_MD)
         agent_subagent = service._agents["claude"].read("my-subagent")
         assert agent_subagent is not None

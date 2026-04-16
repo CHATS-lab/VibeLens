@@ -34,12 +34,17 @@ def client(tmp_path, monkeypatch):
 def _write(path, *, donation_id, session_count, donated_at, token):
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a", encoding="utf-8") as fh:
-        fh.write(json.dumps({
-            "donation_id": donation_id,
-            "session_count": session_count,
-            "donated_at": donated_at.isoformat(),
-            "session_token_hash": hash_token(token),
-        }) + "\n")
+        fh.write(
+            json.dumps(
+                {
+                    "donation_id": donation_id,
+                    "session_count": session_count,
+                    "donated_at": donated_at.isoformat(),
+                    "session_token_hash": hash_token(token),
+                }
+            )
+            + "\n"
+        )
 
 
 def test_history_empty_when_no_file(client, tmp_path):

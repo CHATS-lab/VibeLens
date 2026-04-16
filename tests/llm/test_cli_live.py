@@ -23,11 +23,7 @@ pytestmark = pytest.mark.skipif(
     reason="live CLI tests require VIBELENS_LIVE_CLI=1",
 )
 
-_REQUEST = InferenceRequest(
-    system="Reply 'ok' and nothing else.",
-    user="hi",
-    timeout=60,
-)
+_REQUEST = InferenceRequest(system="Reply 'ok' and nothing else.", user="hi", timeout=60)
 
 
 def _run(backend) -> object:
@@ -41,10 +37,7 @@ def test_claude_live():
     # Strip CLAUDECODE so nested sessions are allowed.
     os.environ.pop("CLAUDECODE", None)
     result = _run(ClaudeCliBackend())
-    print(
-        f"claude live: text={result.text!r} model={result.model} "
-        f"metrics={result.metrics}"
-    )
+    print(f"claude live: text={result.text!r} model={result.model} metrics={result.metrics}")
     assert result.text.strip()
     assert result.metrics.prompt_tokens > 0
     assert result.metrics.duration_ms > 0

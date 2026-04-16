@@ -41,10 +41,7 @@ def test_claude_parses_envelope():
     assert result.metrics.cost_usd == pytest.approx(0.0328)
     assert result.metrics.duration_ms == 1000
     assert result.model == "claude-opus-4-6"
-    print(
-        f"claude: text={result.text!r} model={result.model} "
-        f"metrics={result.metrics}"
-    )
+    print(f"claude: text={result.text!r} model={result.model} metrics={result.metrics}")
 
 
 def test_claude_raises_on_non_json():

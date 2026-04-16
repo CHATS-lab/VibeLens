@@ -31,6 +31,7 @@ def skill_service(tmp_path):
 @pytest.fixture
 def client(skill_service, monkeypatch):
     import vibelens.api.skill as skill_api
+
     monkeypatch.setattr(skill_api, "get_skill_service", lambda: skill_service)
 
     app = FastAPI()
@@ -87,27 +88,18 @@ class TestGetSkill:
 
 class TestInstallSkill:
     def test_installs_new_skill(self, client):
-        res = client.post(
-            "/api/skills",
-            json={"name": "new-skill", "content": SAMPLE_SKILL_MD},
-        )
+        res = client.post("/api/skills", json={"name": "new-skill", "content": SAMPLE_SKILL_MD})
         assert res.status_code == 200
         data = res.json()
         assert data["name"] == "new-skill"
 
     def test_rejects_duplicate(self, client, skill_service):
         skill_service.install(name="existing", content=SAMPLE_SKILL_MD)
-        res = client.post(
-            "/api/skills",
-            json={"name": "existing", "content": SAMPLE_SKILL_MD},
-        )
+        res = client.post("/api/skills", json={"name": "existing", "content": SAMPLE_SKILL_MD})
         assert res.status_code == 409
 
     def test_rejects_invalid_name(self, client):
-        res = client.post(
-            "/api/skills",
-            json={"name": "Not Valid", "content": SAMPLE_SKILL_MD},
-        )
+        res = client.post("/api/skills", json={"name": "Not Valid", "content": SAMPLE_SKILL_MD})
         assert res.status_code == 422
 
 
@@ -115,17 +107,13 @@ class TestModifySkill:
     def test_updates_skill(self, client, skill_service):
         skill_service.install(name="my-skill", content=SAMPLE_SKILL_MD)
         res = client.put(
-            "/api/skills/my-skill",
-            json={"content": "---\ndescription: Updated\n---\nNew body."},
+            "/api/skills/my-skill", json={"content": "---\ndescription: Updated\n---\nNew body."}
         )
         assert res.status_code == 200
         assert res.json()["description"] == "Updated"
 
     def test_not_found(self, client):
-        res = client.put(
-            "/api/skills/nonexistent",
-            json={"content": "some content"},
-        )
+        res = client.put("/api/skills/nonexistent", json={"content": "some content"})
         assert res.status_code == 404
 
 
@@ -145,27 +133,19 @@ class TestUninstallSkill:
 class TestSyncSkill:
     def test_syncs_to_agent(self, client, skill_service):
         skill_service.install(name="my-skill", content=SAMPLE_SKILL_MD)
-        res = client.post(
-            "/api/skills/my-skill/agents",
-            json={"agents": ["claude"]},
-        )
+        res = client.post("/api/skills/my-skill/agents", json={"agents": ["claude"]})
         assert res.status_code == 200
         data = res.json()
         assert data["results"]["claude"] is True
 
     def test_not_found(self, client):
-        res = client.post(
-            "/api/skills/nonexistent/agents",
-            json={"agents": ["claude"]},
-        )
+        res = client.post("/api/skills/nonexistent/agents", json={"agents": ["claude"]})
         assert res.status_code == 404
 
 
 class TestUnsyncSkill:
     def test_unsyncs_from_agent(self, client, skill_service):
-        skill_service.install(
-            name="my-skill", content=SAMPLE_SKILL_MD, sync_to=["claude"]
-        )
+        skill_service.install(name="my-skill", content=SAMPLE_SKILL_MD, sync_to=["claude"])
         res = client.delete("/api/skills/my-skill/agents/claude")
         assert res.status_code == 200
 

@@ -54,9 +54,7 @@ class TestInstall:
         assert skill.installed_in == []
 
     def test_install_with_sync(self, service):
-        skill = service.install(
-            name="my-skill", content=SAMPLE_SKILL_MD, sync_to=["claude"]
-        )
+        skill = service.install(name="my-skill", content=SAMPLE_SKILL_MD, sync_to=["claude"])
         assert "claude" in skill.installed_in
 
     def test_install_duplicate_raises(self, service):
@@ -81,9 +79,7 @@ class TestUninstall:
         assert not service._central.exists("my-skill")
 
     def test_uninstall_cascades_to_agents(self, service):
-        service.install(
-            name="my-skill", content=SAMPLE_SKILL_MD, sync_to=["claude", "codex"]
-        )
+        service.install(name="my-skill", content=SAMPLE_SKILL_MD, sync_to=["claude", "codex"])
         removed = service.uninstall("my-skill")
         assert "claude" in removed
         assert "codex" in removed
@@ -94,9 +90,7 @@ class TestUninstall:
             service.uninstall("nonexistent")
 
     def test_uninstall_from_agent(self, service):
-        service.install(
-            name="my-skill", content=SAMPLE_SKILL_MD, sync_to=["claude"]
-        )
+        service.install(name="my-skill", content=SAMPLE_SKILL_MD, sync_to=["claude"])
         service.uninstall_from_agent("my-skill", "claude")
         assert not service._agents["claude"].exists("my-skill")
         assert service._central.exists("my-skill")
@@ -130,9 +124,7 @@ class TestQuery:
         assert skills[0].name == "alpha"
 
     def test_list_skills_populates_installed_in(self, service):
-        service.install(
-            name="my-skill", content=SAMPLE_SKILL_MD, sync_to=["claude"]
-        )
+        service.install(name="my-skill", content=SAMPLE_SKILL_MD, sync_to=["claude"])
         skills, _ = service.list_skills()
         assert "claude" in skills[0].installed_in
 
@@ -155,9 +147,7 @@ class TestQuery:
             service.get_skill_content("nonexistent")
 
     def test_find_installed_agents(self, service):
-        service.install(
-            name="my-skill", content=SAMPLE_SKILL_MD, sync_to=["claude", "codex"]
-        )
+        service.install(name="my-skill", content=SAMPLE_SKILL_MD, sync_to=["claude", "codex"])
         agents = service.find_installed_agents("my-skill")
         assert sorted(agents) == ["claude", "codex"]
 
@@ -176,9 +166,7 @@ class TestModify:
         assert skill.description == "Updated skill"
 
     def test_modify_auto_syncs(self, service):
-        service.install(
-            name="my-skill", content=SAMPLE_SKILL_MD, sync_to=["claude"]
-        )
+        service.install(name="my-skill", content=SAMPLE_SKILL_MD, sync_to=["claude"])
         service.modify("my-skill", UPDATED_SKILL_MD)
         agent_skill = service._agents["claude"].read("my-skill")
         assert agent_skill is not None

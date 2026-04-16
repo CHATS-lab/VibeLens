@@ -58,5 +58,7 @@ def test_extension_item_is_file_based():
 
     assert skill_item.is_file_based is True
     assert repo_item.is_file_based is False
-    print(f"skill.is_file_based={skill_item.is_file_based}, "
-          f"repo.is_file_based={repo_item.is_file_based}")
+    print(
+        f"skill.is_file_based={skill_item.is_file_based}, "
+        f"repo.is_file_based={repo_item.is_file_based}"
+    )

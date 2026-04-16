@@ -77,8 +77,7 @@ class TestCredentialPatterns:
             ("datadog_api_key", "DD_API_KEY=0123456789abcdef0123456789abcdef"),
             (
                 "long_hex_secret",
-                "secret="
-                + "a1b2c3d4e5f6" * 11,  # 66 hex chars
+                "secret=" + "a1b2c3d4e5f6" * 11,  # 66 hex chars
             ),
         ],
     )
@@ -97,7 +96,7 @@ class TestFalsePositiveRegression:
         [
             'File "/usr/lib/python3.12/site-packages/pip/_vendor/rich/console.py", line 42',
             'File "/home/dev/.local/lib/python3.11/site-packages/requests/adapters.py"',
-            "  File \"/app/src/vibelens/ingest/parsers/claude.py\", line 128, in parse",
+            '  File "/app/src/vibelens/ingest/parsers/claude.py", line 128, in parse',
             "/usr/lib/python3.12/importlib/metadata/__init__.py",
         ],
     )
@@ -208,9 +207,9 @@ class TestPIIPatterns:
     @pytest.mark.parametrize(
         "phone",
         [
-            "+14155551234",       # US
-            "+442071234567",      # UK
-            "+33612345678",       # France
+            "+14155551234",  # US
+            "+442071234567",  # UK
+            "+33612345678",  # France
         ],
     )
     def test_phone_e164_detected(self, phone: str) -> None:
@@ -223,8 +222,8 @@ class TestPIIPatterns:
     @pytest.mark.parametrize(
         "text",
         [
-            "+12345",             # Too short (< 8 digits total)
-            "x+14155551234",      # Preceded by word character
+            "+12345",  # Too short (< 8 digits total)
+            "x+14155551234",  # Preceded by word character
         ],
     )
     def test_phone_e164_not_matched(self, text: str) -> None:

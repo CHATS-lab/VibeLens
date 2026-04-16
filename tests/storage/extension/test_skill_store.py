@@ -2,10 +2,7 @@
 
 import pytest
 
-from vibelens.storage.extension.skill_store import (
-    SkillStore,
-    parse_skill_md,
-)
+from vibelens.storage.extension.skill_store import SkillStore, parse_skill_md
 from vibelens.utils.content import extract_body, parse_frontmatter
 
 SAMPLE_SKILL_MD = """\

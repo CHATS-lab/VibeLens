@@ -31,6 +31,7 @@ def command_service(tmp_path):
 @pytest.fixture
 def client(command_service, monkeypatch):
     import vibelens.api.command as command_api
+
     monkeypatch.setattr(command_api, "get_command_service", lambda: command_service)
 
     app = FastAPI()
@@ -163,9 +164,7 @@ class TestSyncCommand:
 
 class TestUnsyncCommand:
     def test_unsyncs_from_agent(self, client, command_service):
-        command_service.install(
-            name="my-command", content=SAMPLE_COMMAND_MD, sync_to=["claude"]
-        )
+        command_service.install(name="my-command", content=SAMPLE_COMMAND_MD, sync_to=["claude"])
         res = client.delete("/api/commands/my-command/agents/claude")
         assert res.status_code == 200
 

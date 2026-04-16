@@ -2,10 +2,7 @@
 
 import pytest
 
-from vibelens.storage.extension.subagent_store import (
-    SubagentStore,
-    parse_subagent_md,
-)
+from vibelens.storage.extension.subagent_store import SubagentStore, parse_subagent_md
 
 SAMPLE_SUBAGENT_MD = """\
 ---

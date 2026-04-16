@@ -3,7 +3,10 @@
 import pytest
 
 from vibelens.models.enums import AgentType
-from vibelens.services.extensions.command_service import CommandService, CommandSyncTarget
+from vibelens.services.extensions.command_service import (
+    CommandService,
+    CommandSyncTarget,
+)
 from vibelens.storage.extension.command_store import CommandStore
 
 SAMPLE_COMMAND_MD = """\
@@ -54,9 +57,7 @@ class TestInstall:
         assert command.installed_in == []
 
     def test_install_with_sync(self, service):
-        command = service.install(
-            name="my-command", content=SAMPLE_COMMAND_MD, sync_to=["claude"]
-        )
+        command = service.install(name="my-command", content=SAMPLE_COMMAND_MD, sync_to=["claude"])
         assert "claude" in command.installed_in
 
     def test_install_duplicate_raises(self, service):
@@ -81,9 +82,7 @@ class TestUninstall:
         assert not service._central.exists("my-command")
 
     def test_uninstall_cascades_to_agents(self, service):
-        service.install(
-            name="my-command", content=SAMPLE_COMMAND_MD, sync_to=["claude", "codex"]
-        )
+        service.install(name="my-command", content=SAMPLE_COMMAND_MD, sync_to=["claude", "codex"])
         removed = service.uninstall("my-command")
         assert "claude" in removed
         assert "codex" in removed
@@ -94,9 +93,7 @@ class TestUninstall:
             service.uninstall("nonexistent")
 
     def test_uninstall_from_agent(self, service):
-        service.install(
-            name="my-command", content=SAMPLE_COMMAND_MD, sync_to=["claude"]
-        )
+        service.install(name="my-command", content=SAMPLE_COMMAND_MD, sync_to=["claude"])
         service.uninstall_from_agent("my-command", "claude")
         assert not service._agents["claude"].exists("my-command")
         assert service._central.exists("my-command")
@@ -130,9 +127,7 @@ class TestQuery:
         assert commands[0].name == "alpha"
 
     def test_list_commands_populates_installed_in(self, service):
-        service.install(
-            name="my-command", content=SAMPLE_COMMAND_MD, sync_to=["claude"]
-        )
+        service.install(name="my-command", content=SAMPLE_COMMAND_MD, sync_to=["claude"])
         commands, _ = service.list_commands()
         assert "claude" in commands[0].installed_in
 
@@ -155,9 +150,7 @@ class TestQuery:
             service.get_command_content("nonexistent")
 
     def test_find_installed_agents(self, service):
-        service.install(
-            name="my-command", content=SAMPLE_COMMAND_MD, sync_to=["claude", "codex"]
-        )
+        service.install(name="my-command", content=SAMPLE_COMMAND_MD, sync_to=["claude", "codex"])
         agents = service.find_installed_agents("my-command")
         assert sorted(agents) == ["claude", "codex"]
 
@@ -176,9 +169,7 @@ class TestModify:
         assert command.description == "Updated command"
 
     def test_modify_auto_syncs(self, service):
-        service.install(
-            name="my-command", content=SAMPLE_COMMAND_MD, sync_to=["claude"]
-        )
+        service.install(name="my-command", content=SAMPLE_COMMAND_MD, sync_to=["claude"])
         service.modify("my-command", UPDATED_COMMAND_MD)
         agent_command = service._agents["claude"].read("my-command")
         assert agent_command is not None

@@ -43,8 +43,7 @@ def test_all_fit_within_budget():
     """When everything fits, all sessions are returned."""
     now = datetime.now(timezone.utc)
     contexts = [
-        _make_context(f"s{i}", "/proj-a", now - timedelta(days=i), text_chars=100)
-        for i in range(5)
+        _make_context(f"s{i}", "/proj-a", now - timedelta(days=i), text_chars=100) for i in range(5)
     ]
     batch = SessionContextBatch(contexts=contexts, session_ids=[c.session_id for c in contexts])
 
@@ -77,9 +76,7 @@ def test_recency_preferred():
     old = _make_context("old", "/proj", now - timedelta(days=90), text_chars=2000)
     new = _make_context("new", "/proj", now - timedelta(days=1), text_chars=2000)
     # Only room for 1 session
-    batch = SessionContextBatch(
-        contexts=[old, new], session_ids=["old", "new"]
-    )
+    batch = SessionContextBatch(contexts=[old, new], session_ids=["old", "new"])
 
     result = sample_contexts(batch, token_budget=600)
 
@@ -96,9 +93,7 @@ def test_project_diversity():
         _make_context(f"a{i}", "/proj-a", now - timedelta(hours=i), text_chars=500)
         for i in range(9)
     ]
-    contexts.append(
-        _make_context("b0", "/proj-b", now - timedelta(hours=5), text_chars=500)
-    )
+    contexts.append(_make_context("b0", "/proj-b", now - timedelta(hours=5), text_chars=500))
     batch = SessionContextBatch(contexts=contexts, session_ids=[c.session_id for c in contexts])
 
     # Budget for ~5 sessions

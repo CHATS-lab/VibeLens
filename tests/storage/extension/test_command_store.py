@@ -2,10 +2,7 @@
 
 import pytest
 
-from vibelens.storage.extension.command_store import (
-    CommandStore,
-    parse_command_md,
-)
+from vibelens.storage.extension.command_store import CommandStore, parse_command_md
 
 SAMPLE_COMMAND_MD = """\
 ---

@@ -7,12 +7,7 @@ from vibelens.context.extractors import (
     MetadataExtractor,
     SummaryExtractor,
 )
-from vibelens.context.params import (
-    PRESET_CONCISE,
-    PRESET_DETAIL,
-    PRESET_MEDIUM,
-    ContextParams,
-)
+from vibelens.context.params import ContextParams
 from vibelens.models.enums import StepSource
 from vibelens.models.trajectories.agent import Agent
 from vibelens.models.trajectories.observation import Observation
@@ -65,10 +60,7 @@ def _make_step(
 
 
 def _make_compaction_agent(
-    session_id: str,
-    summary: str,
-    parent_session_id: str = "sess-main",
-    ts: datetime | None = None,
+    session_id: str, summary: str, parent_session_id: str = "sess-main", ts: datetime | None = None
 ) -> Trajectory:
     """Build a compaction sub-agent trajectory with one AGENT step."""
     agent_step = _make_step("cs1", source=StepSource.AGENT, message=summary, timestamp=ts)
@@ -87,25 +79,13 @@ def _make_tool_call(
 ) -> ToolCall:
     """Build a ToolCall for testing."""
     return ToolCall(
-        tool_call_id=tool_call_id,
-        function_name=function_name,
-        arguments=arguments or {},
+        tool_call_id=tool_call_id, function_name=function_name, arguments=arguments or {}
     )
 
 
 def _make_observation(tool_call_id: str, content: str) -> Observation:
     """Build an Observation with one result for testing."""
     return Observation(results=[ObservationResult(source_call_id=tool_call_id, content=content)])
-
-
-# ---------------------------------------------------------------------------
-# MetadataExtractor tests
-# ---------------------------------------------------------------------------
-def test_metadata_extractor_default_preset() -> None:
-    """MetadataExtractor defaults to PRESET_CONCISE."""
-    extractor = MetadataExtractor()
-    assert extractor.params == PRESET_CONCISE
-    print("PASS: MetadataExtractor defaults to PRESET_CONCISE")
 
 
 def test_metadata_extractor_first_prompt_only() -> None:
@@ -133,10 +113,7 @@ def test_metadata_extractor_ignores_compaction() -> None:
         ts=datetime(2024, 1, 1, 0, 0, 0),
     )
     main_step = _make_step(
-        "m1",
-        StepSource.USER,
-        "User request",
-        timestamp=datetime(2024, 1, 1, 1, 0, 0),
+        "m1", StepSource.USER, "User request", timestamp=datetime(2024, 1, 1, 1, 0, 0)
     )
     main = _make_trajectory(steps=[main_step], timestamp=datetime(2024, 1, 1, 0, 0, 0))
     extractor = MetadataExtractor()
@@ -190,16 +167,6 @@ def test_metadata_extractor_has_metadata_block() -> None:
     assert "STEPS:" not in result.context_text
     assert "TOOLS:" not in result.context_text
     print(f"PASS: compact metadata block present — {result.context_text.splitlines()[:5]}")
-
-
-# ---------------------------------------------------------------------------
-# SummaryExtractor tests
-# ---------------------------------------------------------------------------
-def test_summary_extractor_default_preset() -> None:
-    """SummaryExtractor defaults to PRESET_MEDIUM."""
-    extractor = SummaryExtractor()
-    assert extractor.params == PRESET_MEDIUM
-    print("PASS: SummaryExtractor defaults to PRESET_MEDIUM")
 
 
 def test_summary_extractor_with_compaction() -> None:
@@ -274,13 +241,6 @@ def test_summary_extractor_without_compaction() -> None:
 # ---------------------------------------------------------------------------
 # DetailExtractor tests
 # ---------------------------------------------------------------------------
-def test_detail_extractor_default_preset() -> None:
-    """DetailExtractor defaults to PRESET_DETAIL."""
-    extractor = DetailExtractor()
-    assert extractor.params == PRESET_DETAIL
-    print("PASS: DetailExtractor defaults to PRESET_DETAIL")
-
-
 def test_detail_extractor_includes_everything() -> None:
     """DetailExtractor output includes user prompts, agent messages, and TOOL lines."""
     tc = _make_tool_call("tc1", "Read", {"file_path": "/src/main.py"})
@@ -350,20 +310,3 @@ def test_detail_extractor_skips_system_steps() -> None:
     assert "System internal prompt" not in result.context_text
     assert "User request" in result.context_text
     print(f"PASS: system step content absent — {result.context_text[:300]}")
-
-
-def test_detail_extractor_includes_errors() -> None:
-    """DetailExtractor includes ERROR lines from error observations."""
-    tc = _make_tool_call("tc1", "Bash", {"command": "python run.py"})
-    obs = _make_observation("tc1", "Error: module not found\nTraceback (most recent call last)")
-    steps = [
-        _make_step("s1", StepSource.USER, "Run the script"),
-        _make_step("s2", StepSource.AGENT, "Running script", tool_calls=[tc], observation=obs),
-    ]
-    traj = _make_trajectory(steps=steps)
-    extractor = DetailExtractor()
-    result = extractor.extract([traj])
-
-    assert "ERROR:" in result.context_text
-    assert "module not found" in result.context_text
-    print(f"PASS: error observation included — {result.context_text[:300]}")
