@@ -3,6 +3,7 @@
 import time
 from dataclasses import dataclass
 
+from vibelens.models.enums import AgentType
 from vibelens.models.extension.skill import VALID_SKILL_NAME, Skill
 from vibelens.storage.extension.skill_store import SkillStore
 from vibelens.utils.log import get_logger
@@ -13,11 +14,10 @@ CACHE_TTL_SECONDS = 300
 
 
 @dataclass
-class SyncTarget:
+class SkillSyncTarget:
     """An agent platform available for skill sync."""
 
-    key: str
-    label: str
+    agent: AgentType
     skill_count: int
     skills_dir: str
 
@@ -25,18 +25,13 @@ class SyncTarget:
 class SkillService:
     """Orchestrates skill CRUD across central and agent stores."""
 
-    def __init__(self, central: SkillStore, agents: dict[str, SkillStore]) -> None:
+    def __init__(self, central: SkillStore, agents: dict[AgentType, SkillStore]) -> None:
         self._central = central
         self._agents = agents
         self._cache: list[Skill] | None = None
         self._cache_at: float = 0.0
 
-    def install(
-        self,
-        name: str,
-        content: str,
-        sync_to: list[str] | None = None,
-    ) -> Skill:
+    def install(self, name: str, content: str, sync_to: list[str] | None = None) -> Skill:
         """Write skill to central store and optionally sync to agents.
 
         Args:
@@ -112,6 +107,25 @@ class SkillService:
             self.invalidate()
         return imported
 
+    def import_all_agents(self) -> int:
+        """Import skills from every configured agent directory into central.
+
+        Returns:
+            Total number of skills imported across all agents.
+        """
+        total = 0
+        for agent_key in self._agents:
+            try:
+                imported = self.import_all_from_agent(agent_key)
+                if imported:
+                    logger.info("Imported %d skills from %s", len(imported), agent_key)
+                    total += len(imported)
+            except Exception:
+                logger.warning("Failed to import from %s", agent_key, exc_info=True)
+        if total:
+            logger.info("Total skills imported into central: %d", total)
+        return total
+
     def uninstall(self, name: str) -> list[str]:
         """Delete from central and all agent stores.
 
@@ -154,11 +168,7 @@ class SkillService:
         self.invalidate()
 
     def list_skills(
-        self,
-        *,
-        page: int = 1,
-        page_size: int = 50,
-        search: str | None = None,
+        self, page: int = 1, page_size: int = 50, search: str | None = None
     ) -> tuple[list[Skill], int]:
         """List skills with pagination and optional search.
 
@@ -175,8 +185,7 @@ class SkillService:
         if search:
             query = search.lower()
             all_skills = [
-                s for s in all_skills
-                if query in s.name.lower() or query in s.description.lower()
+                s for s in all_skills if query in s.name.lower() or query in s.description.lower()
             ]
 
         total = len(all_skills)
@@ -219,16 +228,15 @@ class SkillService:
         """Return agent keys where this skill exists on disk."""
         return [key for key, store in self._agents.items() if store.exists(name)]
 
-    def list_sync_targets(self) -> list[SyncTarget]:
+    def list_sync_targets(self) -> list[SkillSyncTarget]:
         """List available agent platforms with skill counts."""
         return [
-            SyncTarget(
-                key=key,
-                label=key.replace("_", " ").title(),
+            SkillSyncTarget(
+                agent=agent,
                 skill_count=len(store.list_names()),
                 skills_dir=str(store.root),
             )
-            for key, store in self._agents.items()
+            for agent, store in self._agents.items()
         ]
 
     def modify(self, name: str, content: str) -> Skill:

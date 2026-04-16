@@ -20,14 +20,16 @@ class AgentPlatform:
         root: Base directory (e.g. ~/.claude).
         skills_dir: Where multi-file skill directories live.
         commands_dir: Where single-file slash commands (.md) live.
+        subagents_dir: Where single-file subagent definitions (.md) live.
         settings_path: JSON settings file for hooks/MCP config.
-        install_key: Key used in API install requests (e.g. "claude_code").
+        install_key: Key used in API install requests (e.g. "claude").
     """
 
     source: ExtensionSource
     root: Path
     skills_dir: Path
     commands_dir: Path | None = None
+    subagents_dir: Path | None = None
     settings_path: Path | None = None
     install_key: str = ""
     extra_paths: dict[str, Path] = field(default_factory=dict)
@@ -45,8 +47,9 @@ PLATFORMS: dict[ExtensionSource, AgentPlatform] = {
         root=_home(".claude"),
         skills_dir=_home(".claude", "skills"),
         commands_dir=_home(".claude", "commands"),
+        subagents_dir=_home(".claude", "agents"),
         settings_path=_home(".claude", "settings.json"),
-        install_key="claude_code",
+        install_key="claude",
         extra_paths={"claude_json": _home(".claude.json")},
     ),
     ExtensionSource.CODEX: AgentPlatform(

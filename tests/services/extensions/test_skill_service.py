@@ -2,7 +2,8 @@
 
 import pytest
 
-from vibelens.services.extensions.skill_service import SkillService, SyncTarget
+from vibelens.models.enums import AgentType
+from vibelens.services.extensions.skill_service import SkillService, SkillSyncTarget
 from vibelens.storage.extension.skill_store import SkillStore
 
 SAMPLE_SKILL_MD = """\
@@ -37,7 +38,7 @@ def central(tmp_path):
 def agents(tmp_path):
     claude = SkillStore(root=tmp_path / "claude", create=True)
     codex = SkillStore(root=tmp_path / "codex", create=True)
-    return {"claude": claude, "codex": codex}
+    return {AgentType.CLAUDE: claude, AgentType.CODEX: codex}
 
 
 @pytest.fixture
@@ -163,9 +164,9 @@ class TestQuery:
     def test_list_sync_targets(self, service):
         targets = service.list_sync_targets()
         assert len(targets) == 2
-        assert all(isinstance(t, SyncTarget) for t in targets)
-        keys = [t.key for t in targets]
-        assert "claude" in keys
+        assert all(isinstance(t, SkillSyncTarget) for t in targets)
+        agents = [t.agent for t in targets]
+        assert AgentType.CLAUDE in agents
 
 
 class TestModify:
@@ -231,6 +232,17 @@ class TestImport:
         service._agents["claude"].write("new-one", SAMPLE_SKILL_MD)
         imported = service.import_all_from_agent("claude")
         assert imported == ["new-one"]
+
+    def test_import_all_agents(self, service):
+        service._agents["claude"].write("claude-skill", SAMPLE_SKILL_MD)
+        service._agents["codex"].write("codex-skill", SAMPLE_SKILL_MD)
+        total = service.import_all_agents()
+        assert total == 2
+        assert service._central.exists("claude-skill")
+        assert service._central.exists("codex-skill")
+
+    def test_import_all_agents_empty(self, service):
+        assert service.import_all_agents() == 0
 
 
 class TestCache:
