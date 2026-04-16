@@ -1,11 +1,13 @@
-import { BookOpen, Eye, FileText, Heart, Shield, Trash2 } from "lucide-react";
+import { BookOpen, ExternalLink, Eye, FileText, Heart, History, Shield, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Modal, ModalHeader, ModalBody, ModalFooter } from "./modal";
+import { WITHDRAW_FORM_URL } from "./donation-constants";
 
 interface DonateConsentDialogProps {
   sessionCount: number;
   onConfirm: () => void;
   onCancel: () => void;
+  onShowHistory: () => void;
 }
 
 const CONSENT_ITEMS: { icon: React.ReactNode; text: string }[] = [
@@ -35,6 +37,7 @@ export function DonateConsentDialog({
   sessionCount,
   onConfirm,
   onCancel,
+  onShowHistory,
 }: DonateConsentDialogProps) {
   const [agreed, setAgreed] = useState(false);
 
@@ -101,10 +104,30 @@ export function DonateConsentDialog({
               I have read and agree to the above terms
             </span>
           </label>
+
+          <p className="text-xs text-muted text-center">
+            Already donated?{" "}
+            <a
+              href={WITHDRAW_FORM_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-rose-600 dark:text-rose-400 hover:underline"
+            >
+              Request withdrawal
+              <ExternalLink className="w-3 h-3" />
+            </a>
+          </p>
         </div>
       </ModalBody>
 
       <ModalFooter>
+        <button
+          onClick={onShowHistory}
+          className="mr-auto inline-flex items-center gap-1.5 px-3 py-2 text-sm text-muted hover:text-secondary hover:bg-control-hover border border-card hover:border-hover rounded-lg transition"
+        >
+          <History className="w-4 h-4" />
+          View history
+        </button>
         <button
           onClick={onCancel}
           className="px-4 py-2 text-sm text-muted hover:text-secondary hover:bg-control-hover border border-card hover:border-hover rounded-lg transition"
