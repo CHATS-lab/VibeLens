@@ -1,13 +1,25 @@
 import { Check, Download, Loader2, Monitor, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAppContext } from "../../app";
-import type { SkillSyncTarget } from "../../types";
+import type { ExtensionSyncTarget } from "../../types";
 import { Modal, ModalBody, ModalFooter, ModalHeader } from "../modal";
 import { SOURCE_LABELS } from "./constants";
+import { centralStoreLabel, extractInstalledIn } from "./extensions/extension-endpoints";
 
 interface InstallTargetDialogProps {
-  skillName: string;
-  syncTargets: SkillSyncTarget[];
+  extensionName: string;
+  /**
+   * Human-readable type key (e.g. "skill", "subagent", "command", "hook").
+   * Used for central-store label, body copy, count suffix, and for
+   * extracting `installed_in` from the typed detail response.
+   */
+  typeKey: string;
+  /**
+   * Base endpoint used to auto-fetch `installed_in` when `installedIn` is
+   * omitted (e.g. "/api/subagents"). When null, auto-fetch is skipped.
+   */
+  detailEndpoint: string | null;
+  syncTargets: ExtensionSyncTarget[];
   /**
    * Called with the agents to sync TO (add) and agents to sync OFF (remove).
    * The caller is responsible for issuing the POST/DELETE requests.
@@ -15,21 +27,23 @@ interface InstallTargetDialogProps {
   onInstall: (toAdd: string[], toRemove: string[]) => void;
   onCancel: () => void;
   /**
-   * Agent keys that already contain this skill. When omitted, the dialog
-   * fetches /api/skills/{skillName} on mount to populate this. Used to
-   * compute the diff between current and desired state.
+   * Agent keys that already contain this extension. When omitted, the dialog
+   * fetches `{detailEndpoint}/{extensionName}` on mount to populate this.
+   * Used to compute the diff between current and desired state.
    */
   installedIn?: string[];
 }
 
 /**
- * Dialog asking users which agent interfaces should contain this skill.
+ * Dialog asking users which agent interfaces should contain this extension.
  * Uses diff semantics: each row shows its current state (installed or not),
  * and clicking toggles the desired future state. The submit handler receives
  * both the add list and the remove list so the caller can apply the diff.
  */
 export function InstallTargetDialog({
-  skillName,
+  extensionName,
+  typeKey,
+  detailEndpoint,
   syncTargets,
   onInstall,
   onCancel,
@@ -42,21 +56,22 @@ export function InstallTargetDialog({
   // simple for callers that only have an extension_id at hand.
   useEffect(() => {
     if (installedIn !== undefined) return;
+    if (!detailEndpoint) return;
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetchWithToken(`/api/skills/${encodeURIComponent(skillName)}`);
+        const res = await fetchWithToken(`${detailEndpoint}/${encodeURIComponent(extensionName)}`);
         if (!res.ok || cancelled) return;
         const data = await res.json();
-        setFetchedInstalled(data.skill?.installed_in ?? data.installed_in ?? []);
+        setFetchedInstalled(extractInstalledIn(typeKey, data));
       } catch {
-        /* best-effort — skill may not exist yet (fresh install) */
+        /* best-effort — extension may not exist yet (fresh install) */
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [fetchWithToken, installedIn, skillName]);
+  }, [fetchWithToken, installedIn, detailEndpoint, extensionName, typeKey]);
 
   const installedSet = useMemo(
     () => new Set(installedIn ?? fetchedInstalled ?? []),
@@ -105,10 +120,10 @@ export function InstallTargetDialog({
 
   return (
     <Modal onClose={onCancel} maxWidth="max-w-md">
-      <ModalHeader title={`Install "${skillName}"`} onClose={onCancel} />
+      <ModalHeader title={`Install "${extensionName}"`} onClose={onCancel} />
       <ModalBody>
         <p className="text-sm text-muted leading-relaxed">
-          The skill will be saved to the VibeLens central store. Click an agent to sync or unsync:
+          The {typeKey} will be saved to the VibeLens central store. Click an agent to sync or unsync:
         </p>
 
         {/* Central store — always selected */}
@@ -116,7 +131,7 @@ export function InstallTargetDialog({
           <Check className="w-4 h-4 text-accent-teal shrink-0" />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-secondary">Central Store</p>
-            <p className="text-xs text-dimmed">~/.vibelens/skills/</p>
+            <p className="text-xs text-dimmed">{centralStoreLabel(typeKey)}</p>
           </div>
           <span className="text-[10px] text-accent-teal font-medium px-1.5 py-0.5 rounded bg-accent-teal-subtle">Always</span>
         </div>
@@ -192,10 +207,10 @@ export function InstallTargetDialog({
                         </span>
                       )}
                     </p>
-                    <p className="text-xs text-dimmed truncate">{target.skills_dir}</p>
+                    <p className="text-xs text-dimmed truncate">{target.dir}</p>
                   </div>
                   <span className="text-[10px] text-dimmed">
-                    {target.skill_count} skill{target.skill_count !== 1 ? "s" : ""}
+                    {target.count} {typeKey}{target.count !== 1 ? "s" : ""}
                   </span>
                 </button>
               );
@@ -205,7 +220,7 @@ export function InstallTargetDialog({
 
         {syncTargets.length === 0 && (
           <p className="text-xs text-dimmed italic">
-            No agent interfaces detected. The skill will only be saved to the central store.
+            No agent interfaces detected. The {typeKey} will only be saved to the central store.
           </p>
         )}
       </ModalBody>

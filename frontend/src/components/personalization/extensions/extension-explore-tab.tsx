@@ -2,15 +2,19 @@ import { Check, ChevronDown, Compass, LayoutGrid, List, Package, RefreshCw, Sear
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppContext } from "../../../app";
 import { TOGGLE_ACTIVE, TOGGLE_BUTTON_BASE, TOGGLE_CONTAINER, TOGGLE_INACTIVE } from "../../../styles";
-import type { ExtensionItemSummary, ExtensionListResponse, ExtensionMetaResponse, SkillSyncTarget } from "../../../types";
+import type { ExtensionItemSummary, ExtensionListResponse, ExtensionMetaResponse, ExtensionSyncTarget } from "../../../types";
 import { EmptyState } from "../../empty-state";
 import { ErrorBanner } from "../../error-banner";
 import { LoadingState } from "../../loading-state";
 import { ExtensionCard } from "./extension-card";
 import { EXTENSION_PAGE_SIZE, ITEM_TYPE_LABELS, SORT_OPTIONS, type ExtensionViewMode } from "./extension-constants";
 import { ExtensionDetailView } from "./extension-detail-view";
+import { extensionEndpoint, normalizeSyncTargets } from "./extension-endpoints";
 import { ExtensionPagination } from "./extension-pagination";
 import { NoResultsState } from "../shared";
+
+/** Extension types with typed list endpoints that expose sync_targets. */
+const SYNC_TARGET_TYPES = ["skill", "subagent", "command", "hook"] as const;
 
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -97,7 +101,7 @@ export function ExtensionExploreTab({ resetKey = 0 }: ExtensionExploreTabProps) 
 
   const [installedIds, setInstalledIds] = useState<Set<string>>(new Set());
   const [detailItem, setDetailItem] = useState<ExtensionItemSummary | null>(null);
-  const [syncTargets, setSkillSyncTargets] = useState<SkillSyncTarget[]>([]);
+  const [syncTargetsByType, setSyncTargetsByType] = useState<Record<string, ExtensionSyncTarget[]>>({});
 
   // Reset to list view when the explore tab is re-clicked
   useEffect(() => {
@@ -113,10 +117,25 @@ export function ExtensionExploreTab({ resetKey = 0 }: ExtensionExploreTabProps) 
         setHasProfile(data.has_profile);
       })
       .catch(() => {});
-    fetchWithToken("/api/skills?page_size=1")
-      .then((res) => res.ok ? res.json() : { sync_targets: [] })
-      .then((data: { sync_targets?: SkillSyncTarget[] }) => setSkillSyncTargets(data.sync_targets ?? []))
-      .catch(() => {});
+    // Fetch sync targets for each typed extension in parallel. Each typed list
+    // endpoint (/api/skills, /api/subagents, /api/commands, /api/hooks) exposes
+    // sync_targets; normalize them to the shared ExtensionSyncTarget shape.
+    Promise.all(
+      SYNC_TARGET_TYPES.map(async (type) => {
+        const endpoint = extensionEndpoint(type);
+        if (!endpoint) return [type, [] as ExtensionSyncTarget[]] as const;
+        try {
+          const res = await fetchWithToken(`${endpoint}?page_size=1`);
+          if (!res.ok) return [type, [] as ExtensionSyncTarget[]] as const;
+          const data = await res.json();
+          return [type, normalizeSyncTargets(type, data)] as const;
+        } catch {
+          return [type, [] as ExtensionSyncTarget[]] as const;
+        }
+      }),
+    ).then((entries) => {
+      setSyncTargetsByType(Object.fromEntries(entries));
+    });
   }, [fetchWithToken]);
 
   // Debounce search query
@@ -195,7 +214,7 @@ export function ExtensionExploreTab({ resetKey = 0 }: ExtensionExploreTabProps) 
         isInstalled={installedIds.has(detailItem.extension_id)}
         onBack={() => setDetailItem(null)}
         onInstalled={handleInstalled}
-        syncTargets={syncTargets}
+        syncTargets={syncTargetsByType[detailItem.extension_type] ?? []}
       />
     );
   }
@@ -300,7 +319,7 @@ export function ExtensionExploreTab({ resetKey = 0 }: ExtensionExploreTabProps) 
                 onInstalled={handleInstalled}
                 onViewDetail={setDetailItem}
                 viewMode={viewMode}
-                syncTargets={syncTargets}
+                syncTargets={syncTargetsByType[item.extension_type] ?? []}
               />
             ))}
           </div>

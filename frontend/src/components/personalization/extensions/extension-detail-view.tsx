@@ -17,13 +17,14 @@ import {
 import { formatCount, formatRelativeDate } from "./extension-format";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAppContext } from "../../../app";
-import type { ExtensionItemSummary, SkillSyncTarget } from "../../../types";
+import type { ExtensionItemSummary, ExtensionSyncTarget } from "../../../types";
 import { InstallTargetDialog } from "../install-target-dialog";
 import { Tooltip } from "../../tooltip";
 import { CopyButton } from "../../copy-button";
 import { ExtensionDetailContent, stripFrontmatter, type TocEntry } from "./extension-detail-content";
 import { TypeBadge } from "./extension-card";
 import { ITEM_TYPE_ICON_COLORS, PLATFORM_LABELS } from "./extension-constants";
+import { extensionEndpoint } from "./extension-endpoints";
 
 const ITEM_TYPE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   skill: Package,
@@ -54,7 +55,7 @@ interface ExtensionDetailViewProps {
   isInstalled: boolean;
   onBack: () => void;
   onInstalled: (itemId: string) => void;
-  syncTargets?: SkillSyncTarget[];
+  syncTargets?: ExtensionSyncTarget[];
 }
 
 export function ExtensionDetailView({ item, isInstalled, onBack, onInstalled, syncTargets = [] }: ExtensionDetailViewProps) {
@@ -142,9 +143,13 @@ export function ExtensionDetailView({ item, isInstalled, onBack, onInstalled, sy
             throw new Error(body.detail || `HTTP ${res.status}`);
           }
         }
+        const endpoint = extensionEndpoint(item.extension_type);
+        if (toRemove.length > 0 && !endpoint) {
+          throw new Error(`No REST endpoint for extension type: ${item.extension_type}`);
+        }
         for (const agent of toRemove) {
           const res = await fetchWithToken(
-            `/api/skills/${encodeURIComponent(item.name)}/agents/${encodeURIComponent(agent)}`,
+            `${endpoint}/${encodeURIComponent(item.name)}/agents/${encodeURIComponent(agent)}`,
             { method: "DELETE" },
           );
           if (!res.ok) {
@@ -161,7 +166,7 @@ export function ExtensionDetailView({ item, isInstalled, onBack, onInstalled, sy
         setInstalling(false);
       }
     },
-    [fetchWithToken, item.extension_id, item.name, onInstalled],
+    [fetchWithToken, item.extension_id, item.extension_type, item.name, onInstalled],
   );
 
   const handleInstall = useCallback(() => {
@@ -356,7 +361,9 @@ export function ExtensionDetailView({ item, isInstalled, onBack, onInstalled, sy
 
       {showTargetDialog && (
         <InstallTargetDialog
-          skillName={item.name}
+          extensionName={item.name}
+          typeKey={item.extension_type}
+          detailEndpoint={extensionEndpoint(item.extension_type)}
           syncTargets={syncTargets}
           onInstall={handleDialogSubmit}
           onCancel={() => setShowTargetDialog(false)}

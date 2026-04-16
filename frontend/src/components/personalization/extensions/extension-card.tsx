@@ -15,9 +15,10 @@ import {
 import { formatCount, formatRelativeDate } from "./extension-format";
 import { useCallback, useState } from "react";
 import { useAppContext } from "../../../app";
-import type { ExtensionItemSummary, SkillSyncTarget } from "../../../types";
+import type { ExtensionItemSummary, ExtensionSyncTarget } from "../../../types";
 import { InstallTargetDialog } from "../install-target-dialog";
 import { Tooltip } from "../../tooltip";
+import { extensionEndpoint } from "./extension-endpoints";
 import {
   CARD_VIEW_MAX_TAGS,
   ITEM_TYPE_COLORS,
@@ -99,7 +100,7 @@ interface ExtensionCardProps {
   onInstalled: (itemId: string) => void;
   onViewDetail: (item: ExtensionItemSummary) => void;
   viewMode?: ExtensionViewMode;
-  syncTargets?: SkillSyncTarget[];
+  syncTargets?: ExtensionSyncTarget[];
 }
 
 export function ExtensionCard({
@@ -161,9 +162,13 @@ export function ExtensionCard({
             throw new Error(body.detail || `HTTP ${res.status}`);
           }
         }
+        const endpoint = extensionEndpoint(item.extension_type);
+        if (toRemove.length > 0 && !endpoint) {
+          throw new Error(`No REST endpoint for extension type: ${item.extension_type}`);
+        }
         for (const agent of toRemove) {
           const res = await fetchWithToken(
-            `/api/skills/${encodeURIComponent(item.name)}/agents/${encodeURIComponent(agent)}`,
+            `${endpoint}/${encodeURIComponent(item.name)}/agents/${encodeURIComponent(agent)}`,
             { method: "DELETE" },
           );
           if (!res.ok) {
@@ -180,7 +185,7 @@ export function ExtensionCard({
         setInstalling(false);
       }
     },
-    [fetchWithToken, item.extension_id, item.name, onInstalled],
+    [fetchWithToken, item.extension_id, item.extension_type, item.name, onInstalled],
   );
 
   const handleInstall = useCallback(
@@ -268,7 +273,9 @@ export function ExtensionCard({
         </div>
         {showTargetDialog && (
           <InstallTargetDialog
-            skillName={item.name}
+            extensionName={item.name}
+            typeKey={item.extension_type}
+            detailEndpoint={extensionEndpoint(item.extension_type)}
             syncTargets={syncTargets}
             onInstall={handleDialogSubmit}
             onCancel={() => setShowTargetDialog(false)}
@@ -364,7 +371,9 @@ export function ExtensionCard({
       </div>
       {showTargetDialog && (
         <InstallTargetDialog
-          skillName={item.name}
+          extensionName={item.name}
+          typeKey={item.extension_type}
+          detailEndpoint={extensionEndpoint(item.extension_type)}
           syncTargets={syncTargets}
           onInstall={(targets) => doInstall(targets.length > 0 ? targets : ["claude_code"])}
           onCancel={() => setShowTargetDialog(false)}

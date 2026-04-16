@@ -333,6 +333,17 @@ export interface SkillSyncTarget {
   skills_dir: string;
 }
 
+/**
+ * Normalized sync-target for any extension type (skill/subagent/command/hook).
+ * Per-type endpoints return different field names; the frontend normalizes
+ * them to this shape so dialogs and cards can work across types uniformly.
+ */
+export interface ExtensionSyncTarget {
+  agent: string;
+  count: number;
+  dir: string;
+}
+
 export interface Skill {
   name: string;
   description: string;
