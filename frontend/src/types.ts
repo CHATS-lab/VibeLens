@@ -131,6 +131,16 @@ export interface DonateResult {
   errors: Array<{ session_id: string; error: string }>;
 }
 
+export interface DonationHistoryEntry {
+  donation_id: string;
+  session_count: number;
+  donated_at: string;
+}
+
+export interface DonationHistoryResponse {
+  entries: DonationHistoryEntry[];
+}
+
 export interface DailyStat {
   date: string;
   session_count: number;
