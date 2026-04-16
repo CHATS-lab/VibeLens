@@ -1,0 +1,5 @@
+2026-04-16T14:51:19.192241Z ERROR codex_core::codex: failed to load skill /Users/JinghengYe/.codex/skills/refactoring-specialist/SKILL.md: missing YAML frontmatter delimited by ---
+{"type":"thread.started","thread_id":"019d96c6-6f1b-7190-8851-a2f0e0b5aad3"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"ok"}}
+{"type":"turn.completed","usage":{"input_tokens":10590,"cached_input_tokens":3456,"output_tokens":18}}
