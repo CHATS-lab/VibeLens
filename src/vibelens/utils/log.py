@@ -49,6 +49,58 @@ CATEGORY_LOG_FILES: dict[str, str] = {
     "vibelens.services.session.donation": "donation.log",
 }
 
+# Domain -> prefixes that route to logs/{domain}.log.
+# Order matters: more specific prefixes first.
+DOMAIN_PREFIXES: dict[str, tuple[str, ...]] = {
+    "parsers": ("vibelens.ingest.parsers.",),
+    "ingest": ("vibelens.ingest.",),
+    "creation": ("vibelens.services.creation.", "vibelens.api.creation"),
+    "evolution": ("vibelens.services.evolution.", "vibelens.api.evolution"),
+    "recommendation": ("vibelens.services.recommendation.", "vibelens.api.recommendation"),
+    "personalization": ("vibelens.services.personalization.",),
+    "friction": ("vibelens.services.friction.", "vibelens.api.friction"),
+    "donation": (
+        "vibelens.services.donation.",
+        "vibelens.api.donation",
+        "vibelens.services.session.donation",
+    ),
+    "upload": (
+        "vibelens.services.upload.",
+        "vibelens.api.upload",
+        "vibelens.storage.conversation.disk",
+    ),
+    "extensions": (
+        "vibelens.services.extensions.",
+        "vibelens.storage.extension.",
+        "vibelens.api.hook",
+        "vibelens.api.skill",
+        "vibelens.api.command",
+        "vibelens.api.subagent",
+        "vibelens.api.extensions",
+    ),
+    "dashboard": ("vibelens.services.dashboard.", "vibelens.api.dashboard"),
+    "session": (
+        "vibelens.services.session.",
+        "vibelens.api.sessions",
+        "vibelens.api.shares",
+        "vibelens.storage.trajectory.",
+    ),
+    "llm": ("vibelens.llm.",),
+}
+
+
+def _resolve_domain(name: str) -> str | None:
+    """Return the domain for a logger name, or None if no domain matches.
+
+    First match wins. Callers rely on DOMAIN_PREFIXES insertion order.
+    """
+    for domain, prefixes in DOMAIN_PREFIXES.items():
+        for prefix in prefixes:
+            if name.startswith(prefix):
+                return domain
+    return None
+
+
 _root_configured = False
 _category_handlers: dict[str, logging.Handler] = {}
 
