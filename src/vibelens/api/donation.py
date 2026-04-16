@@ -2,7 +2,12 @@
 
 from fastapi import APIRouter, Header, UploadFile
 
-from vibelens.schemas.session import DonateRequest, DonateResult
+from vibelens.schemas.session import (
+    DonateRequest,
+    DonateResult,
+    DonationHistoryResponse,
+)
+from vibelens.services.donation.history import list_for_token
 from vibelens.services.donation.receiver import receive_donation
 from vibelens.services.session.donation import donate_sessions
 from vibelens.utils.log import get_logger
@@ -43,6 +48,26 @@ async def donate_sessions_endpoint(
         len(result.errors),
     )
     return result
+
+
+@router.get("/sessions/donations/history")
+async def list_donation_history(
+    x_session_token: str | None = Header(None),
+) -> DonationHistoryResponse:
+    """Return the donation history visible to the requesting browser.
+
+    Entries are filtered by ``sha256(X-Session-Token)`` so that multi-user
+    demo deployments keep each browser's history private. Requests without
+    a token receive an empty list.
+
+    Args:
+        x_session_token: Browser tab token used to scope visibility.
+
+    Returns:
+        DonationHistoryResponse with newest-first entries (max 100).
+    """
+    entries = list_for_token(token=x_session_token)
+    return DonationHistoryResponse(entries=entries)
 
 
 @router.post("/donation/receive")
