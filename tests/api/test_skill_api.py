@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from vibelens.api.skill import router
+from vibelens.models.enums import AgentType
 from vibelens.services.extensions.skill_service import SkillService
 from vibelens.storage.extension.skill_store import SkillStore
 
@@ -22,7 +23,7 @@ tags:
 def skill_service(tmp_path):
     central = SkillStore(root=tmp_path / "central", create=True)
     agents = {
-        "claude": SkillStore(root=tmp_path / "claude", create=True),
+        AgentType.CLAUDE: SkillStore(root=tmp_path / "claude", create=True),
     }
     return SkillService(central=central, agents=agents)
 

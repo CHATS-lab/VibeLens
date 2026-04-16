@@ -90,7 +90,7 @@ def modify_command(name: str, req: CommandModifyRequest) -> dict:
     """Update an existing command's content."""
     service = get_command_service()
     try:
-        command = service.modify(name, req.content)
+        command = service.modify(name=name, content=req.content)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Command {name!r} not found") from None
     return command.model_dump()

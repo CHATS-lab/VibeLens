@@ -1,6 +1,5 @@
 """Donation endpoints — send donations (self-use) and receive them (demo)."""
 
-
 from fastapi import APIRouter, Header, UploadFile
 
 from vibelens.schemas.session import DonateRequest, DonateResult

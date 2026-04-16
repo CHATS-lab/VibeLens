@@ -247,9 +247,7 @@ def build_full_search_index(session_token: str | None = None) -> None:
     _index.build_full(session_token)
 
 
-def search_sessions(
-    query: str, sources: list[str], session_token: str | None = None
-) -> list[str]:
+def search_sessions(query: str, sources: list[str], session_token: str | None = None) -> list[str]:
     """Search sessions by query across selected text sources.
 
     Args:

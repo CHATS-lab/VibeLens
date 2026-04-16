@@ -11,11 +11,3 @@ class PersonalizationRequest(BaseModel):
         default=None,
         description="Skill names to target for evolution. None means all installed skills.",
     )
-
-
-class CatalogStatusResponse(BaseModel):
-    """Response for catalog status check."""
-
-    version: str = Field(description="Catalog version date.")
-    item_count: int = Field(description="Number of items in the catalog.")
-    schema_version: int = Field(description="Catalog schema version.")

@@ -114,9 +114,17 @@ class SessionContext(BaseModel):
         self.session_index = new_index
 
     def _resolve_index(self, step_id: str) -> str | None:
-        """Resolve a step ID: map int-like strings via step_index2id, pass through UUIDs."""
+        """Resolve a step ID: map int-like strings via step_index2id, pass through UUIDs.
+
+        Tolerant of LLM output that echoes the ``step_id=N`` prefix literal
+        from the session digest (e.g. ``"step_id=0"``): strips the prefix
+        before parsing.
+        """
+        candidate = step_id
+        if isinstance(candidate, str) and candidate.startswith("step_id="):
+            candidate = candidate[len("step_id=") :]
         try:
-            return self.step_index2id.get(int(step_id))
+            return self.step_index2id.get(int(candidate))
         except (ValueError, TypeError):
             return step_id
 

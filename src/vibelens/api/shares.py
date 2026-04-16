@@ -1,6 +1,5 @@
 """Share endpoints for creating and retrieving shareable session links."""
 
-
 from fastapi import APIRouter, Header, HTTPException, Request
 
 from vibelens.deps import get_settings, get_share_service

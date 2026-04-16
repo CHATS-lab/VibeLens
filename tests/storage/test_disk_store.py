@@ -192,7 +192,7 @@ class TestPerUserUploadStores:
             f.write(json.dumps({"upload_id": "u1", "session_token": "tok-alice"}) + "\n")
             f.write(json.dumps({"upload_id": "u2", "session_token": "tok-bob"}) + "\n")
 
-        mock_settings = type("S", (), {"upload_dir": upload_dir})()
+        mock_settings = type("S", (), {"upload": type("U", (), {"dir": upload_dir})()})()
         with patch("vibelens.deps.get_settings", return_value=mock_settings):
             reconstruct_upload_registry()
 

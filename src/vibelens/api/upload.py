@@ -1,6 +1,5 @@
 """File upload endpoints — thin HTTP layer delegating to services."""
 
-
 from fastapi import APIRouter, Form, Header, HTTPException, UploadFile
 
 from vibelens.models.enums import AgentType

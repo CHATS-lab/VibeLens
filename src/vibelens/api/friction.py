@@ -29,7 +29,7 @@ async def _run_friction(job_id: str, session_ids: list[str], token: str | None) 
     """Background wrapper that runs friction analysis and updates job status."""
     try:
         result = await analyze_friction(session_ids, session_token=token)
-        mark_completed(job_id, result.analysis_id or "")
+        mark_completed(job_id, result.id or "")
     except asyncio.CancelledError:
         logger.info("Friction job %s was cancelled", job_id)
         raise
@@ -55,9 +55,7 @@ async def friction_analysis(
         raise HTTPException(status_code=400, detail="session_ids must not be empty")
 
     if is_test_mode() or is_demo_mode():
-        raise HTTPException(
-            status_code=503, detail="Friction analysis unavailable in demo mode"
-        )
+        raise HTTPException(status_code=503, detail="Friction analysis unavailable in demo mode")
 
     job_id = secrets.token_urlsafe(12)
     try:

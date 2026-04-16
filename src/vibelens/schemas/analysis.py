@@ -1,6 +1,5 @@
 """Shared response models for background analysis jobs."""
 
-
 from pydantic import BaseModel
 
 

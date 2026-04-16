@@ -8,6 +8,7 @@ import pytest
 import vibelens.deps
 from vibelens.app import create_app
 from vibelens.config import Settings
+from vibelens.config.settings import StorageConfig, UploadConfig
 from vibelens.models.enums import AgentType
 from vibelens.storage.trajectory.local import LocalTrajectoryStore
 
@@ -168,8 +169,8 @@ async def app_client(test_settings, tmp_path, monkeypatch):
     """Create an async HTTP client with mocked settings and trajectory store."""
     data_dirs, _, _ = test_settings
     settings = Settings(
-        examples_dir=tmp_path / ".vibelens" / "examples",
-        upload_dir=tmp_path / ".vibelens" / "uploads",
+        storage=StorageConfig(examples_dir=tmp_path / ".vibelens" / "examples"),
+        upload=UploadConfig(dir=tmp_path / ".vibelens" / "uploads"),
     )
     monkeypatch.setattr(vibelens.deps, "load_settings", lambda: settings)
     vibelens.deps.reset_singletons()

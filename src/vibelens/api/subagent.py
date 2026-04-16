@@ -90,7 +90,7 @@ def modify_subagent(name: str, req: SubagentModifyRequest) -> dict:
     """Update an existing subagent's content."""
     service = get_subagent_service()
     try:
-        subagent = service.modify(name, req.content)
+        subagent = service.modify(name=name, content=req.content)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Subagent {name!r} not found") from None
     return subagent.model_dump()

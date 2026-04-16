@@ -6,10 +6,13 @@ import secrets
 from fastapi import APIRouter, Header, HTTPException
 
 from vibelens.deps import get_personalization_store, is_demo_mode, is_test_mode
-from vibelens.models.personalization.results import PersonalizationMeta, PersonalizationResult
+from vibelens.models.personalization.results import (
+    PersonalizationMeta,
+    PersonalizationResult,
+)
 from vibelens.schemas.analysis import AnalysisJobResponse, AnalysisJobStatus
 from vibelens.schemas.cost_estimate import CostEstimateResponse
-from vibelens.schemas.personalization import CatalogStatusResponse, PersonalizationRequest
+from vibelens.schemas.personalization import PersonalizationRequest
 from vibelens.services.job_tracker import (
     cancel_job,
     get_job,
@@ -21,7 +24,6 @@ from vibelens.services.recommendation import (
     analyze_recommendation,
     estimate_recommendation,
 )
-from vibelens.storage.extension.catalog import load_catalog
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -154,23 +156,6 @@ async def recommendation_job_cancel(job_id: str) -> AnalysisJobStatus:
 async def recommendation_history() -> list[PersonalizationMeta]:
     """List all persisted recommendation analyses, newest first."""
     return get_personalization_store().list_analyses()
-
-
-@router.get("/catalog/status")
-async def catalog_status() -> CatalogStatusResponse:
-    """Return catalog version and item count.
-
-    Returns:
-        CatalogStatusResponse with version, item_count, and schema_version.
-    """
-    catalog = load_catalog()
-    if not catalog:
-        raise HTTPException(status_code=404, detail="No catalog available")
-    return CatalogStatusResponse(
-        version=catalog.version,
-        item_count=len(catalog.items),
-        schema_version=catalog.schema_version,
-    )
 
 
 @router.get("/{analysis_id}")

@@ -6,11 +6,17 @@ import secrets
 from fastapi import APIRouter, Header, HTTPException
 
 from vibelens.deps import get_personalization_store, is_demo_mode, is_test_mode
-from vibelens.models.personalization.results import PersonalizationMeta, PersonalizationResult
+from vibelens.models.personalization.results import (
+    PersonalizationMeta,
+    PersonalizationResult,
+)
 from vibelens.schemas.analysis import AnalysisJobResponse, AnalysisJobStatus
 from vibelens.schemas.cost_estimate import CostEstimateResponse
 from vibelens.schemas.personalization import PersonalizationRequest
-from vibelens.services.evolution import analyze_skill_evolution, estimate_skill_evolution
+from vibelens.services.evolution import (
+    analyze_skill_evolution,
+    estimate_skill_evolution,
+)
 from vibelens.services.job_tracker import (
     cancel_job,
     get_job,
@@ -25,7 +31,7 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/evolution", tags=["evolution"])
 
 
-async def _run_evolution_analysis(
+async def _run_evolution(
     job_id: str, session_ids: list[str], token: str | None, skill_names: list[str] | None
 ) -> None:
     """Background wrapper for evolution analysis."""
@@ -102,8 +108,7 @@ async def evolution_analysis(
     job_id = secrets.token_urlsafe(12)
     try:
         submit_job(
-            job_id,
-            _run_evolution_analysis(job_id, body.session_ids, x_session_token, body.skill_names),
+            job_id, _run_evolution(job_id, body.session_ids, x_session_token, body.skill_names)
         )
     except ValueError as exc:
         status = 503 if "inference backend" in str(exc) else 400

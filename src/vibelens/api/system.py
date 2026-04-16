@@ -10,7 +10,6 @@ from vibelens.deps import (
     get_inference_backend,
     get_inference_config,
     get_settings,
-    is_demo_mode,
     is_test_mode,
     set_inference_config,
 )
@@ -39,19 +38,6 @@ async def get_server_settings() -> dict:
         "max_zip_bytes": settings.upload.max_zip_bytes,
         "max_sessions": settings.inference.max_sessions,
     }
-
-
-@router.get("/sources")
-async def list_sources() -> list:
-    """List configured data sources."""
-    demo = is_demo_mode()
-
-    sources = []
-    if not demo:
-        sources.append({"type": "local", "name": "Local Claude Code"})
-    # Upload source is always available
-    sources.append({"type": "upload", "name": "File Upload"})
-    return sources
 
 
 @router.get("/warming-status")

@@ -88,7 +88,7 @@ def modify_skill(name: str, req: SkillModifyRequest) -> dict:
     """Update an existing skill's content."""
     service = get_skill_service()
     try:
-        skill = service.modify(name, req.content)
+        skill = service.modify(name=name, content=req.content)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Skill {name!r} not found") from None
     return skill.model_dump()
