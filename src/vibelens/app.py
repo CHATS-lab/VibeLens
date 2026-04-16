@@ -29,6 +29,7 @@ from vibelens.services.session.search import (
     refresh_search_index,
 )
 from vibelens.utils import get_logger
+from vibelens.utils.log import configure_logging
 
 logger = get_logger(__name__)
 
@@ -50,6 +51,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     without waiting for all sessions to finish loading.
     """
     settings = get_settings()
+    configure_logging(settings.logging)
 
     # Initialize the trajectory store (local or disk)
     store = get_trajectory_store()

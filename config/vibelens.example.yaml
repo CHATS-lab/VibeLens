@@ -58,3 +58,16 @@ inference:
   max_output_tokens: 4096           # Max output tokens per request
   max_input_tokens: 80000           # Max input token budget per LLM batch
   max_sessions: 30                  # Max sessions per analysis request
+
+# Log system configuration.
+# Each domain writes to logs/{domain}.log in addition to logs/vibelens.log.
+# Records at WARNING or above are also aggregated in logs/errors.log.
+# Domains: parsers, ingest, creation, evolution, recommendation,
+# personalization, friction, donation, upload, extensions, dashboard,
+# session, llm.
+logging:
+  level: INFO                       # DEBUG | INFO | WARNING | ERROR | CRITICAL
+  dir: logs                         # relative or absolute path
+  max_bytes: 10485760               # 10 MB per rotated file
+  backup_count: 3                   # keep 3 rotated backups per log file
+  per_domain: {}                    # e.g. {friction: DEBUG, donation: WARNING}
