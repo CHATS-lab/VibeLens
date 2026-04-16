@@ -11,7 +11,7 @@ from pydantic_settings import BaseSettings, PydanticBaseSettingsSource
 from vibelens.config.loader import discover_config_path
 from vibelens.models.enums import AppMode
 from vibelens.models.llm.inference import _BACKEND_LEGACY_ALIASES, BackendType
-from vibelens.utils.log import get_logger
+from vibelens.utils.log import DOMAIN_PREFIXES, get_logger
 
 logger = get_logger(__name__)
 
@@ -22,8 +22,8 @@ LogLevelName = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
 
 def _default_log_dir() -> Path:
-    """Default log dir: <project_root>/logs. parents[2] is the project root."""
-    return Path(__file__).resolve().parents[2] / "logs"
+    """Default log dir: <project_root>/logs. parents[3] is the project root."""
+    return Path(__file__).resolve().parents[3] / "logs"
 
 
 class ServerConfig(BaseModel):
@@ -176,8 +176,6 @@ class LoggingConfig(BaseModel):
     @classmethod
     def _validate_domain_keys(cls, value: dict[str, str]) -> dict[str, str]:
         """Reject unknown domain names so typos fail at config load."""
-        from vibelens.utils.log import DOMAIN_PREFIXES
-
         unknown = set(value) - set(DOMAIN_PREFIXES)
         if unknown:
             valid = ", ".join(sorted(DOMAIN_PREFIXES))

@@ -54,6 +54,8 @@ def test_logging_config_defaults():
     assert config.max_bytes == 10 * 1024 * 1024
     assert config.backup_count == 3
     assert config.per_domain == {}
+    assert config.dir.name == "logs"
+    assert config.dir.parent.name != "src"
 
 
 def test_logging_config_rejects_unknown_domain_in_per_domain():
