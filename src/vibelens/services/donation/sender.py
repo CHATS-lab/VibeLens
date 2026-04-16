@@ -31,11 +31,14 @@ from vibelens.deps import (
 from vibelens.ingest.parsers.base import BaseParser
 from vibelens.models.trajectories.trajectory import Trajectory
 from vibelens.schemas.session import DonateResult
+from vibelens.services.donation import SENDER_INDEX_FILENAME
+from vibelens.services.donation.history import hash_token
 from vibelens.services.session.store_resolver import load_from_stores
 from vibelens.storage.trajectory.base import BaseTrajectoryStore
 from vibelens.storage.trajectory.local import LocalTrajectoryStore
 from vibelens.utils.git import compute_repo_hash, create_git_bundle, resolve_git_root
 from vibelens.utils.identifiers import generate_timestamped_id
+from vibelens.utils.json import locked_jsonl_append
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -46,6 +49,37 @@ DONATION_RECEIVE_PATH = "/api/donation/receive"
 MANIFEST_FILENAME = "manifest.json"
 # Timeout for the HTTP upload to the donation server
 HTTP_TIMEOUT_SECONDS = 120
+
+
+def _append_history_entry(
+    donation_id: str, session_count: int, session_token: str | None
+) -> None:
+    """Append one row to the sender-side history file.
+
+    Never raises — a failed local log write must not fail a successful
+    donation. Skips entirely when ``session_token`` is empty so the
+    anonymous bucket is never populated.
+
+    Args:
+        donation_id: Donation identifier returned by the server.
+        session_count: Number of sessions in this donation.
+        session_token: Raw browser token used to scope visibility.
+    """
+    if not session_token:
+        return
+    try:
+        settings = get_settings()
+        record = {
+            "donation_id": donation_id,
+            "session_count": session_count,
+            "donated_at": datetime.now(timezone.utc).isoformat(),
+            "session_token_hash": hash_token(session_token),
+        }
+        locked_jsonl_append(
+            path=settings.donation.dir / SENDER_INDEX_FILENAME, data=record
+        )
+    except Exception as exc:  # noqa: BLE001 — log and swallow intentionally
+        logger.warning("Failed to append donation history entry: %s", exc)
 
 
 async def send_donation(
@@ -92,6 +126,13 @@ async def send_donation(
             zip_path.unlink(missing_ok=True)
     finally:
         shutil.rmtree(bundle_dir, ignore_errors=True)
+
+    if donated > 0:
+        _append_history_entry(
+            donation_id=donation_id,
+            session_count=donated,
+            session_token=session_token,
+        )
 
     return DonateResult(
         total=len(session_ids),
