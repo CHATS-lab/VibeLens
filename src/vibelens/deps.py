@@ -18,9 +18,13 @@ from vibelens.storage.trajectory.local import LocalTrajectoryStore
 from vibelens.utils.json import read_jsonl
 from vibelens.utils.log import get_logger
 
+# Internal singleton registry and upload store registry
 _MISSING = object()
+# Lazy-loaded singletons
 _NOT_CHECKED = object()
+# General singletons like stores and services
 _registry: dict[str, Any] = {}
+# Mapping of session_token to list of upload DiskStores for that user
 _upload_registry: dict[str, list[DiskTrajectoryStore]] = {}
 
 logger = get_logger(__name__)
@@ -46,6 +50,11 @@ def get_settings() -> Settings:
     return _get_or_create("settings", load_settings)
 
 
+def set_settings(settings: Settings) -> None:
+    """Pre-register settings so get_settings() returns them."""
+    _registry["settings"] = settings
+
+
 def is_demo_mode() -> bool:
     """Check whether the application is running in demo mode."""
     return get_settings().mode == AppMode.DEMO
@@ -68,9 +77,7 @@ def get_friction_store():
     from vibelens.services.friction.store import FrictionStore
 
     settings = get_settings()
-    return _get_or_create(
-        "friction_store", lambda: FrictionStore(settings.storage.friction_dir)
-    )
+    return _get_or_create("friction_store", lambda: FrictionStore(settings.storage.friction_dir))
 
 
 def get_central_extension_store():
@@ -96,6 +103,34 @@ def get_agent_extension_stores() -> dict:
     from vibelens.storage.extension.agent import create_agent_extension_stores
 
     return _get_or_create("agent_extension_stores", create_agent_extension_stores)
+
+
+def get_skill_service():
+    """Return cached SkillService singleton."""
+
+    def _create():
+        from vibelens.services.extensions.skill_service import SkillService
+        from vibelens.storage.extension.skill_store import SkillStore
+
+        settings = get_settings()
+        central = SkillStore(settings.storage.managed_skills_dir, create=True)
+        agents = _build_agent_skill_stores()
+        return SkillService(central=central, agents=agents)
+
+    return _get_or_create("skill_service", _create)
+
+
+def _build_agent_skill_stores() -> dict:
+    """Build agent SkillStore instances from platform registry."""
+    from vibelens.services.extensions.platforms import PLATFORMS
+    from vibelens.storage.extension.skill_store import SkillStore
+
+    stores: dict[str, SkillStore] = {}
+    for source, platform in PLATFORMS.items():
+        resolved = platform.skills_dir.expanduser().resolve()
+        if resolved.is_dir():
+            stores[source.value] = SkillStore(resolved)
+    return stores
 
 
 def get_personalization_store():
@@ -250,6 +285,5 @@ def get_example_store() -> DiskTrajectoryStore:
     """
     settings = get_settings()
     return _get_or_create(
-        "example_store",
-        lambda: DiskTrajectoryStore(settings.storage.examples_dir),
+        "example_store", lambda: DiskTrajectoryStore(settings.storage.examples_dir)
     )
