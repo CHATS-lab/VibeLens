@@ -24,19 +24,28 @@ RICHNESS_STEP_CEILING = 200
 CHARS_PER_TOKEN = 4
 # Default token budget for sampling
 DEFAULT_TOKEN_BUDGET = 100_000
+# Sessions below this step count are typically false starts or one-shot
+# queries with insufficient behavioral signal to guide skill recommendation.
+MIN_STEPS_FOR_SAMPLING = 10
 
 
 def sample_contexts(
-    batch: SessionContextBatch, token_budget: int = DEFAULT_TOKEN_BUDGET
+    batch: SessionContextBatch,
+    token_budget: int = DEFAULT_TOKEN_BUDGET,
+    min_steps: int = MIN_STEPS_FOR_SAMPLING,
 ) -> SessionContextBatch:
     """Select a diverse, recent, high-quality subset of sessions within token budget.
 
-    Scores each session by recency (0.4), richness (0.3), and project diversity (0.3),
-    then greedily packs top-scored sessions until the token budget is exhausted.
+    Filters out sessions below ``min_steps`` first (trivial / false-start
+    sessions add noise without signal), then scores each remaining session
+    by recency (0.4), richness (0.3), and project diversity (0.3), and
+    greedily packs top-scored sessions until the token budget is exhausted.
 
     Args:
         batch: Full SessionContextBatch from extract_all_contexts.
         token_budget: Maximum tokens for the combined digest.
+        min_steps: Minimum step count to qualify for sampling. Sessions below
+            this threshold are moved to skipped_session_ids.
 
     Returns:
         New SessionContextBatch with sampled and re-indexed contexts.
@@ -44,14 +53,45 @@ def sample_contexts(
     if not batch.contexts:
         return batch
 
-    estimated_total = sum(len(ctx.context_text) for ctx in batch.contexts) // CHARS_PER_TOKEN
-    if estimated_total <= token_budget:
-        return batch
+    eligible: list[SessionContext] = []
+    step_filtered_ids: list[str] = []
+    for ctx in batch.contexts:
+        step_count = len(ctx.trajectory_group[0].steps) if ctx.trajectory_group else 0
+        if step_count < min_steps:
+            step_filtered_ids.append(ctx.session_id)
+        else:
+            eligible.append(ctx)
 
-    scores = _score_sessions(batch.contexts)
-    ranked = sorted(
-        zip(batch.contexts, scores, strict=True), key=lambda pair: pair[1], reverse=True
-    )
+    if step_filtered_ids:
+        logger.info(
+            "Filtered %d/%d sessions below %d steps",
+            len(step_filtered_ids),
+            len(batch.contexts),
+            min_steps,
+        )
+
+    skipped_ids = list(batch.skipped_session_ids) + step_filtered_ids
+
+    if not eligible:
+        return SessionContextBatch(
+            contexts=[],
+            session_ids=[],
+            skipped_session_ids=skipped_ids,
+        )
+
+    estimated_total = sum(len(ctx.context_text) for ctx in eligible) // CHARS_PER_TOKEN
+    if estimated_total <= token_budget:
+        # Re-index eligible sessions so session_index reflects the filtered batch.
+        for i, ctx in enumerate(eligible):
+            ctx.reindex(i)
+        return SessionContextBatch(
+            contexts=eligible,
+            session_ids=[ctx.session_id for ctx in eligible],
+            skipped_session_ids=skipped_ids,
+        )
+
+    scores = _score_sessions(eligible)
+    ranked = sorted(zip(eligible, scores, strict=True), key=lambda pair: pair[1], reverse=True)
 
     selected: list[SessionContext] = []
     running_chars = 0
@@ -71,7 +111,7 @@ def sample_contexts(
     logger.info(
         "Sampled %d/%d sessions (est. %d tokens within %d budget)",
         len(selected),
-        len(batch.contexts),
+        len(eligible),
         running_chars // CHARS_PER_TOKEN,
         token_budget,
     )
@@ -79,7 +119,7 @@ def sample_contexts(
     return SessionContextBatch(
         contexts=selected,
         session_ids=[ctx.session_id for ctx in selected],
-        skipped_session_ids=batch.skipped_session_ids,
+        skipped_session_ids=skipped_ids,
     )
 
 

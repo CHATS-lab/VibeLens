@@ -7,8 +7,14 @@ and log persistence.
 
 import asyncio
 import json
+import time
 from collections.abc import Coroutine
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
+
+from cachetools import TTLCache
 
 from vibelens.context import ContextExtractor
 from vibelens.deps import get_inference_backend
@@ -37,6 +43,32 @@ CLI_BACKEND_RULES = (TEMPLATES_DIR / "_partials" / "_backend_rules.j2").read_tex
 
 # Max tokens of session context to include in a single LLM prompt
 CONTEXT_TOKEN_BUDGET = 100_000
+
+# Worker pool size for parallel session load + extract.
+# 8 balances I/O concurrency against extractor CPU cost for JSON parse.
+EXTRACT_MAX_WORKERS = 8
+
+# Cache for extracted SessionContextBatch results. Keyed by
+# (tuple(session_ids), session_token, extractor_class_name). Tuple (not
+# frozenset) because input ordering defines SessionContext.session_index,
+# which downstream step-ref resolution depends on.
+#
+# maxsize is smaller than other analysis caches because each entry holds
+# full trajectory_group objects, which dominate memory for large session
+# sets.
+#
+# Future-work candidates if the per-proposal deep-phase flow in
+# creation/evolution becomes a bottleneck (each proposal uses a different
+# session_ids subset, so the tuple key misses on those calls):
+#   (b) per-sid cache: key individual SessionContext objects by
+#       (sid, session_token, extractor_class) so subsets reuse per-session
+#       work. Requires resetting session_index on assembly.
+#   (c) hoisted extraction: call extract_all_contexts once at the top of
+#       analyze_skill_creation / analyze_skill_evolution and slice the
+#       batch per proposal in-memory. Requires reindexing via
+#       SessionContext.reindex.
+_CONTEXT_CACHE_MAXSIZE = 16
+_CONTEXT_CACHE: TTLCache = TTLCache(maxsize=_CONTEXT_CACHE_MAXSIZE, ttl=CACHE_TTL_SECONDS)
 
 
 def require_backend() -> InferenceBackend:
@@ -129,13 +161,86 @@ async def run_batches_concurrent(
     return successes, warnings
 
 
+def _clone_batch(batch: SessionContextBatch) -> SessionContextBatch:
+    """Clone a cached SessionContextBatch so downstream mutations (reindex)
+    do not corrupt the cached entry.
+
+    SessionContext is cloned shallow — session_index and context_text are
+    the only mutable fields callers touch. trajectory_group is shared by
+    reference; downstream code only reads it.
+    """
+    cloned_contexts = [ctx.model_copy() for ctx in batch.contexts]
+    return SessionContextBatch(
+        contexts=cloned_contexts,
+        session_ids=list(batch.session_ids),
+        skipped_session_ids=list(batch.skipped_session_ids),
+    )
+
+
+class _WorkerStatus(Enum):
+    """Outcome of a single per-session load + extract worker."""
+
+    LOADED = "loaded"
+    SKIPPED = "skipped"
+
+
+@dataclass
+class _WorkerResult:
+    """Outcome of _load_and_extract_one, assembled back in input order."""
+
+    sid: str
+    status: _WorkerStatus
+    context: SessionContext | None = None
+
+
+def _load_and_extract_one(
+    sid: str, session_token: str | None, extractor: ContextExtractor
+) -> _WorkerResult:
+    """Load one session and extract its context, tolerating failures.
+
+    Runs inside a ThreadPoolExecutor worker. Catches the same exception
+    classes the previous sequential loop handled so one bad session never
+    raises into the pool.
+
+    Thread-safety assumptions (hold for current codebase):
+      - ContextExtractor subclasses (Detail/Summary/MetadataExtractor) are
+        stateless during .extract(); only self.params (read-only) and
+        fresh per-call helpers are touched.
+      - get_metadata_from_stores / load_from_stores are read-only against
+        an already-warm index. Concurrent reads on LocalStore's metadata
+        dict are safe.
+    """
+    if get_metadata_from_stores(sid, session_token) is None:
+        return _WorkerResult(sid=sid, status=_WorkerStatus.SKIPPED)
+    try:
+        trajectories = load_from_stores(sid, session_token)
+    except (OSError, ValueError, KeyError) as exc:
+        logger.warning("Failed to load session %s, skipping: %s", sid, exc)
+        return _WorkerResult(sid=sid, status=_WorkerStatus.SKIPPED)
+    if not trajectories:
+        return _WorkerResult(sid=sid, status=_WorkerStatus.SKIPPED)
+
+    # session_index is left unset here; assigned by the caller after
+    # skipped sessions are filtered out.
+    ctx = extractor.extract(trajectory_group=trajectories, session_index=None)
+    return _WorkerResult(sid=sid, status=_WorkerStatus.LOADED, context=ctx)
+
+
 def extract_all_contexts(
     session_ids: list[str], session_token: str | None, extractor: ContextExtractor
 ) -> SessionContextBatch:
-    """Load sessions and extract compressed contexts.
+    """Load sessions and extract compressed contexts (cached, parallel).
 
     Factory: loads sessions from stores, extracts each, returns a
     SessionContextBatch with all results.
+
+    Results are cached in-process for CACHE_TTL_SECONDS, keyed by
+    (tuple(session_ids), session_token, extractor class). The same call
+    from estimate_*() and analyze_*() hits the cache on the second call.
+
+    Per-session load + extract runs in a ThreadPoolExecutor. Input
+    ordering is preserved so SessionContext.session_index stays
+    deterministic.
 
     Args:
         session_ids: Sessions to load.
@@ -145,31 +250,68 @@ def extract_all_contexts(
     Returns:
         SessionContextBatch wrapping extracted contexts and load status.
     """
+    cache_key = (tuple(session_ids), session_token or "", type(extractor).__name__)
+    cached = _CONTEXT_CACHE.get(cache_key)
+    if cached is not None:
+        logger.info(
+            "extract_all_contexts: %d sessions served from cache (extractor=%s)",
+            len(session_ids),
+            type(extractor).__name__,
+        )
+        # Downstream callers (sample_contexts, build_batches) mutate
+        # SessionContext.session_index and context_text via reindex().
+        # Return shallow copies so cached entries stay at canonical
+        # (input-order) state. trajectory_group is shared by reference;
+        # it is not mutated downstream.
+        return _clone_batch(cached)
+
+    start_wall = time.perf_counter()
+    # Pre-sized list keeps workers' results in input order regardless of
+    # completion order.
+    results: list[_WorkerResult | None] = [None] * len(session_ids)
+    if session_ids:
+        with ThreadPoolExecutor(max_workers=EXTRACT_MAX_WORKERS) as pool:
+            future_to_index = {
+                pool.submit(_load_and_extract_one, sid, session_token, extractor): idx
+                for idx, sid in enumerate(session_ids)
+            }
+            for future in future_to_index:
+                idx = future_to_index[future]
+                # Workers catch their own exceptions and return SKIPPED;
+                # future.result() should not raise.
+                results[idx] = future.result()
+
     contexts: list[SessionContext] = []
     loaded_ids: list[str] = []
     skipped_ids: list[str] = []
-
-    for sid in session_ids:
-        if get_metadata_from_stores(sid, session_token) is None:
-            skipped_ids.append(sid)
+    for result in results:
+        if result is None:
             continue
-        try:
-            trajectories = load_from_stores(sid, session_token)
-        except (OSError, ValueError, KeyError) as exc:
-            logger.warning("Failed to load session %s, skipping: %s", sid, exc)
-            skipped_ids.append(sid)
-            continue
-        if not trajectories:
-            skipped_ids.append(sid)
-            continue
+        if result.status is _WorkerStatus.LOADED and result.context is not None:
+            # Assign session_index to match final position in contexts list,
+            # preserving prior semantics.
+            result.context.session_index = len(contexts)
+            contexts.append(result.context)
+            loaded_ids.append(result.sid)
+        else:
+            skipped_ids.append(result.sid)
 
-        ctx = extractor.extract(trajectory_group=trajectories, session_index=len(contexts))
-        contexts.append(ctx)
-        loaded_ids.append(sid)
-
-    return SessionContextBatch(
+    batch = SessionContextBatch(
         contexts=contexts, session_ids=loaded_ids, skipped_session_ids=skipped_ids
     )
+    # Store a clone so the caller can freely reindex/mutate without
+    # corrupting the cache entry.
+    _CONTEXT_CACHE[cache_key] = _clone_batch(batch)
+
+    elapsed = time.perf_counter() - start_wall
+    logger.info(
+        "extract_all_contexts: %d loaded, %d skipped in %.2fs (extractor=%s)",
+        len(loaded_ids),
+        len(skipped_ids),
+        elapsed,
+        type(extractor).__name__,
+    )
+    return batch
 
 
 def format_context_batch(batch: SessionContextBatch) -> str:
