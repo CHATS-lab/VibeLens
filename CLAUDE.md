@@ -19,9 +19,12 @@ Refer to `DESIGN.md`
 
 ## Release
 
-1. **Version bump**: Update `version` in both `pyproject.toml` and `src/vibelens/__init__.py`.
-2. **Changelog**: Add entry to `CHANGELOG.md` under `## [x.y.z] - YYYY-MM-DD`.
-3. **Commit & push**: `git commit` then `git push origin main`.
-4. **Tag**: `git tag v{version} {commit_sha}` then `git push origin v{version}`.
-5. **GitHub Release**: `gh release create v{version} --title "v{version}" --latest --notes "..."`.
-6. **PyPI**: `rm -rf dist/ && python -m build && twine upload dist/*`.
+See [`docs/release.md`](docs/release.md) for the full release flow. Short version:
+
+1. **Version bump**: Update `version` in both `pyproject.toml` and `src/vibelens/__init__.py` (must match).
+2. **Changelog**: Move `[Unreleased]` entries into a new `## [x.y.z] - YYYY-MM-DD` section.
+3. **Frontend** (if changed): `cd frontend && npm run build && cd ..`.
+4. **Verify**: `uv build && uv run ruff check src/ tests/ && uv run pytest tests/ -v`.
+5. **Commit, tag, push**: `git commit -am "Release vX.Y.Z" && git tag vX.Y.Z && git push origin main --tags`.
+6. **GitHub Release**: `gh release create vX.Y.Z --title "vX.Y.Z" --notes "..."`.
+7. **PyPI**: automated by `.github/workflows/publish.yml` on tag push (trusted publishing). No twine, no API token.
