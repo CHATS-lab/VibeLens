@@ -15,20 +15,31 @@ class ExtensionListResponse(BaseModel):
 class ExtensionInstallRequest(BaseModel):
     """Request body for installing an extension item."""
 
-    target_platform: str = Field(
-        default="claude_code", description="Target agent platform for installation."
+    target_platforms: list[str] | None = Field(
+        default=None, description="Target agent platforms for installation."
     )
     overwrite: bool = Field(
         default=False, description="Overwrite existing file if it already exists."
     )
 
 
+class ExtensionInstallResult(BaseModel):
+    """Result of installing to a single platform."""
+
+    success: bool = Field(description="Whether installation succeeded.")
+    installed_path: str = Field(default="", description="Path where the item was installed.")
+    message: str = Field(default="", description="Additional status message.")
+
+
 class ExtensionInstallResponse(BaseModel):
     """Response after installing an extension item."""
 
-    success: bool = Field(description="Whether installation succeeded.")
-    installed_path: str = Field(description="Path where the item was installed.")
+    success: bool = Field(description="Whether all installations succeeded.")
+    installed_path: str = Field(default="", description="Path of first successful install.")
     message: str = Field(default="", description="Additional status message.")
+    results: dict[str, ExtensionInstallResult] = Field(
+        default_factory=dict, description="Per-platform install results."
+    )
 
 
 class ExtensionMetaResponse(BaseModel):

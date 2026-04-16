@@ -15,12 +15,12 @@ from vibelens.deps import (
     get_example_store,
     get_inference_config,
     get_settings,
+    get_skill_service,
     get_trajectory_store,
     reconstruct_upload_registry,
 )
 from vibelens.models.enums import AppMode
 from vibelens.services.dashboard.loader import warm_cache
-from vibelens.services.extensions.skill import import_agent_extensions
 from vibelens.services.job_tracker import cleanup_stale as cleanup_stale_jobs
 from vibelens.services.session.demo import load_demo_examples, seed_example_analyses
 from vibelens.services.session.search import (
@@ -145,7 +145,7 @@ def _run_background_startup() -> None:
     Skill import and example seeding are fast and don't involve heavy
     JSON parsing, so a thread is fine.
     """
-    import_agent_extensions()
+    get_skill_service().import_all_agents()
     seed_example_analyses()
 
 

@@ -56,7 +56,7 @@ def _make_snapshot() -> CatalogSnapshot:
 @pytest.fixture
 def client():
     """Create test client with mocked catalog."""
-    with patch("vibelens.services.extensions.browse.load_catalog", return_value=_make_snapshot()):
+    with patch("vibelens.services.extensions.catalog.load_catalog", return_value=_make_snapshot()):
         app = create_app()
         yield TestClient(app)
 

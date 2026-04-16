@@ -49,7 +49,10 @@ def serve(
     open_browser: bool = typer.Option(True, "--open/--no-open", help="Open browser on startup"),
 ) -> None:
     """Start the VibeLens server."""
+    from vibelens.deps import set_settings
+
     settings = load_settings(config_path=config)
+    set_settings(settings)
     bind_host = host or settings.server.host
     bind_port = port or settings.server.port
 
