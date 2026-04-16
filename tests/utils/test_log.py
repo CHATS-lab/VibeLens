@@ -1,5 +1,9 @@
 """Tests for vibelens.utils.log."""
 
+import pytest
+from pydantic import ValidationError
+
+from vibelens.config.settings import LoggingConfig
 from vibelens.utils.log import DOMAIN_PREFIXES, _resolve_domain
 
 
@@ -42,3 +46,22 @@ def test_domain_prefixes_has_all_expected_domains():
         "dashboard", "session", "llm",
     }
     assert set(DOMAIN_PREFIXES) == expected
+
+
+def test_logging_config_defaults():
+    config = LoggingConfig()
+    assert config.level == "INFO"
+    assert config.max_bytes == 10 * 1024 * 1024
+    assert config.backup_count == 3
+    assert config.per_domain == {}
+
+
+def test_logging_config_rejects_unknown_domain_in_per_domain():
+    with pytest.raises(ValidationError) as excinfo:
+        LoggingConfig(per_domain={"frition": "DEBUG"})
+    assert "frition" in str(excinfo.value)
+
+
+def test_logging_config_accepts_known_domain_overrides():
+    config = LoggingConfig(per_domain={"friction": "DEBUG", "donation": "WARNING"})
+    assert config.per_domain == {"friction": "DEBUG", "donation": "WARNING"}

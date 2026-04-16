@@ -3,7 +3,7 @@
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource
@@ -17,6 +17,13 @@ logger = get_logger(__name__)
 
 ENV_PREFIX = "VIBELENS_"
 SETTINGS_JSON_PATH = Path.home() / ".vibelens" / "settings.json"
+
+LogLevelName = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+
+
+def _default_log_dir() -> Path:
+    """Default log dir: <project_root>/logs. parents[2] is the project root."""
+    return Path(__file__).resolve().parents[2] / "logs"
 
 
 class ServerConfig(BaseModel):
@@ -144,6 +151,42 @@ class InferenceConfig(BaseModel):
         return value
 
 
+class LoggingConfig(BaseModel):
+    """Log system configuration."""
+
+    level: LogLevelName = Field(default="INFO", description="Global log level.")
+    dir: Path = Field(
+        default_factory=_default_log_dir,
+        description="Directory for log files. Defaults to <project_root>/logs.",
+    )
+    max_bytes: int = Field(
+        default=10 * 1024 * 1024,
+        description="Rotate each log file after reaching this size in bytes.",
+    )
+    backup_count: int = Field(
+        default=3,
+        description="Number of rotated backups to retain per log file.",
+    )
+    per_domain: dict[str, LogLevelName] = Field(
+        default_factory=dict,
+        description="Override global level for a specific domain (e.g. friction: DEBUG).",
+    )
+
+    @field_validator("per_domain")
+    @classmethod
+    def _validate_domain_keys(cls, value: dict[str, str]) -> dict[str, str]:
+        """Reject unknown domain names so typos fail at config load."""
+        from vibelens.utils.log import DOMAIN_PREFIXES
+
+        unknown = set(value) - set(DOMAIN_PREFIXES)
+        if unknown:
+            valid = ", ".join(sorted(DOMAIN_PREFIXES))
+            raise ValueError(
+                f"Unknown log domain(s): {sorted(unknown)}. Valid: {valid}."
+            )
+        return value
+
+
 class Settings(BaseSettings):
     """VibeLens configuration loaded from environment / .env / YAML config.
 
@@ -167,6 +210,9 @@ class Settings(BaseSettings):
     donation: DonationConfig = Field(default_factory=DonationConfig, description="Donation server.")
     inference: InferenceConfig = Field(
         default_factory=InferenceConfig, description="LLM inference backend."
+    )
+    logging: LoggingConfig = Field(
+        default_factory=LoggingConfig, description="Log system configuration."
     )
 
     @classmethod
