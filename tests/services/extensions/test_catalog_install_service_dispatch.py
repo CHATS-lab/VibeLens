@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from vibelens.models.enums import AgentExtensionType, AgentType, ExtensionSource
 from vibelens.models.extension import ExtensionItem
-from vibelens.services.extensions.catalog_install import install_catalog_item
+from vibelens.services.extensions.catalog_resolver import install_catalog_item
 from vibelens.services.extensions.command_service import CommandService
 from vibelens.services.extensions.hook_service import HookService
 from vibelens.services.extensions.platforms import AgentPlatform
@@ -20,7 +20,7 @@ from vibelens.storage.extension.command_store import CommandStore
 from vibelens.storage.extension.hook_store import HookStore
 from vibelens.storage.extension.subagent_store import SubagentStore
 
-INSTALL_MODULE = "vibelens.services.extensions.catalog_install"
+INSTALL_MODULE = "vibelens.services.extensions.catalog_resolver"
 CLAUDE_KEY = "claude"
 CODEX_KEY = "codex"
 

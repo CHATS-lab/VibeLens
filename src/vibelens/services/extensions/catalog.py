@@ -7,7 +7,7 @@ from cachetools import TTLCache
 from vibelens.deps import get_personalization_store
 from vibelens.models.extension import ExtensionItem
 from vibelens.models.personalization.recommendation import UserProfile
-from vibelens.services.extensions.catalog_install import (
+from vibelens.services.extensions.catalog_resolver import (
     install_catalog_item,
     install_from_source_url,
 )

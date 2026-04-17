@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from vibelens.models.enums import AgentExtensionType, AgentType, ExtensionSource
 from vibelens.models.extension import ExtensionItem
-from vibelens.services.extensions.catalog_install import (
+from vibelens.services.extensions.catalog_resolver import (
     install_catalog_item,
     install_from_source_url,
     uninstall_extension,
@@ -22,7 +22,7 @@ from vibelens.storage.extension.subagent_store import SubagentStore
 
 DEFAULT_SKILL_CONTENT = "# Test Skill\nContent"
 
-INSTALL_MODULE = "vibelens.services.extensions.catalog_install"
+INSTALL_MODULE = "vibelens.services.extensions.catalog_resolver"
 
 
 def _make_platform(tmp_path: Path, name: str = ".claude") -> AgentPlatform:
