@@ -4,7 +4,10 @@ import time
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
-from vibelens.storage.extension.base_store import VALID_EXTENSION_NAME, BaseExtensionStore
+from vibelens.storage.extension.base_store import (
+    VALID_EXTENSION_NAME,
+    BaseExtensionStore,
+)
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -51,10 +54,14 @@ class BaseExtensionService(Generic[T]):
             raise ValueError("Extension content must not be empty")
         if self._central.exists(name):
             raise FileExistsError(f"Extension {name!r} already exists. Use modify() to update.")
+        logger.debug("Writing %r to central store at %s", name, self._central.root)
         self._central.write(name, content)
         self._invalidate_cache()
         if sync_to:
-            self.sync_to_agents(name, sync_to)
+            results = self.sync_to_agents(name, sync_to)
+            failed = [k for k, ok in results.items() if not ok]
+            if failed:
+                logger.error("Sync failed for agents: %s", failed)
         return self.get_item(name)
 
     def modify(self, name: str, content: str) -> T:
@@ -164,6 +171,7 @@ class BaseExtensionService(Generic[T]):
         """Copy extension from central to specified agents. Returns per-agent success."""
         if not self._central.exists(name):
             raise FileNotFoundError(f"Extension {name!r} not found in central store")
+        logger.debug("Syncing %r to agents %s (known: %s)", name, agents, list(self._agents.keys()))
         results: dict[str, bool] = {}
         for agent_key in agents:
             store = self._agents.get(agent_key)
@@ -171,6 +179,7 @@ class BaseExtensionService(Generic[T]):
                 logger.warning("Unknown agent %r, skipping sync", agent_key)
                 results[agent_key] = False
             else:
+                logger.debug("Copying %r to agent %r at %s", name, agent_key, store.root)
                 self._sync_to_agent(name, store)
                 results[agent_key] = True
         self._invalidate_cache()
@@ -187,8 +196,6 @@ class BaseExtensionService(Generic[T]):
             for agent_key, store in self._agents.items()
         ]
 
-    # --- Hooks for subclass override ---
-
     def _sync_to_agent(self, name: str, agent_store: BaseExtensionStore[T]) -> None:
         """Copy extension from central to agent store. Override for hooks."""
         agent_store.copy_from(self._central, name)
@@ -196,8 +203,6 @@ class BaseExtensionService(Generic[T]):
     def _unsync_from_agent(self, name: str, agent_store: BaseExtensionStore[T]) -> None:
         """Remove extension from agent store. Override for hooks."""
         agent_store.delete(name)
-
-    # --- Internal helpers ---
 
     def _find_installed_agents(self, name: str) -> list[str]:
         return [k for k, s in self._agents.items() if s.exists(name)]

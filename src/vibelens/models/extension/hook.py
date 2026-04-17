@@ -17,8 +17,7 @@ class Hook(BaseModel):
     description: str = Field(default="", description="Human description of the hook.")
     tags: list[str] = Field(default_factory=list, description="Tags for discovery.")
     hook_config: dict[str, list[dict]] = Field(
-        default_factory=dict,
-        description="Event-name to list-of-hook-groups mapping (e.g. PreToolUse).",
+        default_factory=dict, description="Event-name (e.g. PreToolUse)."
     )
     content_hash: str = Field(default="", description="SHA256 of raw JSON content.")
     installed_in: list[str] = Field(default_factory=list, description="Agent keys where installed.")

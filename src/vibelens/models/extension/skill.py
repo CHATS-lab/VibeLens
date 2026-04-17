@@ -13,10 +13,7 @@ class Skill(BaseModel):
     tags: list[str] = Field(default_factory=list, description="From frontmatter.")
     allowed_tools: list[str] = Field(default_factory=list, description="From frontmatter.")
     content_hash: str = Field(default="", description="SHA256 of raw SKILL.md content.")
-    installed_in: list[str] = Field(
-        default_factory=list,
-        description="Agent keys where installed. Populated by service, not storage.",
-    )
+    installed_in: list[str] = Field(default_factory=list, description="Agent keys where installed.")
 
     @field_validator("name")
     @classmethod

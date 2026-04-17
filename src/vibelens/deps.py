@@ -97,14 +97,22 @@ def get_skill_service():
 
 
 def _build_agent_skill_stores() -> dict:
-    """Build agent SkillStore instances from platform registry."""
+    """Build agent SkillStore instances from platform registry.
+
+    Installable platforms (those with an install_key) always get a store
+    so that catalog installs can sync to them even if the directory does
+    not exist yet.  Non-installable platforms are only included when the
+    directory already exists on disk.
+    """
     from vibelens.services.extensions.platforms import PLATFORMS
     from vibelens.storage.extension.skill_store import SkillStore
 
     stores: dict[str, SkillStore] = {}
     for source, platform in PLATFORMS.items():
         resolved = platform.skills_dir.expanduser().resolve()
-        if resolved.is_dir():
+        if platform.install_key:
+            stores[source.value] = SkillStore(resolved, create=True)
+        elif resolved.is_dir():
             stores[source.value] = SkillStore(resolved)
     return stores
 
@@ -125,7 +133,12 @@ def get_command_service():
 
 
 def _build_agent_command_stores() -> dict:
-    """Build agent CommandStore instances from platform registry."""
+    """Build agent CommandStore instances from platform registry.
+
+    Installable platforms (those with an install_key and a commands_dir)
+    always get a store so that catalog installs can sync to them even if
+    the directory does not exist yet.
+    """
     from vibelens.services.extensions.platforms import PLATFORMS
     from vibelens.storage.extension.command_store import CommandStore
 
@@ -134,7 +147,9 @@ def _build_agent_command_stores() -> dict:
         if platform.commands_dir is None:
             continue
         resolved = platform.commands_dir.expanduser().resolve()
-        if resolved.is_dir():
+        if platform.install_key:
+            stores[source.value] = CommandStore(resolved, create=True)
+        elif resolved.is_dir():
             stores[source.value] = CommandStore(resolved)
     return stores
 

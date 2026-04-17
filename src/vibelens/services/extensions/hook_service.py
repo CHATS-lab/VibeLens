@@ -27,11 +27,7 @@ JSON_INDENT = 2
 class HookService(BaseExtensionService[Hook]):
     """Hook-specific service. Overrides sync for JSON merge into settings.json."""
 
-    def __init__(
-        self,
-        central: HookStore,
-        agents: dict[str, Path],
-    ) -> None:
+    def __init__(self, central: HookStore, agents: dict[str, Path]) -> None:
         """Create a HookService.
 
         Args:
@@ -74,10 +70,7 @@ class HookService(BaseExtensionService[Hook]):
 
         if content is None:
             hook = Hook(
-                name=name,
-                description=description,
-                tags=tags or [],
-                hook_config=hook_config or {},
+                name=name, description=description, tags=tags or [], hook_config=hook_config or {}
             )
             content = serialize_hook(hook)
 
@@ -202,11 +195,7 @@ class HookService(BaseExtensionService[Hook]):
         return results
 
     def import_from_agent(
-        self,
-        agent: str,
-        name: str,
-        event_name: str | None = None,
-        matcher: str | None = None,
+        self, agent: str, name: str, event_name: str | None = None, matcher: str | None = None
     ) -> Hook:
         """Extract a hook group from an agent's settings.json into central.
 
