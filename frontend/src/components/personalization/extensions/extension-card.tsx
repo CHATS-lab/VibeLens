@@ -17,6 +17,8 @@ import { useCallback, useState } from "react";
 import { useExtensionsClient } from "../../../app";
 import type { ExtensionItemSummary, ExtensionSyncTarget } from "../../../types";
 import { InstallTargetDialog } from "../install-target-dialog";
+import { useDemoGuard } from "../../../hooks/use-demo-guard";
+import { InstallLocallyDialog } from "../../install-locally-dialog";
 import { Tooltip } from "../../tooltip";
 import {
   CARD_VIEW_MAX_TAGS,
@@ -128,6 +130,7 @@ export function CatalogInstallButton({
   const client = useExtensionsClient();
   const [installing, setInstalling] = useState(false);
   const [showTargetDialog, setShowTargetDialog] = useState(false);
+  const { guardAction, showInstallDialog, setShowInstallDialog } = useDemoGuard();
 
   const handleDialogSubmit = useCallback(
     async (toAdd: string[], toRemove: string[]) => {
@@ -159,9 +162,9 @@ export function CatalogInstallButton({
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      setShowTargetDialog(true);
+      guardAction(() => setShowTargetDialog(true));
     },
-    [],
+    [guardAction],
   );
 
   // is_file_based defaults to true for RecommendationItem (which lacks this field)
@@ -196,6 +199,9 @@ export function CatalogInstallButton({
           onCancel={() => setShowTargetDialog(false)}
         />
       )}
+      {showInstallDialog && (
+        <InstallLocallyDialog onClose={() => setShowInstallDialog(false)} />
+      )}
     </>
   );
 }
@@ -222,6 +228,7 @@ export function ExtensionCard({
   const [installed, setInstalled] = useState(isInstalled);
   const [error, setError] = useState<string | null>(null);
   const [showTargetDialog, setShowTargetDialog] = useState(false);
+  const { guardAction, showInstallDialog: showCardInstallDialog, setShowInstallDialog: setShowCardInstallDialog } = useDemoGuard();
 
   const handleDialogSubmit = useCallback(
     async (toAdd: string[], toRemove: string[]) => {
@@ -255,9 +262,9 @@ export function ExtensionCard({
   const handleInstall = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      setShowTargetDialog(true);
+      guardAction(() => setShowTargetDialog(true));
     },
-    [],
+    [guardAction],
   );
 
   const borderClass = installed
@@ -341,6 +348,9 @@ export function ExtensionCard({
             onInstall={handleDialogSubmit}
             onCancel={() => setShowTargetDialog(false)}
           />
+        )}
+        {showCardInstallDialog && (
+          <InstallLocallyDialog onClose={() => setShowCardInstallDialog(false)} />
         )}
       </>
     );
@@ -440,6 +450,9 @@ export function ExtensionCard({
           onInstall={handleDialogSubmit}
           onCancel={() => setShowTargetDialog(false)}
         />
+      )}
+      {showCardInstallDialog && (
+        <InstallLocallyDialog onClose={() => setShowCardInstallDialog(false)} />
       )}
     </div>
   );

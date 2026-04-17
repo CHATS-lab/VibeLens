@@ -1,0 +1,237 @@
+{
+  "id": "example-recommendation-01",
+  "mode": "recommendation",
+  "title": "Five Extensions That Match Your Frontend Workflow",
+  "session_ids": [
+    "09f6e57d-e9cb-4d80-83b5-644b06ba5050"
+  ],
+  "skipped_session_ids": [],
+  "workflow_patterns": [
+    {
+      "title": "Preview-Fix-Verify Cycle",
+      "description": "You launch the site, screenshot it, spot issues, fix them, and re-check. This repeats multiple times per session.",
+      "example_refs": [
+        {
+          "session_id": "09f6e57d-e9cb-4d80-83b5-644b06ba5050",
+          "start_step_id": "655decd2-4c91-4e71-b91b-536255dc7c34",
+          "end_step_id": "ab0818ab-7762-4517-8a1f-1676b071b04d"
+        },
+        {
+          "session_id": "09f6e57d-e9cb-4d80-83b5-644b06ba5050",
+          "start_step_id": "91b0eb4e-958f-4ff4-b590-0123a2ffd97d",
+          "end_step_id": "0ac22a63-368a-4d88-8f27-0afc54e97503"
+        }
+      ],
+      "frequency": 2
+    },
+    {
+      "title": "Batch File Creation From Plan",
+      "description": "The agent creates multiple CSS and component files at once following a detailed plan laid out earlier.",
+      "example_refs": [
+        {
+          "session_id": "09f6e57d-e9cb-4d80-83b5-644b06ba5050",
+          "start_step_id": "0d743274-1776-4b7d-9062-bf7320b59a19",
+          "end_step_id": "df2befc0-ffcf-488a-9b61-57bbb80bdabe"
+        }
+      ],
+      "frequency": 1
+    }
+  ],
+  "recommendations": [
+    {
+      "item": {
+        "extension_id": "featured:skill:frontend-design",
+        "extension_type": "skill",
+        "name": "frontend-design",
+        "repo_name": "anthropics/skills",
+        "source_url": "https://github.com/anthropics/skills/tree/main/skills/frontend-design",
+        "updated_at": "2026-03-25T01:00:33Z",
+        "description": "Create distinctive, production-grade frontend interfaces with high design quality.",
+        "tags": [
+          "agent-skills"
+        ],
+        "stars": 116506,
+        "forks": 13373,
+        "license": "",
+        "language": "Python",
+        "install_command": null
+      },
+      "rationale": "Directly matches your site-building workflow.\n- Covers dark themes, layouts, and responsive CSS\n- Reduces preview-fix cycles with better first-pass output",
+      "scores": {
+        "relevance": 0.95,
+        "quality": 0.9,
+        "popularity": 0.99
+      }
+    },
+    {
+      "item": {
+        "extension_id": "featured:skill:baseline-ui",
+        "extension_type": "skill",
+        "name": "baseline-ui",
+        "repo_name": "sickn33/antigravity-awesome-skills",
+        "source_url": "https://github.com/sickn33/antigravity-awesome-skills/tree/main/skills/baseline-ui",
+        "updated_at": "2026-03-25T00:32:41Z",
+        "description": "Validates animation durations, enforces typography scale, and prevents layout anti-patterns in Tailwind CSS projects.",
+        "tags": [
+          "agent-skills"
+        ],
+        "stars": 32684,
+        "forks": 5438,
+        "license": "MIT",
+        "language": "Python",
+        "install_command": null
+      },
+      "rationale": "Catches the CSS issues you keep fixing manually.\n- Enforces consistent typography and spacing\n- Flags accessibility gaps before you preview",
+      "scores": {
+        "relevance": 0.88,
+        "quality": 0.89,
+        "popularity": 0.82
+      }
+    },
+    {
+      "item": {
+        "extension_id": "bwc:agent:accessibility-specialist",
+        "extension_type": "subagent",
+        "name": "accessibility-specialist",
+        "repo_name": "davepoon/buildwithclaude",
+        "source_url": "https://github.com/davepoon/buildwithclaude/blob/main/plugins/all-agents/agents/accessibility-specialist.md",
+        "updated_at": "2026-04-12T08:22:24Z",
+        "description": "Ensure web applications meet WCAG 2.1 AA/AAA standards with ARIA attributes and keyboard navigation.",
+        "tags": [
+          "design-experience"
+        ],
+        "stars": 2736,
+        "forks": 307,
+        "license": "MIT",
+        "language": "Python",
+        "install_command": null
+      },
+      "rationale": "Your batch file creation skips accessibility checks.\n- Adds ARIA and keyboard nav to new components\n- Prevents rework from missed a11y issues",
+      "scores": {
+        "relevance": 0.82,
+        "quality": 0.75,
+        "popularity": 0.45
+      }
+    },
+    {
+      "item": {
+        "extension_id": "cct:agent:code-reviewer",
+        "extension_type": "subagent",
+        "name": "code-reviewer",
+        "repo_name": "davila7/claude-code-templates",
+        "source_url": "https://github.com/davila7/claude-code-templates/blob/main/cli-tool/components/agents/development-tools/code-reviewer.md",
+        "updated_at": "2026-04-13T04:10:53Z",
+        "description": "Comprehensive code reviews focusing on quality, security, and best practices.",
+        "tags": [
+          "quality-security"
+        ],
+        "stars": 24548,
+        "forks": 2421,
+        "license": "MIT",
+        "language": "Python",
+        "install_command": null
+      },
+      "rationale": "Catches issues before your preview-fix loop.\n- Reviews batch-created files for consistency\n- Spots security and maintainability problems early",
+      "scores": {
+        "relevance": 0.78,
+        "quality": 0.73,
+        "popularity": 0.72
+      }
+    },
+    {
+      "item": {
+        "extension_id": "bwc:skill:github-automation",
+        "extension_type": "skill",
+        "name": "github-automation",
+        "repo_name": "davepoon/buildwithclaude",
+        "source_url": "https://github.com/davepoon/buildwithclaude/blob/main/plugins/all-agents/skills/github-automation.md",
+        "updated_at": "2026-04-12T08:22:24Z",
+        "description": "Automate GitHub repositories, issues, pull requests, branches, and CI/CD.",
+        "tags": [
+          "version-control-git"
+        ],
+        "stars": 2736,
+        "forks": 307,
+        "license": "MIT",
+        "language": "Python",
+        "install_command": null
+      },
+      "rationale": "Automates the PR and branch work around your sessions.\n- Creates PRs from your batch changes\n- Manages branches for preview-fix iterations",
+      "scores": {
+        "relevance": 0.7,
+        "quality": 0.75,
+        "popularity": 0.45
+      }
+    }
+  ],
+  "user_profile": {
+    "domains": [
+      "web-dev",
+      "frontend"
+    ],
+    "languages": [
+      "typescript",
+      "css",
+      "html"
+    ],
+    "frameworks": [
+      "react",
+      "tailwind",
+      "vite"
+    ],
+    "agent_platforms": [
+      "claude-code"
+    ],
+    "bottlenecks": [
+      "repeated preview-fix cycles for visual bugs",
+      "accessibility issues caught late",
+      "inconsistent styling across batch-created files"
+    ],
+    "workflow_style": "plan-first builder who creates many files at once, then iterates on visual issues through screenshots",
+    "search_keywords": [
+      "frontend",
+      "react",
+      "tailwind",
+      "css",
+      "responsive",
+      "dark-theme",
+      "accessibility",
+      "wcag",
+      "aria",
+      "typography",
+      "layout",
+      "animation",
+      "component",
+      "design-system",
+      "code-review",
+      "git",
+      "pr",
+      "deploy",
+      "vite",
+      "build",
+      "preview",
+      "screenshot",
+      "visual-regression"
+    ]
+  },
+  "creations": [],
+  "evolutions": [],
+  "backend": "claude_code",
+  "model": "claude-sonnet-4-5-20250514",
+  "created_at": "2026-04-15T10:30:00.000000+00:00",
+  "batch_count": 1,
+  "batch_metrics": [],
+  "final_metrics": {
+    "duration": 45,
+    "total_steps": null,
+    "tool_call_count": 0,
+    "total_prompt_tokens": 0,
+    "total_completion_tokens": 0,
+    "total_cache_read": 0,
+    "total_cache_write": 0,
+    "total_cost_usd": 0.0,
+    "extra": null
+  },
+  "warnings": [],
+  "is_example": true
+}

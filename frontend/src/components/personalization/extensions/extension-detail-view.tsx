@@ -19,6 +19,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useExtensionsClient } from "../../../app";
 import type { ExtensionItemSummary, ExtensionSyncTarget } from "../../../types";
 import { InstallTargetDialog } from "../install-target-dialog";
+import { useDemoGuard } from "../../../hooks/use-demo-guard";
+import { InstallLocallyDialog } from "../../install-locally-dialog";
 import { Tooltip } from "../../tooltip";
 import { CopyButton } from "../../copy-button";
 import { ExtensionDetailContent, stripFrontmatter, type TocEntry } from "./extension-detail-content";
@@ -75,6 +77,7 @@ export function ExtensionDetailView({ item, isInstalled, onBack, onInstalled, sy
   const [contentLoading, setContentLoading] = useState(false);
   const [contentError, setContentError] = useState<string | null>(null);
   const [showTargetDialog, setShowTargetDialog] = useState(false);
+  const { guardAction, showInstallDialog, setShowInstallDialog } = useDemoGuard();
   const [descExpanded, setDescExpanded] = useState(false);
   const [descClamped, setDescClamped] = useState(false);
   const descRef = useRef<HTMLParagraphElement>(null);
@@ -142,8 +145,8 @@ export function ExtensionDetailView({ item, isInstalled, onBack, onInstalled, sy
   );
 
   const handleInstall = useCallback(() => {
-    setShowTargetDialog(true);
-  }, []);
+    guardAction(() => setShowTargetDialog(true));
+  }, [guardAction]);
 
   const tocEntries = useMemo(
     () => (displayContent ? extractTocEntries(stripFrontmatter(displayContent)) : []),
@@ -349,6 +352,9 @@ export function ExtensionDetailView({ item, isInstalled, onBack, onInstalled, sy
           onInstall={handleDialogSubmit}
           onCancel={() => setShowTargetDialog(false)}
         />
+      )}
+      {showInstallDialog && (
+        <InstallLocallyDialog onClose={() => setShowInstallDialog(false)} />
       )}
     </div>
   );
