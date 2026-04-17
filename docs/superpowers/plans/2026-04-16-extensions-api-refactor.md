@@ -4,7 +4,7 @@
 
 **Goal:** Remove the redundant extensions forwarding layer; reorganize into a read-only catalog API + type-specific CRUD APIs under `/api/extensions/`; extract `BaseExtensionService[T]`; unify schemas, frontend API client, and components.
 
-**Architecture:** Backend splits into `api/extensions/{catalog,skill,command,hook,subagent}.py` routers and a `BaseExtensionService[T]` in `services/extensions/base_service.py`. Schemas are unified (one set for skill/command/subagent, hook keeps its own). Frontend gets a single `api/extensions.ts` client factory consumed via React context. Existing storage layer is unchanged.
+**Architecture:** Backend: `api/extensions/{catalog,factory,hook}.py` + factory-generated routers for skill/command/subagent. `BaseExtensionService[T]` in `services/extensions/base_service.py`. One unified `schemas/extensions.py`. Frontend: `api/extensions.ts` client factory via React context.
 
 **Tech Stack:** Python/FastAPI, Pydantic, React/TypeScript
 
@@ -14,12 +14,15 @@
 
 | Area | Before | After |
 |------|--------|-------|
-| Route factory | 12-param factory function | No factory; 3 standalone routers (~60 lines each) |
-| Service subclasses | Alias methods (`list_skills` → `list_items`) | No aliases; callers use `list_items()` / `get_item()` directly |
-| Sync targets | 4 dataclasses + 4 schema responses | 1 `SyncTarget` dataclass + 1 `SyncTargetResponse` schema |
-| Schemas | 4 near-identical schema files | 1 unified `schemas/extensions.py` + hook-specific in `schemas/hooks.py` |
-| Subclasses | Empty shells with alias methods | Empty shells, no aliases (preserved for future specialization) |
-| Frontend TypeApi | `Promise<any>` returns | Generic `TypeApi<T>` with typed returns |
+| Route factory | 12-param factory / 3x60-line copy-paste | 2-param lightweight factory |
+| Schemas | 5 schema files | 1 unified `extensions.py` + `hooks.py` |
+| List responses | 3 separate `*ListResponse` | 1 `ExtensionListResponse` with `items: list[dict]` |
+| Sync targets | 4 dataclasses + 4 responses | 1 `SyncTarget` + 1 `SyncTargetResponse` |
+| Service subclasses | Alias methods | No aliases; empty shells for future specialization |
+| HookService | `NotImplementedError` placeholders | Preserve existing method bodies, refactor to call `super()` |
+| Frontend TypeApi | `Promise<any>` | Generic `TypeApi<T>` |
+| Frontend syncTargets | Fallback chain mapping | Direct `{ count, dir }` mapping |
+| Tasks | 12 tasks | 10 tasks (merged infra + deps) |
 
 ---
 
@@ -28,41 +31,34 @@
 ### Backend: New Files
 - `src/vibelens/api/extensions/__init__.py` — router aggregator
 - `src/vibelens/api/extensions/catalog.py` — read-only catalog + install
-- `src/vibelens/api/extensions/skill.py` — skill CRUD (~60 lines)
-- `src/vibelens/api/extensions/command.py` — command CRUD (~60 lines)
-- `src/vibelens/api/extensions/hook.py` — hook CRUD (hand-written, structural differences)
-- `src/vibelens/api/extensions/subagent.py` — subagent CRUD (~60 lines)
-- `src/vibelens/services/extensions/base_service.py` — `BaseExtensionService[T]`
+- `src/vibelens/api/extensions/factory.py` — lightweight `build_typed_router(service_getter, type_name)` + type configs
+- `src/vibelens/api/extensions/hook.py` — hook CRUD (hand-written)
+- `src/vibelens/services/extensions/base_service.py` — `BaseExtensionService[T]` + `SyncTarget`
 - `src/vibelens/services/extensions/catalog_resolver.py` — refactored from `catalog_install.py`
 
 ### Backend: Modified Files
 - `src/vibelens/api/__init__.py` — remove 5 old routers, add 1 extensions router
 - `src/vibelens/schemas/extensions.py` — expand with unified CRUD schemas
-- `src/vibelens/schemas/hooks.py` — keep hook-specific schemas, remove redundant ones
-- `src/vibelens/services/extensions/catalog.py` — remove install re-export
-- `src/vibelens/services/extensions/skill_service.py` — inherit BaseExtensionService, no aliases
-- `src/vibelens/services/extensions/command_service.py` — inherit BaseExtensionService, no aliases
+- `src/vibelens/schemas/hooks.py` — keep hook-specific, use `SyncTargetResponse` from extensions
+- `src/vibelens/services/extensions/skill_service.py` — inherit BaseExtensionService
+- `src/vibelens/services/extensions/command_service.py` — inherit BaseExtensionService
 - `src/vibelens/services/extensions/hook_service.py` — inherit BaseExtensionService, override sync
-- `src/vibelens/services/extensions/subagent_service.py` — inherit BaseExtensionService, no aliases
-- `src/vibelens/deps.py` — update imports, string agent keys
+- `src/vibelens/services/extensions/subagent_service.py` — inherit BaseExtensionService
+- `src/vibelens/services/extensions/catalog.py` — remove install re-export
+- `src/vibelens/deps.py` — string agent keys, updated imports
+- `src/vibelens/app.py` — verify background startup still works
 
 ### Backend: Deleted Files
-- `src/vibelens/api/extensions.py`
-- `src/vibelens/api/skill.py`
-- `src/vibelens/api/command.py`
-- `src/vibelens/api/hook.py`
-- `src/vibelens/api/subagent.py`
+- `src/vibelens/api/extensions.py`, `skill.py`, `command.py`, `hook.py`, `subagent.py`
 - `src/vibelens/services/extensions/catalog_install.py`
-- `src/vibelens/schemas/skills.py`
-- `src/vibelens/schemas/commands.py`
-- `src/vibelens/schemas/subagents.py`
+- `src/vibelens/schemas/skills.py`, `commands.py`, `subagents.py`
 
 ### Frontend: New Files
 - `frontend/src/api/extensions.ts` — unified API client factory
 
 ### Frontend: Modified Files
-- `frontend/src/app.tsx` — create and provide extensions client via context
-- `frontend/src/types.ts` — add `ExtensionsClient` type, `SyncTarget`
+- `frontend/src/app.tsx` — create and provide extensions client
+- `frontend/src/types.ts` — add `SyncTarget`, `ExtensionsClient`
 - `frontend/src/components/personalization/extensions/extension-explore-tab.tsx`
 - `frontend/src/components/personalization/extensions/extension-card.tsx`
 - `frontend/src/components/personalization/extensions/extension-detail-view.tsx`
@@ -76,53 +72,43 @@
 - `frontend/src/components/personalization/extensions/extension-endpoints.ts`
 - `frontend/src/components/personalization/extensions/use-sync-targets.ts`
 
-### Test Files: Modified
-- `tests/api/test_skill_api.py` — update imports, URL paths, schema types
-- `tests/api/test_command_api.py` — same
-- `tests/api/test_hook_api.py` — update imports, URL paths
-- `tests/api/test_subagent_api.py` — same as skill
-- `tests/api/test_extension_api.py` — update imports, URL paths
-- `tests/api/test_catalog_api.py` — update imports, URL paths
-- `tests/services/extensions/test_skill_service.py` — string agent keys
-- `tests/services/extensions/test_command_service.py` — string agent keys
-- `tests/services/extensions/test_hook_service.py` — string agent keys
-- `tests/services/extensions/test_subagent_service.py` — string agent keys
-- `tests/services/extensions/test_catalog_install.py` → rename to `test_catalog_resolver.py`
-- `tests/services/extensions/test_catalog_install_service_dispatch.py` — update imports
+### Tests: Modified
+- `tests/api/test_skill_api.py`, `test_command_api.py`, `test_hook_api.py`, `test_subagent_api.py` — imports, URLs, schemas
+- `tests/api/test_extension_api.py`, `test_catalog_api.py` — imports, URLs
+- `tests/services/extensions/test_skill_service.py`, `test_command_service.py`, `test_hook_service.py`, `test_subagent_service.py` — string keys, base method names
+- `tests/services/extensions/test_catalog_install.py` → `test_catalog_resolver.py`
+- `tests/services/extensions/test_catalog_install_service_dispatch.py` — imports
 
-### Test Files: New
+### Tests: New
 - `tests/services/extensions/test_base_service.py`
 
 ---
 
-## Task 1: Unify schemas
+## Task 1: Unify schemas + create `BaseExtensionService[T]`
 
 **Files:**
 - Modify: `src/vibelens/schemas/extensions.py`
 - Modify: `src/vibelens/schemas/hooks.py`
-- Delete: `src/vibelens/schemas/skills.py`
-- Delete: `src/vibelens/schemas/commands.py`
-- Delete: `src/vibelens/schemas/subagents.py`
+- Delete: `src/vibelens/schemas/skills.py`, `commands.py`, `subagents.py`
+- Create: `src/vibelens/services/extensions/base_service.py`
+- Create: `tests/services/extensions/test_base_service.py`
 
-- [ ] **Step 1: Read current schema files to confirm what can be unified**
+- [ ] **Step 1: Read current schema files**
 
-Read `src/vibelens/schemas/skills.py`, `src/vibelens/schemas/commands.py`, `src/vibelens/schemas/subagents.py`, `src/vibelens/schemas/hooks.py`, `src/vibelens/schemas/extensions.py`.
+Read `src/vibelens/schemas/skills.py`, `commands.py`, `subagents.py`, `hooks.py`, `extensions.py` to confirm fields are identical across skill/command/subagent.
 
-Confirm:
-- `SkillInstallRequest`, `CommandInstallRequest`, `SubagentInstallRequest` have identical fields: `name: str`, `content: str`, `sync_to: list[str]`
-- `SkillModifyRequest`, `CommandModifyRequest`, `SubagentModifyRequest` all have: `content: str`
-- `SkillSyncRequest`, `CommandSyncRequest`, `SubagentSyncRequest` all have: `agents: list[str]`
-- `*SyncTargetResponse` differ only in field names (`skill_count`/`skills_dir` vs `command_count`/`commands_dir`)
+- [ ] **Step 2: Expand `schemas/extensions.py` with unified schemas**
 
-- [ ] **Step 2: Expand `schemas/extensions.py` with unified CRUD schemas**
-
-Add these to the existing `src/vibelens/schemas/extensions.py` (which already has catalog schemas):
+Add to the existing file. Rename existing catalog-specific schemas to avoid collision:
 
 ```python
-from vibelens.models.extension.command import Command
-from vibelens.models.extension.skill import Skill
-from vibelens.models.extension.subagent import Subagent
+# src/vibelens/schemas/extensions.py
+"""Extension API schemas — unified for all types + catalog-specific."""
 
+from pydantic import BaseModel, Field
+
+
+# --- Unified sync target ---
 
 class SyncTargetResponse(BaseModel):
     """Unified sync target for all extension types."""
@@ -132,8 +118,10 @@ class SyncTargetResponse(BaseModel):
     dir: str = Field(description="Agent directory or settings path.")
 
 
+# --- Unified CRUD schemas (skill, command, subagent share these) ---
+
 class ExtensionInstallRequest(BaseModel):
-    """Install a new file-based extension (skill, command, subagent)."""
+    """Install a new file-based extension."""
 
     name: str = Field(description="Kebab-case extension name.")
     content: str = Field(description="Full file content.")
@@ -155,69 +143,77 @@ class ExtensionSyncRequest(BaseModel):
 
 
 class ExtensionDetailResponse(BaseModel):
-    """Full extension detail including content. Generic for skill/command/subagent."""
+    """Full extension detail including content."""
 
-    item: dict = Field(description="Extension metadata with install status.")
+    item: dict = Field(description="Extension metadata (Skill/Command/Subagent/Hook).")
     content: str = Field(description="Raw file text.")
     path: str = Field(description="Central store path.")
 
 
-class SkillListResponse(BaseModel):
-    """Paginated skill listing with sync targets."""
+class ExtensionListResponse(BaseModel):
+    """Paginated extension listing with sync targets. Used by all types."""
 
-    items: list[Skill] = Field(description="Page of skills.")
+    items: list[dict] = Field(description="Page of extensions.")
     total: int = Field(description="Total matching.")
     page: int = Field(description="Current page.")
     page_size: int = Field(description="Items per page.")
     sync_targets: list[SyncTargetResponse] = Field(description="Agent platforms available.")
 
 
-class CommandListResponse(BaseModel):
-    """Paginated command listing with sync targets."""
+# --- Catalog-specific schemas ---
 
-    items: list[Command] = Field(description="Page of commands.")
-    total: int = Field(description="Total matching.")
-    page: int = Field(description="Current page.")
-    page_size: int = Field(description="Items per page.")
-    sync_targets: list[SyncTargetResponse] = Field(description="Agent platforms available.")
-
-
-class SubagentListResponse(BaseModel):
-    """Paginated subagent listing with sync targets."""
-
-    items: list[Subagent] = Field(description="Page of subagents.")
-    total: int = Field(description="Total matching.")
-    page: int = Field(description="Current page.")
-    page_size: int = Field(description="Items per page.")
-    sync_targets: list[SyncTargetResponse] = Field(description="Agent platforms available.")
-```
-
-Note: `*ListResponse` must remain separate because `items` field types differ (`list[Skill]` vs `list[Command]` vs `list[Subagent]`). The other schemas (`InstallRequest`, `ModifyRequest`, `SyncRequest`, `SyncTargetResponse`, `DetailResponse`) are truly unified.
-
-Also rename the existing `ExtensionListResponse` (catalog) to `CatalogListResponse` to avoid name collision, and `ExtensionInstallRequest` (catalog) to `CatalogInstallRequest`:
-
-```python
-# Rename existing catalog schemas
 class CatalogListResponse(BaseModel):
     """Paginated catalog listing response."""
-    items: list[dict] = Field(description="Extension items.")
-    total: int
-    page: int
-    per_page: int
+
+    items: list[dict] = Field(description="Extension items (without install_content).")
+    total: int = Field(description="Total matching items.")
+    page: int = Field(description="Current page number.")
+    per_page: int = Field(description="Items per page.")
 
 
 class CatalogInstallRequest(BaseModel):
     """Request body for installing from catalog."""
-    target_platforms: list[str] = Field(min_length=1)
-    overwrite: bool = Field(default=False)
+
+    target_platforms: list[str] = Field(
+        min_length=1, description="Target agent platforms for installation."
+    )
+    overwrite: bool = Field(
+        default=False, description="Overwrite existing file if it already exists."
+    )
+
+
+class CatalogInstallResult(BaseModel):
+    """Result of installing to a single platform."""
+
+    success: bool = Field(description="Whether installation succeeded.")
+    installed_path: str = Field(default="", description="Path where installed.")
+    message: str = Field(default="", description="Status message.")
+
+
+class CatalogInstallResponse(BaseModel):
+    """Response after installing from catalog."""
+
+    success: bool = Field(description="Whether all installations succeeded.")
+    installed_path: str = Field(default="", description="Path of first successful install.")
+    message: str = Field(default="", description="Status message.")
+    results: dict[str, CatalogInstallResult] = Field(
+        default_factory=dict, description="Per-platform results."
+    )
+
+
+class ExtensionMetaResponse(BaseModel):
+    """Catalog metadata for frontend filter/sort options."""
+
+    categories: list[str] = Field(description="Unique category values from catalog.")
+    has_profile: bool = Field(description="Whether a user profile exists for relevance sorting.")
 ```
 
-- [ ] **Step 3: Update `schemas/hooks.py` — remove redundant, keep hook-specific**
+- [ ] **Step 3: Update `schemas/hooks.py`**
 
-Keep `HookInstallRequest`, `HookModifyRequest` (structurally different). Remove `HookSyncRequest`, `HookSyncTargetResponse` — use the unified versions from `extensions.py`. Update `HookListResponse` to use `SyncTargetResponse`.
+Keep `HookInstallRequest`, `HookModifyRequest`, `HookDetailResponse`. Remove `HookSyncRequest`, `HookSyncTargetResponse` — use unified versions. Update `HookListResponse` to use `SyncTargetResponse`:
 
 ```python
-# src/vibelens/schemas/hooks.py — after cleanup
+# src/vibelens/schemas/hooks.py
 """Hook API schemas — hook-specific request/response models."""
 
 from pydantic import BaseModel, Field
@@ -272,44 +268,11 @@ class HookListResponse(BaseModel):
 git rm src/vibelens/schemas/skills.py src/vibelens/schemas/commands.py src/vibelens/schemas/subagents.py
 ```
 
-- [ ] **Step 5: Update all imports across the codebase**
+- [ ] **Step 5: Update all imports referencing deleted schema files**
 
-Search for imports from `vibelens.schemas.skills`, `vibelens.schemas.commands`, `vibelens.schemas.subagents` and replace with `vibelens.schemas.extensions`. Key files:
-- `src/vibelens/api/skill.py` (will be deleted later, but update for now)
-- `src/vibelens/api/command.py` (same)
-- `src/vibelens/api/subagent.py` (same)
-- `tests/api/test_skill_api.py`
-- `tests/api/test_command_api.py`
-- `tests/api/test_subagent_api.py`
+Search for `vibelens.schemas.skills`, `vibelens.schemas.commands`, `vibelens.schemas.subagents` and replace with `vibelens.schemas.extensions`. Also update imports of renamed catalog schemas (`ExtensionInstallRequest` → `CatalogInstallRequest`, etc.) in `api/extensions.py`.
 
-Also update `src/vibelens/api/extensions.py` to use the renamed catalog schemas (`CatalogListResponse`, `CatalogInstallRequest`).
-
-- [ ] **Step 6: Run all tests**
-
-Run: `cd /Users/JinghengYe/Documents/Projects/Agent-Guideline/VibeLens && uv run pytest tests/ -v`
-Expected: All PASS
-
-- [ ] **Step 7: Run ruff**
-
-Run: `cd /Users/JinghengYe/Documents/Projects/Agent-Guideline/VibeLens && uv run ruff check src/ tests/`
-Expected: No errors
-
-- [ ] **Step 8: Commit**
-
-```bash
-git add src/vibelens/schemas/ tests/
-git commit -m "refactor(schemas): unify extension schemas, keep hook-specific"
-```
-
----
-
-## Task 2: Create `BaseExtensionService[T]` with unified `SyncTarget`
-
-**Files:**
-- Create: `src/vibelens/services/extensions/base_service.py`
-- Test: `tests/services/extensions/test_base_service.py`
-
-- [ ] **Step 1: Write the base service test**
+- [ ] **Step 6: Write base service test**
 
 ```python
 # tests/services/extensions/test_base_service.py
@@ -439,7 +402,7 @@ class TestList:
 
 
 class TestSyncTargets:
-    def test_returns_unified_sync_targets(self, service):
+    def test_returns_unified_targets(self, service):
         service.install(name="my-skill", content=SAMPLE_MD, sync_to=["claude"])
         targets = service.list_sync_targets()
         assert len(targets) == 2
@@ -475,12 +438,7 @@ class TestImport:
         assert len(imported) == 2
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
-
-Run: `cd /Users/JinghengYe/Documents/Projects/Agent-Guideline/VibeLens && uv run pytest tests/services/extensions/test_base_service.py -v`
-Expected: FAIL — `ModuleNotFoundError: No module named 'vibelens.services.extensions.base_service'`
-
-- [ ] **Step 3: Implement `BaseExtensionService[T]`**
+- [ ] **Step 7: Implement `BaseExtensionService[T]`**
 
 ```python
 # src/vibelens/services/extensions/base_service.py
@@ -665,11 +623,7 @@ class BaseExtensionService(Generic[T]):
     def list_sync_targets(self) -> list[SyncTarget]:
         """Return available agent sync targets with item counts."""
         return [
-            SyncTarget(
-                agent=agent_key,
-                count=len(store.list_names()),
-                dir=str(store._root),
-            )
+            SyncTarget(agent=agent_key, count=len(store.list_names()), dir=str(store._root))
             for agent_key, store in self._agents.items()
         ]
 
@@ -722,38 +676,39 @@ class BaseExtensionService(Generic[T]):
         self._cache_at = 0.0
 ```
 
-- [ ] **Step 4: Run tests**
+- [ ] **Step 8: Run tests**
 
-Run: `cd /Users/JinghengYe/Documents/Projects/Agent-Guideline/VibeLens && uv run pytest tests/services/extensions/test_base_service.py -v`
-Expected: All PASS
+Run: `cd /Users/JinghengYe/Documents/Projects/Agent-Guideline/VibeLens && uv run pytest tests/services/extensions/test_base_service.py tests/ -v`
+Expected: base service tests PASS, existing tests PASS (schema imports updated)
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add src/vibelens/services/extensions/base_service.py tests/services/extensions/test_base_service.py
-git commit -m "feat(extensions): add BaseExtensionService[T] with unified SyncTarget"
+git add src/vibelens/schemas/ src/vibelens/services/extensions/base_service.py tests/
+git commit -m "feat(extensions): unify schemas + add BaseExtensionService[T]"
 ```
 
 ---
 
-## Task 3: Migrate all four services to inherit `BaseExtensionService`
+## Task 2: Migrate all services + update `deps.py`
 
 **Files:**
 - Modify: `src/vibelens/services/extensions/skill_service.py`
 - Modify: `src/vibelens/services/extensions/command_service.py`
 - Modify: `src/vibelens/services/extensions/subagent_service.py`
 - Modify: `src/vibelens/services/extensions/hook_service.py`
+- Modify: `src/vibelens/deps.py`
 - Modify: `tests/services/extensions/test_skill_service.py`
 - Modify: `tests/services/extensions/test_command_service.py`
 - Modify: `tests/services/extensions/test_subagent_service.py`
 - Modify: `tests/services/extensions/test_hook_service.py`
 
-- [ ] **Step 1: Run all existing service tests to verify baseline**
+- [ ] **Step 1: Run existing service tests to verify baseline**
 
 Run: `cd /Users/JinghengYe/Documents/Projects/Agent-Guideline/VibeLens && uv run pytest tests/services/extensions/ -v`
 Expected: All PASS
 
-- [ ] **Step 2: Rewrite `SkillService` — empty shell inheriting base**
+- [ ] **Step 2: Rewrite `SkillService` — empty shell**
 
 ```python
 # src/vibelens/services/extensions/skill_service.py
@@ -816,7 +771,14 @@ class SubagentService(BaseExtensionService[Subagent]):
         super().__init__(central_store=central, agent_stores=agents)
 ```
 
-- [ ] **Step 5: Rewrite `HookService` — overrides sync methods**
+- [ ] **Step 5: Rewrite `HookService` — preserve existing sync logic**
+
+Read the current `hook_service.py` fully. The key methods to preserve are:
+- `_sync_to_agent_settings()` / equivalent — reads agent `settings.json`, merges hook groups with `_vibelens_managed` markers, writes back
+- `_unsync_from_agent_settings()` / equivalent — removes managed hook groups by scanning for `_vibelens_managed` markers
+- `import_from_agent()` — reads agent `settings.json`, extracts hook groups by `event_name`/`matcher`
+
+Refactor these into the override methods, calling `super()` for common parts:
 
 ```python
 # src/vibelens/services/extensions/hook_service.py
@@ -891,33 +853,30 @@ class HookService(BaseExtensionService[Hook]):
     ) -> Hook:
         """Import a hook from agent settings.json.
 
-        Extracts managed hook groups from the agent's settings.json.
-        Copy the full implementation from the current hook_service.py —
-        reads settings.json, finds matching hook groups by event_name/matcher,
-        writes to central store.
+        IMPORTANT: Preserve the exact import logic from the current
+        hook_service.py. Read the agent's settings.json, find matching
+        hook groups by event_name/matcher, construct a Hook, serialize
+        to JSON, write to central store.
         """
-        # IMPORTANT: Copy the exact import logic from current hook_service.py.
-        # This reads the agent's settings.json and extracts hook groups.
-        raise NotImplementedError("Copy from current hook_service.py")
+        # [Copy body from current hook_service.py import_from_agent method]
 
     def _sync_to_agent(self, name: str, agent_store: HookStore) -> None:
         """Merge hook config into agent's settings.json with _vibelens_managed tag.
 
-        Copy the full implementation from the current hook_service.py —
-        reads settings.json, merges hook groups with _vibelens_managed markers,
-        writes back.
+        IMPORTANT: Preserve the exact merge logic from the current
+        hook_service.py. Read settings.json, add/update hook groups under
+        the appropriate event names with _vibelens_managed markers, write back.
         """
-        # IMPORTANT: Copy the exact sync logic from current hook_service.py.
-        raise NotImplementedError("Copy from current hook_service.py")
+        # [Copy body from current hook_service.py sync method]
 
     def _unsync_from_agent(self, name: str, agent_store: HookStore) -> None:
         """Remove managed hook groups from agent's settings.json.
 
-        Copy the full implementation from the current hook_service.py —
-        scans for _vibelens_managed markers matching this hook name, removes them.
+        IMPORTANT: Preserve the exact removal logic from the current
+        hook_service.py. Scan for _vibelens_managed markers matching
+        this hook name, remove those groups, write back.
         """
-        # IMPORTANT: Copy the exact unsync logic from current hook_service.py.
-        raise NotImplementedError("Copy from current hook_service.py")
+        # [Copy body from current hook_service.py unsync method]
 
     def list_sync_targets(self) -> list[SyncTarget]:
         """Return sync targets with settings_path as dir."""
@@ -931,63 +890,32 @@ class HookService(BaseExtensionService[Hook]):
         ]
 ```
 
-**CRITICAL:** The three `NotImplementedError` methods must be filled with the actual logic from the current `hook_service.py`. Read that file and copy the JSON merge logic verbatim into these methods. The logic involves reading/writing `settings.json`, tagging hook groups with `_vibelens_managed`, and surgical removal.
+- [ ] **Step 6: Update `deps.py` — string agent keys**
 
-- [ ] **Step 6: Update all four test files — string agent keys**
+Read `src/vibelens/deps.py`. Change all `_build_agent_*_stores()` functions to return `dict[str, Store]` using string keys instead of `AgentType` enum.
 
-For each test file (`test_skill_service.py`, `test_command_service.py`, `test_subagent_service.py`, `test_hook_service.py`):
-- Change agent dict keys from `AgentType.CLAUDE` to `"claude"`, `AgentType.CODEX` to `"codex"`
-- Remove unused `AgentType` import
-- Update any assertions that check agent keys
+- [ ] **Step 7: Update all four test files**
 
-Also update test method calls from type-specific names to base names:
-- `service.list_skills(...)` → `service.list_items(...)`
-- `service.get_skill(name)` → `service.get_item(name)`
-- `service.get_skill_content(name)` → `service.get_item_content(name)`
-- Same for command/subagent/hook equivalents
+For each test file:
+- Change agent dict keys: `AgentType.CLAUDE` → `"claude"`, `AgentType.CODEX` → `"codex"`
+- Remove unused `AgentType` imports
+- Change method calls: `service.list_skills()` → `service.list_items()`, `service.get_skill()` → `service.get_item()`, etc.
 
-- [ ] **Step 7: Run all service tests**
-
-Run: `cd /Users/JinghengYe/Documents/Projects/Agent-Guideline/VibeLens && uv run pytest tests/services/extensions/ -v`
-Expected: All PASS
-
-- [ ] **Step 8: Commit**
-
-```bash
-git add src/vibelens/services/extensions/ tests/services/extensions/
-git commit -m "refactor(extensions): migrate all services to BaseExtensionService"
-```
-
----
-
-## Task 4: Update `deps.py` for string agent keys
-
-**Files:**
-- Modify: `src/vibelens/deps.py`
-
-- [ ] **Step 1: Read `deps.py` and update agent store construction**
-
-Change all `_build_agent_*_stores()` functions to return `dict[str, Store]` using string keys instead of `AgentType` enum. Use the platform's `install_key` string or agent key string.
-
-- [ ] **Step 2: Update `app.py` background startup**
-
-In `_run_background_startup()`, `get_skill_service().import_all_agents()` should still work since `import_all_agents()` is on the base class. Verify no other callers use type-specific methods that were removed.
-
-- [ ] **Step 3: Run all tests**
+- [ ] **Step 8: Run all tests**
 
 Run: `cd /Users/JinghengYe/Documents/Projects/Agent-Guideline/VibeLens && uv run pytest tests/ -v`
 Expected: All PASS
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add src/vibelens/deps.py src/vibelens/app.py
-git commit -m "refactor(deps): use string agent keys, remove AgentType enum dependency"
+git add src/vibelens/services/extensions/ src/vibelens/deps.py tests/services/extensions/
+git commit -m "refactor(extensions): migrate all services to BaseExtensionService, string agent keys"
 ```
 
 ---
 
-## Task 5: Create `catalog_resolver.py` and clean up `catalog.py`
+## Task 3: Create `catalog_resolver.py` and clean up
 
 **Files:**
 - Create: `src/vibelens/services/extensions/catalog_resolver.py`
@@ -996,20 +924,20 @@ git commit -m "refactor(deps): use string agent keys, remove AgentType enum depe
 - Rename: `tests/services/extensions/test_catalog_install.py` → `test_catalog_resolver.py`
 - Modify: `tests/services/extensions/test_catalog_install_service_dispatch.py`
 
-- [ ] **Step 1: Run existing catalog tests to verify baseline**
+- [ ] **Step 1: Run existing catalog tests**
 
-Run: `cd /Users/JinghengYe/Documents/Projects/Agent-Guideline/VibeLens && uv run pytest tests/services/extensions/test_catalog_install.py tests/services/extensions/test_catalog_install_service_dispatch.py tests/api/test_catalog_api.py -v`
+Run: `cd /Users/JinghengYe/Documents/Projects/Agent-Guideline/VibeLens && uv run pytest tests/services/extensions/test_catalog_install.py tests/services/extensions/test_catalog_install_service_dispatch.py -v`
 Expected: All PASS
 
 - [ ] **Step 2: Create `catalog_resolver.py`**
 
-Move all install-related functions from `catalog_install.py` into `catalog_resolver.py`. Same function signatures, same implementations. Key functions: `install_extension()`, `_install_file()`, `_install_subagent()`, `_install_command()`, `_install_hook_via_service()`, `_install_mcp()`, `install_from_source_url()`.
+Move all install functions from `catalog_install.py` to `catalog_resolver.py`. Same signatures, same implementations. Key functions: `install_extension()`, `_install_file()`, `_install_subagent()`, `_install_command()`, `_install_hook_via_service()`, `_install_mcp()`, `install_from_source_url()`.
 
 - [ ] **Step 3: Update `catalog.py` — remove install re-export**
 
 Remove any `install_extension` function or re-export that delegates to `catalog_install.py`.
 
-- [ ] **Step 4: Delete `catalog_install.py` and rename test**
+- [ ] **Step 4: Delete and rename**
 
 ```bash
 git rm src/vibelens/services/extensions/catalog_install.py
@@ -1018,7 +946,7 @@ git mv tests/services/extensions/test_catalog_install.py tests/services/extensio
 
 - [ ] **Step 5: Update all imports**
 
-Search for `vibelens.services.extensions.catalog_install` and replace with `vibelens.services.extensions.catalog_resolver` in all files.
+Replace `vibelens.services.extensions.catalog_install` → `vibelens.services.extensions.catalog_resolver` everywhere.
 
 - [ ] **Step 6: Run tests**
 
@@ -1034,170 +962,172 @@ git commit -m "refactor(extensions): rename catalog_install to catalog_resolver"
 
 ---
 
-## Task 6: Create `api/extensions/` package
+## Task 4: Create `api/extensions/` package with lightweight factory
 
 **Files:**
 - Create: `src/vibelens/api/extensions/__init__.py`
+- Create: `src/vibelens/api/extensions/factory.py`
 - Create: `src/vibelens/api/extensions/catalog.py`
-- Create: `src/vibelens/api/extensions/skill.py`
-- Create: `src/vibelens/api/extensions/command.py`
-- Create: `src/vibelens/api/extensions/subagent.py`
 - Create: `src/vibelens/api/extensions/hook.py`
 
-- [ ] **Step 1: Create `api/extensions/skill.py` (~60 lines)**
+- [ ] **Step 1: Create the lightweight route factory**
 
 ```python
-# src/vibelens/api/extensions/skill.py
-"""Skill CRUD routes."""
+# src/vibelens/api/extensions/factory.py
+"""Lightweight route factory for file-based extension CRUD (skill, command, subagent)."""
+
+from collections.abc import Callable
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from vibelens.deps import get_skill_service
 from vibelens.schemas.extensions import (
     ExtensionDetailResponse,
     ExtensionInstallRequest,
+    ExtensionListResponse,
     ExtensionModifyRequest,
     ExtensionSyncRequest,
-    SkillListResponse,
     SyncTargetResponse,
 )
-
-router = APIRouter(prefix="/skills", tags=["skills"])
+from vibelens.services.extensions.base_service import BaseExtensionService
 
 DEFAULT_PAGE_SIZE = 50
 
 
-@router.post("/import/{agent}")
-def import_from_agent(agent: str) -> dict:
-    """Import all skills from an agent directory into central store."""
-    service = get_skill_service()
-    try:
-        imported = service.import_all_from_agent(agent)
-    except KeyError:
-        raise HTTPException(status_code=404, detail=f"Unknown agent: {agent!r}") from None
-    return {"agent": agent, "imported": imported, "count": len(imported)}
+def build_typed_router(
+    service_getter: Callable[[], BaseExtensionService[Any]],
+    type_name: str,
+) -> APIRouter:
+    """Generate CRUD router for a file-based extension type.
 
+    Used for skill, command, subagent. Hook has a hand-written router.
+    """
+    plural = f"{type_name}s"
+    label = type_name.capitalize()
+    router = APIRouter(prefix=f"/{plural}", tags=[plural])
 
-@router.get("")
-def list_skills(
-    page: int = 1,
-    page_size: int = DEFAULT_PAGE_SIZE,
-    search: str | None = None,
-    refresh: bool = False,
-) -> SkillListResponse:
-    """List skills with pagination, optional search, and sync targets."""
-    service = get_skill_service()
-    if refresh:
-        service.invalidate()
-    items, total = service.list_items(page=page, page_size=page_size, search=search)
-    targets = service.list_sync_targets()
-    return SkillListResponse(
-        items=items,
-        total=total,
-        page=page,
-        page_size=page_size,
-        sync_targets=[SyncTargetResponse(agent=t.agent, count=t.count, dir=t.dir) for t in targets],
-    )
+    @router.post(f"/import/{{agent}}")
+    def import_from_agent(agent: str) -> dict:
+        service = service_getter()
+        try:
+            imported = service.import_all_from_agent(agent)
+        except KeyError:
+            raise HTTPException(status_code=404, detail=f"Unknown agent: {agent!r}") from None
+        return {"agent": agent, "imported": imported, "count": len(imported)}
 
+    @router.get("")
+    def list_items(
+        page: int = 1,
+        page_size: int = DEFAULT_PAGE_SIZE,
+        search: str | None = None,
+        refresh: bool = False,
+    ) -> ExtensionListResponse:
+        service = service_getter()
+        if refresh:
+            service.invalidate()
+        items, total = service.list_items(page=page, page_size=page_size, search=search)
+        targets = service.list_sync_targets()
+        return ExtensionListResponse(
+            items=[i.model_dump() for i in items],
+            total=total,
+            page=page,
+            page_size=page_size,
+            sync_targets=[
+                SyncTargetResponse(agent=t.agent, count=t.count, dir=t.dir) for t in targets
+            ],
+        )
 
-@router.get("/{name}")
-def get_skill(name: str) -> ExtensionDetailResponse:
-    """Get full skill detail with content."""
-    service = get_skill_service()
-    try:
+    @router.get("/{name}")
+    def get_item(name: str) -> ExtensionDetailResponse:
+        service = service_getter()
+        try:
+            item = service.get_item(name)
+            content = service.get_item_content(name)
+        except FileNotFoundError:
+            raise HTTPException(
+                status_code=404, detail=f"{label} {name!r} not found"
+            ) from None
+        return ExtensionDetailResponse(
+            item=item.model_dump(), content=content, path=service.get_item_path(name)
+        )
+
+    @router.post("")
+    def install_item(req: ExtensionInstallRequest) -> dict:
+        service = service_getter()
+        try:
+            item = service.install(name=req.name, content=req.content, sync_to=req.sync_to)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except FileExistsError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return item.model_dump()
+
+    @router.put("/{name}")
+    def modify_item(name: str, req: ExtensionModifyRequest) -> dict:
+        service = service_getter()
+        try:
+            item = service.modify(name=name, content=req.content)
+        except FileNotFoundError:
+            raise HTTPException(
+                status_code=404, detail=f"{label} {name!r} not found"
+            ) from None
+        return item.model_dump()
+
+    @router.delete("/{name}")
+    def uninstall_item(name: str) -> dict:
+        service = service_getter()
+        try:
+            removed_from = service.uninstall(name)
+        except FileNotFoundError:
+            raise HTTPException(
+                status_code=404, detail=f"{label} {name!r} not found"
+            ) from None
+        return {"deleted": name, "removed_from": removed_from}
+
+    @router.post("/{name}/agents")
+    def sync_item(name: str, req: ExtensionSyncRequest) -> dict:
+        service = service_getter()
+        try:
+            results = service.sync_to_agents(name, req.agents)
+        except FileNotFoundError:
+            raise HTTPException(
+                status_code=404, detail=f"{label} {name!r} not found"
+            ) from None
         item = service.get_item(name)
-        content = service.get_item_content(name)
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Skill {name!r} not found") from None
-    return ExtensionDetailResponse(
-        item=item.model_dump(), content=content, path=service.get_item_path(name)
-    )
+        return {"name": name, "results": results, type_name: item.model_dump()}
 
+    @router.delete("/{name}/agents/{agent}")
+    def unsync_item(name: str, agent: str) -> dict:
+        service = service_getter()
+        try:
+            service.uninstall_from_agent(name, agent)
+        except KeyError:
+            raise HTTPException(status_code=404, detail=f"Unknown agent: {agent!r}") from None
+        except FileNotFoundError:
+            raise HTTPException(
+                status_code=404, detail=f"{label} {name!r} not in agent {agent!r}"
+            ) from None
+        item = service.get_item(name)
+        return {"name": name, "agent": agent, type_name: item.model_dump()}
 
-@router.post("")
-def install_skill(req: ExtensionInstallRequest) -> dict:
-    """Install a new skill."""
-    service = get_skill_service()
-    try:
-        item = service.install(name=req.name, content=req.content, sync_to=req.sync_to)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except FileExistsError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return item.model_dump()
-
-
-@router.put("/{name}")
-def modify_skill(name: str, req: ExtensionModifyRequest) -> dict:
-    """Update an existing skill's content."""
-    service = get_skill_service()
-    try:
-        item = service.modify(name=name, content=req.content)
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Skill {name!r} not found") from None
-    return item.model_dump()
-
-
-@router.delete("/{name}")
-def uninstall_skill(name: str) -> dict:
-    """Delete a skill from central and all agent stores."""
-    service = get_skill_service()
-    try:
-        removed_from = service.uninstall(name)
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Skill {name!r} not found") from None
-    return {"deleted": name, "removed_from": removed_from}
-
-
-@router.post("/{name}/agents")
-def sync_skill(name: str, req: ExtensionSyncRequest) -> dict:
-    """Sync a skill to specified agent platforms."""
-    service = get_skill_service()
-    try:
-        results = service.sync_to_agents(name, req.agents)
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Skill {name!r} not found") from None
-    item = service.get_item(name)
-    return {"name": name, "results": results, "skill": item.model_dump()}
-
-
-@router.delete("/{name}/agents/{agent}")
-def unsync_skill(name: str, agent: str) -> dict:
-    """Remove a skill from a single agent platform."""
-    service = get_skill_service()
-    try:
-        service.uninstall_from_agent(name, agent)
-    except KeyError:
-        raise HTTPException(status_code=404, detail=f"Unknown agent: {agent!r}") from None
-    except FileNotFoundError:
-        raise HTTPException(
-            status_code=404, detail=f"Skill {name!r} not in agent {agent!r}"
-        ) from None
-    item = service.get_item(name)
-    return {"name": name, "agent": agent, "skill": item.model_dump()}
+    return router
 ```
 
-- [ ] **Step 2: Create `api/extensions/command.py` and `api/extensions/subagent.py`**
+- [ ] **Step 2: Create `api/extensions/hook.py` (hand-written)**
 
-Same structure as `skill.py` — copy and change:
-- `command.py`: `get_command_service`, `CommandListResponse`, error messages say "Command"
-- `subagent.py`: `get_subagent_service`, `SubagentListResponse`, error messages say "Subagent"
+Copy current `api/hook.py`. Changes:
+- Import `SyncTargetResponse`, `ExtensionSyncRequest` from `vibelens.schemas.extensions`
+- Use `service.list_items()`, `service.get_item()`, `service.get_item_content()` instead of type-specific aliases
+- Wrap `list_sync_targets()` results with `SyncTargetResponse`
 
-- [ ] **Step 3: Create `api/extensions/hook.py` (hand-written)**
+- [ ] **Step 3: Create `api/extensions/catalog.py`**
 
-Copy current `api/hook.py` contents verbatim. Only change:
-- Import schemas from `vibelens.schemas.hooks` and `vibelens.schemas.extensions` (for `SyncTargetResponse`, `ExtensionSyncRequest`)
-- Use `service.list_items()` / `service.get_item()` / `service.get_item_content()` instead of `service.list_hooks()` etc.
-- `list_sync_targets()` returns `SyncTarget` — wrap with `SyncTargetResponse`
+Copy current `api/extensions.py`. Changes:
+- Prefix: `/catalog` instead of `/extensions`
+- Schema renames: `ExtensionListResponse` → `CatalogListResponse`, `ExtensionInstallRequest` → `CatalogInstallRequest`, etc.
+- Import `install_extension` from `catalog_resolver`
 
-- [ ] **Step 4: Create `api/extensions/catalog.py`**
-
-Copy current `api/extensions.py` contents. Changes:
-- Prefix from `/extensions` to `/catalog`
-- Rename schema references: `ExtensionListResponse` → `CatalogListResponse`, `ExtensionInstallRequest` → `CatalogInstallRequest`
-- Import `install_extension` from `catalog_resolver` instead of `catalog`
-
-- [ ] **Step 5: Create `api/extensions/__init__.py`**
+- [ ] **Step 4: Create `api/extensions/__init__.py`**
 
 ```python
 # src/vibelens/api/extensions/__init__.py
@@ -1206,33 +1136,32 @@ Copy current `api/extensions.py` contents. Changes:
 from fastapi import APIRouter
 
 from vibelens.api.extensions.catalog import router as catalog_router
-from vibelens.api.extensions.command import router as commands_router
+from vibelens.api.extensions.factory import build_typed_router
 from vibelens.api.extensions.hook import router as hooks_router
-from vibelens.api.extensions.skill import router as skills_router
-from vibelens.api.extensions.subagent import router as subagents_router
+from vibelens.deps import get_command_service, get_skill_service, get_subagent_service
 
 
 def build_extensions_router() -> APIRouter:
     """Aggregate all extension sub-routers under /extensions prefix."""
     router = APIRouter(prefix="/extensions", tags=["extensions"])
     router.include_router(catalog_router)
-    router.include_router(skills_router)
-    router.include_router(commands_router)
+    router.include_router(build_typed_router(get_skill_service, "skill"))
+    router.include_router(build_typed_router(get_command_service, "command"))
+    router.include_router(build_typed_router(get_subagent_service, "subagent"))
     router.include_router(hooks_router)
-    router.include_router(subagents_router)
     return router
 ```
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add src/vibelens/api/extensions/
-git commit -m "feat(api): create api/extensions/ package with all type routers"
+git commit -m "feat(api): create api/extensions/ with lightweight factory"
 ```
 
 ---
 
-## Task 7: Wire up new routers and delete old ones
+## Task 5: Wire up new routers and delete old ones
 
 **Files:**
 - Modify: `src/vibelens/api/__init__.py`
@@ -1285,32 +1214,14 @@ git rm src/vibelens/api/extensions.py src/vibelens/api/skill.py src/vibelens/api
 
 - [ ] **Step 3: Update API test files**
 
-For each test file, update:
+For each test: update imports (module path), monkeypatch targets, URL paths (`/api/skills` → `/api/extensions/skills`), schema imports. See Task 7 of prior plan revision for detailed per-file instructions.
 
-**`test_skill_api.py`:**
-- `from vibelens.api.skill import router` → `from vibelens.api.extensions.skill import router`
-- Monkeypatch target: `vibelens.api.extensions.skill` instead of `vibelens.api.skill`
-- URL paths: `/api/skills` → `/api/extensions/skills`
-- `app.include_router(router, prefix="/api")` → `app.include_router(router, prefix="/api/extensions")`
-- Schema imports: from `vibelens.schemas.extensions` instead of `vibelens.schemas.skills`
+- [ ] **Step 4: Run all tests + ruff**
 
-Apply same pattern for `test_command_api.py`, `test_hook_api.py`, `test_subagent_api.py`.
+Run: `cd /Users/JinghengYe/Documents/Projects/Agent-Guideline/VibeLens && uv run pytest tests/ -v && uv run ruff check src/ tests/`
+Expected: All PASS, no lint errors
 
-**`test_extension_api.py` and `test_catalog_api.py`:**
-- Import from `vibelens.api.extensions.catalog`
-- URL paths: `/api/extensions` → `/api/extensions/catalog`
-
-- [ ] **Step 4: Run all tests**
-
-Run: `cd /Users/JinghengYe/Documents/Projects/Agent-Guideline/VibeLens && uv run pytest tests/ -v`
-Expected: All PASS
-
-- [ ] **Step 5: Run ruff**
-
-Run: `cd /Users/JinghengYe/Documents/Projects/Agent-Guideline/VibeLens && uv run ruff check src/ tests/`
-Expected: No errors
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add -A
@@ -1319,60 +1230,49 @@ git commit -m "refactor(api): replace 5 standalone routers with unified extensio
 
 ---
 
-## Task 8: Create frontend API client
+## Task 6: Create frontend API client
 
 **Files:**
 - Create: `frontend/src/api/extensions.ts`
 - Modify: `frontend/src/app.tsx`
 - Modify: `frontend/src/types.ts`
 
-- [ ] **Step 1: Create `api/extensions.ts` with typed client**
+- [ ] **Step 1: Add `SyncTarget` to `types.ts`**
+
+```typescript
+export interface SyncTarget {
+  agent: string;
+  count: number;
+  dir: string;
+}
+```
+
+- [ ] **Step 2: Create `api/extensions.ts`**
 
 ```typescript
 // frontend/src/api/extensions.ts
-import type {
-  ExtensionItemSummary,
-  ExtensionListResponse,
-  ExtensionMetaResponse,
-  SyncTarget,
-} from "../types";
+import type { ExtensionItemSummary, ExtensionListResponse, ExtensionMetaResponse, SyncTarget } from "../types";
 
 type FetchFn = (url: string, init?: RequestInit) => Promise<Response>;
-
 const BASE = "/api/extensions";
 
 interface CatalogApi {
   list(params: {
-    page?: number;
-    perPage?: number;
-    sort?: string;
-    search?: string;
-    extensionType?: string;
-    category?: string;
-    platform?: string;
+    page?: number; perPage?: number; sort?: string; search?: string;
+    extensionType?: string; category?: string; platform?: string;
   }): Promise<ExtensionListResponse>;
   getMeta(): Promise<ExtensionMetaResponse>;
   getItem(id: string): Promise<ExtensionItemSummary>;
   getContent(id: string): Promise<{ content: string; source: string }>;
-  install(
-    id: string,
-    targets: string[],
-    overwrite?: boolean
-  ): Promise<{
-    success: boolean;
-    installed_path: string;
-    message: string;
+  install(id: string, targets: string[], overwrite?: boolean): Promise<{
+    success: boolean; installed_path: string; message: string;
     results: Record<string, { success: boolean; message: string }>;
   }>;
 }
 
 interface TypeApi<T> {
-  list(params?: {
-    page?: number;
-    pageSize?: number;
-    search?: string;
-    refresh?: boolean;
-  }): Promise<{ items: T[]; total: number; page: number; page_size: number; sync_targets: SyncTarget[] }>;
+  list(params?: { page?: number; pageSize?: number; search?: string; refresh?: boolean }):
+    Promise<{ items: T[]; total: number; page: number; page_size: number; sync_targets: SyncTarget[] }>;
   get(name: string): Promise<{ item: Record<string, unknown>; content: string; path: string }>;
   install(name: string, content: string, syncTo?: string[]): Promise<T>;
   modify(name: string, content: string): Promise<T>;
@@ -1398,6 +1298,7 @@ export interface ExtensionsClient {
 
 function createTypeApi<T>(fetchFn: FetchFn, typePlural: string): TypeApi<T> {
   const base = `${BASE}/${typePlural}`;
+  const json = { "Content-Type": "application/json" };
 
   return {
     async list(params = {}) {
@@ -1410,61 +1311,43 @@ function createTypeApi<T>(fetchFn: FetchFn, typePlural: string): TypeApi<T> {
       if (!res.ok) throw new Error(`Failed to list ${typePlural}`);
       return res.json();
     },
-
     async get(name) {
       const res = await fetchFn(`${base}/${encodeURIComponent(name)}`);
       if (!res.ok) throw new Error(`${typePlural} ${name} not found`);
       return res.json();
     },
-
     async install(name, content, syncTo) {
       const res = await fetchFn(base, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: json,
         body: JSON.stringify({ name, content, sync_to: syncTo || [] }),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || `Failed to install ${name}`);
-      }
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || `Failed to install ${name}`); }
       return res.json();
     },
-
     async modify(name, content) {
       const res = await fetchFn(`${base}/${encodeURIComponent(name)}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
+        method: "PUT", headers: json, body: JSON.stringify({ content }),
       });
       if (!res.ok) throw new Error(`Failed to modify ${name}`);
       return res.json();
     },
-
     async uninstall(name) {
       const res = await fetchFn(`${base}/${encodeURIComponent(name)}`, { method: "DELETE" });
       if (!res.ok) throw new Error(`Failed to uninstall ${name}`);
       return res.json();
     },
-
     async syncToAgents(name, agents) {
       const res = await fetchFn(`${base}/${encodeURIComponent(name)}/agents`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agents }),
+        method: "POST", headers: json, body: JSON.stringify({ agents }),
       });
       if (!res.ok) throw new Error(`Failed to sync ${name}`);
       return res.json();
     },
-
     async unsyncFromAgent(name, agent) {
-      const res = await fetchFn(
-        `${base}/${encodeURIComponent(name)}/agents/${encodeURIComponent(agent)}`,
-        { method: "DELETE" }
-      );
+      const res = await fetchFn(`${base}/${encodeURIComponent(name)}/agents/${encodeURIComponent(agent)}`, { method: "DELETE" });
       if (!res.ok) throw new Error(`Failed to unsync ${name} from ${agent}`);
       return res.json();
     },
-
     async importFromAgent(agent) {
       const res = await fetchFn(`${base}/import/${encodeURIComponent(agent)}`, { method: "POST" });
       if (!res.ok) throw new Error(`Failed to import from ${agent}`);
@@ -1484,35 +1367,24 @@ export function createExtensionsClient(fetchFn: FetchFn): ExtensionsClient {
       cachePromise = (async () => {
         const types = ["skills", "commands", "hooks", "subagents"] as const;
         const results: Record<string, SyncTarget[]> = {};
-        await Promise.all(
-          types.map(async (type) => {
-            try {
-              const res = await fetchFn(`${BASE}/${type}?page_size=1`);
-              if (res.ok) {
-                const data = await res.json();
-                results[type.replace(/s$/, "")] = (data.sync_targets || []).map(
-                  (t: { agent: string; count: number; dir: string }) => ({
-                    agent: t.agent,
-                    count: t.count,
-                    dir: t.dir,
-                  })
-                );
-              }
-            } catch {
-              results[type.replace(/s$/, "")] = [];
+        await Promise.all(types.map(async (type) => {
+          try {
+            const res = await fetchFn(`${BASE}/${type}?page_size=1`);
+            if (res.ok) {
+              const data = await res.json();
+              results[type.replace(/s$/, "")] = (data.sync_targets || []).map(
+                (t: SyncTarget) => ({ agent: t.agent, count: t.count, dir: t.dir })
+              );
             }
-          })
-        );
+          } catch { results[type.replace(/s$/, "")] = []; }
+        }));
         cachedTargets = results;
         cachePromise = null;
         return results;
       })();
       return cachePromise;
     },
-    invalidate() {
-      cachedTargets = null;
-      cachePromise = null;
-    },
+    invalidate() { cachedTargets = null; cachePromise = null; },
   };
 
   const catalog: CatalogApi = {
@@ -1529,68 +1401,50 @@ export function createExtensionsClient(fetchFn: FetchFn): ExtensionsClient {
       if (!res.ok) throw new Error("Failed to list catalog");
       return res.json();
     },
-
     async getMeta() {
       const res = await fetchFn(`${BASE}/catalog/meta`);
       if (!res.ok) throw new Error("Failed to get catalog meta");
       return res.json();
     },
-
     async getItem(id) {
       const res = await fetchFn(`${BASE}/catalog/${id}`);
       if (!res.ok) throw new Error(`Catalog item ${id} not found`);
       return res.json();
     },
-
     async getContent(id) {
       const res = await fetchFn(`${BASE}/catalog/${id}/content`);
       if (!res.ok) throw new Error(`Content for ${id} not found`);
       return res.json();
     },
-
     async install(id, targets, overwrite = false) {
       const res = await fetchFn(`${BASE}/catalog/${id}/install`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ target_platforms: targets, overwrite }),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || "Install failed");
-      }
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || "Install failed"); }
       return res.json();
     },
   };
 
   return {
     catalog,
-    skills: createTypeApi("skills"),
-    commands: createTypeApi("commands"),
-    hooks: createTypeApi("hooks"),
-    subagents: createTypeApi("subagents"),
+    skills: createTypeApi(fetchFn, "skills"),
+    commands: createTypeApi(fetchFn, "commands"),
+    hooks: createTypeApi(fetchFn, "hooks"),
+    subagents: createTypeApi(fetchFn, "subagents"),
     syncTargets,
   };
 }
 ```
 
-- [ ] **Step 2: Add `SyncTarget` to `types.ts` and `ExtensionsClient` to app context**
+- [ ] **Step 3: Wire into `app.tsx`**
 
-In `types.ts`, add:
-```typescript
-export interface SyncTarget {
-  agent: string;
-  count: number;
-  dir: string;
-}
-```
-
-In `app.tsx`:
 1. Import `createExtensionsClient`, `ExtensionsClient`
-2. Create client in App: `const extensionsClient = useMemo(() => createExtensionsClient(fetchWithToken), [fetchWithToken])`
+2. `const extensionsClient = useMemo(() => createExtensionsClient(fetchWithToken), [fetchWithToken])`
 3. Add to AppContext value
 4. Export `useExtensionsClient()` hook
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add frontend/src/api/extensions.ts frontend/src/app.tsx frontend/src/types.ts
@@ -1599,34 +1453,25 @@ git commit -m "feat(frontend): add typed extensions API client with context prov
 
 ---
 
-## Task 9: Migrate frontend components to new client
+## Task 7: Migrate frontend components to new client
 
 **Files:**
-- Modify: `frontend/src/components/personalization/extensions/extension-explore-tab.tsx`
-- Modify: `frontend/src/components/personalization/extensions/extension-card.tsx`
-- Modify: `frontend/src/components/personalization/extensions/extension-detail-view.tsx`
-- Modify: `frontend/src/components/personalization/install-target-dialog.tsx`
-- Modify: `frontend/src/components/personalization/recommendations-view.tsx`
-- Delete: `frontend/src/components/personalization/extensions/extension-endpoints.ts`
-- Delete: `frontend/src/components/personalization/extensions/use-sync-targets.ts`
+- Modify: `extension-explore-tab.tsx`, `extension-card.tsx`, `extension-detail-view.tsx`
+- Modify: `install-target-dialog.tsx`, `recommendations-view.tsx`
+- Modify: `creations-view.tsx`, `evolutions-view.tsx` (if they exist as separate files; may be sections within other files)
+- Delete: `extension-endpoints.ts`, `use-sync-targets.ts`
 
 - [ ] **Step 1: Update `extension-explore-tab.tsx`**
 
-- Replace `fetchWithToken("/api/extensions?...")` → `client.catalog.list({...})`
-- Replace `fetchWithToken("/api/extensions/meta")` → `client.catalog.getMeta()`
-- Remove `useSyncTargetsByType` import/usage → `client.syncTargets.get()`
-- Remove `extensionEndpoint` import
+Replace `fetchWithToken("/api/extensions?...")` → `client.catalog.list({...})`, `fetchWithToken("/api/extensions/meta")` → `client.catalog.getMeta()`. Remove `useSyncTargetsByType` → `client.syncTargets.get()`. Remove `extensionEndpoint` import.
 
 - [ ] **Step 2: Update `extension-card.tsx`**
 
-- Install: `fetchWithToken("/api/extensions/${id}/install", ...)` → `client.catalog.install(id, targets)`
-- Uninstall: `fetchWithToken("/api/${type}s/${name}/agents/${agent}", DELETE)` → use client type API
-- Remove `extensionEndpoint` import
+Install: → `client.catalog.install(id, targets)`. Uninstall: → `client[typePlural].unsyncFromAgent(name, agent)`.
 
 - [ ] **Step 3: Update `extension-detail-view.tsx`**
 
-- `fetchWithToken("/api/extensions/${id}")` → `client.catalog.getItem(id)`
-- `fetchWithToken("/api/extensions/${id}/content")` → `client.catalog.getContent(id)`
+`getItem` → `client.catalog.getItem(id)`, `getContent` → `client.catalog.getContent(id)`.
 
 - [ ] **Step 4: Update `install-target-dialog.tsx`**
 
@@ -1634,17 +1479,12 @@ Replace `detailEndpoint` prop pattern with client calls.
 
 - [ ] **Step 5: Update `recommendations-view.tsx`**
 
-- `fetchWithToken("/api/extensions/${id}")` → `client.catalog.getItem(id)`
+`fetchWithToken("/api/extensions/${id}")` → `client.catalog.getItem(id)`.
 
-- [ ] **Step 6: Update `creations-view.tsx` and `evolutions-view.tsx`**
+- [ ] **Step 6: Update creation/evolution install paths**
 
-In `creations-view.tsx`:
-- `fetchWithToken("/api/skills", {method: "POST", ...})` → `client.skills.install(name, content, syncTo)`
-
-In `evolutions-view.tsx`:
-- `fetchWithToken("/api/skills/${name}")` → `client.skills.get(name)`
-- `fetchWithToken("/api/skills/${name}", {method: "PUT", ...})` → `client.skills.modify(name, content)`
-- `fetchWithToken("/api/skills/${name}/agents", {method: "POST", ...})` → `client.skills.syncToAgents(name, agents)`
+Creations: `fetchWithToken("/api/skills", POST)` → `client.skills.install(name, content, syncTo)`.
+Evolutions: `fetchWithToken("/api/skills/${name}")` → `client.skills.get(name)`, PUT → `client.skills.modify(name, content)`, sync → `client.skills.syncToAgents(name, agents)`.
 
 - [ ] **Step 7: Delete old files**
 
@@ -1662,12 +1502,12 @@ Expected: Build succeeds
 
 ```bash
 git add frontend/src/
-git commit -m "refactor(frontend): migrate extension components to unified API client"
+git commit -m "refactor(frontend): migrate all components to unified API client"
 ```
 
 ---
 
-## Task 10: Rewrite `local-extensions-tab.tsx` and delete `cards.tsx`
+## Task 8: Rewrite `local-extensions-tab.tsx` and delete `cards.tsx`
 
 **Files:**
 - Modify: `frontend/src/components/personalization/local-extensions-tab.tsx`
@@ -1678,26 +1518,21 @@ git commit -m "refactor(frontend): migrate extension components to unified API c
 1. Use `useExtensionsClient()` for all API calls
 2. Support all four types via `client.skills`, `client.commands`, etc.
 3. Type filter dropdown at top
-4. **v1: only show "skill" filter** — `const VISIBLE_TYPES = ["skill"] as const;`
-5. Use `ExtensionCard` from `extension-card.tsx` (not old `cards.tsx`)
-6. Use `ExtensionDetailView` for detail (not `ExtensionDetailPopup`)
+4. v1: `const VISIBLE_TYPES = ["skill"] as const;` — only show skill filter
+5. Use `ExtensionCard` from `extension-card.tsx`
+6. Use `ExtensionDetailView` for detail display
 
-- [ ] **Step 2: Delete `cards.tsx`**
+- [ ] **Step 2: Delete `cards.tsx` and update imports**
 
 ```bash
 rm frontend/src/components/personalization/cards.tsx
 ```
 
-- [ ] **Step 3: Update remaining imports of `cards.tsx`**
+Search for `from.*cards` imports and update to unified components.
 
-Search for `from.*cards` imports in personalization components. Update to use unified components.
-
-- [ ] **Step 4: Build frontend**
+- [ ] **Step 3: Build and commit**
 
 Run: `cd /Users/JinghengYe/Documents/Projects/Agent-Guideline/VibeLens/frontend && npm run build`
-Expected: Build succeeds
-
-- [ ] **Step 5: Commit**
 
 ```bash
 git add frontend/src/
@@ -1706,32 +1541,24 @@ git commit -m "refactor(frontend): rewrite local-extensions-tab, delete cards.ts
 
 ---
 
-## Task 11: Update `personalization-panel.tsx` and clean up
+## Task 9: Final frontend cleanup
 
 **Files:**
 - Modify: `frontend/src/components/personalization/personalization-panel.tsx`
 
 - [ ] **Step 1: Update `personalization-panel.tsx`**
 
-- Remove `useSyncTargetsByType` usage
-- Update `onInstalled` callback to call `client.syncTargets.invalidate()`
-- Remove unused imports
+Remove `useSyncTargetsByType` usage. Update `onInstalled` to call `client.syncTargets.invalidate()`.
 
-- [ ] **Step 2: Search for remaining old references**
+- [ ] **Step 2: Grep for old references**
 
-Grep across frontend for:
-- `"/api/skills"`, `"/api/commands"`, `"/api/hooks"`, `"/api/subagents"`
-- `"/api/extensions"` (without `/catalog`)
-- `extension-endpoints`, `use-sync-targets`, `from.*cards`
+Search frontend for: `"/api/skills"`, `"/api/commands"`, `"/api/hooks"`, `"/api/subagents"`, `"/api/extensions"` (without `/catalog`), `extension-endpoints`, `use-sync-targets`, `from.*cards`.
 
 Fix any remaining references.
 
-- [ ] **Step 3: Build frontend**
+- [ ] **Step 3: Build and commit**
 
 Run: `cd /Users/JinghengYe/Documents/Projects/Agent-Guideline/VibeLens/frontend && npm run build`
-Expected: Build succeeds
-
-- [ ] **Step 4: Commit**
 
 ```bash
 git add frontend/src/
@@ -1740,7 +1567,7 @@ git commit -m "refactor(frontend): final cleanup of old references"
 
 ---
 
-## Task 12: Final verification
+## Task 10: Final verification
 
 - [ ] **Step 1: Run all backend tests**
 
