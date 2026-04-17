@@ -13,6 +13,7 @@ import type {
   SkillSyncTarget,
   WorkflowPattern,
 } from "../../types";
+import { useExtensionsClient } from "../../app";
 import { BulletText } from "../bullet-text";
 import { CollapsibleText } from "../collapsible-text";
 import { InstallLocallyDialog } from "../install-locally-dialog";
@@ -25,13 +26,11 @@ import { PreviewDialog } from "./preview-dialog";
 export function CreationSection({
   skills,
   workflowPatterns,
-  fetchWithToken,
   syncTargets,
   onInstalled,
 }: {
   skills: Creation[];
   workflowPatterns: WorkflowPattern[];
-  fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
   syncTargets: SkillSyncTarget[];
   onInstalled?: () => void;
 }) {
@@ -49,7 +48,6 @@ export function CreationSection({
             key={skill.element_name}
             skill={skill}
             workflowPatterns={workflowPatterns}
-            fetchWithToken={fetchWithToken}
             syncTargets={syncTargets}
             onInstalled={onInstalled}
           />
@@ -62,16 +60,15 @@ export function CreationSection({
 function CreatedSkillCard({
   skill,
   workflowPatterns,
-  fetchWithToken,
   syncTargets,
   onInstalled,
 }: {
   skill: Creation;
   workflowPatterns: WorkflowPattern[];
-  fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
   syncTargets: SkillSyncTarget[];
   onInstalled?: () => void;
 }) {
+  const client = useExtensionsClient();
   const { guardAction, showInstallDialog, setShowInstallDialog } = useDemoGuard();
   const [showPreview, setShowPreview] = useState(false);
   const [installed, setInstalled] = useState(false);
@@ -86,12 +83,7 @@ function CreatedSkillCard({
   const handleInstall = useCallback(
     async (content: string, targets: string[]) => {
       try {
-        const res = await fetchWithToken("/api/skills", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: skill.element_name, content, sync_to: targets }),
-        });
-        if (!res.ok) return;
+        await client.skills.install(skill.element_name, content, targets);
         setInstalled(true);
         onInstalled?.();
       } catch {
@@ -99,7 +91,7 @@ function CreatedSkillCard({
       }
       setShowPreview(false);
     },
-    [fetchWithToken, skill.element_name, onInstalled],
+    [client, skill.element_name, onInstalled],
   );
 
   return (

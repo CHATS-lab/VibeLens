@@ -1,24 +1,30 @@
 import { Check, Download, Loader2, Monitor, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useAppContext } from "../../app";
+import { useExtensionsClient } from "../../app";
 import type { ExtensionSyncTarget } from "../../types";
 import { Modal, ModalBody, ModalFooter, ModalHeader } from "../modal";
 import { SOURCE_LABELS } from "./constants";
-import { centralStoreLabel, extractInstalledIn } from "./extensions/extension-endpoints";
+
+const TYPE_PLURAL: Record<string, string> = {
+  skill: "skills",
+  subagent: "subagents",
+  command: "commands",
+  hook: "hooks",
+};
+
+function centralStoreLabel(type: string): string {
+  if (type === "hook") return "~/.vibelens/hooks/";
+  return `~/.vibelens/${type}s/`;
+}
 
 interface InstallTargetDialogProps {
   extensionName: string;
   /**
    * Human-readable type key (e.g. "skill", "subagent", "command", "hook").
    * Used for central-store label, body copy, count suffix, and for
-   * extracting `installed_in` from the typed detail response.
+   * fetching installed_in via the extensions client.
    */
   typeKey: string;
-  /**
-   * Base endpoint used to auto-fetch `installed_in` when `installedIn` is
-   * omitted (e.g. "/api/subagents"). When null, auto-fetch is skipped.
-   */
-  detailEndpoint: string | null;
   syncTargets: ExtensionSyncTarget[];
   /**
    * Called with the agents to sync TO (add) and agents to sync OFF (remove).
@@ -28,7 +34,7 @@ interface InstallTargetDialogProps {
   onCancel: () => void;
   /**
    * Agent keys that already contain this extension. When omitted, the dialog
-   * fetches `{detailEndpoint}/{extensionName}` on mount to populate this.
+   * fetches the item detail on mount to populate this.
    * Used to compute the diff between current and desired state.
    */
   installedIn?: string[];
@@ -43,27 +49,29 @@ interface InstallTargetDialogProps {
 export function InstallTargetDialog({
   extensionName,
   typeKey,
-  detailEndpoint,
   syncTargets,
   onInstall,
   onCancel,
   installedIn,
 }: InstallTargetDialogProps) {
-  const { fetchWithToken } = useAppContext();
+  const client = useExtensionsClient();
   const [fetchedInstalled, setFetchedInstalled] = useState<string[] | null>(null);
 
-  // Auto-fetch installed_in if caller didn't provide it. Keeps the API
-  // simple for callers that only have an extension_id at hand.
+  // Auto-fetch installed_in if caller didn't provide it.
   useEffect(() => {
     if (installedIn !== undefined) return;
-    if (!detailEndpoint) return;
+    const typePlural = TYPE_PLURAL[typeKey];
+    if (!typePlural) return;
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetchWithToken(`${detailEndpoint}/${encodeURIComponent(extensionName)}`);
-        if (!res.ok || cancelled) return;
-        const data = await res.json();
-        setFetchedInstalled(extractInstalledIn(typeKey, data));
+        const typeApi = client[typePlural as keyof typeof client] as {
+          get: (name: string) => Promise<{ item: Record<string, unknown> }>;
+        };
+        const data = await typeApi.get(extensionName);
+        if (cancelled) return;
+        const item = data.item as { installed_in?: string[] };
+        setFetchedInstalled(item.installed_in ?? []);
       } catch {
         /* best-effort — extension may not exist yet (fresh install) */
       }
@@ -71,7 +79,7 @@ export function InstallTargetDialog({
     return () => {
       cancelled = true;
     };
-  }, [fetchWithToken, installedIn, detailEndpoint, extensionName, typeKey]);
+  }, [client, installedIn, extensionName, typeKey]);
 
   const installedSet = useMemo(
     () => new Set(installedIn ?? fetchedInstalled ?? []),

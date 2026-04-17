@@ -12,6 +12,7 @@ import type {
   ExtensionItemSummary,
   RankedRecommendationItem,
 } from "../../types";
+import { useExtensionsClient } from "../../app";
 import { BulletText } from "../bullet-text";
 import { CollapsibleText } from "../collapsible-text";
 import { Tooltip } from "../tooltip";
@@ -22,12 +23,12 @@ import { ConfidenceBar, SectionHeader } from "./shared";
 export function RecommendationSection({
   recommendations,
   installedIds,
-  fetchWithToken,
   onOpenDetail,
 }: {
   recommendations: RankedRecommendationItem[];
   installedIds: Set<string>;
-  fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
+  /** @deprecated No longer used — kept for backward compatibility */
+  fetchWithToken?: (url: string, init?: RequestInit) => Promise<Response>;
   onOpenDetail: (item: ExtensionItemSummary) => void;
 }) {
   return (
@@ -43,7 +44,6 @@ export function RecommendationSection({
             key={rec.item.extension_id}
             rec={rec}
             isInstalled={installedIds.has(rec.item.extension_id)}
-            fetchWithToken={fetchWithToken}
             onOpenDetail={onOpenDetail}
           />
         ))}
@@ -55,14 +55,13 @@ export function RecommendationSection({
 function RecommendationCard({
   rec,
   isInstalled,
-  fetchWithToken,
   onOpenDetail,
 }: {
   rec: RankedRecommendationItem;
   isInstalled: boolean;
-  fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
   onOpenDetail: (item: ExtensionItemSummary) => void;
 }) {
+  const client = useExtensionsClient();
   const [rationaleExpanded, setRationaleExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,21 +73,14 @@ function RecommendationCard({
     setLoading(true);
     setError(null);
     try {
-      const res = await fetchWithToken(
-        `/api/extensions/${encodeURIComponent(rec.item.extension_id)}`,
-      );
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.detail || `HTTP ${res.status}`);
-      }
-      const item = (await res.json()) as ExtensionItemSummary;
+      const item = await client.catalog.getItem(rec.item.extension_id);
       onOpenDetail(item);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
-  }, [fetchWithToken, rec.item.extension_id, onOpenDetail]);
+  }, [client, rec.item.extension_id, onOpenDetail]);
 
   return (
     <div

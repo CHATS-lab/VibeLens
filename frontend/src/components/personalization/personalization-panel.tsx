@@ -1,6 +1,6 @@
 import { Check, History, Info, PanelRightClose, PanelRightOpen, Search, Sparkles, TrendingUp } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAppContext } from "../../app";
+import { useAppContext, useExtensionsClient } from "../../app";
 import type { AnalysisJobResponse, AnalysisJobStatus, CostEstimate, LLMStatus, PersonalizationResult, Skill, PersonalizationMode } from "../../types";
 import { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "../../styles";
 import { AnalysisLoadingScreen } from "../analysis-loading-screen";
@@ -487,7 +487,6 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
               result={analysisResult}
               activeTab={activeTab}
               onNew={handleNewAnalysis}
-              fetchWithToken={fetchWithToken}
               onInstalled={handleSkillInstalled}
               onSwitchTab={(tab) => {
                 setActiveTab(tab);
@@ -552,7 +551,6 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
       )}
       {showSkillSelector && (
         <SkillSelectionDialog
-          fetchWithToken={fetchWithToken}
           onConfirm={handleSkillSelectionConfirm}
           onCancel={() => setShowSkillSelector(false)}
         />
@@ -562,35 +560,29 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
 }
 
 function SkillSelectionDialog({
-  fetchWithToken,
   onConfirm,
   onCancel,
 }: {
-  fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
   onConfirm: (skillNames: string[]) => void;
   onCancel: () => void;
 }) {
+  const client = useExtensionsClient();
   const [skills, setSkills] = useState<Skill[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetchWithToken("/api/skills?page_size=200");
-        if (!res.ok) throw new Error("Failed to load skills");
-        const data = await res.json();
-        const items: Skill[] = data.items ?? [];
-        setSkills(items);
+    client.skills.list({ pageSize: 200 })
+      .then((data) => {
+        setSkills((data.items ?? []) as unknown as Skill[]);
         setSelected(new Set());
-      } catch (err) {
+      })
+      .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : String(err));
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [fetchWithToken]);
+      })
+      .finally(() => setLoading(false));
+  }, [client]);
 
   const allSelected = skills.length > 0 && selected.size === skills.length;
 

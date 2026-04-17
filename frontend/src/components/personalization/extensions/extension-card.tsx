@@ -14,11 +14,10 @@ import {
 } from "lucide-react";
 import { formatCount, formatRelativeDate } from "./extension-format";
 import { useCallback, useState } from "react";
-import { useAppContext } from "../../../app";
+import { useExtensionsClient } from "../../../app";
 import type { ExtensionItemSummary, ExtensionSyncTarget } from "../../../types";
 import { InstallTargetDialog } from "../install-target-dialog";
 import { Tooltip } from "../../tooltip";
-import { extensionEndpoint } from "./extension-endpoints";
 import {
   CARD_VIEW_MAX_TAGS,
   ITEM_TYPE_COLORS,
@@ -34,6 +33,13 @@ const ITEM_TYPE_ICONS: Record<string, React.ComponentType<{ className?: string }
   command: Terminal,
   hook: Anchor,
   repo: Server,
+};
+
+const TYPE_PLURAL: Record<string, string> = {
+  skill: "skills",
+  subagent: "subagents",
+  command: "commands",
+  hook: "hooks",
 };
 
 export function TypeBadge({ itemType }: { itemType: string }) {
@@ -111,7 +117,7 @@ export function ExtensionCard({
   viewMode = "list",
   syncTargets = [],
 }: ExtensionCardProps) {
-  const { fetchWithToken } = useAppContext();
+  const client = useExtensionsClient();
   const [installing, setInstalling] = useState(false);
   const [installed, setInstalled] = useState(isInstalled);
   const [error, setError] = useState<string | null>(null);
@@ -122,15 +128,7 @@ export function ExtensionCard({
       setInstalling(true);
       setError(null);
       try {
-        const res = await fetchWithToken(`/api/extensions/${encodeURIComponent(item.extension_id)}/install`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ target_platforms: platforms, overwrite: true }),
-        });
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          throw new Error(body.detail || `HTTP ${res.status}`);
-        }
+        await client.catalog.install(item.extension_id, platforms, true);
         setInstalled(true);
         onInstalled(item.extension_id);
         setShowTargetDialog(false);
@@ -140,7 +138,7 @@ export function ExtensionCard({
         setInstalling(false);
       }
     },
-    [fetchWithToken, item.extension_id, onInstalled],
+    [client, item.extension_id, onInstalled],
   );
 
   const handleDialogSubmit = useCallback(
@@ -149,31 +147,15 @@ export function ExtensionCard({
       setError(null);
       try {
         if (toAdd.length > 0) {
-          const res = await fetchWithToken(
-            `/api/extensions/${encodeURIComponent(item.extension_id)}/install`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ target_platforms: toAdd, overwrite: true }),
-            },
-          );
-          if (!res.ok) {
-            const body = await res.json().catch(() => ({}));
-            throw new Error(body.detail || `HTTP ${res.status}`);
-          }
+          await client.catalog.install(item.extension_id, toAdd, true);
         }
-        const endpoint = extensionEndpoint(item.extension_type);
-        if (toRemove.length > 0 && !endpoint) {
-          throw new Error(`No REST endpoint for extension type: ${item.extension_type}`);
-        }
-        for (const agent of toRemove) {
-          const res = await fetchWithToken(
-            `${endpoint}/${encodeURIComponent(item.name)}/agents/${encodeURIComponent(agent)}`,
-            { method: "DELETE" },
-          );
-          if (!res.ok) {
-            const body = await res.json().catch(() => ({}));
-            throw new Error(body.detail || `HTTP ${res.status}`);
+        const typePlural = TYPE_PLURAL[item.extension_type];
+        if (toRemove.length > 0 && typePlural) {
+          const typeApi = client[typePlural as keyof typeof client] as {
+            unsyncFromAgent: (name: string, agent: string) => Promise<unknown>;
+          };
+          for (const agent of toRemove) {
+            await typeApi.unsyncFromAgent(item.name, agent);
           }
         }
         setInstalled(true);
@@ -185,7 +167,7 @@ export function ExtensionCard({
         setInstalling(false);
       }
     },
-    [fetchWithToken, item.extension_id, item.extension_type, item.name, onInstalled],
+    [client, item.extension_id, item.extension_type, item.name, onInstalled],
   );
 
   const handleInstall = useCallback(
@@ -275,7 +257,6 @@ export function ExtensionCard({
           <InstallTargetDialog
             extensionName={item.name}
             typeKey={item.extension_type}
-            detailEndpoint={extensionEndpoint(item.extension_type)}
             syncTargets={syncTargets}
             onInstall={handleDialogSubmit}
             onCancel={() => setShowTargetDialog(false)}
@@ -374,7 +355,6 @@ export function ExtensionCard({
         <InstallTargetDialog
           extensionName={item.name}
           typeKey={item.extension_type}
-          detailEndpoint={extensionEndpoint(item.extension_type)}
           syncTargets={syncTargets}
           onInstall={(targets) => doInstall(targets.length > 0 ? targets : ["claude_code"])}
           onCancel={() => setShowTargetDialog(false)}

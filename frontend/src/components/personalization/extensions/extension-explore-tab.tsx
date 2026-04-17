@@ -1,8 +1,8 @@
 import { Check, ChevronDown, Compass, LayoutGrid, List, Package, RefreshCw, Search, SlidersHorizontal, Sparkles, Tag, Zap } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAppContext } from "../../../app";
+import { useExtensionsClient } from "../../../app";
 import { TOGGLE_ACTIVE, TOGGLE_BUTTON_BASE, TOGGLE_CONTAINER, TOGGLE_INACTIVE } from "../../../styles";
-import type { ExtensionItemSummary, ExtensionListResponse, ExtensionMetaResponse } from "../../../types";
+import type { ExtensionItemSummary, ExtensionSyncTarget } from "../../../types";
 import { EmptyState } from "../../empty-state";
 import { ErrorBanner } from "../../error-banner";
 import { LoadingState } from "../../loading-state";
@@ -10,7 +10,6 @@ import { ExtensionCard } from "./extension-card";
 import { EXTENSION_PAGE_SIZE, ITEM_TYPE_LABELS, SORT_OPTIONS, type ExtensionViewMode } from "./extension-constants";
 import { ExtensionDetailView } from "./extension-detail-view";
 import { ExtensionPagination } from "./extension-pagination";
-import { useSyncTargetsByType } from "./use-sync-targets";
 import { NoResultsState } from "../shared";
 
 const SEARCH_DEBOUNCE_MS = 300;
@@ -80,7 +79,7 @@ interface ExtensionExploreTabProps {
 }
 
 export function ExtensionExploreTab({ resetKey = 0, onSwitchToRecommend }: ExtensionExploreTabProps) {
-  const { fetchWithToken } = useAppContext();
+  const client = useExtensionsClient();
 
   const [items, setItems] = useState<ExtensionItemSummary[]>([]);
   const [total, setTotal] = useState(0);
@@ -99,23 +98,26 @@ export function ExtensionExploreTab({ resetKey = 0, onSwitchToRecommend }: Exten
 
   const [installedIds, setInstalledIds] = useState<Set<string>>(new Set());
   const [detailItem, setDetailItem] = useState<ExtensionItemSummary | null>(null);
-  const syncTargetsByType = useSyncTargetsByType(fetchWithToken);
+  const [syncTargetsByType, setSyncTargetsByType] = useState<Record<string, ExtensionSyncTarget[]>>({});
 
   // Reset to list view when the explore tab is re-clicked
   useEffect(() => {
     if (resetKey > 0) setDetailItem(null);
   }, [resetKey]);
 
-  // Load catalog metadata once on mount
+  // Load catalog metadata and sync targets once on mount
   useEffect(() => {
-    fetchWithToken("/api/extensions/meta")
-      .then((res) => res.json())
-      .then((data: ExtensionMetaResponse) => {
+    client.catalog.getMeta()
+      .then((data) => {
         setCategories(data.categories);
         setHasProfile(data.has_profile);
       })
       .catch(() => {});
-  }, [fetchWithToken]);
+
+    client.syncTargets.get()
+      .then((targets) => setSyncTargetsByType(targets))
+      .catch(() => {});
+  }, [client]);
 
   // Debounce search query
   useEffect(() => {
@@ -130,18 +132,14 @@ export function ExtensionExploreTab({ resetKey = 0, onSwitchToRecommend }: Exten
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams({
-        page: String(page),
-        per_page: String(EXTENSION_PAGE_SIZE),
+      const data = await client.catalog.list({
+        page,
+        perPage: EXTENSION_PAGE_SIZE,
         sort: sortBy,
+        search: debouncedSearch || undefined,
+        extensionType: typeFilter || undefined,
+        category: categoryFilter || undefined,
       });
-      if (debouncedSearch) params.set("search", debouncedSearch);
-      if (typeFilter) params.set("extension_type", typeFilter);
-      if (categoryFilter) params.set("category", categoryFilter);
-
-      const res = await fetchWithToken(`/api/extensions?${params}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data: ExtensionListResponse = await res.json();
       setItems(data.items);
       setTotal(data.total);
     } catch (err) {
@@ -149,7 +147,7 @@ export function ExtensionExploreTab({ resetKey = 0, onSwitchToRecommend }: Exten
     } finally {
       setLoading(false);
     }
-  }, [fetchWithToken, page, debouncedSearch, typeFilter, sortBy, categoryFilter]);
+  }, [client, page, debouncedSearch, typeFilter, sortBy, categoryFilter]);
 
   useEffect(() => {
     fetchCatalog();

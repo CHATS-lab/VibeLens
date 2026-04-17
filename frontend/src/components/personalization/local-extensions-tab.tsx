@@ -1,16 +1,20 @@
-import { ChevronLeft, ChevronRight, Code2, Info, Package, Plus, RefreshCw } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Code2, Info, Package, Pencil, Plus, RefreshCw, Share2, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAppContext } from "../../app";
+import { useExtensionsClient } from "../../app";
 import { useDemoGuard } from "../../hooks/use-demo-guard";
-import type { Skill, SkillSyncTarget } from "../../types";
+import type { ExtensionSyncTarget, Skill } from "../../types";
 import { SEARCH_DEBOUNCE_MS } from "../../constants";
 import { ConfirmDialog } from "../confirm-dialog";
 import { InstallLocallyDialog } from "../install-locally-dialog";
-import { ExtensionCard, ExtensionDetailPopup } from "./cards";
 import { EditorDialog } from "./editor-dialog";
 import { EmptyState } from "../empty-state";
 import { ErrorBanner } from "../error-banner";
 import { LoadingState } from "../loading-state";
+import { MarkdownRenderer } from "../markdown-renderer";
+import { Modal, ModalHeader, ModalBody } from "../modal";
+import { Tooltip } from "../tooltip";
+import { SourceBadge, TagList, TagPill, ToolBadge, ToolList } from "./badges";
+import { SOURCE_LABELS } from "./constants";
 import {
   NoResultsState,
   ResultCount,
@@ -31,7 +35,7 @@ interface EditorState {
 const EDITOR_CLOSED: EditorState = { open: false, mode: "create", name: "", content: "" };
 
 export function LocalExtensionsTab({ refreshTrigger = 0 }: { refreshTrigger?: number } = {}) {
-  const { fetchWithToken } = useAppContext();
+  const client = useExtensionsClient();
   const { guardAction, showInstallDialog, setShowInstallDialog } = useDemoGuard();
   const [skills, setSkills] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,7 +48,7 @@ export function LocalExtensionsTab({ refreshTrigger = 0 }: { refreshTrigger?: nu
   const [deleteTarget, setDeleteTarget] = useState<Skill | null>(null);
   const [detailSkill, setDetailSkill] = useState<Skill | null>(null);
   const [sourceFilter, setSourceFilter] = useState<string | null>(null);
-  const [syncTargets, setSkillSyncTargets] = useState<SkillSyncTarget[]>([]);
+  const [syncTargets, setSkillSyncTargets] = useState<ExtensionSyncTarget[]>([]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [totalSkills, setTotalSkills] = useState(0);
@@ -53,12 +57,12 @@ export function LocalExtensionsTab({ refreshTrigger = 0 }: { refreshTrigger?: nu
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
-      if (forceRefresh) params.set("refresh", "true");
-      const res = await fetchWithToken(`/api/skills?${params}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
-      const data = await res.json();
-      const items: Skill[] = data.items ?? data;
+      const data = await client.skills.list({
+        page,
+        pageSize,
+        refresh: forceRefresh || undefined,
+      });
+      const items = (data.items ?? []) as unknown as Skill[];
       setSkills(items);
       setFilteredSkills(items);
       setTotalSkills(data.total ?? items.length);
@@ -68,7 +72,7 @@ export function LocalExtensionsTab({ refreshTrigger = 0 }: { refreshTrigger?: nu
     } finally {
       setLoading(false);
     }
-  }, [fetchWithToken, page, pageSize]);
+  }, [client, page, pageSize]);
 
   useEffect(() => {
     fetchSkills();
@@ -108,25 +112,17 @@ export function LocalExtensionsTab({ refreshTrigger = 0 }: { refreshTrigger?: nu
 
       searchTimerRef.current = setTimeout(async () => {
         try {
-          const params = new URLSearchParams({
-            search: query,
-            page: "1",
-            page_size: String(pageSize),
-          });
-          const res = await fetchWithToken(`/api/skills?${params}`);
-          if (res.ok) {
-            const data = await res.json();
-            const items: Skill[] = data.items ?? data;
-            setSkills(items);
-            setTotalSkills(data.total ?? items.length);
-            if (data.sync_targets) setSkillSyncTargets(data.sync_targets);
-          }
+          const data = await client.skills.list({ search: query, page: 1, pageSize });
+          const items = (data.items ?? []) as unknown as Skill[];
+          setSkills(items);
+          setTotalSkills(data.total ?? items.length);
+          if (data.sync_targets) setSkillSyncTargets(data.sync_targets);
         } catch {
           /* fallback to local filter */
         }
       }, SEARCH_DEBOUNCE_MS);
     },
-    [fetchWithToken, fetchSkills, pageSize],
+    [client, fetchSkills, pageSize],
   );
 
   const handleSave = useCallback(
@@ -135,29 +131,21 @@ export function LocalExtensionsTab({ refreshTrigger = 0 }: { refreshTrigger?: nu
       setError(null);
       try {
         const isCreate = editorState.mode === "create";
-        const url = isCreate ? "/api/skills" : `/api/skills/${name}`;
-        const method = isCreate ? "POST" : "PUT";
-        const body = isCreate ? { name, content } : { content };
-        const res = await fetchWithToken(url, {
-          method,
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        if (!res.ok) {
-          const respBody = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
-          throw new Error(respBody.detail || `HTTP ${res.status}`);
+        let installedIn: string[] = [];
+        if (isCreate) {
+          const result = await client.skills.install(name, content, []);
+          const skill = result as unknown as { installed_in?: string[] };
+          installedIn = skill.installed_in ?? [];
+        } else {
+          const result = await client.skills.modify(name, content);
+          const skill = result as unknown as { installed_in?: string[] };
+          installedIn = skill.installed_in ?? [];
         }
-        const data = await res.json();
-        const wasEdit = !isCreate;
         setEditorState(EDITOR_CLOSED);
 
-        // Auto-sync to all previously synced agent interfaces
-        if (wasEdit && data.skill?.installed_in?.length > 0) {
-          fetchWithToken(`/api/skills/${name}/agents`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ agents: data.skill.installed_in }),
-          }).catch(() => {});
+        // Auto-sync to all previously synced agent interfaces after edit
+        if (editorState.mode === "edit" && installedIn.length > 0) {
+          client.skills.syncToAgents(name, installedIn).catch(() => {});
         }
 
         await fetchSkills();
@@ -167,18 +155,14 @@ export function LocalExtensionsTab({ refreshTrigger = 0 }: { refreshTrigger?: nu
         setSaving(false);
       }
     },
-    [editorState.mode, fetchWithToken, fetchSkills],
+    [client, editorState.mode, fetchSkills],
   );
 
   const handleDelete = useCallback(
     async (skill: Skill) => {
       setError(null);
       try {
-        const res = await fetchWithToken(`/api/skills/${skill.name}`, { method: "DELETE" });
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
-          throw new Error(body.detail || `HTTP ${res.status}`);
-        }
+        await client.skills.uninstall(skill.name);
         setDeleteTarget(null);
         await fetchSkills();
       } catch (err) {
@@ -186,21 +170,19 @@ export function LocalExtensionsTab({ refreshTrigger = 0 }: { refreshTrigger?: nu
         setDeleteTarget(null);
       }
     },
-    [fetchWithToken, fetchSkills],
+    [client, fetchSkills],
   );
 
   const openEditDialog = useCallback(
     async (skill: Skill) => {
       try {
-        const res = await fetchWithToken(`/api/skills/${skill.name}`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
+        const data = await client.skills.get(skill.name);
         setEditorState({ open: true, mode: "edit", name: skill.name, content: data.content || "" });
       } catch (err) {
         setError(`Failed to load skill content: ${err}`);
       }
     },
-    [fetchWithToken],
+    [client],
   );
 
   const availableSourceTypes = Array.from(
@@ -291,7 +273,7 @@ export function LocalExtensionsTab({ refreshTrigger = 0 }: { refreshTrigger?: nu
         <div className="space-y-2">
           <ResultCount filtered={filteredSkills.length} total={totalSkills} />
           {filteredSkills.map((skill) => (
-            <ExtensionCard
+            <SkillCard
               key={skill.name}
               skill={skill}
               onEdit={(s) => guardAction(() => openEditDialog(s))}
@@ -347,11 +329,10 @@ export function LocalExtensionsTab({ refreshTrigger = 0 }: { refreshTrigger?: nu
       )}
 
       {detailSkill && (
-        <ExtensionDetailPopup
+        <SkillDetailPopup
           skill={detailSkill}
           syncTargets={syncTargets}
           onClose={() => setDetailSkill(null)}
-          fetchWithToken={fetchWithToken}
           onRefresh={fetchSkills}
         />
       )}
@@ -360,6 +341,259 @@ export function LocalExtensionsTab({ refreshTrigger = 0 }: { refreshTrigger?: nu
         <InstallLocallyDialog onClose={() => setShowInstallDialog(false)} />
       )}
     </div>
+  );
+}
+
+/** Compact card for a locally installed skill in the list view. */
+function SkillCard({
+  skill,
+  onEdit,
+  onDelete,
+  onViewDetail,
+}: {
+  skill: Skill;
+  onEdit: (skill: Skill) => void;
+  onDelete: () => void;
+  onViewDetail: (skill: Skill) => void;
+}) {
+  const tags = skill.tags || [];
+  const allowedTools = skill.allowed_tools || [];
+
+  return (
+    <div className="border border-card rounded-lg bg-panel hover:bg-control/80 transition">
+      <div className="flex items-start">
+        <button
+          onClick={() => onViewDetail(skill)}
+          className="flex-1 text-left px-4 py-3 flex items-start gap-3 min-w-0"
+        >
+          <div className="shrink-0 mt-0.5 p-1.5 rounded-md bg-accent-teal-subtle">
+            <Package className="w-4 h-4 text-accent-teal" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-mono text-base font-bold text-primary">{skill.name}</span>
+              {skill.installed_in.map((agent) => (
+                <SourceBadge key={agent} sourceType={agent} sourcePath="" />
+              ))}
+            </div>
+            <p className="text-sm text-secondary mt-1 line-clamp-2">
+              {skill.description || "No description"}
+            </p>
+            <TagList tags={tags} />
+            <ToolList tools={allowedTools} />
+          </div>
+        </button>
+        <div className="flex items-center gap-1.5 px-3 py-3 shrink-0">
+          <Tooltip text="Edit skill">
+            <button
+              onClick={() => onEdit(skill)}
+              className="p-2 text-dimmed hover:text-accent-teal hover:bg-accent-teal-subtle rounded-md transition"
+            >
+              <Pencil className="w-4 h-4" />
+            </button>
+          </Tooltip>
+          <Tooltip text="Delete skill">
+            <button
+              onClick={() => onDelete()}
+              className="p-2 text-dimmed hover:text-red-600 dark:hover:text-red-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-md transition"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </Tooltip>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Full-screen detail popup for a locally installed skill with sync controls. */
+function SkillDetailPopup({
+  skill: initialSkill,
+  syncTargets,
+  onClose,
+  onRefresh,
+}: {
+  skill: Skill;
+  syncTargets: ExtensionSyncTarget[];
+  onClose: () => void;
+  onRefresh: () => void;
+}) {
+  const client = useExtensionsClient();
+  const { guardAction, showInstallDialog, setShowInstallDialog } = useDemoGuard();
+  const [skill, setSkill] = useState<Skill>(initialSkill);
+  const [content, setContent] = useState<string | null>(null);
+  const [loadingContent, setLoadingContent] = useState(true);
+  const [syncing, setSyncing] = useState<string | null>(null);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [hoveredTarget, setHoveredTarget] = useState<string | null>(null);
+
+  const tags = skill.tags || [];
+  const allowedTools = skill.allowed_tools || [];
+
+  useEffect(() => {
+    client.skills.get(skill.name)
+      .then((data) => setContent(data.content || ""))
+      .catch(() => {})
+      .finally(() => setLoadingContent(false));
+  }, [client, skill.name]);
+
+  const handleSync = useCallback(
+    async (targetKey: string) => {
+      setSyncing(targetKey);
+      setSyncMessage(null);
+      try {
+        const data = await client.skills.syncToAgents(skill.name, [targetKey]);
+        const results = data.results as Record<string, boolean>;
+        const succeeded = results?.[targetKey] === true;
+        if (succeeded) {
+          setSyncMessage(`Synced to ${SOURCE_LABELS[targetKey] || targetKey}`);
+          // Refresh skill data to update installed_in
+          const refreshed = await client.skills.get(skill.name);
+          const refreshedItem = refreshed.item as unknown as Skill;
+          if (refreshedItem) setSkill(refreshedItem);
+          onRefresh();
+        } else {
+          setSyncMessage(`Failed to sync to ${SOURCE_LABELS[targetKey] || targetKey}`);
+        }
+      } catch (err) {
+        setSyncMessage(`Error: ${err}`);
+      } finally {
+        setSyncing(null);
+      }
+    },
+    [client, skill.name, onRefresh],
+  );
+
+  const handleUnsync = useCallback(
+    async (targetKey: string) => {
+      setSyncing(targetKey);
+      setSyncMessage(null);
+      try {
+        await client.skills.unsyncFromAgent(skill.name, targetKey);
+        setSyncMessage(`Removed from ${SOURCE_LABELS[targetKey] || targetKey}`);
+        const refreshed = await client.skills.get(skill.name);
+        const refreshedItem = refreshed.item as unknown as Skill;
+        if (refreshedItem) setSkill(refreshedItem);
+        onRefresh();
+      } catch (err) {
+        setSyncMessage(`Error: ${err}`);
+      } finally {
+        setSyncing(null);
+        setHoveredTarget(null);
+      }
+    },
+    [client, skill.name, onRefresh],
+  );
+
+  return (
+    <Modal onClose={onClose} maxWidth="max-w-2xl">
+      <ModalHeader onClose={onClose}>
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-accent-teal-subtle">
+            <Package className="w-5 h-5 text-accent-teal" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-lg font-bold font-mono text-primary">{skill.name}</h2>
+            </div>
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+              {skill.installed_in.map((agent) => (
+                <SourceBadge key={agent} sourceType={agent} sourcePath="" />
+              ))}
+              {tags.map((tag) => <TagPill key={tag} tag={tag} />)}
+            </div>
+          </div>
+        </div>
+      </ModalHeader>
+
+      <ModalBody>
+        <p className="text-sm text-secondary leading-relaxed">
+          {skill.description || "No description"}
+        </p>
+
+        {allowedTools.length > 0 && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[11px] text-muted">Tools</span>
+              {allowedTools.map((tool) => <ToolBadge key={tool} tool={tool} />)}
+            </div>
+          </div>
+        )}
+
+        {syncTargets.length > 0 && (
+          <div>
+            <div className="flex items-center gap-1.5 mb-2.5">
+              <Share2 className="w-3.5 h-3.5 text-accent-teal" />
+              <span className="text-xs font-semibold text-secondary">Sync to Agents</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {syncTargets.map((target) => {
+                const isSynced = skill.installed_in.includes(target.agent);
+                const hasDir = !!target.dir;
+                const label = SOURCE_LABELS[target.agent] || target.agent;
+                const isHovered = hoveredTarget === target.agent && isSynced;
+                const tooltipText = isHovered
+                  ? `Click to remove from ${label}`
+                  : isSynced
+                    ? `Synced to ${label}`
+                    : hasDir
+                      ? `Sync to ${target.dir}`
+                      : `${label} not installed on this system`;
+                return (
+                  <Tooltip key={target.agent} text={tooltipText}>
+                    <button
+                      onClick={() => guardAction(() =>
+                        isSynced ? handleUnsync(target.agent) : handleSync(target.agent)
+                      )}
+                      onMouseEnter={() => isSynced && setHoveredTarget(target.agent)}
+                      onMouseLeave={() => setHoveredTarget(null)}
+                      disabled={syncing === target.agent || (!isSynced && !hasDir)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full transition ${
+                        isHovered
+                          ? "bg-red-500/80 text-white"
+                          : isSynced
+                            ? "bg-emerald-600 text-white dark:bg-emerald-500"
+                            : hasDir
+                              ? "bg-control text-secondary border border-card hover:border-accent-teal/40 hover:text-accent-teal"
+                              : "bg-subtle text-faint border border-card cursor-not-allowed opacity-50"
+                      }`}
+                    >
+                      {isSynced ? <Check className="w-3 h-3" /> : <Share2 className="w-3 h-3 opacity-50" />}
+                      {label}
+                    </button>
+                  </Tooltip>
+                );
+              })}
+            </div>
+            {syncMessage && (
+              <p className="text-xs text-emerald-600/80 dark:text-emerald-400/70 mt-2">{syncMessage}</p>
+            )}
+          </div>
+        )}
+
+        <div>
+          <div className="flex items-center gap-1.5 mb-2">
+            <Code2 className="w-3.5 h-3.5 text-accent-teal" />
+            <span className="text-xs font-semibold text-secondary">SKILL.md</span>
+          </div>
+          {loadingContent ? (
+            <div className="flex items-center gap-2 py-6 justify-center">
+              <span className="text-xs text-dimmed">Loading content...</span>
+            </div>
+          ) : content ? (
+            <div className="rounded-lg border border-card bg-control/40 p-4 max-h-80 overflow-y-auto text-xs">
+              <MarkdownRenderer content={content} />
+            </div>
+          ) : (
+            <p className="text-xs text-dimmed italic py-4 text-center">No content available</p>
+          )}
+        </div>
+      </ModalBody>
+
+      {showInstallDialog && (
+        <InstallLocallyDialog onClose={() => setShowInstallDialog(false)} />
+      )}
+    </Modal>
   );
 }
 
@@ -414,3 +648,4 @@ function PaginationBar({
     </div>
   );
 }
+

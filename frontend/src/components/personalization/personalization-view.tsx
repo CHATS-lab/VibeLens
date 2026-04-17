@@ -3,10 +3,12 @@ import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type {
   ExtensionItemSummary,
+  ExtensionSyncTarget,
   PersonalizationResult,
   PersonalizationMode,
   SkillSyncTarget,
 } from "../../types";
+import { useExtensionsClient } from "../../app";
 import { DemoBanner } from "../demo-banner";
 import { Tooltip } from "../tooltip";
 import { SHOW_ANALYSIS_DETAIL_SECTIONS } from "../../constants";
@@ -14,7 +16,6 @@ import { WarningsBanner } from "../warnings-banner";
 import { CreationSection } from "./creations-view";
 import { EvolutionSection } from "./evolutions-view";
 import { ExtensionDetailView } from "./extensions/extension-detail-view";
-import { useSyncTargetsByType } from "./extensions/use-sync-targets";
 import { PatternSection } from "./patterns-view";
 import { RecommendationSection } from "./recommendations-view";
 
@@ -39,35 +40,37 @@ export function AnalysisResultView({
   result,
   activeTab,
   onNew,
-  fetchWithToken,
   onInstalled,
   onSwitchTab,
 }: {
   result: PersonalizationResult;
   activeTab: PersonalizationTab;
   onNew: () => void;
-  fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
   onInstalled?: () => void;
   onSwitchTab?: (tab: PersonalizationTab) => void;
 }) {
+  const client = useExtensionsClient();
   const [syncTargets, setSkillSyncTargets] = useState<SkillSyncTarget[]>([]);
   const [detailItem, setDetailItem] = useState<ExtensionItemSummary | null>(null);
   const [installedIds, setInstalledIds] = useState<Set<string>>(new Set());
-  const syncTargetsByType = useSyncTargetsByType(fetchWithToken);
+  const [syncTargetsByType, setSyncTargetsByType] = useState<Record<string, ExtensionSyncTarget[]>>({});
 
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetchWithToken("/api/skills?page_size=1");
-        if (res.ok) {
-          const data = await res.json();
-          setSkillSyncTargets(data.sync_targets ?? []);
-        }
-      } catch {
-        /* ignore */
-      }
-    })();
-  }, [fetchWithToken]);
+    client.skills.list({ pageSize: 1 })
+      .then((data) => {
+        const targets: SkillSyncTarget[] = data.sync_targets.map((t) => ({
+          agent: t.agent,
+          skill_count: t.count,
+          skills_dir: t.dir,
+        }));
+        setSkillSyncTargets(targets);
+      })
+      .catch(() => {});
+
+    client.syncTargets.get()
+      .then((targets) => setSyncTargetsByType(targets))
+      .catch(() => {});
+  }, [client]);
 
   const handleInstalled = useCallback(
     (itemId: string) => {
@@ -105,7 +108,6 @@ export function AnalysisResultView({
         <RecommendationSection
           recommendations={result.recommendations}
           installedIds={installedIds}
-          fetchWithToken={fetchWithToken}
           onOpenDetail={setDetailItem}
         />
       )}
@@ -115,7 +117,6 @@ export function AnalysisResultView({
         <CreationSection
           skills={result.creations}
           workflowPatterns={result.workflow_patterns}
-          fetchWithToken={fetchWithToken}
           syncTargets={syncTargets}
           onInstalled={onInstalled}
         />
@@ -126,7 +127,6 @@ export function AnalysisResultView({
         <EvolutionSection
           suggestions={result.evolutions}
           workflowPatterns={result.workflow_patterns}
-          fetchWithToken={fetchWithToken}
           syncTargets={syncTargets}
           onInstalled={onInstalled}
         />

@@ -15,6 +15,7 @@ import type {
   SkillSyncTarget,
   WorkflowPattern,
 } from "../../types";
+import { useExtensionsClient } from "../../app";
 import { BulletText } from "../bullet-text";
 import { CollapsibleText } from "../collapsible-text";
 import { InstallLocallyDialog } from "../install-locally-dialog";
@@ -29,13 +30,11 @@ import { PreviewDialog } from "./preview-dialog";
 export function EvolutionSection({
   suggestions,
   workflowPatterns,
-  fetchWithToken,
   syncTargets,
   onInstalled,
 }: {
   suggestions: Evolution[];
   workflowPatterns: WorkflowPattern[];
-  fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
   syncTargets: SkillSyncTarget[];
   onInstalled?: () => void;
 }) {
@@ -53,7 +52,6 @@ export function EvolutionSection({
             key={sug.element_name}
             suggestion={sug}
             workflowPatterns={workflowPatterns}
-            fetchWithToken={fetchWithToken}
             syncTargets={syncTargets}
             onInstalled={onInstalled}
           />
@@ -66,16 +64,15 @@ export function EvolutionSection({
 function EvolutionCard({
   suggestion,
   workflowPatterns,
-  fetchWithToken,
   syncTargets,
   onInstalled,
 }: {
   suggestion: Evolution;
   workflowPatterns: WorkflowPattern[];
-  fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
   syncTargets: SkillSyncTarget[];
   onInstalled?: () => void;
 }) {
+  const client = useExtensionsClient();
   const { guardAction, showInstallDialog, setShowInstallDialog } = useDemoGuard();
   const [expanded, setExpanded] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
@@ -96,25 +93,17 @@ function EvolutionCard({
     setLoadingOriginal(true);
     setFetchError(null);
     try {
-      const res = await fetchWithToken(`/api/skills/${suggestion.element_name}`);
-      if (res.status === 404) {
-        setFetchError("Skill not found in central store");
-        return null;
-      }
-      if (!res.ok) {
-        setFetchError("Failed to fetch skill content");
-        return null;
-      }
-      const data = await res.json();
+      const data = await client.skills.get(suggestion.element_name);
       setOriginalContent(data.content);
-      return data.content as string;
-    } catch {
-      setFetchError("Network error fetching skill");
+      return data.content;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setFetchError(msg.includes("not found") ? "Skill not found in central store" : "Failed to fetch skill content");
       return null;
     } finally {
       setLoadingOriginal(false);
     }
-  }, [fetchWithToken, suggestion.element_name, originalContent]);
+  }, [client, suggestion.element_name, originalContent]);
 
   const handleExpand = useCallback(async () => {
     const willExpand = !expanded;
@@ -134,19 +123,9 @@ function EvolutionCard({
 
   const handleUpdate = useCallback(async (content: string, targets: string[]) => {
     try {
-      const res = await fetchWithToken(`/api/skills/${suggestion.element_name}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
-      });
-      if (!res.ok) return;
-
+      await client.skills.modify(suggestion.element_name, content);
       if (targets.length > 0) {
-        await fetchWithToken(`/api/skills/${suggestion.element_name}/agents`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ agents: targets }),
-        });
+        await client.skills.syncToAgents(suggestion.element_name, targets);
       }
       setUpdated(true);
       onInstalled?.();
@@ -154,7 +133,7 @@ function EvolutionCard({
       /* ignore */
     }
     setShowPreview(false);
-  }, [fetchWithToken, suggestion.element_name, onInstalled]);
+  }, [client, suggestion.element_name, onInstalled]);
 
   return (
     <div className="border border-default rounded-xl bg-subtle overflow-hidden">
