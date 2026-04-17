@@ -158,3 +158,40 @@ class TestImport:
         agents["claude"].write("skill-b", SAMPLE_MD)
         imported = service.import_all_from_agent(agent="claude")
         assert len(imported) == 2
+
+    def test_import_all_agents(self, service, agents):
+        agents["claude"].write("claude-skill", SAMPLE_MD)
+        agents["codex"].write("codex-skill", SAMPLE_MD)
+        service.import_all_agents()
+        assert service._central.exists("claude-skill")
+        assert service._central.exists("codex-skill")
+
+
+class TestGetItem:
+    def test_returns_item(self, service):
+        service.install(name="my-skill", content=SAMPLE_MD)
+        item = service.get_item(name="my-skill")
+        assert item.name == "my-skill"
+
+    def test_not_found_raises(self, service):
+        with pytest.raises(FileNotFoundError):
+            service.get_item(name="nonexistent")
+
+    def test_get_item_content(self, service):
+        service.install(name="my-skill", content=SAMPLE_MD)
+        content = service.get_item_content(name="my-skill")
+        assert "A sample skill" in content
+
+    def test_get_item_path(self, service):
+        service.install(name="my-skill", content=SAMPLE_MD)
+        path = service.get_item_path(name="my-skill")
+        assert "my-skill" in path
+
+
+class TestInvalidate:
+    def test_invalidate_clears_cache(self, service):
+        service.install(name="my-skill", content=SAMPLE_MD)
+        service.list_items()
+        assert service._cache is not None
+        service.invalidate()
+        assert service._cache is None
