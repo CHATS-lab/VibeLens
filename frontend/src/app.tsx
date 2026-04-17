@@ -6,6 +6,7 @@ import {
   Share2,
 } from "lucide-react";
 import { useEffect, useRef, useState, useCallback, useMemo, createContext, useContext } from "react";
+import { createExtensionsClient, type ExtensionsClient } from "./api/extensions";
 import { ConfirmDialog } from "./components/confirm-dialog";
 import { DonateConsentDialog } from "./components/donate-consent-dialog";
 import { DonateResultDialog } from "./components/donate-result-dialog";
@@ -44,22 +45,29 @@ interface AppContextValue {
   maxZipBytes: number;
   maxSessions: number;
   fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
+  extensionsClient: ExtensionsClient;
 }
 
 const DEFAULT_MAX_ZIP_BYTES = 500 * 1024 * 1024;
 const DEFAULT_MAX_SESSIONS = 30;
 const LAST_SESSION_ID_KEY = "vibelens.lastSessionId";
 
+const defaultFetch = (url: string, init?: RequestInit) => fetch(url, init);
 const AppContext = createContext<AppContextValue>({
   sessionToken: "",
   appMode: "self",
   maxZipBytes: DEFAULT_MAX_ZIP_BYTES,
   maxSessions: DEFAULT_MAX_SESSIONS,
-  fetchWithToken: (url, init) => fetch(url, init),
+  fetchWithToken: defaultFetch,
+  extensionsClient: createExtensionsClient(defaultFetch),
 });
 
 export function useAppContext(): AppContextValue {
   return useContext(AppContext);
+}
+
+export function useExtensionsClient(): ExtensionsClient {
+  return useContext(AppContext).extensionsClient;
 }
 
 export function App() {
@@ -123,12 +131,18 @@ export function App() {
     [sessionToken]
   );
 
+  const extensionsClient = useMemo(
+    () => createExtensionsClient(fetchWithToken),
+    [fetchWithToken],
+  );
+
   const contextValue: AppContextValue = {
     sessionToken,
     appMode,
     maxZipBytes,
     maxSessions,
     fetchWithToken,
+    extensionsClient,
   };
 
   const handleSidebarResize = useCallback((delta: number) => {
