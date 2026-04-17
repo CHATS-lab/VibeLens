@@ -1,9 +1,9 @@
 import { ArrowUpRight, BookOpen, ChevronDown, ChevronRight, Repeat, Target } from "lucide-react";
 import { useCallback, useState } from "react";
 import type { StepRef, WorkflowPattern } from "../../types";
-import { BulletText } from "../bullet-text";
-import { Tooltip } from "../tooltip";
-import { SectionHeader } from "./shared";
+import { BulletText } from "../ui/bullet-text";
+import { Tooltip } from "../ui/tooltip";
+import { SectionHeader } from "./result-shared";
 
 export function PatternSection({ patterns }: { patterns: WorkflowPattern[] }) {
   return (

@@ -6,9 +6,9 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import type { FrictionType, Mitigation } from "../../types";
-import { Tooltip } from "../tooltip";
-import { BulletText } from "../bullet-text";
-import { CopyButton } from "../copy-button";
+import { Tooltip } from "../ui/tooltip";
+import { BulletText } from "../ui/bullet-text";
+import { CopyButton } from "../ui/copy-button";
 import { confidenceLevel, frictionTypeLabel } from "./friction-constants";
 import { FrictionRefList } from "./friction-types";
 

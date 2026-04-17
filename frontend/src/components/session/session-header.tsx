@@ -2,7 +2,7 @@ import { DollarSign } from "lucide-react";
 import { useState } from "react";
 import type { Trajectory } from "../../types";
 import { formatTokens, formatCost } from "../../utils";
-import { Tooltip } from "../tooltip";
+import { Tooltip } from "../ui/tooltip";
 import { METRIC_LABEL } from "../../styles";
 import { SESSION_ID_SHORT, PREVIEW_SHORT } from "../../constants";
 

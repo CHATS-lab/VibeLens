@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { TOGGLE_ACTIVE, TOGGLE_BUTTON_BASE, TOGGLE_CONTAINER, TOGGLE_INACTIVE } from "../../../styles";
-import { CopyButton } from "../../copy-button";
-import { MarkdownRenderer } from "../../markdown-renderer";
+import { CopyButton } from "../../ui/copy-button";
+import { MarkdownRenderer } from "../../ui/markdown-renderer";
 
 export interface TocEntry {
   level: number;

@@ -1,6 +1,6 @@
 import { Bot, ChevronDown, Check, Heart } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Tooltip } from "../tooltip";
+import { Tooltip } from "../ui/tooltip";
 
 export function AgentFilterDropdown({ value, agents, onChange }: { value: string; agents: string[]; onChange: (v: string) => void }) {
   const [open, setOpen] = useState(false);

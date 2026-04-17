@@ -1,10 +1,10 @@
 import { Check, Copy, ExternalLink, Heart } from "lucide-react";
 import { useCallback, useState } from "react";
-import { Modal, ModalBody, ModalFooter, ModalHeader } from "./modal";
+import { Modal, ModalBody, ModalFooter, ModalHeader } from "../ui/modal";
 import { buildWithdrawUrl } from "./donation-constants";
-import type { DonateResult } from "../types";
+import type { DonateResult } from "../../types";
 
-interface DonateResultDialogProps {
+interface DonationResultDialogProps {
   result: DonateResult;
   onClose: () => void;
 }
@@ -38,7 +38,7 @@ async function copyToClipboard(text: string): Promise<boolean> {
   }
 }
 
-export function DonateResultDialog({ result, onClose }: DonateResultDialogProps) {
+export function DonationResultDialog({ result, onClose }: DonationResultDialogProps) {
   const [copyState, setCopyState] = useState<CopyState>("idle");
   const hasErrors = result.errors.length > 0;
   const donationId = result.donation_id ?? "";

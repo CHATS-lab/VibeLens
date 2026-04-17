@@ -1,5 +1,5 @@
 import { Filter, Search, X } from "lucide-react";
-import { Tooltip } from "../tooltip";
+import { Tooltip } from "../ui/tooltip";
 import { normalizeSourceType, SOURCE_COLORS, SOURCE_LABELS } from "./constants";
 
 /** Search input with icon and clear button. */

@@ -1,5 +1,5 @@
 import { Tag, Wrench } from "lucide-react";
-import { Tooltip } from "../tooltip";
+import { Tooltip } from "../ui/tooltip";
 import {
   normalizeSourceType,
   SOURCE_COLORS,

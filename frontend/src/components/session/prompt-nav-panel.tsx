@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Bot, Compass, Layers, MessageSquare, ScrollText, User, PanelRightClose, PanelRightOpen, Wrench } from "lucide-react";
-import { Tooltip } from "../tooltip";
+import { Tooltip } from "../ui/tooltip";
 import { extractMessageText, extractUserText, truncate } from "../../utils";
-import { ResizeHandle } from "../resize-handle";
+import { ResizeHandle } from "../ui/resize-handle";
 import type { Step, Trajectory } from "../../types";
 import type { FlowPhaseGroup, FlowSection } from "./flow-layout";
 import { PHASE_STYLE, CATEGORY_LABELS } from "../../styles";

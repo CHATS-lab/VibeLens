@@ -19,7 +19,7 @@ import { useAppContext } from "../../app";
 import type { Trajectory } from "../../types";
 import { baseProjectName } from "../../utils";
 import { SearchOptionsDialog } from "./search-options-dialog";
-import { Tooltip } from "../tooltip";
+import { Tooltip } from "../ui/tooltip";
 import { SESSIONS_PER_PAGE, SEARCH_DEBOUNCE_MS } from "../../constants";
 import { SessionRow } from "./session-row";
 import { AgentFilterDropdown, DonateButton } from "./session-list-controls";

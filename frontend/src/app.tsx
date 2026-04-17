@@ -7,11 +7,11 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, useCallback, useMemo, createContext, useContext } from "react";
 import { createExtensionsClient, type ExtensionsClient } from "./api/extensions";
-import { ConfirmDialog } from "./components/confirm-dialog";
-import { DonateConsentDialog } from "./components/donate-consent-dialog";
-import { DonateResultDialog } from "./components/donate-result-dialog";
-import { DonationHistoryDialog } from "./components/donation-history-dialog";
-import { ResizeHandle } from "./components/resize-handle";
+import { ConfirmDialog } from "./components/ui/confirm-dialog";
+import { DonationConsentDialog } from "./components/donation/donation-consent-dialog";
+import { DonationResultDialog } from "./components/donation/donation-result-dialog";
+import { DonationHistoryDialog } from "./components/donation/donation-history-dialog";
+import { ResizeHandle } from "./components/ui/resize-handle";
 import { SessionList, type ViewMode } from "./components/session/session-list";
 import { SessionView } from "./components/session/session-view";
 import { SharedSessionView } from "./components/session/shared-session-view";
@@ -20,7 +20,7 @@ import { DashboardView } from "./components/dashboard/dashboard-view";
 import { FrictionPanel } from "./components/friction/friction-panel";
 import { PersonalizationPanel } from "./components/personalization/personalization-panel";
 import { SettingsDialog } from "./components/settings-dialog";
-import { Tooltip } from "./components/tooltip";
+import { Tooltip } from "./components/ui/tooltip";
 import { RecommendationWelcomeDialog, shouldShowRecWelcome } from "./components/recommendation-welcome-dialog";
 import { SpotlightTour } from "./components/tutorial/spotlight-tour";
 import { hasSeenTour } from "./components/tutorial/tour-steps";
@@ -333,7 +333,7 @@ export function App() {
     switch (dialog.kind) {
       case "donate-confirm":
         return (
-          <DonateConsentDialog
+          <DonationConsentDialog
             sessionCount={checkedIds.size}
             onConfirm={handleDonateConfirm}
             onCancel={handleDialogClose}
@@ -354,7 +354,7 @@ export function App() {
         );
       case "donate-result":
         return (
-          <DonateResultDialog result={dialog.result} onClose={handleDialogClose} />
+          <DonationResultDialog result={dialog.result} onClose={handleDialogClose} />
         );
       case "donation-history": {
         const returnTo = dialog.returnTo;

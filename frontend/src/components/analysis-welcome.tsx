@@ -4,7 +4,7 @@ import type { LLMStatus } from "../types";
 import { DemoBanner } from "./demo-banner";
 import { InstallLocallyDialog } from "./install-locally-dialog";
 import { LLMConfigForm } from "./llm/llm-config";
-import { Tooltip } from "./tooltip";
+import { Tooltip } from "./ui/tooltip";
 
 type AccentColor = "amber" | "teal" | "cyan";
 

@@ -6,8 +6,8 @@ import { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "../
 import { AnalysisLoadingScreen } from "../analysis-loading-screen";
 import { AnalysisWelcomePage, TutorialBanner } from "../analysis-welcome";
 import { CostEstimateDialog } from "../cost-estimate-dialog";
-import { Modal, ModalBody, ModalFooter, ModalHeader } from "../modal";
-import { Tooltip } from "../tooltip";
+import { Modal, ModalBody, ModalFooter, ModalHeader } from "../ui/modal";
+import { Tooltip } from "../ui/tooltip";
 import { ExtensionExploreTab } from "./extensions/extension-explore-tab";
 import { LocalExtensionsTab } from "./local-extensions-tab";
 import {

@@ -14,8 +14,8 @@ import { useCallback, useState } from "react";
 import type { FrictionCost, FrictionType } from "../../types";
 import { formatDuration, formatTokens } from "../../utils";
 import { SEVERITY_COLORS } from "../../styles";
-import { Tooltip } from "../tooltip";
-import { BulletText } from "../bullet-text";
+import { Tooltip } from "../ui/tooltip";
+import { BulletText } from "../ui/bullet-text";
 import { SEVERITY_DESCRIPTIONS, SEVERITY_LABELS, frictionTypeLabel } from "./friction-constants";
 
 export function FrictionTypesSection({ frictionTypes }: { frictionTypes: FrictionType[] }) {

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Search, Sparkles, X } from "lucide-react";
-import { Modal, ModalBody } from "./modal";
+import { Modal, ModalBody } from "./ui/modal";
 
 const DISMISS_KEY = "vibelens-rec-welcome-dismissed";
 

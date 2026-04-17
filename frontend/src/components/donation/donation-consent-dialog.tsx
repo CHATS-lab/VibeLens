@@ -1,9 +1,9 @@
 import { BookOpen, ExternalLink, Eye, FileText, Heart, History, Shield, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { Modal, ModalHeader, ModalBody, ModalFooter } from "./modal";
+import { Modal, ModalHeader, ModalBody, ModalFooter } from "../ui/modal";
 import { WITHDRAW_FORM_URL } from "./donation-constants";
 
-interface DonateConsentDialogProps {
+interface DonationConsentDialogProps {
   sessionCount: number;
   onConfirm: () => void;
   onCancel: () => void;
@@ -33,12 +33,12 @@ const CONSENT_ITEMS: { icon: React.ReactNode; text: string }[] = [
   },
 ];
 
-export function DonateConsentDialog({
+export function DonationConsentDialog({
   sessionCount,
   onConfirm,
   onCancel,
   onShowHistory,
-}: DonateConsentDialogProps) {
+}: DonationConsentDialogProps) {
   const [agreed, setAgreed] = useState(false);
 
   return (

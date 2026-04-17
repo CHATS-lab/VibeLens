@@ -2,7 +2,7 @@ import { Check, Download, Loader2, Monitor, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useExtensionsClient } from "../../app";
 import type { ExtensionSyncTarget } from "../../types";
-import { Modal, ModalBody, ModalFooter, ModalHeader } from "../modal";
+import { Modal, ModalBody, ModalFooter, ModalHeader } from "../ui/modal";
 import { normalizeSourceType, SOURCE_LABELS } from "./constants";
 
 const TYPE_PLURAL: Record<string, string> = {

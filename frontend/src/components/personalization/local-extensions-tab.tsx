@@ -4,23 +4,23 @@ import { useExtensionsClient } from "../../app";
 import { useDemoGuard } from "../../hooks/use-demo-guard";
 import type { ExtensionSyncTarget, Skill } from "../../types";
 import { SEARCH_DEBOUNCE_MS } from "../../constants";
-import { ConfirmDialog } from "../confirm-dialog";
+import { ConfirmDialog } from "../ui/confirm-dialog";
 import { InstallLocallyDialog } from "../install-locally-dialog";
 import { EditorDialog } from "./editor-dialog";
-import { EmptyState } from "../empty-state";
-import { ErrorBanner } from "../error-banner";
-import { LoadingState } from "../loading-state";
-import { MarkdownRenderer } from "../markdown-renderer";
-import { Modal, ModalHeader, ModalBody } from "../modal";
-import { Tooltip } from "../tooltip";
-import { SourceBadge, TagList, TagPill, ToolBadge, ToolList } from "./badges";
+import { EmptyState } from "../ui/empty-state";
+import { ErrorBanner } from "../ui/error-banner";
+import { LoadingState } from "../ui/loading-state";
+import { MarkdownRenderer } from "../ui/markdown-renderer";
+import { Modal, ModalHeader, ModalBody } from "../ui/modal";
+import { Tooltip } from "../ui/tooltip";
+import { SourceBadge, TagList, TagPill, ToolBadge, ToolList } from "./source-badges";
 import { SOURCE_LABELS } from "./constants";
 import {
   NoResultsState,
   ResultCount,
   SearchBar,
   SourceFilterBar,
-} from "./shared";
+} from "./result-shared";
 
 const DEFAULT_PAGE_SIZE = 50;
 const PAGE_SIZE_OPTIONS = [25, 50, 100];

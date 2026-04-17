@@ -1,4 +1,4 @@
-export interface BarRowProps {
+export interface BarChartRowProps {
   label: string;
   value: number;
   max: number;
@@ -9,7 +9,7 @@ export interface BarRowProps {
   onLeave: () => void;
 }
 
-export function BarRow({
+export function BarChartRow({
   label,
   value,
   max,
@@ -18,7 +18,7 @@ export function BarRow({
   onHover,
   onMove,
   onLeave,
-}: BarRowProps) {
+}: BarChartRowProps) {
   const pct = max > 0 ? (value / max) * 100 : 0;
   return (
     <button

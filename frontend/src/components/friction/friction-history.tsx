@@ -4,7 +4,7 @@ import { useAppContext } from "../../app";
 import { useDemoGuard } from "../../hooks/use-demo-guard";
 import type { FrictionAnalysisResult, FrictionMeta } from "../../types";
 import { formatCost } from "../../utils";
-import { ConfirmDialog } from "../confirm-dialog";
+import { ConfirmDialog } from "../ui/confirm-dialog";
 import { InstallLocallyDialog } from "../install-locally-dialog";
 
 interface FrictionHistoryProps {

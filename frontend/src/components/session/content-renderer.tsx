@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { ContentPart } from "../../types";
 import { sanitizeText } from "../../utils";
-import { MarkdownRenderer } from "../markdown-renderer";
+import { MarkdownRenderer } from "../ui/markdown-renderer";
 
 interface ContentRendererProps {
   content: string | ContentPart[];

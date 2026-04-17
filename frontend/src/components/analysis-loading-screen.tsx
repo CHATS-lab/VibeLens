@@ -1,5 +1,5 @@
 import { Square } from "lucide-react";
-import { LoadingSpinnerRings, type SpinnerColor } from "./loading-spinner";
+import { LoadingSpinnerRings, type SpinnerColor } from "./ui/loading-spinner";
 
 interface AnalysisLoadingScreenProps {
   accent: "teal" | "amber";

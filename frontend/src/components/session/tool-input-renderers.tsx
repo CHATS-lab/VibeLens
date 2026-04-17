@@ -13,8 +13,8 @@ import {
 import { useState } from "react";
 import { createTwoFilesPatch } from "diff";
 import type { ToolCall } from "../../types";
-import { MarkdownRenderer } from "../markdown-renderer";
-import { CopyButton } from "../copy-button";
+import { MarkdownRenderer } from "../ui/markdown-renderer";
+import { CopyButton } from "../ui/copy-button";
 
 const WRITE_PREVIEW_MAX_CHARS = 500;
 

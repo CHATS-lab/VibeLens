@@ -13,7 +13,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppContext } from "../../app";
 import type { AgentType, OSPlatform, UploadCommands, UploadResult } from "../../types";
-import { CopyButton } from "../copy-button";
+import { CopyButton } from "../ui/copy-button";
 import {
   AGENT_LABELS,
   AGENT_OPTIONS,

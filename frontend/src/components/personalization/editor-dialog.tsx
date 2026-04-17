@@ -1,6 +1,6 @@
 import { Check, Loader2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Modal } from "../modal";
+import { Modal } from "../ui/modal";
 
 interface EditorDialogProps {
   mode: "create" | "edit";

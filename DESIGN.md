@@ -188,13 +188,13 @@ Supported colors: teal (skills), cyan (session viewer), amber (friction analysis
 
 ### Modals
 
-- Always use shared `Modal` / `ModalHeader` / `ModalBody` / `ModalFooter` from `components/modal.tsx`
+- Always use shared `Modal` / `ModalHeader` / `ModalBody` / `ModalFooter` from `components/ui/modal.tsx`
 - Background: `bg-panel` with `border border-card`
 - Overlay: `bg-overlay` backdrop with `backdrop-blur-sm`
 
 ### Tooltips
 
-- Always use shared `Tooltip` from `components/tooltip.tsx`
+- Always use shared `Tooltip` from `components/ui/tooltip.tsx`
 - Renders via portal, shows instantly, auto-flips
 - Never use native `title` attributes
 
@@ -364,10 +364,10 @@ Feature panels follow a consistent file-splitting pattern:
 - `*-constants.ts` -- Color maps, label maps, config arrays
 
 ### Shared Primitives
-- `components/modal.tsx` -- `Modal`, `ModalHeader`, `ModalBody`, `ModalFooter`
-- `components/tooltip.tsx` -- Portal-rendered `Tooltip` with auto-flip
-- `components/confirm-dialog.tsx` -- Confirmation dialogs for destructive actions
-- `components/markdown-renderer.tsx` -- Syntax-highlighted markdown rendering
+- `components/ui/modal.tsx` -- `Modal`, `ModalHeader`, `ModalBody`, `ModalFooter`
+- `components/ui/tooltip.tsx` -- Portal-rendered `Tooltip` with auto-flip
+- `components/ui/confirm-dialog.tsx` -- Confirmation dialogs for destructive actions
+- `components/ui/markdown-renderer.tsx` -- Syntax-highlighted markdown rendering
 
 ## 10. Chart & Data Visualization
 

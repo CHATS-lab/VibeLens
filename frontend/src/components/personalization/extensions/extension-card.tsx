@@ -19,7 +19,7 @@ import type { ExtensionItemSummary, ExtensionSyncTarget } from "../../../types";
 import { InstallTargetDialog } from "../install-target-dialog";
 import { useDemoGuard } from "../../../hooks/use-demo-guard";
 import { InstallLocallyDialog } from "../../install-locally-dialog";
-import { Tooltip } from "../../tooltip";
+import { Tooltip } from "../../ui/tooltip";
 import {
   CARD_VIEW_MAX_TAGS,
   ITEM_TYPE_COLORS,

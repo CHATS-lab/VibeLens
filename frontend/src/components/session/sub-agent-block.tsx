@@ -2,7 +2,7 @@ import { Bot, MessageSquare, Wrench } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { Trajectory } from "../../types";
 import { SESSION_ID_MEDIUM } from "../../constants";
-import { CollapsiblePill } from "../collapsible-pill";
+import { CollapsiblePill } from "../ui/collapsible-pill";
 import { StepBlock } from "./step-block";
 
 interface SubAgentBlockProps {

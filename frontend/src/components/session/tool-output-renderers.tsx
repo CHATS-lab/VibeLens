@@ -2,9 +2,9 @@ import { Check, X, ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import type { ObservationResult } from "../../types";
 import { PREVIEW_LONG } from "../../constants";
-import { MarkdownRenderer } from "../markdown-renderer";
+import { MarkdownRenderer } from "../ui/markdown-renderer";
 import { ContentRenderer } from "./content-renderer";
-import { CopyButton } from "../copy-button";
+import { CopyButton } from "../ui/copy-button";
 
 const ERROR_PREFIX = "[ERROR] ";
 const AUTO_EXPAND_LINE_THRESHOLD = 20;

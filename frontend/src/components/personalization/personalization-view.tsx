@@ -10,7 +10,7 @@ import type {
 } from "../../types";
 import { useExtensionsClient } from "../../app";
 import { DemoBanner } from "../demo-banner";
-import { Tooltip } from "../tooltip";
+import { Tooltip } from "../ui/tooltip";
 import { SHOW_ANALYSIS_DETAIL_SECTIONS } from "../../constants";
 import { WarningsBanner } from "../warnings-banner";
 import { CreationSection } from "./creations-view";
@@ -22,7 +22,7 @@ import { RecommendationSection } from "./recommendations-view";
 export type PersonalizationTab = "local" | "explore" | "retrieve" | "create" | "evolve";
 
 // Re-export SectionHeader so consumers that were importing from this file still work.
-export { SectionHeader } from "./shared";
+export { SectionHeader } from "./result-shared";
 
 const MODE_TITLES: Record<PersonalizationMode, string> = {
   recommendation: "Skill Recommendation",

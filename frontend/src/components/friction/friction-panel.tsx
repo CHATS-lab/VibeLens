@@ -22,7 +22,7 @@ import { AnalysisLoadingScreen } from "../analysis-loading-screen";
 import { DemoBanner } from "../demo-banner";
 import { AnalysisWelcomePage, TutorialBanner } from "../analysis-welcome";
 import { CostEstimateDialog } from "../cost-estimate-dialog";
-import { Tooltip } from "../tooltip";
+import { Tooltip } from "../ui/tooltip";
 import { FrictionHistory } from "./friction-history";
 import { WarningsBanner } from "../warnings-banner";
 import { FRICTION_TUTORIAL, POLL_INTERVAL_MS } from "./friction-constants";

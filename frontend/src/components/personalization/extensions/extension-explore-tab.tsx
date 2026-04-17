@@ -3,14 +3,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useExtensionsClient } from "../../../app";
 import { TOGGLE_ACTIVE, TOGGLE_BUTTON_BASE, TOGGLE_CONTAINER, TOGGLE_INACTIVE } from "../../../styles";
 import type { ExtensionItemSummary, ExtensionSyncTarget } from "../../../types";
-import { EmptyState } from "../../empty-state";
-import { ErrorBanner } from "../../error-banner";
-import { LoadingState } from "../../loading-state";
+import { EmptyState } from "../../ui/empty-state";
+import { ErrorBanner } from "../../ui/error-banner";
+import { LoadingState } from "../../ui/loading-state";
 import { ExtensionCard } from "./extension-card";
 import { EXTENSION_PAGE_SIZE, ITEM_TYPE_LABELS, SORT_OPTIONS, type ExtensionViewMode } from "./extension-constants";
 import { ExtensionDetailView } from "./extension-detail-view";
 import { ExtensionPagination } from "./extension-pagination";
-import { NoResultsState } from "../shared";
+import { NoResultsState } from "../result-shared";
 
 const SEARCH_DEBOUNCE_MS = 300;
 

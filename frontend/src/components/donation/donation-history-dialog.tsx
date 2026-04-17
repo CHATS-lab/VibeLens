@@ -1,8 +1,8 @@
 import { Check, Copy, ExternalLink, Heart, History, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Modal, ModalBody, ModalHeader } from "./modal";
+import { Modal, ModalBody, ModalHeader } from "../ui/modal";
 import { buildWithdrawUrl, formatDonatedAt } from "./donation-constants";
-import type { DonationHistoryEntry, DonationHistoryResponse } from "../types";
+import type { DonationHistoryEntry, DonationHistoryResponse } from "../../types";
 
 interface DonationHistoryDialogProps {
   fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;

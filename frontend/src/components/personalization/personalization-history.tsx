@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAppContext } from "../../app";
 import { useDemoGuard } from "../../hooks/use-demo-guard";
 import type { PersonalizationMeta, PersonalizationResult, PersonalizationMode } from "../../types";
-import { ConfirmDialog } from "../confirm-dialog";
+import { ConfirmDialog } from "../ui/confirm-dialog";
 import { InstallLocallyDialog } from "../install-locally-dialog";
 
 const MODE_LABELS: Record<PersonalizationMode, string> = {

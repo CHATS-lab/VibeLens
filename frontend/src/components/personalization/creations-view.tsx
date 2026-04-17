@@ -14,12 +14,12 @@ import type {
   WorkflowPattern,
 } from "../../types";
 import { useExtensionsClient } from "../../app";
-import { BulletText } from "../bullet-text";
-import { CollapsibleText } from "../collapsible-text";
+import { BulletText } from "../ui/bullet-text";
+import { CollapsibleText } from "../ui/collapsible-text";
 import { InstallLocallyDialog } from "../install-locally-dialog";
-import { Tooltip } from "../tooltip";
+import { Tooltip } from "../ui/tooltip";
 import { useDemoGuard } from "../../hooks/use-demo-guard";
-import { ConfidenceBar, SectionHeader } from "./shared";
+import { ConfidenceBar, SectionHeader } from "./result-shared";
 import { StepRefList } from "./patterns-view";
 import { PreviewDialog } from "./preview-dialog";
 

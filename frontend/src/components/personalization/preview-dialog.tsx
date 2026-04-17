@@ -1,7 +1,7 @@
 import { Check, Download, Loader2, Monitor, RotateCcw, Upload } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { SkillSyncTarget } from "../../types";
-import { Modal, ModalBody, ModalFooter, ModalHeader } from "../modal";
+import { Modal, ModalBody, ModalFooter, ModalHeader } from "../ui/modal";
 import { SOURCE_LABELS } from "./constants";
 
 interface PreviewDialogProps {

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useAppContext } from "../../app";
 import type { Trajectory } from "../../types";
 import { SessionView } from "./session-view";
-import { LoadingSpinner } from "../loading-spinner";
+import { LoadingSpinner } from "../ui/loading-spinner";
 
 interface SharedSessionViewProps {
   shareToken: string;

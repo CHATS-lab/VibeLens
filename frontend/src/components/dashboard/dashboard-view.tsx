@@ -16,9 +16,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppContext } from "../../app";
 import type { DashboardStats, ToolUsageStat } from "../../types";
 import { formatTokens, formatDuration, formatCost, baseProjectName } from "../../utils";
-import { LoadingSpinnerRings } from "../loading-spinner";
+import { LoadingSpinnerRings } from "../ui/loading-spinner";
 import { ActivityHeatmap } from "./activity-heatmap";
-import { BarRow } from "./bar-row";
+import { BarChartRow } from "./bar-chart-row";
 import { ModelDistribution } from "./model-distribution-chart";
 import { PeakHoursChart } from "./peak-hours-chart";
 import { StatCard } from "./stat-card";
@@ -594,7 +594,7 @@ export function DashboardView({ cache }: DashboardViewProps) {
                 </div>
                 <div className="space-y-1">
                   {agentEntries.map(([agent, count]) => (
-                    <BarRow
+                    <BarChartRow
                       key={agent}
                       label={agent}
                       value={count}

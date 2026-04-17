@@ -11,7 +11,7 @@ import { useState } from "react";
 import type { Step, ToolCall, ObservationResult, ContentPart } from "../../types";
 import { sanitizeText, extractMessageText } from "../../utils";
 import { PREVIEW_LONG } from "../../constants";
-import { MarkdownRenderer } from "../markdown-renderer";
+import { MarkdownRenderer } from "../ui/markdown-renderer";
 import { ContentRenderer } from "./content-renderer";
 import { ToolUseBlock } from "./tool-input-renderers";
 import { ToolResultBlock } from "./tool-output-renderers";

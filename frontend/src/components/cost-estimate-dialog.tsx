@@ -2,7 +2,7 @@ import { Coins, Layers, Play, Sparkles } from "lucide-react";
 import { useState } from "react";
 import type { CostEstimate } from "../types";
 import { ConsentSection } from "./consent-section";
-import { Modal, ModalBody, ModalFooter, ModalHeader } from "./modal";
+import { Modal, ModalBody, ModalFooter, ModalHeader } from "./ui/modal";
 
 export function CostEstimateDialog({
   estimate,

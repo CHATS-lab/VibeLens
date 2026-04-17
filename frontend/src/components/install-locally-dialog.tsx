@@ -1,6 +1,6 @@
 import { ExternalLink, Package, Terminal } from "lucide-react";
 import { useState } from "react";
-import { Modal, ModalBody, ModalFooter, ModalHeader } from "./modal";
+import { Modal, ModalBody, ModalFooter, ModalHeader } from "./ui/modal";
 
 export function InstallLocallyDialog({ onClose }: { onClose: () => void }) {
   const [copied, setCopied] = useState(false);

@@ -13,12 +13,12 @@ import type {
   RankedRecommendationItem,
 } from "../../types";
 import { useExtensionsClient } from "../../app";
-import { BulletText } from "../bullet-text";
-import { CollapsibleText } from "../collapsible-text";
-import { Tooltip } from "../tooltip";
-import { TagList } from "./badges";
+import { BulletText } from "../ui/bullet-text";
+import { CollapsibleText } from "../ui/collapsible-text";
+import { Tooltip } from "../ui/tooltip";
+import { TagList } from "./source-badges";
 import { CatalogInstallButton, TypeBadge } from "./extensions/extension-card";
-import { ConfidenceBar, SectionHeader } from "./shared";
+import { ConfidenceBar, SectionHeader } from "./result-shared";
 
 export function RecommendationSection({
   recommendations,
