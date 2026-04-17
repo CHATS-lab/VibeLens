@@ -23,30 +23,32 @@ class AgentType(StrEnum):
     OPENCODE = "opencode"
     OPENCLAW = "openclaw"
     OPENHANDS = "openhands"
-    PARSED = "parsed"
     QWEN = "qwen"
+    PARSED = "parsed"
 
 
 class ExtensionSource(StrEnum):
     """Unified source/store type for extensions.
 
-    Every AgentType member is mirrored here, plus CENTRAL.
-    When adding a new agent to AgentType, add a matching line here.
+    Values must be plain strings matching AgentType values.  Using
+    ``AgentType.XXX`` as values causes StrEnum to store the *repr*
+    (e.g. ``"AgentType.CLAUDE"``) instead of the plain value on some
+    Python versions, breaking platform key lookups.
     """
 
-    AIDER = AgentType.AIDER
-    ANTIGRAVITY = AgentType.ANTIGRAVITY
-    CLAUDE = AgentType.CLAUDE
-    CODEX = AgentType.CODEX
-    COPILOT = AgentType.COPILOT
-    CURSOR = AgentType.CURSOR
-    DATACLAW = AgentType.DATACLAW
-    GEMINI = AgentType.GEMINI
-    KIMI = AgentType.KIMI
-    OPENCODE = AgentType.OPENCODE
-    OPENCLAW = AgentType.OPENCLAW
-    OPENHANDS = AgentType.OPENHANDS
-    QWEN = AgentType.QWEN
+    AIDER = "aider"
+    ANTIGRAVITY = "antigravity"
+    CLAUDE = "claude"
+    CODEX = "codex"
+    COPILOT = "copilot"
+    CURSOR = "cursor"
+    DATACLAW = "dataclaw"
+    GEMINI = "gemini"
+    KIMI = "kimi"
+    OPENCODE = "opencode"
+    OPENCLAW = "openclaw"
+    OPENHANDS = "openhands"
+    QWEN = "qwen"
     CENTRAL = "central"
 
 
