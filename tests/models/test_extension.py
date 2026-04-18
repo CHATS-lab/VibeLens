@@ -24,12 +24,13 @@ def test_agent_extension_type_values():
 
 
 def test_file_based_types():
-    assert FILE_BASED_TYPES == {
+    expected = {
         AgentExtensionType.SKILL,
         AgentExtensionType.SUBAGENT,
         AgentExtensionType.COMMAND,
         AgentExtensionType.HOOK,
     }
+    assert FILE_BASED_TYPES == expected
 
 
 def test_extension_type_labels():
