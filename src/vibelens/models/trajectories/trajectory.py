@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from vibelens.models.trajectories.agent import Agent
 from vibelens.models.trajectories.final_metrics import FinalMetrics
@@ -79,6 +79,26 @@ class Trajectory(BaseModel):
     steps: list[Step] = Field(
         min_length=1, description="Complete interaction history as ordered Step objects."
     )
+
+    @field_validator("session_id")
+    @classmethod
+    def validate_session_id_safe(cls, value: str) -> str:
+        """Reject session IDs that could escape the storage root.
+
+        session_id is used directly as a filename (`{session_id}.json`) in
+        DiskTrajectoryStore. Since it originates from user-uploaded logs,
+        allowing path separators or parent-dir segments would let a crafted
+        upload write JSON anywhere the process can reach.
+        """
+        if not value:
+            raise ValueError("session_id must not be empty.")
+        if "\x00" in value:
+            raise ValueError("session_id must not contain null bytes.")
+        if "/" in value or "\\" in value:
+            raise ValueError(f"session_id must not contain path separators: {value!r}")
+        if value in (".", "..") or value.startswith(".."):
+            raise ValueError(f"session_id must not traverse directories: {value!r}")
+        return value
 
     @model_validator(mode="after")
     def backfill_timestamp(self) -> "Trajectory":

@@ -26,6 +26,21 @@ logger = get_logger(__name__)
 INDEX_FILENAME = "index.jsonl"
 
 
+def _safe_session_path(root: Path, session_id: str) -> Path:
+    """Resolve a session file path and assert it stays under ``root``.
+
+    Defense-in-depth behind Trajectory.session_id's validator: even if a
+    malformed id slipped past (e.g. loaded from an old on-disk file written
+    before the validator existed), this prevents writes/copies outside the
+    store root.
+    """
+    root_resolved = root.resolve()
+    candidate = (root / f"{session_id}.json").resolve()
+    if root_resolved != candidate.parent:
+        raise ValueError(f"Unsafe session_id resolves outside store root: {session_id!r}")
+    return candidate
+
+
 class DiskTrajectoryStore(BaseTrajectoryStore):
     """File-system trajectory store.
 
@@ -67,7 +82,7 @@ class DiskTrajectoryStore(BaseTrajectoryStore):
 
         self._root.mkdir(parents=True, exist_ok=True)
 
-        full_path = self._root / f"{session_id}.json"
+        full_path = _safe_session_path(self._root, session_id)
         full_data = [t.model_dump(mode="json") for t in trajectories]
         full_path.write_text(
             json.dumps(full_data, indent=2, default=str, ensure_ascii=False), encoding="utf-8"
@@ -104,7 +119,8 @@ class DiskTrajectoryStore(BaseTrajectoryStore):
         if not entry:
             raise FileNotFoundError(f"Session not found: {session_id}")
         source = entry[0]
-        shutil.copy2(str(source), str(dest_dir / f"{session_id}.json"))
+        dest_path = _safe_session_path(dest_dir, session_id)
+        shutil.copy2(str(source), str(dest_path))
 
     def _build_index(self) -> None:
         """Build metadata index by reading all index.jsonl files recursively."""
