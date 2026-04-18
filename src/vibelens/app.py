@@ -30,6 +30,7 @@ from vibelens.services.session.search import (
     build_search_index,
     refresh_search_index,
 )
+from vibelens.storage.extension.catalog import _clear_user_catalog, load_catalog
 from vibelens.utils import get_logger
 from vibelens.utils.log import configure_logging
 
@@ -54,6 +55,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """
     settings = get_settings()
     configure_logging(settings.logging)
+
+    _clear_user_catalog()
+    load_catalog()
 
     # Initialize the trajectory store (local or disk)
     store = get_trajectory_store()
