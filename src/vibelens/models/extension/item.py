@@ -1,6 +1,6 @@
-"""Agent extension model and type constants."""
+"""Agent extension item model and type utilities."""
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from vibelens.models.enums import AgentExtensionType
 
@@ -23,39 +23,88 @@ EXTENSION_TYPE_LABELS: dict[AgentExtensionType, str] = {
 
 
 class AgentExtensionItem(BaseModel):
-    """A discoverable agent extension with quality metrics and installation metadata.
+    """A discoverable agent extension with quality metrics and install metadata.
 
-    Represents a skill, subagent, command, hook, or repo that users can
-    browse, install, create, or evolve.
+    Faithful to ``agent-tool-hub``'s output schema, with two VibeLens-local
+    conventions: field names ``extension_id`` / ``extension_type`` (aliased
+    to the hub's ``item_id`` / ``item_type``), and a ``popularity`` value
+    pre-baked at catalog-build time from star counts.
+
+    Detail-only fields default to ``None`` — the catalog-summary file omits
+    them, and the loader repopulates them on demand from the per-type JSON.
     """
 
-    extension_id: str = Field(description="Unique identifier.")
-    extension_type: AgentExtensionType = Field(description="Classified type.")
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    extension_id: str = Field(alias="item_id", description="Unique identifier.")
+    extension_type: AgentExtensionType = Field(alias="item_type", description="Classified type.")
     name: str = Field(description="Display name.")
-    description: str = Field(description="Plain language, 1-2 sentences.")
-    tags: list[str] = Field(description="Searchable tags.")
-    category: str = Field(description="Classification category.")
-    platforms: list[str] = Field(description="Compatible agent platforms.")
-    quality_score: float = Field(description="0-100 composite from crawler scorer.")
-    popularity: float = Field(description="Normalized from stars, 0.0-1.0.")
-    updated_at: str = Field(description="Last commit ISO timestamp.")
-    source_url: str = Field(description="GitHub URL.")
+
+    description: str | None = Field(default=None, description="Per-item description.")
+    repo_description: str | None = Field(default=None, description="Repo-level description.")
+    readme_description: str | None = Field(default=None, description="First README paragraph.")
+
+    author: str | None = Field(default=None, description="GitHub owner/org login.")
+    source_url: str = Field(description="GitHub URL (repo or tree path).")
     repo_full_name: str = Field(description="GitHub owner/repo.")
-    stars: int = Field(default=0, description="GitHub star count.")
-    forks: int = Field(default=0, description="GitHub fork count.")
-    language: str = Field(default="", description="Primary repository language.")
-    license_name: str = Field(default="", description="Repository license identifier (e.g. MIT).")
-    install_method: str = Field(
-        description="Installation method: skill_file, hook_config, mcp_config, pip, npm, etc."
-    )
-    install_command: str | None = Field(
-        default=None, description="CLI install command, e.g. 'pip install foo'."
-    )
-    install_content: str | None = Field(
-        default=None, description="Full file content for direct install."
+    path_in_repo: str | None = Field(default=None, description="Path within repo.")
+
+    discovery_source: str = Field(description='"seed" or "awesome_list".')
+    discovery_origin: str | None = Field(default=None, description="Slug that surfaced the item.")
+
+    topics: list[str] = Field(default_factory=list, description="Repo topics.")
+    platforms: list[str] | None = Field(
+        default=None,
+        description="VibeLens-derived compatible platforms. Reserved for next release.",
     )
 
-    @computed_field
+    scores: dict[str, float] | None = Field(
+        default=None, description="Per-dimension score breakdown."
+    )
+    quality_score: float = Field(description="Weighted composite 0-100.")
+    popularity: float = Field(description="log1p(stars)/log1p(MAX_STARS), 0.0-1.0.")
+
+    stars: int = Field(description="GitHub star count.")
+    forks: int = Field(description="GitHub fork count.")
+    license: str | None = Field(default=None, description="SPDX id of containing repo.")
+    language: str | None = Field(default=None, description="Primary repo language.")
+    updated_at: str | None = Field(default=None, description="Last push ISO8601.")
+    created_at: str | None = Field(default=None, description="Repo creation ISO8601.")
+
+    author_followers: int | None = Field(default=None, description="Owner follower count.")
+    contributors_count: int | None = Field(default=None, description="Repo contributor count.")
+
+    item_metadata: dict[str, str] | None = Field(
+        default=None,
+        description="Primary metadata file key-value pairs (frontmatter/JSON/TOML).",
+    )
+    validation_errors: list[str] | None = Field(
+        default=None, description="Per-type validation errors."
+    )
+
+    install_command: str | None = Field(
+        default=None, description="VibeLens-only; meaningful for REPO. Reserved."
+    )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def is_valid(self) -> bool:
+        """True when no validation errors recorded."""
+        return not self.validation_errors
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def display_description(self) -> str | None:
+        """First non-empty description across (description, readme, repo)."""
+        if self.description:
+            return self.description
+        if self.readme_description:
+            return self.readme_description
+        if self.repo_description:
+            return self.repo_description
+        return None
+
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def is_file_based(self) -> bool:
         """True for file-based types (skill, subagent, command, hook)."""
