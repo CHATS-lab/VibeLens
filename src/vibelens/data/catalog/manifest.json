@@ -1,0 +1,21 @@
+{
+  "generated_on": "2026-04-18",
+  "hub_source": "full-20260418-122745",
+  "total": 28015,
+  "item_counts": {
+    "skill": 18042,
+    "plugin": 1869,
+    "subagent": 2764,
+    "command": 2936,
+    "hook": 39,
+    "mcp_server": 2365
+  },
+  "file_sizes": {
+    "agent-skill.json": 48336234,
+    "agent-plugin.json": 4541771,
+    "agent-subagent.json": 8105299,
+    "agent-command.json": 5726414,
+    "agent-hook.json": 131605,
+    "agent-mcp_server.json": 6457617
+  }
+}
