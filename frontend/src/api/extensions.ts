@@ -1,6 +1,6 @@
 // frontend/src/api/extensions.ts
 import type {
-  ExtensionItemSummary,
+  ExtensionDetail,
   ExtensionListResponse,
   ExtensionMetaResponse,
   ExtensionSyncTarget,
@@ -16,11 +16,9 @@ interface CatalogApi {
     sort?: string;
     search?: string;
     extensionType?: string;
-    category?: string;
-    platform?: string;
   }): Promise<ExtensionListResponse>;
   getMeta(): Promise<ExtensionMetaResponse>;
-  getItem(id: string): Promise<ExtensionItemSummary>;
+  getItem(id: string): Promise<ExtensionDetail>;
   getContent(id: string): Promise<{ content: string; source: string }>;
   install(
     id: string,
@@ -254,8 +252,6 @@ export function createExtensionsClient(
       if (params.search) qs.set("search", params.search);
       if (params.extensionType)
         qs.set("extension_type", params.extensionType);
-      if (params.category) qs.set("category", params.category);
-      if (params.platform) qs.set("platform", params.platform);
       const res = await fetchFn(`${BASE}/catalog?${qs}`);
       if (!res.ok) throw new Error("Failed to list catalog");
       return res.json();

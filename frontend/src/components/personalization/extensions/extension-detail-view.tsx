@@ -155,7 +155,7 @@ export function ExtensionDetailView({ item, isInstalled, onBack, onInstalled, sy
 
   const Icon = ITEM_TYPE_ICONS[item.extension_type] || Package;
   const iconColors = ITEM_TYPE_ICON_COLORS[item.extension_type] || ITEM_TYPE_ICON_COLORS.skill;
-  const platformLabel = item.platforms.map((p) => PLATFORM_LABELS[p] || p).join(", ");
+  const platformLabel = (item.platforms ?? []).map((p) => PLATFORM_LABELS[p] || p).join(", ");
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-6">
@@ -205,23 +205,27 @@ export function ExtensionDetailView({ item, isInstalled, onBack, onInstalled, sy
 
             {/* Install / Manage button */}
             <div className="shrink-0">
-              {item.is_file_based && (
-                <button
-                  onClick={handleInstall}
-                  disabled={installing}
-                  className={installed
-                    ? "flex items-center gap-2 px-4 py-2 text-sm font-medium text-accent-emerald bg-accent-emerald-subtle hover:bg-emerald-100 dark:hover:bg-emerald-900/30 border border-accent-emerald-border rounded-lg transition disabled:opacity-50"
-                    : "flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-teal-600 hover:bg-teal-500 rounded-lg transition disabled:opacity-50"
-                  }
-                >
-                  {installing
-                    ? <Loader2 className="w-4 h-4 animate-spin" />
-                    : installed
-                      ? <Check className="w-4 h-4" />
-                      : <Download className="w-4 h-4" />}
-                  {installed ? "Manage" : "Install"}
-                </button>
-              )}
+              {item.is_file_based && (() => {
+                const isHook = item.extension_type === "hook";
+                return (
+                  <button
+                    onClick={isHook ? undefined : handleInstall}
+                    disabled={installing || isHook}
+                    title={isHook ? "Hook install from catalog is not yet supported" : undefined}
+                    className={installed
+                      ? "flex items-center gap-2 px-4 py-2 text-sm font-medium text-accent-emerald bg-accent-emerald-subtle hover:bg-emerald-100 dark:hover:bg-emerald-900/30 border border-accent-emerald-border rounded-lg transition disabled:opacity-50"
+                      : "flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-teal-600 hover:bg-teal-500 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    }
+                  >
+                    {installing
+                      ? <Loader2 className="w-4 h-4 animate-spin" />
+                      : installed
+                        ? <Check className="w-4 h-4" />
+                        : <Download className="w-4 h-4" />}
+                    {installed ? "Manage" : "Install"}
+                  </button>
+                );
+              })()}
             </div>
           </div>
 
@@ -231,7 +235,7 @@ export function ExtensionDetailView({ item, isInstalled, onBack, onInstalled, sy
         {/* Metadata bar */}
         <div className="px-6 py-3 border-t border-card/50 bg-control/30">
           <div className="flex items-center gap-4 text-xs text-muted flex-wrap">
-            <span>{item.category}</span>
+            <span>{item.extension_type}</span>
             {platformLabel && (
               <span className="text-secondary">{platformLabel}</span>
             )}
@@ -258,10 +262,10 @@ export function ExtensionDetailView({ item, isInstalled, onBack, onInstalled, sy
             {item.language && (
               <span className="text-secondary">{item.language}</span>
             )}
-            {item.license_name && (
+            {item.license && (
               <span className="flex items-center gap-1">
                 <Scale className="w-3 h-3" />
-                <span className="text-secondary">{item.license_name}</span>
+                <span className="text-secondary">{item.license}</span>
               </span>
             )}
             {item.updated_at && (
@@ -281,14 +285,14 @@ export function ExtensionDetailView({ item, isInstalled, onBack, onInstalled, sy
               </a>
             )}
           </div>
-          {item.tags.length > 0 && (
+          {item.topics.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-2">
-              {item.tags.map((tag) => (
+              {item.topics.map((topic) => (
                 <span
-                  key={tag}
+                  key={topic}
                   className="text-[10px] px-2 py-0.5 rounded-full bg-control-hover/60 text-secondary border border-hover/30"
                 >
-                  {tag}
+                  {topic}
                 </span>
               ))}
             </div>
@@ -331,7 +335,7 @@ export function ExtensionDetailView({ item, isInstalled, onBack, onInstalled, sy
           content={displayContent}
           tocEntries={tocEntries}
           itemName={item.name}
-          itemDescription={item.description}
+          itemDescription={item.description ?? undefined}
         />
       )}
 

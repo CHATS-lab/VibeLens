@@ -509,22 +509,35 @@ export interface ExtensionItemSummary {
   extension_id: string;
   extension_type: string;
   name: string;
-  description: string;
-  tags: string[];
-  category: string;
-  platforms: string[];
+  description: string | null;
+  topics: string[];
+  platforms: string[] | null;
   quality_score: number;
   popularity: number;
-  updated_at: string;
+  updated_at: string | null;
   source_url: string;
   repo_full_name: string;
+  path_in_repo: string | null;
+  discovery_source: string;
   stars: number;
   forks: number;
-  language: string;
-  license_name: string;
-  install_method: string;
+  language: string | null;
+  license: string | null;
   install_command: string | null;
   is_file_based: boolean;
+}
+
+export interface ExtensionDetail extends ExtensionItemSummary {
+  readme_description: string | null;
+  repo_description: string | null;
+  author: string | null;
+  scores: Record<string, number> | null;
+  item_metadata: Record<string, string> | null;
+  validation_errors: string[] | null;
+  author_followers: number | null;
+  contributors_count: number | null;
+  created_at: string | null;
+  discovery_origin: string | null;
 }
 
 export interface ExtensionListResponse {
@@ -541,6 +554,6 @@ export interface ExtensionInstallResponse {
 }
 
 export interface ExtensionMetaResponse {
-  categories: string[];
+  topics: string[];
   has_profile: boolean;
 }

@@ -294,11 +294,11 @@ export function ExtensionCard({
               </div>
             </div>
             <p className="text-sm text-secondary mt-1.5 line-clamp-3">{item.description}</p>
-            <TagList tags={item.tags} max={CARD_VIEW_MAX_TAGS} />
+            <TagList tags={item.topics} max={CARD_VIEW_MAX_TAGS} />
             {error && <p className="text-[10px] text-red-500 mt-1">{error}</p>}
             <div className="flex items-center justify-between mt-auto pt-3 text-[10px] text-muted">
               <div className="flex items-center gap-2.5">
-                <span>{item.category}</span>
+                <span>{item.extension_type}</span>
                 {item.stars > 0 && (
                   <span className="flex items-center gap-0.5">
                     <Star className="w-2.5 h-2.5 text-amber-400 fill-amber-400" />
@@ -386,9 +386,9 @@ export function ExtensionCard({
               )}
             </div>
             <p className="text-sm text-secondary mt-1 line-clamp-2">{item.description}</p>
-            <TagList tags={item.tags} max={LIST_VIEW_MAX_TAGS} />
+            <TagList tags={item.topics} max={LIST_VIEW_MAX_TAGS} />
             <div className="flex items-center gap-3 mt-2 text-[10px] text-muted">
-              <span>{item.category}</span>
+              <span>{item.extension_type}</span>
               <QualityBar score={item.quality_score} />
               {item.forks > 0 && (
                 <span className="flex items-center gap-0.5">

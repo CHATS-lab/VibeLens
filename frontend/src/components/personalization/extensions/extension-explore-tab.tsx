@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Compass, LayoutGrid, List, Package, RefreshCw, Search, SlidersHorizontal, Sparkles, Tag, Zap } from "lucide-react";
+import { Check, ChevronDown, Compass, LayoutGrid, List, Package, RefreshCw, Search, SlidersHorizontal, Sparkles, Zap } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useExtensionsClient } from "../../../app";
 import { TOGGLE_ACTIVE, TOGGLE_BUTTON_BASE, TOGGLE_CONTAINER, TOGGLE_INACTIVE } from "../../../styles";
@@ -90,9 +90,7 @@ export function ExtensionExploreTab({ resetKey = 0, onSwitchToRecommend }: Exten
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState("quality");
-  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ExtensionViewMode>("list");
-  const [categories, setCategories] = useState<string[]>([]);
   const [hasProfile, setHasProfile] = useState(false);
   const [page, setPage] = useState(1);
 
@@ -109,7 +107,6 @@ export function ExtensionExploreTab({ resetKey = 0, onSwitchToRecommend }: Exten
   useEffect(() => {
     client.catalog.getMeta()
       .then((data) => {
-        setCategories(data.categories);
         setHasProfile(data.has_profile);
       })
       .catch(() => {});
@@ -138,7 +135,6 @@ export function ExtensionExploreTab({ resetKey = 0, onSwitchToRecommend }: Exten
         sort: sortBy,
         search: debouncedSearch || undefined,
         extensionType: typeFilter || undefined,
-        category: categoryFilter || undefined,
       });
       setItems(data.items);
       setTotal(data.total);
@@ -147,7 +143,7 @@ export function ExtensionExploreTab({ resetKey = 0, onSwitchToRecommend }: Exten
     } finally {
       setLoading(false);
     }
-  }, [client, page, debouncedSearch, typeFilter, sortBy, categoryFilter]);
+  }, [client, page, debouncedSearch, typeFilter, sortBy]);
 
   useEffect(() => {
     fetchCatalog();
@@ -172,14 +168,6 @@ export function ExtensionExploreTab({ resetKey = 0, onSwitchToRecommend }: Exten
         label: o.label,
       })),
     [hasProfile],
-  );
-
-  const categoryOptions = useMemo(
-    () => [
-      { value: "", label: "All categories" },
-      ...categories.map((c) => ({ value: c, label: c })),
-    ],
-    [categories],
   );
 
   const totalPages = Math.ceil(total / EXTENSION_PAGE_SIZE);
@@ -246,17 +234,8 @@ export function ExtensionExploreTab({ resetKey = 0, onSwitchToRecommend }: Exten
         />
       </div>
 
-      {/* Category + View mode */}
+      {/* View mode */}
       <div className="flex items-center gap-2 mb-4">
-        {categoryOptions.length > 1 && (
-          <FilterDropdown
-            value={categoryFilter ?? ""}
-            options={categoryOptions}
-            onChange={(v) => { setCategoryFilter(v || null); setPage(1); }}
-            icon={<Tag className="w-3.5 h-3.5 text-muted shrink-0" />}
-            placeholder="All categories"
-          />
-        )}
         <div className="ml-auto">
           <div className={TOGGLE_CONTAINER}>
             <button
