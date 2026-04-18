@@ -1,17 +1,19 @@
 """Multi-signal weighted scoring for recommendation candidates.
 
-Combines retrieval relevance, quality, platform match, popularity,
-and composability into a final score per candidate.
+Combines retrieval relevance, quality, popularity, and composability
+into a final score. Platform match is reserved for a future release
+when ``AgentExtensionItem.platforms`` is populated again; the weight
+is zero in this release.
 """
 
 from vibelens.models.extension import AgentExtensionItem
 from vibelens.models.personalization.recommendation import UserProfile
 
-# Signal weights from spec
-WEIGHT_RELEVANCE = 0.40
-WEIGHT_QUALITY = 0.25
-WEIGHT_PLATFORM_MATCH = 0.20
-WEIGHT_POPULARITY = 0.10
+# Signal weights — platforms is unavailable this release; weight redistributed.
+WEIGHT_RELEVANCE = 0.50
+WEIGHT_QUALITY = 0.30
+WEIGHT_PLATFORM_MATCH = 0.0
+WEIGHT_POPULARITY = 0.15
 WEIGHT_COMPOSABILITY = 0.05
 
 # Maximum quality score from catalog
@@ -97,6 +99,8 @@ def _score_platform_match(item: AgentExtensionItem, profile: UserProfile) -> flo
     Returns:
         1.0 or 0.0.
     """
+    if not item.platforms:
+        return 0.0
     user_platforms = {_normalize_platform(p) for p in profile.agent_platforms}
     item_platforms = {_normalize_platform(p) for p in item.platforms}
     return 1.0 if user_platforms & item_platforms else 0.0

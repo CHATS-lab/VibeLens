@@ -5,22 +5,24 @@ from vibelens.models.extension import AgentExtensionItem
 from vibelens.services.recommendation.retrieval import KeywordRetrieval
 
 
-def _make_item(name: str, description: str, tags: list[str] | None = None) -> AgentExtensionItem:
+def _make_item(
+    name: str, description: str, topics: list[str] | None = None
+) -> AgentExtensionItem:
     """Build a minimal ExtensionItem for testing."""
     return AgentExtensionItem(
         extension_id=f"test/{name}",
         extension_type=AgentExtensionType.SKILL,
         name=name,
         description=description,
-        tags=tags or [],
-        category="testing",
-        platforms=["claude-code"],
+        topics=topics or [],
         quality_score=75.0,
         popularity=0.5,
         updated_at="2026-04-01T00:00:00Z",
         source_url=f"https://github.com/test/{name}",
         repo_full_name=f"test/{name}",
-        install_method="skill_file",
+        discovery_source="seed",
+        stars=10,
+        forks=0,
     )
 
 

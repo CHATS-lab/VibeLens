@@ -3,6 +3,7 @@
 from vibelens.models.enums import AgentExtensionType
 from vibelens.models.extension import AgentExtensionItem
 from vibelens.models.personalization.recommendation import UserProfile
+from vibelens.services.recommendation import scoring
 from vibelens.services.recommendation.scoring import score_candidates
 
 
@@ -14,15 +15,16 @@ def _make_item(
         extension_type=AgentExtensionType.SKILL,
         name=name,
         description=f"A {name} tool",
-        tags=[],
-        category="testing",
-        platforms=platforms or ["claude-code"],
+        topics=[],
+        platforms=platforms,
         quality_score=quality,
         popularity=0.5,
         updated_at="2026-04-01T00:00:00Z",
         source_url=f"https://github.com/test/{name}",
         repo_full_name=f"test/{name}",
-        install_method="skill_file",
+        discovery_source="seed",
+        stars=10,
+        forks=0,
     )
 
 
@@ -35,6 +37,25 @@ def _make_profile() -> UserProfile:
         bottlenecks=["slow tests"],
         workflow_style="iterative debugger",
         search_keywords=["testing", "fastapi"],
+    )
+
+
+def test_weights_sum_to_one():
+    total = (
+        scoring.WEIGHT_RELEVANCE
+        + scoring.WEIGHT_QUALITY
+        + scoring.WEIGHT_PLATFORM_MATCH
+        + scoring.WEIGHT_POPULARITY
+        + scoring.WEIGHT_COMPOSABILITY
+    )
+    assert abs(total - 1.0) < 1e-9
+    assert scoring.WEIGHT_PLATFORM_MATCH == 0.0
+    print(
+        f"weights ok: rel={scoring.WEIGHT_RELEVANCE} "
+        f"qual={scoring.WEIGHT_QUALITY} "
+        f"plat={scoring.WEIGHT_PLATFORM_MATCH} "
+        f"pop={scoring.WEIGHT_POPULARITY} "
+        f"comp={scoring.WEIGHT_COMPOSABILITY}"
     )
 
 
@@ -52,8 +73,8 @@ def test_score_candidates_returns_sorted():
     print(f"Scores: {[(item.name, round(s, 3)) for item, s in results]}")
 
 
-def test_platform_match_boosts_score():
-    """Items matching user's agent platform score higher."""
+def test_platform_match_does_not_boost_when_weight_zero():
+    """Platform-match weight is zero this release; matched/unmatched score equally."""
     matched = _make_item("matched", platforms=["claude-code"])
     unmatched = _make_item("unmatched", platforms=["cursor"])
     candidates = [(matched, 0.5), (unmatched, 0.5)]
@@ -61,7 +82,17 @@ def test_platform_match_boosts_score():
     results = score_candidates(candidates, profile, top_k=2)
     matched_score = next(s for item, s in results if item.name == "matched")
     unmatched_score = next(s for item, s in results if item.name == "unmatched")
-    assert matched_score > unmatched_score
+    assert matched_score == unmatched_score
+
+
+def test_platform_match_handles_none_platforms():
+    """Items with platforms=None (the catalog default) don't crash scoring."""
+    item = _make_item("orphan", platforms=None)
+    candidates = [(item, 0.5)]
+    profile = _make_profile()
+    results = score_candidates(candidates, profile, top_k=1)
+    assert len(results) == 1
+    print(f"orphan ok: score={results[0][1]:.3f}")
 
 
 def test_top_k_limit():

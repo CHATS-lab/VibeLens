@@ -42,7 +42,7 @@ class RetrievalBackend(ABC):
 class KeywordRetrieval(RetrievalBackend):
     """TF-IDF cosine similarity retrieval.
 
-    Pre-computes TF-IDF vectors from item name + description + tags.
+    Pre-computes TF-IDF vectors from item name + description + topics.
     Query is vectorized and compared via cosine similarity.
     """
 
@@ -62,7 +62,9 @@ class KeywordRetrieval(RetrievalBackend):
             self._tfidf_matrix = None
             return
 
-        documents = [f"{item.name} {item.description} {' '.join(item.tags)}" for item in items]
+        documents = [
+            f"{item.name} {item.description or ''} {' '.join(item.topics)}" for item in items
+        ]
         self._tfidf_matrix = self._vectorizer.fit_transform(documents)
         logger.info(
             "Built TF-IDF index: %d items, %d features", len(items), self._tfidf_matrix.shape[1]
