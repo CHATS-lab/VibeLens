@@ -30,7 +30,7 @@ def test_file_based_types():
         AgentExtensionType.COMMAND,
         AgentExtensionType.HOOK,
     }
-    assert FILE_BASED_TYPES == expected
+    assert expected == FILE_BASED_TYPES
 
 
 def test_extension_type_labels():
