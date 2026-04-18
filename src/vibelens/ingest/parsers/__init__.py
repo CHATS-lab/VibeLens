@@ -10,6 +10,7 @@ from vibelens.ingest.parsers.claude_code_web import ClaudeCodeWebParser
 from vibelens.ingest.parsers.codex import CodexParser
 from vibelens.ingest.parsers.dataclaw import DataclawParser
 from vibelens.ingest.parsers.gemini import GeminiParser
+from vibelens.ingest.parsers.hermes import HermesParser
 from vibelens.ingest.parsers.openclaw import OpenClawParser
 from vibelens.ingest.parsers.parsed import ParsedTrajectoryParser
 
@@ -19,6 +20,7 @@ LOCAL_PARSER_CLASSES: list[type[BaseParser]] = [
     ClaudeCodeParser,
     CodexParser,
     GeminiParser,
+    HermesParser,
     OpenClawParser,
 ]
 
@@ -29,6 +31,7 @@ __all__ = [
     "CodexParser",
     "DataclawParser",
     "GeminiParser",
+    "HermesParser",
     "LOCAL_PARSER_CLASSES",
     "OpenClawParser",
     "ParsedTrajectoryParser",

@@ -11,6 +11,7 @@ from vibelens.ingest.parsers.claude_code import ClaudeCodeParser
 from vibelens.ingest.parsers.claude_code_web import ClaudeCodeWebParser
 from vibelens.ingest.parsers.codex import CodexParser
 from vibelens.ingest.parsers.gemini import GeminiParser
+from vibelens.ingest.parsers.hermes import HermesParser
 from vibelens.ingest.parsers.openclaw import OpenClawParser
 from vibelens.models.enums import AgentType
 
@@ -29,6 +30,7 @@ _PARSERS_BY_TYPE: dict[AgentType, type[BaseParser]] = {
     AgentType.CLAUDE_WEB: ClaudeCodeWebParser,
     AgentType.CODEX: CodexParser,
     AgentType.GEMINI: GeminiParser,
+    AgentType.HERMES: HermesParser,
     AgentType.OPENCLAW: OpenClawParser,
 }
 

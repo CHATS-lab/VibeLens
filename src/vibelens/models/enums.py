@@ -24,6 +24,7 @@ class AgentType(StrEnum):
     OPENCLAW = "openclaw"
     OPENHANDS = "openhands"
     QWEN = "qwen"
+    HERMES = "hermes"
     PARSED = "parsed"
 
 
@@ -49,6 +50,7 @@ class ExtensionSource(StrEnum):
     OPENCLAW = "openclaw"
     OPENHANDS = "openhands"
     QWEN = "qwen"
+    HERMES = "hermes"
     CENTRAL = "central"
 
 

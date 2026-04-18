@@ -66,6 +66,7 @@ One install. Reads local logs. Works with **Claude Code**, **Codex CLI**, **Gemi
 | **Codex CLI** | JSONL | `~/.codex/sessions/` |
 | **Gemini CLI** | JSON | `~/.gemini/tmp/` |
 | **OpenClaw** | JSONL | `~/.openclaw/agents/` |
+| **Hermes Agent** | JSONL | `~/.hermes/sessions/` |
 
 VibeLens auto-detects the agent format. Just point it at your session directory and it works.
 
