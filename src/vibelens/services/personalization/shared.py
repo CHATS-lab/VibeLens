@@ -134,19 +134,19 @@ def gather_installed_skills(
         List of dicts with skill info at the requested detail level.
     """
     service = get_skill_service()
-    skills, _ = service.list_skills(page_size=9999)
+    skills, _ = service.list_items(page_size=9999)
 
     if detail_level == SkillDetailLevel.METADATA:
         return [{"name": s.name, "description": s.description} for s in skills]
 
-    return [
-        {
-            "name": s.name,
-            "description": s.description,
-            "content": service.get_skill_content(s.name) or "",
-        }
-        for s in skills
-    ]
+    result: list[dict] = []
+    for s in skills:
+        try:
+            content = service.get_item_content(s.name)
+        except FileNotFoundError:
+            content = ""
+        result.append({"name": s.name, "description": s.description, "content": content})
+    return result
 
 
 def validate_patterns(
