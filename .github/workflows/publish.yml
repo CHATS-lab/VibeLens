@@ -7,6 +7,7 @@ on:
 
 permissions:
   id-token: write
+  contents: write
 
 jobs:
   publish:
@@ -43,3 +44,24 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+      - name: Extract changelog for this version
+        id: changelog
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          python3 - "$VERSION" <<'PY' > release_notes.md
+          import re, sys, pathlib
+          version = sys.argv[1]
+          text = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8")
+          pattern = rf"## \[{re.escape(version)}\][^\n]*\n(.*?)(?=\n## |\Z)"
+          m = re.search(pattern, text, re.DOTALL)
+          sys.stdout.write(m.group(1).strip() if m else f"Release v{version}")
+          PY
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body_path: release_notes.md
+          files: dist/*

@@ -24,9 +24,12 @@ function findPython() {
 
   const candidates =
     process.platform === "win32"
-      ? ["py", "python3", "python"]
+      ? ["python3", "python", "py"]
       : ["python3", "python"];
 
+  for (const cmd of candidates) {
+    if (checkPythonVersion(cmd) && isVibelensInstalled(cmd)) return cmd;
+  }
   for (const cmd of candidates) {
     if (checkPythonVersion(cmd)) return cmd;
   }

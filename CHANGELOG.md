@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-04-19
+
+### Fixed
+- **npm wrapper Python discovery on Windows**: `npm/bin/vibelens.js` preferred the `py` launcher over `python3` / `python` on Windows, which could resolve to a different Python interpreter than the one on PATH where `pip install vibelens` ran. The wrapper now prefers PATH-based `python3` / `python` first and falls back to `py` only if neither has vibelens installed. A two-pass search (`vibelens-installed` first, then `any Python ≥3.10`) keeps the `not installed` error path working for end users who haven't installed the package yet.
+
+### Changed
+- **Publish workflow** (`.github/workflows/publish.yml`) now creates a GitHub Release (with changelog-extracted release notes and dist/ artifacts attached) after PyPI upload succeeds. Previously the workflow only pushed to PyPI and the GitHub Releases page was not auto-updated.
+
 ## [1.0.2] - 2026-04-19
 
 ### Fixed
