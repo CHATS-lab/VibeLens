@@ -134,7 +134,7 @@ class OpenClawParser(BaseParser):
                 )
             )
 
-        return trajectories if trajectories else None
+        return trajectories or None
 
     def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
         """Parse OpenClaw JSONL session content into Trajectory objects.

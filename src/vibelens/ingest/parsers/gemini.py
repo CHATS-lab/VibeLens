@@ -21,7 +21,7 @@ Claude Code and Codex:
 import hashlib
 import json
 from collections import Counter
-from os.path import commonpath, dirname
+from os.path import commonpath
 from pathlib import Path
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
@@ -269,7 +269,9 @@ def _infer_project_from_tool_args(steps: list[Step]) -> str:
     if len(absolute_paths) < 2:
         return ""
 
-    directories = [dirname(p) if not p.endswith("/") else p.rstrip("/") for p in absolute_paths]
+    directories = [
+        p.rstrip("/") if p.endswith("/") else str(Path(p).parent) for p in absolute_paths
+    ]
     dir_counts: Counter[str] = Counter()
     for directory in directories:
         parts = directory.split("/")
@@ -328,7 +330,7 @@ def _build_steps(raw_messages: list, session_id: str) -> list[Step]:
             content = raw.get("content", "")
             thinking = _extract_thinking(raw)
             # Gemini sometimes produces only thoughts with empty content
-            message = content if content else (thinking or "")
+            message = content or (thinking or "")
             tool_calls, observation = _build_tool_calls_and_observation(
                 raw.get("toolCalls", []), session_id, idx
             )

@@ -1142,7 +1142,7 @@ def count_history_entries(claude_dir: Path) -> int:
     count = 0
     buf_size = 65536
     try:
-        with open(history_file, "rb") as f:
+        with history_file.open("rb") as f:
             while True:
                 buf = f.read(buf_size)
                 if not buf:

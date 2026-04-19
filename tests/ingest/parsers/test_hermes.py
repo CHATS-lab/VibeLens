@@ -6,8 +6,8 @@ from pathlib import Path
 
 from vibelens.ingest.parsers.hermes import (
     HermesParser,
+    _canonical_model_name,
     _derive_project_path,
-    _normalize_model_name,
     _parse_tool_arguments,
     _session_id_from_path,
 )
@@ -147,16 +147,23 @@ def test_derive_project_path_by_platform_and_chat() -> None:
     )
 
 
-def test_normalize_model_name_dots_to_dashes() -> None:
-    """Dotted version segments are rewritten to dashes for pricing lookup."""
-    assert _normalize_model_name("anthropic/claude-opus-4.7") == "anthropic/claude-opus-4-7"
-    assert _normalize_model_name("claude-opus-4.6") == "claude-opus-4-6"
-    # Already-dashed names are untouched
-    assert _normalize_model_name("claude-opus-4-7") == "claude-opus-4-7"
-    # Unrelated dots (e.g. in provider path) are not molested
-    assert _normalize_model_name("z-ai/glm-5.1") == "z-ai/glm-5-1"
-    assert _normalize_model_name(None) is None
-    assert _normalize_model_name("") == ""
+def test_canonical_model_name_uses_llm_normalizer() -> None:
+    """Hermes hands model names to the shared llm.normalize_model_name.
+
+    Known models canonicalise to the pricing-catalog key (dashed Anthropic
+    versions, provider prefix stripped). Unknown models fall back to the
+    raw string so they still surface in the UI.
+    """
+    # Dotted Anthropic names resolve via the shared normaliser
+    assert _canonical_model_name("anthropic/claude-opus-4.7") == "claude-opus-4-7"
+    assert _canonical_model_name("claude-opus-4.6") == "claude-opus-4-6"
+    assert _canonical_model_name("claude-opus-4-7") == "claude-opus-4-7"
+    # "glm-5.1" starts with the known prefix "glm-5" so it normalises
+    assert _canonical_model_name("z-ai/glm-5.1") == "glm-5"
+    # Totally unknown model -> fall back to raw (no silent data loss)
+    assert _canonical_model_name("brand-new-model-v1") == "brand-new-model-v1"
+    assert _canonical_model_name(None) is None
+    assert _canonical_model_name("") == ""
 
 
 def test_parse_tool_arguments_decodes_json_strings() -> None:
@@ -333,7 +340,7 @@ def test_parse_jsonl_with_tools_and_enrichment(tmp_path: Path) -> None:
 
     assert traj.session_id == _JSONL_SESSION_ID
     assert traj.agent.name == AgentType.HERMES.value
-    assert traj.agent.model_name == "anthropic/claude-opus-4-7"
+    assert traj.agent.model_name == "claude-opus-4-7"
     assert traj.agent.tool_definitions is not None
     assert len(traj.steps) == 3
     assert traj.steps[0].source == StepSource.USER
@@ -413,7 +420,7 @@ def test_db_totals_attached_to_last_assistant_step(tmp_path: Path) -> None:
     assert last_metrics.cached_tokens == 400
     assert last_metrics.cache_creation_tokens == 50
     # Model name propagates for pricing lookup
-    assert assistant_steps[1].model_name == "anthropic/claude-opus-4-7"
+    assert assistant_steps[1].model_name == "claude-opus-4-7"
 
 
 def test_parse_snapshot_only_without_db(tmp_path: Path) -> None:

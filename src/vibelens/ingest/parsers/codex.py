@@ -554,7 +554,9 @@ def _handle_response_item(
             text = item.get("text", "")
             if not text:
                 continue
-            content_hash = hashlib.md5(text.encode()).hexdigest()
+            # md5 is fine here — used as a content fingerprint for dedup,
+            # not for any security or integrity claim.
+            content_hash = hashlib.md5(text.encode(), usedforsecurity=False).hexdigest()
             if content_hash not in state.thinking_seen:
                 state.thinking_seen.add(content_hash)
                 state.pending_thinking.append(text)

@@ -91,6 +91,13 @@ _GEMINI_PATH_PREFIX_RE = re.compile(r"^(?:models/|accounts/[^/]+/models/)")
 # where provider segments are alphanumeric with hyphens/underscores/dots.
 _PROVIDER_PREFIX_RE = re.compile(r"^[a-zA-Z0-9._-]+[/:]")
 
+# Some clients (Hermes, early wrappers) emit Anthropic model names with a
+# dotted major.minor version, e.g. "claude-opus-4.7". The canonical form
+# used by our pricing catalog is dashed ("claude-opus-4-7"). Rewrite only
+# when the segment preceding the dot looks like "-<digit>+", so non-Anthropic
+# names (``gpt-5.4``) are left untouched.
+_ANTHROPIC_DOT_VERSION_RE = re.compile(r"^(claude-[a-z]+-\d+)\.(\d+)(?=$|[^0-9])")
+
 
 def _strip_prefixes(raw_name: str) -> str:
     """Strip provider and path prefixes from a raw model name.
@@ -139,6 +146,11 @@ def normalize_model_name(raw_name: str | None) -> str | None:
     name = _strip_prefixes(raw_name.strip().lower())
     if not name:
         return None
+
+    # Accept the dotted Anthropic shape ("claude-opus-4.7") that some
+    # wrappers emit by rewriting it to the dashed canonical form before
+    # prefix-matching.
+    name = _ANTHROPIC_DOT_VERSION_RE.sub(r"\1-\2", name)
 
     for prefix, canonical in _MODEL_PREFIX_MAP:
         if name.startswith(prefix):

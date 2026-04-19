@@ -25,6 +25,7 @@ LOCAL_PARSER_CLASSES: list[type[BaseParser]] = [
 ]
 
 __all__ = [
+    "LOCAL_PARSER_CLASSES",
     "BaseParser",
     "ClaudeParser",
     "ClaudeWebParser",
@@ -32,7 +33,6 @@ __all__ = [
     "DataclawParser",
     "GeminiParser",
     "HermesParser",
-    "LOCAL_PARSER_CLASSES",
     "OpenClawParser",
     "ParsedTrajectoryParser",
     "count_history_entries",

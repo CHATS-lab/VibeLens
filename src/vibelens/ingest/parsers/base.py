@@ -364,7 +364,7 @@ class BaseParser(ABC):
         """
         if isinstance(source, Path):
             try:
-                with open(source, encoding="utf-8") as f:
+                with source.open(encoding="utf-8") as f:
                     yield from _iter_parsed_jsonl(f, diagnostics)
             except OSError:
                 logger.debug("Cannot read file: %s", source)

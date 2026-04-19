@@ -41,6 +41,7 @@ from uuid import uuid4
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
 from vibelens.ingest.parsers.base import BaseParser
+from vibelens.llm.normalizer import normalize_model_name
 from vibelens.models.enums import AgentType, StepSource
 from vibelens.models.trajectories import (
     FinalMetrics,
@@ -222,12 +223,12 @@ class HermesParser(BaseParser):
         db_row = _load_state_db(sessions_dir, session_id)
         origin = _load_index_entry(sessions_dir, session_id)
 
-        model = _normalize_model_name(model)
+        model = _canonical_model_name(model)
         agent = self.build_agent(version=None, model=model)
         agent.tool_definitions = tools if isinstance(tools, list) else None
         for step in steps:
             if step.model_name:
-                step.model_name = _normalize_model_name(step.model_name)
+                step.model_name = _canonical_model_name(step.model_name)
 
         _attach_session_metrics_to_last_assistant(steps, db_row, model)
         final_metrics = _build_final_metrics(steps, db_row, session_start)
@@ -262,21 +263,18 @@ class HermesParser(BaseParser):
 
 # Hermes records model versions with dots (``claude-opus-4.7``) but
 # VibeLens's pricing / normalizer expects dashes (``claude-opus-4-7``).
-# Rewrite the trailing ``N.M`` version segment on the model-name tail
-# so downstream pricing lookups succeed.
-_VERSION_DOT_RE = re.compile(r"(-\d+)\.(\d+)(?=$|[^0-9])")
+def _canonical_model_name(raw: str | None) -> str | None:
+    """Canonicalise a raw Hermes model name via the shared llm normalizer.
 
-
-def _normalize_model_name(raw: str | None) -> str | None:
-    """Convert Hermes's dotted model version to the dashed canonical form.
-
-    Example: ``anthropic/claude-opus-4.7`` -> ``anthropic/claude-opus-4-7``.
-    Leaves names that already use dashes (or don't match the pattern)
-    unchanged so non-dotted model IDs pass through untouched.
+    Hermes emits Anthropic models with dotted versions
+    (``anthropic/claude-opus-4.7``). The shared ``llm.normalize_model_name``
+    understands this form. When the model is unknown to the pricing catalog
+    we keep the raw string so it still surfaces in the UI — losing it
+    would silently drop model information for any wrapper not yet mapped.
     """
     if not raw:
         return raw
-    return _VERSION_DOT_RE.sub(r"\1-\2", raw)
+    return normalize_model_name(raw) or raw
 
 
 def _session_id_from_path(path: Path) -> str | None:
@@ -402,7 +400,7 @@ def _build_assistant_step(
         step_id=str(uuid4()),
         source=StepSource.AGENT,
         message=rec.get("content", "") or "",
-        reasoning_content=reasoning if reasoning else None,
+        reasoning_content=reasoning or None,
         model_name=session_model or None,
         timestamp=timestamp,
         tool_calls=tool_calls,
@@ -554,8 +552,13 @@ def _load_state_db(sessions_dir: Path, session_id: str) -> dict | None:
     try:
         conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         conn.row_factory = sqlite3.Row
+        # Column names are a module-level constant tuple, not user input,
+        # so there is no SQL-injection surface here.
         cols = ", ".join(_STATE_DB_COLUMNS)
-        cursor = conn.execute(f"SELECT {cols} FROM sessions WHERE id = ?", (session_id,))
+        cursor = conn.execute(
+            f"SELECT {cols} FROM sessions WHERE id = ?",  # noqa: S608
+            (session_id,),
+        )
         row = cursor.fetchone()
         conn.close()
     except sqlite3.Error as exc:
