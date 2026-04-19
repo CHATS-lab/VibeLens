@@ -19,7 +19,7 @@ from vibelens.utils.log import (
 
 
 def test_resolve_domain_ingest_covers_parsers():
-    assert _resolve_domain("vibelens.ingest.parsers.claude_code") == "ingest"
+    assert _resolve_domain("vibelens.ingest.parsers.claude") == "ingest"
     assert _resolve_domain("vibelens.ingest.discovery") == "ingest"
 
 
@@ -125,7 +125,7 @@ def _make_config(tmp_path: Path, **overrides):
 
 
 def test_bootstrap_before_configure_emits_to_stderr(reset_logging, capsys):
-    logger = get_logger("vibelens.ingest.parsers.claude_code")
+    logger = get_logger("vibelens.ingest.parsers.claude")
     logger.info("hello from bootstrap")
     captured = capsys.readouterr()
     assert "hello from bootstrap" in captured.err
@@ -133,8 +133,8 @@ def test_bootstrap_before_configure_emits_to_stderr(reset_logging, capsys):
 
 def test_configure_logging_creates_overall_and_errors_log(reset_logging, tmp_path):
     configure_logging(_make_config(tmp_path))
-    get_logger("vibelens.ingest.parsers.claude_code").info("x")
-    get_logger("vibelens.ingest.parsers.claude_code").warning("y")
+    get_logger("vibelens.ingest.parsers.claude").info("x")
+    get_logger("vibelens.ingest.parsers.claude").warning("y")
     assert (tmp_path / "vibelens.log").exists()
     assert (tmp_path / "errors.log").exists()
 

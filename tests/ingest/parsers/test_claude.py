@@ -1,4 +1,4 @@
-"""Unit tests for vibelens.ingest.claude_code parser."""
+"""Unit tests for vibelens.ingest.parsers.claude parser."""
 
 import json
 import logging
@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 
 from vibelens.ingest.parsers.base import MAX_FIRST_MESSAGE_LENGTH, is_error_content
-from vibelens.ingest.parsers.claude_code import (
-    ClaudeCodeParser,
+from vibelens.ingest.parsers.claude import (
+    ClaudeParser,
     _decompose_raw_content,
     _extract_git_branches,
 )
@@ -22,7 +22,7 @@ from vibelens.models.trajectories import (
     ToolCall,
 )
 
-_parser = ClaudeCodeParser()
+_parser = ClaudeParser()
 
 
 @pytest.fixture
@@ -1122,7 +1122,7 @@ class TestSubagentLinkageValidation:
                 ],
             )
 
-        with caplog.at_level(logging.DEBUG, logger="vibelens.ingest.parsers.claude_code"):
+        with caplog.at_level(logging.DEBUG, logger="vibelens.ingest.parsers.claude"):
             trajectories = _parser.parse_file(main_file)
 
         # Should succeed with main + 2 sub-agents

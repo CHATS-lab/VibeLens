@@ -1,4 +1,4 @@
-"""Claude Code JSONL format parser.
+"""Claude (Claude Code CLI) session parser.
 
 Parses ~/.claude/history.jsonl for session indices and individual session
 .jsonl files for full conversation data, including subagent conversations
@@ -159,7 +159,7 @@ class _SessionMeta(NamedTuple):
     git_branches: list[str] | None
 
 
-class ClaudeCodeParser(BaseParser):
+class ClaudeParser(BaseParser):
     """Parser for Claude Code's native JSONL format.
 
     Handles both the history index (history.jsonl) and individual

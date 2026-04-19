@@ -17,7 +17,7 @@ vibelens.analysis — import from there directly to avoid circular imports.
 from vibelens.ingest.diagnostics import DiagnosticsCollector
 from vibelens.ingest.parsers import (
     BaseParser,
-    ClaudeCodeParser,
+    ClaudeParser,
     CodexParser,
     DataclawParser,
     GeminiParser,
@@ -27,7 +27,7 @@ from vibelens.ingest.parsers import (
 
 __all__ = [
     "BaseParser",
-    "ClaudeCodeParser",
+    "ClaudeParser",
     "CodexParser",
     "DataclawParser",
     "DiagnosticsCollector",

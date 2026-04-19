@@ -7,7 +7,7 @@ filtering by agent-specific naming conventions.
 from pathlib import Path
 
 from vibelens.ingest.parsers.base import BaseParser
-from vibelens.ingest.parsers.claude_code import ClaudeCodeParser
+from vibelens.ingest.parsers.claude import ClaudeParser
 from vibelens.ingest.parsers.claude_code_web import ClaudeCodeWebParser
 from vibelens.ingest.parsers.codex import CodexParser
 from vibelens.ingest.parsers.gemini import GeminiParser
@@ -26,7 +26,7 @@ _SKIP_DIR_NAMES = {SUBAGENTS_DIR_NAME, "parsed"}
 PARSEABLE_EXTENSIONS = {".json", ".jsonl"}
 
 _PARSERS_BY_TYPE: dict[AgentType, type[BaseParser]] = {
-    AgentType.CLAUDE: ClaudeCodeParser,
+    AgentType.CLAUDE: ClaudeParser,
     AgentType.CLAUDE_WEB: ClaudeCodeWebParser,
     AgentType.CODEX: CodexParser,
     AgentType.GEMINI: GeminiParser,
