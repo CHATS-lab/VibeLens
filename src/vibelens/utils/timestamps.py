@@ -2,7 +2,7 @@
 
 import math
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, tzinfo
 
 # Numeric values above this threshold are treated as millisecond-epoch;
 # below it they are treated as second-epoch.  The boundary corresponds
@@ -138,6 +138,38 @@ def monotonic_ms() -> int:
         Monotonic time in integer milliseconds.
     """
     return int(time.monotonic() * 1000)
+
+
+_cached_local_tz: tzinfo | None = None
+
+
+def local_tz() -> tzinfo:
+    """Return the local system timezone.
+
+    Cached at module scope after the first call. The system tz rarely
+    changes within a process, and recomputing it on every dashboard
+    filter evaluation was a measurable hot-path cost.
+    """
+    global _cached_local_tz
+    if _cached_local_tz is None:
+        resolved = datetime.now().astimezone().tzinfo
+        if resolved is None:
+            # astimezone() with no args always yields a tz-aware datetime,
+            # so this branch is effectively unreachable. Guard anyway to
+            # keep the return type narrow.
+            resolved = timezone.utc
+        _cached_local_tz = resolved
+    return _cached_local_tz
+
+
+def local_date_key(ts: datetime) -> str:
+    """Render ``ts`` as YYYY-MM-DD in the local timezone.
+
+    Used for day-level aggregation keys (daily activity charts, date
+    filters) that must match the labels the rest of the dashboard shows
+    in the user's local time.
+    """
+    return ts.astimezone(local_tz()).strftime("%Y-%m-%d")
 
 
 def utc_now_iso() -> str:

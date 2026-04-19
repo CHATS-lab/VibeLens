@@ -20,7 +20,7 @@ from vibelens.models.enums import StepSource
 from vibelens.models.trajectories import Trajectory
 from vibelens.services.dashboard.pricing import compute_trajectory_cost
 from vibelens.utils import get_logger
-from vibelens.utils.timestamps import parse_metadata_timestamp
+from vibelens.utils.timestamps import local_date_key, local_tz, parse_metadata_timestamp
 
 logger = get_logger(__name__)
 
@@ -47,8 +47,7 @@ def compute_dashboard_stats(
         DashboardStats with all chart data populated.
     """
     start = time.monotonic()
-    local_tz = datetime.now().astimezone().tzinfo
-    acc = _StatsAccumulator(local_tz)
+    acc = _StatsAccumulator(local_tz())
 
     for traj in trajectories:
         session = aggregate_session(traj)
@@ -235,7 +234,7 @@ class _StatsAccumulator:
         self._accumulate_period(self.week, local_ts >= self.week_start, session, tokens)
 
         # Daily bucket (local time)
-        date_key = local_ts.strftime("%Y-%m-%d")
+        date_key = local_date_key(local_ts)
         bucket = self.daily_buckets.get(date_key)
         if bucket is None:
             bucket = _DailyAccumulator()
@@ -346,8 +345,7 @@ def compute_dashboard_stats_from_metadata(metadata_list: list[dict]) -> Dashboar
         DashboardStats with all chart data populated.
     """
     start = time.monotonic()
-    local_tz = datetime.now().astimezone().tzinfo
-    acc = _StatsAccumulator(local_tz)
+    acc = _StatsAccumulator(local_tz())
 
     for meta in metadata_list:
         session = _aggregate_metadata(meta)
@@ -392,7 +390,7 @@ def _aggregate_metadata(meta: dict) -> SessionAggregate:
     agg.duration = fm.get("duration") or 0
 
     # Cost estimation from pricing table using token totals + model
-    if agg.model and agg.model != UNKNOWN_MODEL:
+    if agg.model != UNKNOWN_MODEL:
         from vibelens.services.dashboard.pricing import compute_cost_from_tokens
 
         cost = compute_cost_from_tokens(
@@ -468,11 +466,15 @@ def aggregate_session(traj: Trajectory) -> SessionAggregate:
 
 
 def _in_date_range(meta: dict, date_from: str | None, date_to: str | None) -> bool:
-    """Check if a metadata entry's timestamp falls within the date range."""
+    """Check if a metadata entry's timestamp falls within the date range.
+
+    The date key is resolved in the local timezone so filters match the
+    day labels used in the daily/hourly aggregations.
+    """
     ts = parse_metadata_timestamp(meta)
     if ts is None:
         return False
-    date_str = ts.strftime("%Y-%m-%d")
+    date_str = local_date_key(ts)
     if date_from and date_str < date_from:
         return False
     return not (date_to and date_str > date_to)

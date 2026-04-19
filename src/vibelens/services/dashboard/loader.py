@@ -25,12 +25,8 @@ from vibelens.services.dashboard.tool_usage import (
     compute_per_session_tool_usage,
     compute_tool_usage,
 )
-from vibelens.services.dashboard.tool_usage_cache import (
-    load_cache as load_tool_usage_cache,
-)
-from vibelens.services.dashboard.tool_usage_cache import (
-    save_cache as save_tool_usage_cache,
-)
+from vibelens.services.dashboard.tool_usage import load_cache as load_tool_usage_cache
+from vibelens.services.dashboard.tool_usage import save_cache as save_tool_usage_cache
 from vibelens.services.inference_shared import CACHE_MAXSIZE, CACHE_TTL_SECONDS
 from vibelens.services.session.store_resolver import (
     get_metadata_from_stores,
@@ -38,7 +34,7 @@ from vibelens.services.session.store_resolver import (
     load_from_stores,
 )
 from vibelens.utils import get_logger
-from vibelens.utils.timestamps import parse_metadata_timestamp
+from vibelens.utils.timestamps import local_date_key, local_tz, parse_metadata_timestamp
 
 logger = get_logger(__name__)
 
@@ -223,8 +219,7 @@ def warm_cache() -> None:
     stale_or_missing = {
         sid: mtime
         for sid, mtime in current_targets.items()
-        if cached_entries.get(sid) is None
-        or cached_entries[sid].content_mtime_ns != mtime
+        if cached_entries.get(sid) is None or cached_entries[sid].content_mtime_ns != mtime
     }
     drop_sids = set(cached_entries) - set(current_targets)
 
@@ -270,9 +265,7 @@ def _build_tool_usage_targets(metadata: list[dict]) -> dict[str, int]:
     return targets
 
 
-def _recompute_into_cache(
-    entries: dict, stale_or_missing: dict[str, int]
-) -> None:
+def _recompute_into_cache(entries: dict, stale_or_missing: dict[str, int]) -> None:
     """Load each stale session's trajectory and update its entry.
 
     Mutates ``entries`` in place and ticks ``_warming_progress``. Reuses
@@ -400,16 +393,23 @@ def _load_sessions_parallel(
 
 
 def _has_enriched_metrics(metadata: list[dict]) -> bool:
-    """Check if metadata has enriched final_metrics from fast scanning.
-
-    Returns True if at least one entry has non-zero token counts,
-    indicating the metadata was enriched by fast_metrics scanning.
-    """
-    for meta in metadata[:10]:
+    """Return True when a majority of entries carry non-zero token counts."""
+    total = len(metadata)
+    if total == 0:
+        return False
+    threshold = total // 2 + 1
+    enriched = unenriched = 0
+    for meta in metadata:
         fm = meta.get("final_metrics") or {}
         if fm.get("total_prompt_tokens") or fm.get("total_completion_tokens"):
-            return True
-    return False
+            enriched += 1
+            if enriched >= threshold:
+                return True
+        else:
+            unenriched += 1
+            if unenriched >= threshold:
+                return False
+    return enriched * 2 > total
 
 
 def invalidate_cache() -> None:
@@ -436,8 +436,8 @@ def _reconcile_session_counts(
         trajectories: Successfully parsed trajectories.
         metadata: Filtered metadata list (matches sidebar count).
     """
-    local_tz = datetime.now().astimezone().tzinfo
-    now = datetime.now(tz=local_tz)
+    tz = local_tz()
+    now = datetime.now(tz=tz)
     year_start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     week_start = (now - timedelta(days=now.weekday())).replace(
@@ -451,7 +451,7 @@ def _reconcile_session_counts(
         ts = parse_metadata_timestamp(meta)
         if ts is None:
             continue
-        local_ts = ts.astimezone(local_tz)
+        local_ts = ts.astimezone(tz)
         if local_ts >= year_start:
             year_count += 1
         if local_ts >= month_start:
@@ -463,7 +463,7 @@ def _reconcile_session_counts(
         session_id = meta.get("session_id", "")
         if session_id and session_id not in parsed_ids:
             project = meta.get("project_path") or "(no project)"
-            date_key = local_ts.strftime("%Y-%m-%d")
+            date_key = local_date_key(ts)
             stats.project_distribution[project] = stats.project_distribution.get(project, 0) + 1
             stats.daily_activity[date_key] = stats.daily_activity.get(date_key, 0) + 1
 

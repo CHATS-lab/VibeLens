@@ -15,6 +15,7 @@ from vibelens.models.extension.hook import Hook
 from vibelens.services.extensions.base_service import BaseExtensionService, SyncTarget
 from vibelens.storage.extension.base_store import VALID_EXTENSION_NAME
 from vibelens.storage.extension.hook_store import HookStore, serialize_hook
+from vibelens.utils.json import atomic_write_json
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -335,10 +336,7 @@ class HookService(BaseExtensionService[Hook]):
 
     def _write_settings(self, path: Path, data: dict) -> None:
         """Write settings.json atomically (tmp file + rename)."""
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp_path = path.with_suffix(path.suffix + ".tmp")
-        tmp_path.write_text(json.dumps(data, indent=JSON_INDENT), encoding="utf-8")
-        tmp_path.replace(path)
+        atomic_write_json(path, data, indent=JSON_INDENT)
 
 
 def _strip_marker(group: dict) -> dict:

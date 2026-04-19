@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from vibelens.utils.github import download_directory
+from vibelens.utils.json import atomic_write_json
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -205,7 +206,7 @@ def _merge_vibelens_marketplace(
         }
     )
     manifest["plugins"] = plugin_entries
-    _atomic_write_json(manifest_path, manifest)
+    atomic_write_json(manifest_path, manifest, indent=JSON_INDENT)
 
 
 def _remove_vibelens_marketplace_entry(marketplace_root: Path, name: str) -> None:
@@ -216,7 +217,7 @@ def _remove_vibelens_marketplace_entry(marketplace_root: Path, name: str) -> Non
     manifest["plugins"] = [
         entry for entry in manifest.get("plugins", []) if entry.get("name") != name
     ]
-    _atomic_write_json(manifest_path, manifest)
+    atomic_write_json(manifest_path, manifest, indent=JSON_INDENT)
 
 
 def _merge_known_marketplaces(home: Path, marketplace_root: Path) -> None:
@@ -228,7 +229,7 @@ def _merge_known_marketplaces(home: Path, marketplace_root: Path) -> None:
         "installLocation": str(marketplace_root),
         "lastUpdated": _now_iso(),
     }
-    _atomic_write_json(path, registry)
+    atomic_write_json(path, registry, indent=JSON_INDENT)
 
 
 def _merge_installed_plugins(home: Path, name: str, version: str, cache_path: Path) -> None:
@@ -258,7 +259,7 @@ def _merge_installed_plugins(home: Path, name: str, version: str, cache_path: Pa
         }
     )
     install_state["plugins"][plugin_key] = install_records
-    _atomic_write_json(path, install_state)
+    atomic_write_json(path, install_state, indent=JSON_INDENT)
 
 
 def _remove_installed_plugins_entry(home: Path, name: str) -> None:
@@ -268,7 +269,7 @@ def _remove_installed_plugins_entry(home: Path, name: str) -> None:
         return
     plugin_key = f"{name}@{VIBELENS_MARKETPLACE_NAME}"
     install_state.get("plugins", {}).pop(plugin_key, None)
-    _atomic_write_json(path, install_state)
+    atomic_write_json(path, install_state, indent=JSON_INDENT)
 
 
 def _merge_settings_enabled_plugins(home: Path, name: str, enabled: bool | None) -> None:
@@ -281,7 +282,7 @@ def _merge_settings_enabled_plugins(home: Path, name: str, enabled: bool | None)
         enabled_plugins.pop(plugin_key, None)
     else:
         enabled_plugins[plugin_key] = enabled
-    _atomic_write_json(path, settings)
+    atomic_write_json(path, settings, indent=JSON_INDENT)
 
 
 def _read_json(path: Path) -> dict | None:
@@ -292,13 +293,6 @@ def _read_json(path: Path) -> dict | None:
     except (OSError, json.JSONDecodeError):
         logger.warning("Could not read %s; treating as empty", path)
         return None
-
-
-def _atomic_write_json(path: Path, data: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(data, indent=JSON_INDENT), encoding="utf-8")
-    tmp.replace(path)
 
 
 def _now_iso() -> str:

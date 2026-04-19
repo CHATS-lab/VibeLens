@@ -9,6 +9,7 @@ import json
 import time
 from pathlib import Path
 
+from vibelens.utils.json import atomic_write_json
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -72,7 +73,6 @@ def save_cache(
     """
     if cache_path is None:
         cache_path = DEFAULT_CACHE_PATH
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "version": CACHE_VERSION,
         "written_at": time.time(),
@@ -83,7 +83,7 @@ def save_cache(
         "entries": metadata_cache,
     }
     try:
-        cache_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        atomic_write_json(cache_path, payload, indent=2)
         logger.info("Wrote index cache: %d entries", len(metadata_cache))
     except OSError:
         logger.warning("Failed to write index cache to %s", cache_path)

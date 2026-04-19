@@ -1,18 +1,72 @@
 """JSON parsing, serialization, and LLM output extraction helpers."""
 
-import fcntl
 import json
+import os
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
+from typing import IO, Any
 
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
 
+
+@contextmanager
+def _exclusive_lock(fh: IO) -> Iterator[None]:
+    """Hold an exclusive file lock for the ``with`` block.
+
+    POSIX uses ``fcntl.flock``; Windows uses ``msvcrt.locking``. Both
+    serialize concurrent appenders on the same host. On any other
+    platform (none supported today) the lock is a best-effort no-op.
+    """
+    if os.name == "posix":
+        import fcntl
+
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
+    elif os.name == "nt":
+        import msvcrt
+
+        # Lock the first byte; msvcrt locks by byte range. Using 1 byte
+        # is enough for cross-process serialization.
+        fh.seek(0)
+        msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 1)
+        try:
+            yield
+        finally:
+            fh.seek(0)
+            msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+    else:
+        yield
+
+
 # Greedy match: finds opening ```json fence and extends to the LAST closing ```.
 # Greedy (.*) is required because the JSON value itself may contain embedded
 # triple backticks (e.g. markdown code blocks inside a skill_md_content string).
 _CODE_FENCE_RE = re.compile(r"```(?:json)?\s*\n(.*)\n```", re.DOTALL)
+
+
+def atomic_write_json(path: Path, data: Any, *, indent: int | None = None) -> None:
+    """Write JSON to ``path`` atomically via a sibling ``.tmp`` file.
+
+    Creates parent directories. On success, ``path`` either contains the
+    new payload or is unchanged (no partial write). Raises OSError on
+    failure so callers can log or propagate as they prefer.
+
+    Args:
+        path: Destination file path.
+        data: JSON-serializable object.
+        indent: Passed through to ``json.dumps``. None for compact output.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    tmp_path.write_text(json.dumps(data, indent=indent), encoding="utf-8")
+    tmp_path.replace(path)
 
 
 def load_json_file(path: Path) -> dict | list | None:
@@ -59,8 +113,9 @@ def read_jsonl(path: Path) -> list[dict]:
 def locked_jsonl_append(path: Path, data: dict) -> None:
     """Append one JSON object as a line to a JSONL file under an exclusive lock.
 
-    Uses ``fcntl.flock(LOCK_EX)`` so concurrent appenders within the same
-    process (or across processes on the same host) serialize safely.
+    Serializes concurrent appenders within the same process or across
+    processes on the same host (``fcntl.flock`` on POSIX,
+    ``msvcrt.locking`` on Windows).
 
     Args:
         path: Path to the JSONL file (created if missing).
@@ -68,22 +123,19 @@ def locked_jsonl_append(path: Path, data: dict) -> None:
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     line = json.dumps(data, default=str, ensure_ascii=False) + "\n"
-    with open(path, "a", encoding="utf-8") as fh:
-        fcntl.flock(fh, fcntl.LOCK_EX)
-        try:
-            fh.write(line)
-            fh.flush()
-        finally:
-            fcntl.flock(fh, fcntl.LOCK_UN)
+    with open(path, "a", encoding="utf-8") as fh, _exclusive_lock(fh):
+        fh.write(line)
+        fh.flush()
 
 
 def locked_jsonl_remove(path: Path, match_key: str, match_value: str) -> int:
     """Remove lines from a JSONL file where a key matches a value, under exclusive lock.
 
-    Holds ``fcntl.flock(LOCK_EX)`` for the entire read-filter-write cycle
-    so concurrent appenders block until the rewrite completes.  This
-    prevents the classic lost-update race where an append between the
-    read and the write is silently overwritten.
+    Holds an exclusive file lock (``fcntl.flock`` on POSIX,
+    ``msvcrt.locking`` on Windows) for the entire read-filter-write
+    cycle so concurrent appenders block until the rewrite completes.
+    This prevents the classic lost-update race where an append between
+    the read and the write is silently overwritten.
 
     Corrupt or unparseable lines are kept as-is.
 
@@ -101,32 +153,28 @@ def locked_jsonl_remove(path: Path, match_key: str, match_value: str) -> int:
     # Open r+b so we can read, seek, truncate, and write under one lock.
     # Binary mode avoids platform-specific newline translation issues
     # when truncating.
-    with open(path, "r+b") as fh:
-        fcntl.flock(fh, fcntl.LOCK_EX)
-        try:
-            raw = fh.read().decode("utf-8")
-            lines = raw.splitlines()
-            kept: list[str] = []
-            removed = 0
-            for line in lines:
-                stripped = line.strip()
-                if not stripped:
+    with open(path, "r+b") as fh, _exclusive_lock(fh):
+        raw = fh.read().decode("utf-8")
+        lines = raw.splitlines()
+        kept: list[str] = []
+        removed = 0
+        for line in lines:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            try:
+                data = json.loads(stripped)
+                if data.get(match_key) == match_value:
+                    removed += 1
                     continue
-                try:
-                    data = json.loads(stripped)
-                    if data.get(match_key) == match_value:
-                        removed += 1
-                        continue
-                except json.JSONDecodeError:
-                    pass
-                kept.append(stripped)
-            new_content = ("\n".join(kept) + "\n") if kept else ""
-            fh.seek(0)
-            fh.truncate()
-            fh.write(new_content.encode("utf-8"))
-            fh.flush()
-        finally:
-            fcntl.flock(fh, fcntl.LOCK_UN)
+            except json.JSONDecodeError:
+                pass
+            kept.append(stripped)
+        new_content = ("\n".join(kept) + "\n") if kept else ""
+        fh.seek(0)
+        fh.truncate()
+        fh.write(new_content.encode("utf-8"))
+        fh.flush()
     return removed
 
 
