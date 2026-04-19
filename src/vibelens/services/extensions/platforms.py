@@ -43,8 +43,14 @@ def _home(*parts: str) -> Path:
     return Path.home().joinpath(*parts)
 
 
-PLATFORMS: dict[ExtensionSource, AgentPlatform] = {
-    ExtensionSource.CLAUDE: AgentPlatform(
+def _build_platforms() -> dict[ExtensionSource, AgentPlatform]:
+    """Build the platform table using the current ``Path.home()``.
+
+    Called lazily via module ``__getattr__`` so tests that patch
+    ``HOME`` or ``Path.home`` after import still see fresh paths.
+    """
+    return {
+        ExtensionSource.CLAUDE: AgentPlatform(
         source=ExtensionSource.CLAUDE,
         root=_home(".claude"),
         skills_dir=_home(".claude", "skills"),
@@ -191,6 +197,18 @@ PLATFORMS: dict[ExtensionSource, AgentPlatform] = {
 }
 
 
+def __getattr__(name: str) -> object:
+    """Module ``__getattr__`` so ``PLATFORMS`` rebuilds lazily.
+
+    External callers that do ``from ...platforms import PLATFORMS`` get
+    a fresh table each time the attribute is accessed, so monkey-patching
+    ``Path.home`` in tests works without reloading the module.
+    """
+    if name == "PLATFORMS":
+        return _build_platforms()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 def get_platform(key: str) -> AgentPlatform:
     """Look up a platform by ExtensionSource value.
 
@@ -207,9 +225,10 @@ def get_platform(key: str) -> AgentPlatform:
         source = ExtensionSource(key)
     except ValueError as exc:
         raise ValueError(f"Unknown agent: {key!r}") from exc
-    if source not in PLATFORMS:
+    platforms = _build_platforms()
+    if source not in platforms:
         raise ValueError(f"Unknown agent: {key!r}")
-    return PLATFORMS[source]
+    return platforms[source]
 
 
 def installed_platforms() -> dict[str, AgentPlatform]:
@@ -219,4 +238,8 @@ def installed_platforms() -> dict[str, AgentPlatform]:
         Dict mapping ``ExtensionSource.value`` to platform for agents the
         user actually has installed.
     """
-    return {p.source.value: p for p in PLATFORMS.values() if p.root.expanduser().is_dir()}
+    return {
+        p.source.value: p
+        for p in _build_platforms().values()
+        if p.root.expanduser().is_dir()
+    }

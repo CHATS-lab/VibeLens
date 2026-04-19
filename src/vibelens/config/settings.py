@@ -21,6 +21,11 @@ SETTINGS_JSON_PATH = Path.home() / ".vibelens" / "settings.json"
 LogLevelName = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
 
+def _vibelens_home(*parts: str) -> Path:
+    """``~/.vibelens/<parts>`` resolved at call time, not import time."""
+    return Path.home() / ".vibelens" / Path(*parts) if parts else Path.home() / ".vibelens"
+
+
 def _default_log_dir() -> Path:
     """Default log dir: <project_root>/logs. parents[3] is the project root."""
     return Path(__file__).resolve().parents[3] / "logs"
@@ -53,43 +58,43 @@ class StorageConfig(BaseModel):
     """Persistent storage directories."""
 
     share_dir: Path = Field(
-        default=Path.home() / ".vibelens" / "shares",
+        default_factory=lambda: _vibelens_home("shares"),
         description="Directory for shared session snapshots.",
     )
     managed_skills_dir: Path = Field(
-        default=Path.home() / ".vibelens" / "skills",
+        default_factory=lambda: _vibelens_home("skills"),
         description="Central directory containing VibeLens-managed skills.",
     )
     managed_commands_dir: Path = Field(
-        default=Path.home() / ".vibelens" / "commands",
+        default_factory=lambda: _vibelens_home("commands"),
         description="Central directory for VibeLens-managed commands.",
     )
     managed_subagents_dir: Path = Field(
-        default=Path.home() / ".vibelens" / "subagents",
+        default_factory=lambda: _vibelens_home("subagents"),
         description="Central directory for VibeLens-managed subagents.",
     )
     managed_hooks_dir: Path = Field(
-        default=Path.home() / ".vibelens" / "hooks",
+        default_factory=lambda: _vibelens_home("hooks"),
         description="Central directory for VibeLens-managed hooks.",
     )
     managed_plugins_dir: Path = Field(
-        default=Path.home() / ".vibelens" / "plugins",
+        default_factory=lambda: _vibelens_home("plugins"),
         description="Central directory for VibeLens-managed plugins.",
     )
     friction_dir: Path = Field(
-        default=Path.home() / ".vibelens" / "friction",
+        default_factory=lambda: _vibelens_home("friction"),
         description="Directory for persisted friction analysis results.",
     )
     personalization_dir: Path = Field(
-        default=Path.home() / ".vibelens" / "personalization",
+        default_factory=lambda: _vibelens_home("personalization"),
         description="Directory for persisted personalization results.",
     )
     recommendation_dir: Path = Field(
-        default=Path.home() / ".vibelens" / "recommendations",
+        default_factory=lambda: _vibelens_home("recommendations"),
         description="Directory for persisted recommendation results.",
     )
     examples_dir: Path = Field(
-        default=Path.home() / ".vibelens" / "examples",
+        default_factory=lambda: _vibelens_home("examples"),
         description="Directory for storing parsed demo example trajectories.",
     )
 
@@ -98,7 +103,7 @@ class UploadConfig(BaseModel):
     """Upload processing limits."""
 
     dir: Path = Field(
-        default=Path.home() / ".vibelens" / "uploads",
+        default_factory=lambda: _vibelens_home("uploads"),
         description="Directory to store uploaded zip files.",
     )
     max_zip_bytes: int = Field(
@@ -121,7 +126,7 @@ class DonationConfig(BaseModel):
         description="URL of the donation server to send donated sessions to.",
     )
     dir: Path = Field(
-        default=Path.home() / ".vibelens" / "donations",
+        default_factory=lambda: _vibelens_home("donations"),
         description="Directory for storing received donation ZIP files and index.",
     )
 
