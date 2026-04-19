@@ -3,12 +3,14 @@
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from cachetools import TTLCache
 
 from vibelens.models.dashboard.dashboard import (
     DashboardStats,
     SessionAnalytics,
+    SessionToolUsage,
     ToolUsageStat,
 )
 from vibelens.models.trajectories import Trajectory
@@ -255,8 +257,6 @@ def _build_tool_usage_targets(metadata: list[dict]) -> dict[str, int]:
     won't appear in the cache and any prior entry will be dropped on the
     next warm.
     """
-    from pathlib import Path
-
     targets: dict[str, int] = {}
     for meta in metadata:
         sid = meta.get("session_id")
@@ -279,8 +279,6 @@ def _recompute_into_cache(
     :func:`_load_one_session` which wraps the existing load_from_stores
     error handling.
     """
-    from vibelens.models.dashboard.dashboard import SessionToolUsage
-
     items = list(stale_or_missing.items())
     total = len(items)
     _warming_progress.update(total=total, loaded=0)

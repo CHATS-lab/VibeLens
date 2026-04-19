@@ -11,7 +11,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from vibelens.ingest.fast_metrics import scan_session_metrics
-from vibelens.ingest.index_builder import build_partial_session_index, build_session_index
+from vibelens.ingest.index_builder import (
+    build_partial_session_index,
+    build_session_index,
+)
 from vibelens.ingest.index_cache import collect_file_mtimes, load_cache, save_cache
 from vibelens.ingest.parsers import LOCAL_PARSER_CLASSES
 from vibelens.ingest.parsers.base import BaseParser
@@ -226,14 +229,10 @@ class LocalTrajectoryStore(BaseTrajectoryStore):
 
         # Drop dropped-paths from _index — they should not appear as live sessions.
         if fresh_dropped:
-            for sid in [
-                s for s, (fpath, _p) in self._index.items() if str(fpath) in fresh_dropped
-            ]:
+            for sid in [s for s, (fpath, _p) in self._index.items() if str(fpath) in fresh_dropped]:
                 self._index.pop(sid, None)
 
-        is_fast_path = (
-            not partition.changed and not partition.new and not partition.removed_paths
-        )
+        is_fast_path = not partition.changed and not partition.new and not partition.removed_paths
         if is_fast_path:
             self._metadata_cache = {}
             for sid in self._index:
@@ -267,15 +266,13 @@ class LocalTrajectoryStore(BaseTrajectoryStore):
                 self._metadata_cache[sid] = meta
 
         # Re-parse changed + new.
-        only_paths = {
-            str(fpath) for fpath, _p in partition.changed.values()
-        } | {str(fpath) for fpath, _p in partition.new.values()}
+        only_paths = {str(fpath) for fpath, _p in partition.changed.values()} | {
+            str(fpath) for fpath, _p in partition.new.values()
+        }
 
         new_dropped: dict[str, int] = {}
         if only_paths:
-            partial_skeletons, dropped_paths = build_partial_session_index(
-                self._index, only_paths
-            )
+            partial_skeletons, dropped_paths = build_partial_session_index(self._index, only_paths)
             _enrich_skeleton_metrics(partial_skeletons, self._index)
             for t in partial_skeletons:
                 meta = t.model_dump(exclude={"steps"}, mode="json")
@@ -293,21 +290,17 @@ class LocalTrajectoryStore(BaseTrajectoryStore):
         # were not re-claimed by a freshly parsed file at a different path.
         # A removed path is "stale" in the cache; if the same session_id was
         # produced by partial rebuild for a NEW path, that new entry wins.
-        if partition.removed_paths:
-            current_paths = {str(fpath) for fpath, _p in self._index.values()}
-            for sid, entry in cached_entries.items():
-                cached_filepath = entry.get("filepath")
-                if cached_filepath not in partition.removed_paths:
-                    continue
-                # Only purge if we did NOT just add a fresh entry for this sid.
-                meta = self._metadata_cache.get(sid)
-                if meta is None:
-                    continue
-                if meta.get("filepath") == cached_filepath:
-                    self._metadata_cache.pop(sid, None)
-                    self._index.pop(sid, None)
-                # else: sid was re-bound to a current path; keep the new entry.
-            del current_paths
+        for sid, entry in cached_entries.items():
+            cached_filepath = entry.get("filepath")
+            if cached_filepath not in partition.removed_paths:
+                continue
+            meta = self._metadata_cache.get(sid)
+            if meta is None:
+                continue
+            if meta.get("filepath") == cached_filepath:
+                self._metadata_cache.pop(sid, None)
+                self._index.pop(sid, None)
+            # else: sid was re-bound to a current path; keep the new entry.
 
         merged_dropped = {**fresh_dropped, **new_dropped}
         post_mtimes = collect_file_mtimes(self._index)
@@ -445,20 +438,3 @@ def _enrich_skeleton_metrics(
 
     if enriched:
         logger.info("Enriched %d skeletons with fast-scanned metrics", enriched)
-
-
-def _extract_continuation_map(metadata_cache: dict[str, dict]) -> dict[str, str]:
-    """Extract continuation relationships from metadata for cache persistence.
-
-    Args:
-        metadata_cache: session_id -> metadata dict with optional prev_trajectory_ref.
-
-    Returns:
-        Dict mapping current_session_id -> previous_session_id.
-    """
-    result: dict[str, str] = {}
-    for sid, meta in metadata_cache.items():
-        ref = meta.get("prev_trajectory_ref")
-        if ref and isinstance(ref, dict) and ref.get("session_id"):
-            result[sid] = ref["session_id"]
-    return result
