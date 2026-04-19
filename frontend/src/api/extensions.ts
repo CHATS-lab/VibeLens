@@ -1,9 +1,11 @@
 // frontend/src/api/extensions.ts
 import type {
   ExtensionDetail,
+  ExtensionFileResponse,
   ExtensionListResponse,
   ExtensionMetaResponse,
   ExtensionSyncTarget,
+  ExtensionTreeResponse,
 } from "../types";
 
 type FetchFn = (url: string, init?: RequestInit) => Promise<Response>;
@@ -20,6 +22,8 @@ interface CatalogApi {
   getMeta(): Promise<ExtensionMetaResponse>;
   getItem(id: string): Promise<ExtensionDetail>;
   getContent(id: string): Promise<{ content: string; source: string }>;
+  getTree(id: string): Promise<ExtensionTreeResponse>;
+  getFile(id: string, path: string): Promise<ExtensionFileResponse>;
   install(
     id: string,
     targets: string[],
@@ -50,6 +54,8 @@ interface TypeApi<T> {
     content: string;
     path: string;
   }>;
+  getTree(name: string): Promise<ExtensionTreeResponse>;
+  getFile(name: string, path: string): Promise<ExtensionFileResponse>;
   install(
     name: string,
     content: string,
@@ -92,19 +98,22 @@ interface AgentsApi {
   list(): Promise<AgentCapabilitiesResponse>;
 }
 
-interface PluginApi {
-  uninstall(name: string, agent: string): Promise<{ name: string; agent: string; removed_path: string }>;
-}
-
 export interface ExtensionsClient {
   catalog: CatalogApi;
   skills: TypeApi<unknown>;
   commands: TypeApi<unknown>;
   hooks: TypeApi<unknown>;
   subagents: TypeApi<unknown>;
-  plugins: PluginApi;
+  plugins: TypeApi<unknown>;
   agents: AgentsApi;
   syncTargets: SyncTargetsCache;
+}
+
+export type TypeApiKey = "skills" | "commands" | "hooks" | "subagents" | "plugins";
+
+/** Get the per-type API surface (skills/subagents/commands/hooks/plugins). */
+export function typeApi(client: ExtensionsClient, key: TypeApiKey): TypeApi<unknown> {
+  return client[key];
 }
 
 function createTypeApi<T>(fetchFn: FetchFn, typePlural: string): TypeApi<T> {
@@ -125,6 +134,20 @@ function createTypeApi<T>(fetchFn: FetchFn, typePlural: string): TypeApi<T> {
     async get(name) {
       const res = await fetchFn(`${base}/${encodeURIComponent(name)}`);
       if (!res.ok) throw new Error(`${typePlural} ${name} not found`);
+      return res.json();
+    },
+    async getTree(name) {
+      const res = await fetchFn(`${base}/${encodeURIComponent(name)}/tree`);
+      if (!res.ok) throw new Error(`${typePlural} ${name} tree not available`);
+      return res.json();
+    },
+    async getFile(name, path) {
+      // Path segments must be individually encoded to preserve slashes.
+      const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+      const res = await fetchFn(
+        `${base}/${encodeURIComponent(name)}/files/${encodedPath}`,
+      );
+      if (!res.ok) throw new Error(`${typePlural} ${name} file not found`);
       return res.json();
     },
     async install(name, content, syncTo) {
@@ -273,6 +296,19 @@ export function createExtensionsClient(
         throw new Error(`Content for ${id} not found`);
       return res.json();
     },
+    async getTree(id) {
+      const res = await fetchFn(`${BASE}/catalog/${id}/tree`);
+      if (!res.ok) throw new Error(`Tree for ${id} not found`);
+      return res.json();
+    },
+    async getFile(id, path) {
+      const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+      const res = await fetchFn(
+        `${BASE}/catalog/${id}/files/${encodedPath}`,
+      );
+      if (!res.ok) throw new Error(`File ${path} for ${id} not found`);
+      return res.json();
+    },
     async install(id, targets, overwrite = false) {
       const res = await fetchFn(
         `${BASE}/catalog/${id}/install`,
@@ -310,27 +346,13 @@ export function createExtensionsClient(
     },
   };
 
-  const plugins: PluginApi = {
-    async uninstall(name, agent) {
-      const res = await fetchFn(
-        `${BASE}/plugins/${encodeURIComponent(name)}/agents/${encodeURIComponent(agent)}`,
-        { method: "DELETE" },
-      );
-      if (!res.ok) {
-        const e = await res.json().catch(() => ({}));
-        throw new Error(e.detail || `Failed to uninstall plugin ${name} from ${agent}`);
-      }
-      return res.json();
-    },
-  };
-
   return {
     catalog,
     skills: createTypeApi(fetchFn, "skills"),
     commands: createTypeApi(fetchFn, "commands"),
     hooks: createTypeApi(fetchFn, "hooks"),
     subagents: createTypeApi(fetchFn, "subagents"),
-    plugins,
+    plugins: createTypeApi(fetchFn, "plugins"),
     agents,
     syncTargets,
   };

@@ -164,9 +164,7 @@ def _load_offsets(path: Path) -> dict[str, tuple[str, int, int]]:
     return {k: (v[0], int(v[1]), int(v[2])) for k, v in raw.items()}
 
 
-def _sanity_check_offsets(
-    offsets: dict[str, tuple[str, int, int]], dir_path: Path
-) -> bool:
+def _sanity_check_offsets(offsets: dict[str, tuple[str, int, int]], dir_path: Path) -> bool:
     """Seek + parse first and last id per type. Return False on any failure."""
     by_type: dict[str, list[str]] = {}
     for eid, (type_value, _, _) in offsets.items():

@@ -351,6 +351,28 @@ export interface ExtensionSyncTarget {
   dir: string;
 }
 
+/** One entry in an extension's on-disk or remote-GitHub file tree. */
+export interface ExtensionTreeEntry {
+  path: string;
+  kind: "file" | "dir";
+  size?: number | null;
+}
+
+/** File tree response used by both local (factory) and catalog endpoints. */
+export interface ExtensionTreeResponse {
+  name: string;
+  root: string;
+  entries: ExtensionTreeEntry[];
+  truncated: boolean;
+}
+
+/** Single file content response. */
+export interface ExtensionFileResponse {
+  path: string;
+  content: string;
+  truncated: boolean;
+}
+
 export interface Skill {
   name: string;
   description: string;
