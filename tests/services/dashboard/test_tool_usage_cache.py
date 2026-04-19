@@ -13,7 +13,8 @@ from vibelens.models.trajectories.agent import Agent
 from vibelens.models.trajectories.observation import Observation
 from vibelens.models.trajectories.observation_result import ObservationResult
 from vibelens.models.trajectories.tool_call import ToolCall
-from vibelens.services.dashboard import loader, tool_usage_cache
+from vibelens.services.dashboard import loader
+from vibelens.services.dashboard import tool_usage as tool_usage_cache
 from vibelens.services.dashboard.tool_usage import (
     aggregate_tool_usage,
     compute_per_session_tool_usage,
