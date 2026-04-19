@@ -36,6 +36,7 @@ from vibelens.ingest.parsers.base import (
     BaseParser,
     mark_error_content,
 )
+from vibelens.ingest.parsers.shared.jsonl import iter_jsonl_lines
 from vibelens.models.enums import AgentType, StepSource
 from vibelens.models.trajectories import (
     FinalMetrics,
@@ -294,21 +295,7 @@ def _load_rollout_content(
     content: str, diagnostics: DiagnosticsCollector | None = None
 ) -> list[dict]:
     """Parse JSONL content string into entry dicts."""
-    entries = []
-    for line in content.split("\n"):
-        stripped = line.strip()
-        if not stripped:
-            continue
-        if diagnostics:
-            diagnostics.total_lines += 1
-        try:
-            entries.append(json.loads(stripped))
-            if diagnostics:
-                diagnostics.parsed_lines += 1
-        except json.JSONDecodeError:
-            if diagnostics:
-                diagnostics.record_skip("invalid JSON")
-    return entries
+    return list(iter_jsonl_lines(content, diagnostics=diagnostics))
 
 
 def _scan_session_metadata(entries: list[dict]) -> _CodexSessionMeta:
