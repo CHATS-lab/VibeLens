@@ -14,6 +14,22 @@ class ToolUsageStat(BaseModel):
     error_rate: float = Field(description="Fraction of calls that resulted in an error (0.0-1.0).")
 
 
+class SessionToolUsage(BaseModel):
+    """Per-session tool usage record persisted in tool_usage_cache.json."""
+
+    content_mtime_ns: int = Field(description="Trajectory file mtime when this entry was computed.")
+    tool_counts: dict[str, int] = Field(
+        default_factory=dict, description="Per-tool invocation count for this session."
+    )
+    error_counts: dict[str, int] = Field(
+        default_factory=dict, description="Per-tool error count for this session."
+    )
+    no_trajectory: bool = Field(
+        default=False,
+        description="True if parser returned no trajectory; entry exists to skip retries.",
+    )
+
+
 class TimePattern(BaseModel):
     """Time pattern statistics."""
 

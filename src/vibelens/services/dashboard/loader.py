@@ -18,7 +18,17 @@ from vibelens.services.dashboard.stats import (
     compute_dashboard_stats_from_metadata,
     filter_metadata,
 )
-from vibelens.services.dashboard.tool_usage import compute_tool_usage
+from vibelens.services.dashboard.tool_usage import (
+    aggregate_tool_usage,
+    compute_per_session_tool_usage,
+    compute_tool_usage,
+)
+from vibelens.services.dashboard.tool_usage_cache import (
+    load_cache as load_tool_usage_cache,
+)
+from vibelens.services.dashboard.tool_usage_cache import (
+    save_cache as save_tool_usage_cache,
+)
 from vibelens.services.inference_shared import CACHE_MAXSIZE, CACHE_TTL_SECONDS
 from vibelens.services.session.store_resolver import (
     get_metadata_from_stores,
@@ -180,10 +190,14 @@ def get_warming_status() -> dict:
 def warm_cache() -> None:
     """Pre-compute global dashboard stats and tool usage into cache.
 
-    Dashboard stats use enriched metadata (fast-scanned token counts)
-    to avoid loading full trajectories. Tool usage still requires full
-    trajectories since it needs per-tool function names — these are
-    loaded in parallel using a thread pool for speed.
+    Dashboard stats are computed from enriched metadata (fast-scanned token
+    counts) without loading full trajectories.
+
+    Tool usage now uses a per-session persisted cache: only sessions whose
+    source-file mtime changed since the last warm are reloaded. On warm
+    restarts where nothing changed, this completes in ~50ms (load JSON +
+    aggregate). On cold start, the cache is empty and we recompute from
+    scratch — same wall-clock cost as the legacy single-pass.
     """
     _warming_progress.update(total=0, loaded=0, done=False)
     logger.info("Warming dashboard cache...")
@@ -193,7 +207,6 @@ def warm_cache() -> None:
     metadata = list_all_metadata(session_token=None)
     filtered = filter_metadata(metadata, None, None, None)
 
-    # Dashboard stats from enriched metadata (no full trajectory loading)
     if _has_enriched_metrics(filtered):
         stats = compute_dashboard_stats_from_metadata(filtered)
         logger.info("Dashboard stats computed from metadata (no file I/O)")
@@ -203,13 +216,100 @@ def warm_cache() -> None:
         _reconcile_session_counts(stats, trajectories, filtered)
     _dashboard_cache[cache_key_dash] = stats
 
-    # Tool usage requires full trajectories — load in parallel
-    trajectories = _load_and_enrich_trajectories(filtered, session_token=None, parallel=True)
-    usage = compute_tool_usage(trajectories)
-    _tool_usage_cache[cache_key_tools] = usage
+    cached_entries = load_tool_usage_cache()
+    current_targets = _build_tool_usage_targets(filtered)
+    stale_or_missing = {
+        sid: mtime
+        for sid, mtime in current_targets.items()
+        if cached_entries.get(sid) is None
+        or cached_entries[sid].content_mtime_ns != mtime
+    }
+    drop_sids = set(cached_entries) - set(current_targets)
+
+    if drop_sids:
+        for sid in drop_sids:
+            cached_entries.pop(sid, None)
+
+    if stale_or_missing:
+        logger.info(
+            "Tool-usage warming: %d/%d sessions need recompute",
+            len(stale_or_missing),
+            len(current_targets),
+        )
+        _recompute_into_cache(cached_entries, stale_or_missing)
+    else:
+        logger.info("Tool-usage warming: cache hit, no recompute needed")
+
+    save_tool_usage_cache(cached_entries)
+
+    _tool_usage_cache[cache_key_tools] = aggregate_tool_usage(cached_entries)
 
     _warming_progress["done"] = True
     logger.info("Dashboard cache warmed")
+
+
+def _build_tool_usage_targets(metadata: list[dict]) -> dict[str, int]:
+    """Stat each session's source file and return session_id -> mtime_ns.
+
+    Sessions whose filepath is missing or unstat-able are skipped — they
+    won't appear in the cache and any prior entry will be dropped on the
+    next warm.
+    """
+    from pathlib import Path
+
+    targets: dict[str, int] = {}
+    for meta in metadata:
+        sid = meta.get("session_id")
+        fpath = meta.get("filepath")
+        if not sid or not fpath:
+            continue
+        try:
+            targets[sid] = Path(fpath).stat().st_mtime_ns
+        except OSError:
+            continue
+    return targets
+
+
+def _recompute_into_cache(
+    entries: dict, stale_or_missing: dict[str, int]
+) -> None:
+    """Load each stale session's trajectory and update its entry.
+
+    Mutates ``entries`` in place and ticks ``_warming_progress``. Reuses
+    :func:`_load_one_session` which wraps the existing load_from_stores
+    error handling.
+    """
+    from vibelens.models.dashboard.dashboard import SessionToolUsage
+
+    items = list(stale_or_missing.items())
+    total = len(items)
+    _warming_progress.update(total=total, loaded=0)
+    done_count = 0
+
+    with ThreadPoolExecutor(max_workers=WARM_MAX_WORKERS) as pool:
+        futures = {
+            pool.submit(_load_one_session, {"session_id": sid}, sid, None): (sid, mtime)
+            for sid, mtime in items
+        }
+        for future in as_completed(futures):
+            sid, mtime = futures[future]
+            done_count += 1
+            _warming_progress["loaded"] = done_count
+            try:
+                traj = future.result()
+            except Exception:
+                logger.warning("Tool-usage warm: failed to load %s", sid, exc_info=True)
+                traj = None
+            if traj is None:
+                entries[sid] = SessionToolUsage(content_mtime_ns=mtime, no_trajectory=True)
+            else:
+                entries[sid] = compute_per_session_tool_usage(traj, content_mtime_ns=mtime)
+            if done_count % 50 == 0 or done_count == total:
+                logger.info(
+                    "Tool-usage warming progress: %d/%d sessions",
+                    done_count,
+                    total,
+                )
 
 
 def _load_and_enrich_trajectories(
