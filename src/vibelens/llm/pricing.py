@@ -1,422 +1,180 @@
-"""LLM pricing table and lookup.
+"""LLM pricing lookup.
 
-Per-million-token rates for supported models, plus a lookup function
-that bridges model name normalization with the pricing table.
+Pricing comes from ``litellm.model_cost`` (a curated table of ~2700 models
+maintained upstream by the LiteLLM project, refreshed on every package
+release). New model versions land via ``uv lock`` bumping ``litellm``;
+no hand-edit needed.
+
+The local ``PRICING_OVERRIDES`` table is a tiny escape hatch for cases
+where the LiteLLM data is wrong, missing, or doesn't capture a tier
+nuance we want to model (e.g. Anthropic's 1M-context surcharge). Lookup
+checks overrides first, then falls back to LiteLLM.
 
 Cost computation that operates on trajectory models lives in
-vibelens.services.dashboard.pricing.
+``vibelens.services.dashboard.pricing``.
 """
+
+import litellm
 
 from vibelens.llm.normalizer import normalize_model_name
 from vibelens.models.llm.pricing import ModelPricing
+from vibelens.utils.log import get_logger
 
-# Divisor to convert token counts to the "per million" unit used in pricing
+logger = get_logger(__name__)
+
+# Divisor to convert token counts to the "per million" unit used in pricing.
 TOKENS_PER_MTOK = 1_000_000
 
-# Prices are USD per million tokens.
-# Sources:
-#   Anthropic — https://platform.claude.com/docs/en/about-claude/pricing
-#   OpenAI   — https://openai.com/api/pricing/
+# Local overrides — populate only when LiteLLM is wrong or missing a model.
+# LiteLLM covers Anthropic, OpenAI, and Google ≤2.5 directly; non-Western
+# providers (DeepSeek, Moonshot, MiniMax, Qwen, Zhipu, ByteDance) are only
+# present under provider-prefixed keys, and recent Gemini 3.x is preview-only.
+# Add overrides here for the bare canonical names our session metadata uses.
+#
+# Sources (verify before editing):
 #   Google   — https://ai.google.dev/gemini-api/docs/pricing
-#   xAI      — https://docs.x.ai/docs/models#models-and-pricing
 #   DeepSeek — https://api-docs.deepseek.com/quick_start/pricing
-#   Mistral  — https://mistral.ai/products/pricing
-#   Qwen     — https://help.aliyun.com/model-studio/models
 #   Moonshot — https://platform.moonshot.cn/docs/pricing
 #   MiniMax  — https://platform.minimaxi.com/document/Price
+#   Qwen     — https://help.aliyun.com/model-studio/models
 #   Zhipu    — https://open.bigmodel.cn/pricing
 #   ByteDance— https://www.volcengine.com/docs/82379/1263482
-#   Meta     — via Together/Fireworks hosted pricing
-PRICING_TABLE: dict[str, ModelPricing] = {
-    # Anthropic
-    "claude-opus-4-7": ModelPricing(
-        input_per_mtok=5.00,
-        output_per_mtok=25.00,
-        cache_read_per_mtok=0.50,
-        cache_write_per_mtok=6.25,
-    ),
-    "claude-opus-4-6": ModelPricing(
-        input_per_mtok=5.00,
-        output_per_mtok=25.00,
-        cache_read_per_mtok=0.50,
-        cache_write_per_mtok=6.25,
-    ),
-    "claude-opus-4-1": ModelPricing(
-        input_per_mtok=15.00,
-        output_per_mtok=75.00,
-        cache_read_per_mtok=1.50,
-        cache_write_per_mtok=18.75,
-    ),
-    "claude-sonnet-4-6": ModelPricing(
-        input_per_mtok=3.00,
-        output_per_mtok=15.00,
-        cache_read_per_mtok=0.30,
-        cache_write_per_mtok=3.75,
-    ),
-    "claude-sonnet-4-5": ModelPricing(
-        input_per_mtok=3.00,
-        output_per_mtok=15.00,
-        cache_read_per_mtok=0.30,
-        cache_write_per_mtok=3.75,
-    ),
-    "claude-3-5-sonnet": ModelPricing(
-        input_per_mtok=3.00,
-        output_per_mtok=15.00,
-        cache_read_per_mtok=0.30,
-        cache_write_per_mtok=3.75,
-    ),
-    "claude-haiku-4-5": ModelPricing(
-        input_per_mtok=1.00,
-        output_per_mtok=5.00,
-        cache_read_per_mtok=0.10,
-        cache_write_per_mtok=1.25,
-    ),
-    "claude-3-5-haiku": ModelPricing(
-        input_per_mtok=0.80,
-        output_per_mtok=4.00,
-        cache_read_per_mtok=0.08,
-        cache_write_per_mtok=1.00,
-    ),
-    # OpenAI (cache_write = input rate; auto-caching has no write surcharge)
-    "gpt-5.4-pro": ModelPricing(
-        input_per_mtok=30.00,
-        output_per_mtok=180.00,
-        cache_read_per_mtok=3.00,
-        cache_write_per_mtok=30.00,
-    ),
-    "gpt-5.4": ModelPricing(
-        input_per_mtok=2.50,
-        output_per_mtok=15.00,
-        cache_read_per_mtok=0.25,
-        cache_write_per_mtok=2.50,
-    ),
-    "gpt-5.4-mini": ModelPricing(
-        input_per_mtok=0.75,
-        output_per_mtok=4.50,
-        cache_read_per_mtok=0.075,
-        cache_write_per_mtok=0.75,
-    ),
-    "gpt-5.4-nano": ModelPricing(
-        input_per_mtok=0.20,
-        output_per_mtok=1.25,
-        cache_read_per_mtok=0.02,
-        cache_write_per_mtok=0.20,
-    ),
-    "o3-pro": ModelPricing(
-        input_per_mtok=20.00,
-        output_per_mtok=80.00,
-        cache_read_per_mtok=5.00,
-        cache_write_per_mtok=20.00,
-    ),
-    "o3": ModelPricing(
-        input_per_mtok=2.00,
-        output_per_mtok=8.00,
-        cache_read_per_mtok=0.50,
-        cache_write_per_mtok=2.00,
-    ),
-    "o4-mini": ModelPricing(
-        input_per_mtok=1.10,
-        output_per_mtok=4.40,
-        cache_read_per_mtok=0.275,
-        cache_write_per_mtok=1.10,
-    ),
-    "gpt-4.1": ModelPricing(
-        input_per_mtok=2.00,
-        output_per_mtok=8.00,
-        cache_read_per_mtok=0.50,
-        cache_write_per_mtok=2.00,
-    ),
-    "gpt-4.1-mini": ModelPricing(
-        input_per_mtok=0.40,
-        output_per_mtok=1.60,
-        cache_read_per_mtok=0.10,
-        cache_write_per_mtok=0.40,
-    ),
-    "gpt-4.1-nano": ModelPricing(
-        input_per_mtok=0.10,
-        output_per_mtok=0.40,
-        cache_read_per_mtok=0.025,
-        cache_write_per_mtok=0.10,
-    ),
-    "gpt-5": ModelPricing(
-        input_per_mtok=1.25,
-        output_per_mtok=10.00,
-        cache_read_per_mtok=0.125,
-        cache_write_per_mtok=1.25,
-    ),
-    "gpt-5-mini": ModelPricing(
-        input_per_mtok=0.25,
-        output_per_mtok=2.00,
-        cache_read_per_mtok=0.025,
-        cache_write_per_mtok=0.25,
-    ),
-    "gpt-5.3-codex": ModelPricing(
-        input_per_mtok=1.75,
-        output_per_mtok=14.00,
-        cache_read_per_mtok=0.175,
-        cache_write_per_mtok=1.75,
-    ),
-    "gpt-4o-mini": ModelPricing(
-        input_per_mtok=0.15,
-        output_per_mtok=0.60,
-        cache_read_per_mtok=0.075,
-        cache_write_per_mtok=0.15,
-    ),
-    # Google Gemini (<=200k context pricing; cache_write = input rate)
-    "gemini-3-pro": ModelPricing(
-        input_per_mtok=2.00,
-        output_per_mtok=12.00,
-        cache_read_per_mtok=0.20,
-        cache_write_per_mtok=2.00,
-    ),
-    "gemini-3.1-pro": ModelPricing(
-        input_per_mtok=2.00,
-        output_per_mtok=12.00,
-        cache_read_per_mtok=0.20,
-        cache_write_per_mtok=2.00,
-    ),
-    "gemini-2.5-pro": ModelPricing(
-        input_per_mtok=1.25,
-        output_per_mtok=10.00,
-        cache_read_per_mtok=0.125,
-        cache_write_per_mtok=1.25,
-    ),
-    "gemini-2.5-flash": ModelPricing(
-        input_per_mtok=0.30,
-        output_per_mtok=2.50,
-        cache_read_per_mtok=0.03,
-        cache_write_per_mtok=0.30,
-    ),
-    "gemini-2.5-flash-lite": ModelPricing(
-        input_per_mtok=0.10,
-        output_per_mtok=0.40,
-        cache_read_per_mtok=0.01,
-        cache_write_per_mtok=0.10,
-    ),
-    "gemini-2.0-flash": ModelPricing(
-        input_per_mtok=0.10,
-        output_per_mtok=0.40,
-        cache_read_per_mtok=0.025,
-        cache_write_per_mtok=0.10,
-    ),
-    # xAI Grok
-    "grok-4-fast": ModelPricing(
-        input_per_mtok=0.20,
-        output_per_mtok=0.50,
-        cache_read_per_mtok=0.05,
-        cache_write_per_mtok=0.20,
-    ),
-    "grok-4.20-beta": ModelPricing(
-        input_per_mtok=2.00,
-        output_per_mtok=6.00,
-        cache_read_per_mtok=0.20,
-        cache_write_per_mtok=2.00,
-    ),
-    "grok-4": ModelPricing(
-        input_per_mtok=3.00,
-        output_per_mtok=15.00,
-        cache_read_per_mtok=0.75,
-        cache_write_per_mtok=3.00,
-    ),
-    "grok-4.1-fast": ModelPricing(
-        input_per_mtok=0.20,
-        output_per_mtok=0.50,
-        cache_read_per_mtok=0.05,
-        cache_write_per_mtok=0.20,
-    ),
+def _mp(input_: float, output: float, cache_read: float, cache_write: float) -> ModelPricing:
+    """Compact constructor — overrides are dense; keep them readable."""
+    return ModelPricing(
+        input_per_mtok=input_,
+        output_per_mtok=output,
+        cache_read_per_mtok=cache_read,
+        cache_write_per_mtok=cache_write,
+    )
+
+
+PRICING_OVERRIDES: dict[str, ModelPricing] = {
+    # Google Gemini 3.x — LiteLLM only ships preview keys.
+    "gemini-3-pro": _mp(2.00, 12.00, 0.20, 2.00),
+    "gemini-3.1-pro": _mp(2.00, 12.00, 0.20, 2.00),
     # DeepSeek
-    "deepseek-v3": ModelPricing(
-        input_per_mtok=0.28,
-        output_per_mtok=0.42,
-        cache_read_per_mtok=0.028,
-        cache_write_per_mtok=0.28,
-    ),
-    "deepseek-v3.2": ModelPricing(
-        input_per_mtok=0.27,
-        output_per_mtok=0.41,
-        cache_read_per_mtok=0.027,
-        cache_write_per_mtok=0.27,
-    ),
-    "deepseek-chat": ModelPricing(
-        input_per_mtok=0.32,
-        output_per_mtok=0.89,
-        cache_read_per_mtok=0.032,
-        cache_write_per_mtok=0.32,
-    ),
-    # Mistral
-    "magistral-medium": ModelPricing(
-        input_per_mtok=2.00,
-        output_per_mtok=5.00,
-        cache_read_per_mtok=2.00,
-        cache_write_per_mtok=2.00,
-    ),
-    "mistral-large": ModelPricing(
-        input_per_mtok=0.50,
-        output_per_mtok=1.50,
-        cache_read_per_mtok=0.05,
-        cache_write_per_mtok=0.50,
-    ),
-    "mistral-medium-3.1": ModelPricing(
-        input_per_mtok=0.40,
-        output_per_mtok=2.00,
-        cache_read_per_mtok=0.04,
-        cache_write_per_mtok=0.40,
-    ),
-    "codestral": ModelPricing(
-        input_per_mtok=0.30,
-        output_per_mtok=0.90,
-        cache_read_per_mtok=0.03,
-        cache_write_per_mtok=0.30,
-    ),
-    "mistral-small-4": ModelPricing(
-        input_per_mtok=0.15,
-        output_per_mtok=0.60,
-        cache_read_per_mtok=0.015,
-        cache_write_per_mtok=0.15,
-    ),
-    # Qwen (Alibaba Cloud)
-    "qwen3-max": ModelPricing(
-        input_per_mtok=0.78,
-        output_per_mtok=3.90,
-        cache_read_per_mtok=0.156,
-        cache_write_per_mtok=0.78,
-    ),
-    "qwen3.5-plus": ModelPricing(
-        input_per_mtok=0.26,
-        output_per_mtok=1.56,
-        cache_read_per_mtok=0.26,
-        cache_write_per_mtok=0.26,
-    ),
-    "qwen3-coder-next": ModelPricing(
-        input_per_mtok=0.12,
-        output_per_mtok=0.75,
-        cache_read_per_mtok=0.06,
-        cache_write_per_mtok=0.12,
-    ),
+    "deepseek-v3": _mp(0.28, 0.42, 0.028, 0.28),
+    "deepseek-v3.2": _mp(0.27, 0.41, 0.027, 0.27),
+    "deepseek-chat": _mp(0.32, 0.89, 0.032, 0.32),
     # Moonshot Kimi
-    "kimi-k2.5": ModelPricing(
-        input_per_mtok=0.45,
-        output_per_mtok=2.20,
-        cache_read_per_mtok=0.225,
-        cache_write_per_mtok=0.45,
-    ),
-    "kimi-k2": ModelPricing(
-        input_per_mtok=0.60,
-        output_per_mtok=2.50,
-        cache_read_per_mtok=0.15,
-        cache_write_per_mtok=0.60,
-    ),
-    "kimi-k2-0905": ModelPricing(
-        input_per_mtok=0.40,
-        output_per_mtok=2.00,
-        cache_read_per_mtok=0.10,
-        cache_write_per_mtok=0.40,
-    ),
-    "kimi-k2-thinking": ModelPricing(
-        input_per_mtok=0.60,
-        output_per_mtok=2.50,
-        cache_read_per_mtok=0.15,
-        cache_write_per_mtok=0.60,
-    ),
+    "kimi-k2": _mp(0.60, 2.50, 0.15, 0.60),
+    "kimi-k2-0905": _mp(0.40, 2.00, 0.10, 0.40),
+    "kimi-k2-thinking": _mp(0.60, 2.50, 0.15, 0.60),
+    "kimi-k2.5": _mp(0.45, 2.20, 0.225, 0.45),
     # MiniMax
-    "minimax-m2.5": ModelPricing(
-        input_per_mtok=0.30,
-        output_per_mtok=1.20,
-        cache_read_per_mtok=0.03,
-        cache_write_per_mtok=0.375,
-    ),
-    "minimax-m2.7": ModelPricing(
-        input_per_mtok=0.30,
-        output_per_mtok=1.20,
-        cache_read_per_mtok=0.06,
-        cache_write_per_mtok=0.375,
-    ),
+    "minimax-m2.5": _mp(0.30, 1.20, 0.03, 0.375),
+    "minimax-m2.7": _mp(0.30, 1.20, 0.06, 0.375),
+    # Qwen (Alibaba Cloud)
+    "qwen3-max": _mp(0.78, 3.90, 0.156, 0.78),
+    "qwen3.5-plus": _mp(0.26, 1.56, 0.26, 0.26),
+    "qwen3-coder-next": _mp(0.12, 0.75, 0.06, 0.12),
     # Zhipu GLM
-    "glm-5": ModelPricing(
-        input_per_mtok=1.00,
-        output_per_mtok=3.20,
-        cache_read_per_mtok=0.20,
-        cache_write_per_mtok=1.00,
-    ),
-    "glm-5-code": ModelPricing(
-        input_per_mtok=1.20,
-        output_per_mtok=5.00,
-        cache_read_per_mtok=0.30,
-        cache_write_per_mtok=1.20,
-    ),
-    "glm-4.7": ModelPricing(
-        input_per_mtok=0.60,
-        output_per_mtok=2.20,
-        cache_read_per_mtok=0.11,
-        cache_write_per_mtok=0.60,
-    ),
-    "glm-4.7-flashx": ModelPricing(
-        input_per_mtok=0.07,
-        output_per_mtok=0.40,
-        cache_read_per_mtok=0.01,
-        cache_write_per_mtok=0.07,
-    ),
-    # ByteDance Seed
-    "seed-2.0-pro": ModelPricing(
-        input_per_mtok=0.47,
-        output_per_mtok=2.37,
-        cache_read_per_mtok=0.47,
-        cache_write_per_mtok=0.47,
-    ),
-    "seed-2.0-lite": ModelPricing(
-        input_per_mtok=0.09,
-        output_per_mtok=0.53,
-        cache_read_per_mtok=0.09,
-        cache_write_per_mtok=0.09,
-    ),
-    "seed-2.0-mini": ModelPricing(
-        input_per_mtok=0.03,
-        output_per_mtok=0.31,
-        cache_read_per_mtok=0.03,
-        cache_write_per_mtok=0.03,
-    ),
-    "seed-2.0-code": ModelPricing(
-        input_per_mtok=0.47,
-        output_per_mtok=2.37,
-        cache_read_per_mtok=0.47,
-        cache_write_per_mtok=0.47,
-    ),
-    # Meta Llama 4 (hosted pricing via Together/Fireworks)
-    "llama-4-maverick": ModelPricing(
-        input_per_mtok=0.15,
-        output_per_mtok=0.60,
-        cache_read_per_mtok=0.15,
-        cache_write_per_mtok=0.15,
-    ),
-    "llama-4-scout": ModelPricing(
-        input_per_mtok=0.08,
-        output_per_mtok=0.30,
-        cache_read_per_mtok=0.08,
-        cache_write_per_mtok=0.08,
-    ),
+    "glm-5": _mp(1.00, 3.20, 0.20, 1.00),
+    "glm-5-code": _mp(1.20, 5.00, 0.30, 1.20),
+    "glm-4.7": _mp(0.60, 2.20, 0.11, 0.60),
+    "glm-4.7-flashx": _mp(0.07, 0.40, 0.01, 0.07),
+    # ByteDance Seed (Doubao)
+    "seed-2.0-pro": _mp(0.47, 2.37, 0.47, 0.47),
+    "seed-2.0-lite": _mp(0.09, 0.53, 0.09, 0.09),
+    "seed-2.0-mini": _mp(0.03, 0.31, 0.03, 0.03),
+    "seed-2.0-code": _mp(0.47, 2.37, 0.47, 0.47),
+    # Mistral — bare canonical names; LiteLLM only stores versioned/-latest forms.
+    "mistral-large": _mp(0.50, 1.50, 0.05, 0.50),
+    "mistral-medium-3.1": _mp(0.40, 2.00, 0.04, 0.40),
+    "mistral-small-4": _mp(0.15, 0.60, 0.015, 0.15),
+    "magistral-medium": _mp(2.00, 5.00, 2.00, 2.00),
+    "codestral": _mp(0.30, 0.90, 0.03, 0.30),
+    # Meta Llama 4 — hosted pricing varies by provider; rates approximate Together.
+    "llama-4-maverick": _mp(0.15, 0.60, 0.15, 0.15),
+    "llama-4-scout": _mp(0.08, 0.30, 0.08, 0.08),
 }
+
+# session_id -> True for models we've already warned about; keeps the log
+# from spamming "no pricing for X" once per request.
+_warned_models: set[str] = set()
 
 
 def lookup_pricing(model_name: str | None) -> ModelPricing | None:
-    """Look up pricing for a model name.
+    """Return per-million-token pricing for ``model_name``, or None.
 
-    Tries exact match in PRICING_TABLE first, then normalizes.
+    Lookup order:
+        1. ``PRICING_OVERRIDES`` for the raw model name.
+        2. ``PRICING_OVERRIDES`` for the normalized canonical form.
+        3. ``litellm.model_cost`` for the raw model name.
+        4. ``litellm.model_cost`` for the normalized canonical form.
+
+    On a miss, logs once per model and returns ``None``.
 
     Args:
-        model_name: Model name (raw or canonical).
+        model_name: Raw model id from session metadata (e.g.
+            ``"claude-opus-4-7-20260101"``, ``"anthropic/claude-haiku-4-5"``).
 
     Returns:
-        ModelPricing or None if model is unrecognized.
+        ModelPricing or ``None`` if no pricing is known.
     """
     if not model_name:
         return None
 
-    pricing = PRICING_TABLE.get(model_name)
-    if pricing:
-        return pricing
+    if model_name in PRICING_OVERRIDES:
+        return PRICING_OVERRIDES[model_name]
 
     canonical = normalize_model_name(model_name)
-    if canonical:
-        return PRICING_TABLE.get(canonical)
+    if canonical and canonical in PRICING_OVERRIDES:
+        return PRICING_OVERRIDES[canonical]
 
+    pricing = _from_litellm(model_name) or (_from_litellm(canonical) if canonical else None)
+    if pricing is not None:
+        return pricing
+
+    if model_name not in _warned_models:
+        _warned_models.add(model_name)
+        logger.info(
+            "No pricing for model %r (canonical: %r); cost will be 0.",
+            model_name,
+            canonical,
+        )
+    return None
+
+
+# LiteLLM keys are sometimes provider-prefixed (e.g. ``xai/grok-4``,
+# ``anthropic/claude-...``) for first-party rates. Try these prefixes in
+# order when the bare name misses; the first match wins.
+_LITELLM_PROVIDER_PREFIXES: tuple[str, ...] = (
+    "anthropic/",
+    "xai/",
+    "openai/",
+    "mistral/",
+    "vertex_ai/",
+    "fireworks_ai/",
+    "together_ai/",
+)
+
+
+def _from_litellm(model_name: str) -> ModelPricing | None:
+    """Build a ModelPricing from litellm.model_cost if the entry is usable.
+
+    Tries the bare ``model_name`` first, then each entry in
+    ``_LITELLM_PROVIDER_PREFIXES`` to cover keys LiteLLM only stores
+    under provider-prefixed forms.
+    """
+    candidates = [model_name] + [prefix + model_name for prefix in _LITELLM_PROVIDER_PREFIXES]
+    for key in candidates:
+        info = litellm.model_cost.get(key)
+        if not info or not isinstance(info, dict):
+            continue
+        if "input_cost_per_token" not in info or "output_cost_per_token" not in info:
+            continue
+        input_per_token = info["input_cost_per_token"]
+        output_per_token = info["output_cost_per_token"]
+        # LiteLLM sometimes stores explicit ``None`` for cache fields when
+        # the model doesn't support caching; fall back to the input rate.
+        cache_read = info.get("cache_read_input_token_cost") or input_per_token
+        cache_write = info.get("cache_creation_input_token_cost") or input_per_token
+        return ModelPricing(
+            input_per_mtok=input_per_token * TOKENS_PER_MTOK,
+            output_per_mtok=output_per_token * TOKENS_PER_MTOK,
+            cache_read_per_mtok=cache_read * TOKENS_PER_MTOK,
+            cache_write_per_mtok=cache_write * TOKENS_PER_MTOK,
+        )
     return None
