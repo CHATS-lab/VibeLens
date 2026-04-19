@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { Check, Loader2, RotateCcw } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { TOGGLE_ACTIVE, TOGGLE_BUTTON_BASE, TOGGLE_CONTAINER, TOGGLE_INACTIVE } from "../../../styles";
 import { CopyButton } from "../../ui/copy-button";
 import { MarkdownRenderer } from "../../ui/markdown-renderer";
@@ -16,9 +17,15 @@ interface FrontmatterData {
 
 interface ExtensionDetailContentProps {
   content: string;
-  tocEntries: TocEntry[];
   itemName?: string;
   itemDescription?: string;
+  /** Controlled preview/code mode; lifted so the parent can render a sibling TOC. */
+  mode: ContentMode;
+  onModeChange: (mode: ContentMode) => void;
+  /** When provided, code mode becomes editable with a Save button that
+   *  invokes this callback with the new text.
+   */
+  onSave?: (nextContent: string) => Promise<void>;
 }
 
 /** Parse YAML frontmatter, extracting name and description fields. */
@@ -44,90 +51,133 @@ export function stripFrontmatter(text: string): string {
   return parseFrontmatter(text).body;
 }
 
-type ContentMode = "preview" | "code";
+export type ContentMode = "preview" | "code";
 
 export function ExtensionDetailContent({
   content,
-  tocEntries,
   itemName,
   itemDescription,
+  mode,
+  onModeChange,
+  onSave,
 }: ExtensionDetailContentProps) {
-  const [contentMode, setContentMode] = useState<ContentMode>("preview");
+  const contentMode = mode;
+  const setContentMode = onModeChange;
   const { data: frontmatter, body } = useMemo(() => parseFrontmatter(content), [content]);
+
+  const editable = Boolean(onSave);
+  const [draft, setDraft] = useState(content);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Reset draft whenever the underlying file changes (e.g., user picked a
+  // different file in the sidebar).
+  useEffect(() => {
+    setDraft(content);
+    setSaveError(null);
+  }, [content]);
+
+  const dirty = editable && draft !== content;
 
   const displayName = frontmatter.name || itemName;
   const displayDescription = frontmatter.description || itemDescription;
 
-  return (
-    <div className="flex gap-6">
-      {/* Main content panel */}
-      <div className="flex-1 min-w-0 border border-card rounded-xl bg-panel overflow-hidden">
-        {/* Toolbar */}
-        <div className="flex items-center justify-between px-5 py-2.5 border-b border-card bg-control/30">
-          <div className={`${TOGGLE_CONTAINER} w-36`}>
-            <button
-              className={`${TOGGLE_BUTTON_BASE} ${contentMode === "preview" ? TOGGLE_ACTIVE : TOGGLE_INACTIVE}`}
-              onClick={() => setContentMode("preview")}
-            >
-              Preview
-            </button>
-            <button
-              className={`${TOGGLE_BUTTON_BASE} ${contentMode === "code" ? TOGGLE_ACTIVE : TOGGLE_INACTIVE}`}
-              onClick={() => setContentMode("code")}
-            >
-              Code
-            </button>
-          </div>
-          <CopyButton text={content} />
-        </div>
+  async function handleSave() {
+    if (!onSave) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await onSave(draft);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  }
 
-        {/* Content body */}
-        <div className="p-6 lg:p-8">
-          {contentMode === "preview" ? (
+  return (
+    <div className="flex-1 min-w-0">
+      <div className="flex items-center justify-between px-4 py-2.5 gap-3">
+        <div className={`${TOGGLE_CONTAINER} w-36`}>
+          <button
+            className={`${TOGGLE_BUTTON_BASE} ${contentMode === "preview" ? TOGGLE_ACTIVE : TOGGLE_INACTIVE}`}
+            onClick={() => setContentMode("preview")}
+          >
+            Preview
+          </button>
+          <button
+            className={`${TOGGLE_BUTTON_BASE} ${contentMode === "code" ? TOGGLE_ACTIVE : TOGGLE_INACTIVE}`}
+            onClick={() => setContentMode("code")}
+          >
+            Code
+          </button>
+        </div>
+        <div className="flex items-center gap-2">
+          {editable && contentMode === "code" && (
             <>
-              {displayName && (
-                <div className="mb-6 pb-5 border-b border-card">
-                  <h1 className="text-2xl font-bold text-primary leading-tight">
-                    {displayName}
-                  </h1>
-                  {displayDescription && (
-                    <p className="text-[15px] text-secondary mt-2.5 leading-relaxed">
-                      {displayDescription}
-                    </p>
-                  )}
-                </div>
+              {dirty && !saving && (
+                <button
+                  onClick={() => setDraft(content)}
+                  className="flex items-center gap-1 px-2.5 py-1 text-xs text-muted hover:text-secondary border border-card hover:border-hover rounded transition"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  Revert
+                </button>
               )}
-              <MarkdownRenderer content={body} variant="document" />
+              <button
+                onClick={handleSave}
+                disabled={!dirty || saving}
+                className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-white bg-teal-600 hover:bg-teal-500 rounded-md transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {saving ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <Check className="w-3 h-3" />
+                )}
+                Save
+              </button>
             </>
-          ) : (
-            <pre className="font-mono text-sm text-secondary whitespace-pre-wrap break-words leading-relaxed">
-              {content}
-            </pre>
           )}
+          <CopyButton text={editable ? draft : content} />
         </div>
       </div>
 
-      {/* TOC sidebar — only in preview mode when enough headings exist */}
-      {contentMode === "preview" && tocEntries.length > 2 && (
-        <nav className="hidden lg:block w-56 shrink-0 sticky top-6 self-start">
-          <h3 className="text-[11px] font-semibold text-muted uppercase tracking-wider mb-3">
-            On this page
-          </h3>
-          <ul className="space-y-0.5 border-l border-card">
-            {tocEntries.map((entry) => (
-              <li key={entry.slug}>
-                <a
-                  href={`#${entry.slug}`}
-                  className="block text-xs text-muted hover:text-primary transition truncate py-1"
-                  style={{ paddingLeft: `${(entry.level - 1) * 10 + 12}px` }}
-                >
-                  {entry.text}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </nav>
+      {saveError && (
+        <div className="mx-4 mb-2 px-3 py-2 rounded-md bg-rose-50 dark:bg-rose-950/20 text-xs text-rose-700 dark:text-rose-300">
+          Failed to save: {saveError}
+        </div>
       )}
+
+      <div className="px-6 lg:px-8 pb-8">
+        {contentMode === "preview" ? (
+          <>
+            {displayName && (
+              <div className="mb-6 pb-5 border-b border-card">
+                <h1 className="text-2xl font-bold text-primary leading-tight">
+                  {displayName}
+                </h1>
+                {displayDescription && (
+                  <p className="text-[15px] text-secondary mt-2.5 leading-relaxed">
+                    {displayDescription}
+                  </p>
+                )}
+              </div>
+            )}
+            <MarkdownRenderer content={body} variant="document" />
+          </>
+        ) : editable ? (
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            spellCheck={false}
+            className="w-full min-h-[420px] font-mono text-sm text-secondary bg-control/30 border border-card rounded-lg px-4 py-3 outline-none focus:ring-1 focus:ring-teal-500/30 focus:border-accent-teal-focus resize-y"
+          />
+        ) : (
+          <pre className="font-mono text-sm text-secondary whitespace-pre-wrap break-words leading-relaxed">
+            {content}
+          </pre>
+        )}
+      </div>
     </div>
   );
 }

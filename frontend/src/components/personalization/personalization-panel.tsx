@@ -1,7 +1,7 @@
 import { Check, History, Info, PanelRightClose, PanelRightOpen, Search, Sparkles, TrendingUp } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppContext, useExtensionsClient } from "../../app";
-import type { AnalysisJobResponse, AnalysisJobStatus, CostEstimate, LLMStatus, PersonalizationResult, Skill, PersonalizationMode } from "../../types";
+import type { AnalysisJobResponse, AnalysisJobStatus, CostEstimate, ExtensionItemSummary, LLMStatus, PersonalizationResult, Skill, PersonalizationMode } from "../../types";
 import { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "../../styles";
 import { AnalysisLoadingScreen } from "../analysis-loading-screen";
 import { AnalysisWelcomePage, TutorialBanner } from "../analysis-welcome";
@@ -17,7 +17,7 @@ import {
 import { PersonalizationHistory } from "./personalization-history";
 
 const TAB_CONFIG: { id: PersonalizationTab; label: string; tooltip: string }[] = [
-  { id: "local", label: "Local Skills", tooltip: "Manage installed SKILL.md files" },
+  { id: "local", label: "Local", tooltip: "Manage installed skills, subagents, commands, and plugins" },
   { id: "explore", label: "Explore", tooltip: "Browse community skills" },
   { id: "retrieve", label: "Recommend", tooltip: "Find skills matching your workflow" },
   { id: "create", label: "Customize", tooltip: "Generate skills from your patterns" },
@@ -99,6 +99,7 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(true);
+  const [analysisDetailItem, setAnalysisDetailItem] = useState<ExtensionItemSummary | null>(null);
   const [historyRefresh, setHistoryRefresh] = useState(0);
   const [localRefresh, setLocalRefresh] = useState(0);
   const [exploreResetKey, setExploreResetKey] = useState(0);
@@ -281,6 +282,7 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
       evolution: "evolve",
     };
     const tab = tabMap[loaded.mode] || "retrieve";
+    setAnalysisDetailItem(null);
     setAnalysisResult(loaded);
     setActiveTab(tab);
     localStorage.setItem("vibelens-personalization-tab", tab);
@@ -346,6 +348,7 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
   const handleNewAnalysis = useCallback(() => {
     setAnalysisResult(null);
     setAnalysisError(null);
+    setAnalysisDetailItem(null);
   }, []);
 
   // Bump both counters after install/update so LocalExtensionsTab and PersonalizationHistory refresh.
@@ -418,6 +421,7 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
                 if (tab.id !== activeTab && MODE_MAP[tab.id] && MODE_MAP[activeTab]) {
                   setAnalysisResult(null);
                   setAnalysisError(null);
+                  setAnalysisDetailItem(null);
                   if (appMode === "demo" && MODE_MAP[tab.id]) {
                     loadDemoAnalysis(MODE_MAP[tab.id]);
                   }
@@ -452,6 +456,7 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
                 localStorage.setItem("vibelens-personalization-tab", "retrieve");
                 setAnalysisResult(null);
                 setAnalysisError(null);
+                setAnalysisDetailItem(null);
                 if (appMode === "demo") loadDemoAnalysis("recommendation");
               }}
             />
@@ -488,17 +493,20 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
               activeTab={activeTab}
               onNew={handleNewAnalysis}
               onInstalled={handleSkillInstalled}
+              detailItem={analysisDetailItem}
+              onDetailChange={setAnalysisDetailItem}
               onSwitchTab={(tab) => {
                 setActiveTab(tab);
                 localStorage.setItem("vibelens-personalization-tab", tab);
                 setAnalysisResult(null);
                 setAnalysisError(null);
+                setAnalysisDetailItem(null);
               }}
             />
           )}
         </div>
 
-        {isAnalysisTab && showHistory && (
+        {isAnalysisTab && !analysisDetailItem && showHistory && (
           <>
             <div
               onMouseDown={handleDragStart}
@@ -528,7 +536,7 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
             </div>
           </>
         )}
-        {isAnalysisTab && !showHistory && (
+        {isAnalysisTab && !analysisDetailItem && !showHistory && (
           <div className="shrink-0 border-l border-default bg-panel/50 flex flex-col items-center pt-3 px-1">
             <Tooltip text="Show history">
               <button

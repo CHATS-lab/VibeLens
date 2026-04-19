@@ -5,13 +5,7 @@ import type { AgentCapability } from "../../api/extensions";
 import type { ExtensionSyncTarget } from "../../types";
 import { Modal, ModalBody, ModalFooter, ModalHeader } from "../ui/modal";
 import { normalizeSourceType, SOURCE_LABELS } from "./constants";
-
-const TYPE_PLURAL: Record<string, string> = {
-  skill: "skills",
-  subagent: "subagents",
-  command: "commands",
-  hook: "hooks",
-};
+import { TYPE_PLURAL } from "./extensions/extension-constants";
 
 function centralStoreLabel(type: string): string {
   if (type === "hook") return "~/.vibelens/hooks/";

@@ -42,16 +42,19 @@ export function AnalysisResultView({
   onNew,
   onInstalled,
   onSwitchTab,
+  detailItem,
+  onDetailChange,
 }: {
   result: PersonalizationResult;
   activeTab: PersonalizationTab;
   onNew: () => void;
   onInstalled?: () => void;
   onSwitchTab?: (tab: PersonalizationTab) => void;
+  detailItem: ExtensionItemSummary | null;
+  onDetailChange: (item: ExtensionItemSummary | null) => void;
 }) {
   const client = useExtensionsClient();
   const [syncTargets, setSkillSyncTargets] = useState<SkillSyncTarget[]>([]);
-  const [detailItem, setDetailItem] = useState<ExtensionItemSummary | null>(null);
   const [installedIds, setInstalledIds] = useState<Set<string>>(new Set());
   const [syncTargetsByType, setSyncTargetsByType] = useState<Record<string, ExtensionSyncTarget[]>>({});
 
@@ -87,7 +90,7 @@ export function AnalysisResultView({
       <ExtensionDetailView
         item={detailItem}
         isInstalled={installedIds.has(detailItem.extension_id)}
-        onBack={() => setDetailItem(null)}
+        onBack={() => onDetailChange(null)}
         onInstalled={handleInstalled}
         syncTargets={syncTargetsByType[detailItem.extension_type] ?? []}
       />
@@ -108,7 +111,7 @@ export function AnalysisResultView({
         <RecommendationSection
           recommendations={result.recommendations}
           installedIds={installedIds}
-          onOpenDetail={setDetailItem}
+          onOpenDetail={onDetailChange}
           syncTargetsByType={syncTargetsByType}
           onInstalled={handleInstalled}
         />

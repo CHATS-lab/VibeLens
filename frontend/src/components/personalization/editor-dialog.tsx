@@ -9,7 +9,15 @@ interface EditorDialogProps {
   onSave: (name: string, content: string) => void;
   onCancel: () => void;
   saving: boolean;
+  /** Display label for the entity type (e.g. "Skill", "Subagent", "Command"). */
+  entityLabel?: string;
+  /** Label shown above the content textarea (e.g. "SKILL.md content"). */
+  contentLabel?: string;
+  /** Placeholder markdown shown inside the empty textarea. */
+  contentPlaceholder?: string;
 }
+
+const DEFAULT_PLACEHOLDER = `---\ndescription: What this skill does\nallowed-tools: Read, Edit, Bash\ntags: [development, automation]\n---\n\n# Instructions\n\n...`;
 
 export function EditorDialog({
   mode,
@@ -18,6 +26,9 @@ export function EditorDialog({
   onSave,
   onCancel,
   saving,
+  entityLabel = "Skill",
+  contentLabel = "SKILL.md content",
+  contentPlaceholder = DEFAULT_PLACEHOLDER,
 }: EditorDialogProps) {
   const [name, setName] = useState(initialName);
   const [content, setContent] = useState(initialContent);
@@ -35,7 +46,7 @@ export function EditorDialog({
     <Modal onClose={onCancel} maxWidth="max-w-3xl">
       <div className="flex items-center justify-between px-5 py-4 border-b border-default shrink-0">
         <h2 className="text-sm font-semibold text-primary">
-          {isCreate ? "Create New Skill" : `Edit: ${initialName}`}
+          {isCreate ? `Create New ${entityLabel}` : `Edit: ${initialName}`}
         </h2>
         <button onClick={onCancel} className="text-dimmed hover:text-secondary transition">
           <X className="w-4 h-4" />
@@ -45,13 +56,13 @@ export function EditorDialog({
         {isCreate && (
           <div>
             <label className="block text-xs text-muted mb-1">
-              Skill name <span className="text-faint">(kebab-case)</span>
+              {entityLabel} name <span className="text-faint">(kebab-case)</span>
             </label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value.toLowerCase())}
-              placeholder="my-new-skill"
+              placeholder={`my-new-${entityLabel.toLowerCase()}`}
               className={`w-full px-3 py-1.5 text-sm font-mono rounded bg-control border text-primary outline-none focus:ring-1 transition ${
                 name && !nameValid
                   ? "border-red-500/50 focus:ring-red-500/30"
@@ -66,12 +77,12 @@ export function EditorDialog({
           </div>
         )}
         <div className="flex-1 min-h-0 flex flex-col">
-          <label className="block text-xs text-muted mb-1">SKILL.md content</label>
+          <label className="block text-xs text-muted mb-1">{contentLabel}</label>
           <textarea
             ref={textareaRef}
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            placeholder={`---\ndescription: What this skill does\nallowed-tools: Read, Edit, Bash\ntags: [development, automation]\n---\n\n# Instructions\n\n...`}
+            placeholder={contentPlaceholder}
             className="flex-1 min-h-[300px] w-full px-3 py-2 text-sm font-mono rounded bg-control border border-card text-primary outline-none focus:ring-1 focus:ring-teal-500/30 focus:border-accent-teal-focus resize-none transition"
             spellCheck={false}
           />

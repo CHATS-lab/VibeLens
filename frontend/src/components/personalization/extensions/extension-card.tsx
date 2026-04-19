@@ -1,6 +1,4 @@
 import {
-  Anchor,
-  Bot,
   Check,
   Clock,
   Download,
@@ -8,9 +6,7 @@ import {
   GitFork,
   Loader2,
   Package,
-  Server,
   Star,
-  Terminal,
 } from "lucide-react";
 import { formatCount, formatRelativeDate } from "./extension-format";
 import { useCallback, useState } from "react";
@@ -24,25 +20,12 @@ import {
   CARD_VIEW_MAX_TAGS,
   ITEM_TYPE_COLORS,
   ITEM_TYPE_ICON_COLORS,
+  ITEM_TYPE_ICONS,
   ITEM_TYPE_LABELS,
   LIST_VIEW_MAX_TAGS,
+  TYPE_PLURAL,
   type ExtensionViewMode,
 } from "./extension-constants";
-
-const ITEM_TYPE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
-  skill: Package,
-  subagent: Bot,
-  command: Terminal,
-  hook: Anchor,
-  repo: Server,
-};
-
-const TYPE_PLURAL: Record<string, string> = {
-  skill: "skills",
-  subagent: "subagents",
-  command: "commands",
-  hook: "hooks",
-};
 
 export function TypeBadge({ itemType }: { itemType: string }) {
   const color = ITEM_TYPE_COLORS[itemType] || ITEM_TYPE_COLORS.skill;

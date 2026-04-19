@@ -1,3 +1,24 @@
+import { Anchor, Bot, type LucideIcon, Package, Server, Terminal } from "lucide-react";
+
+/** Lucide icon per extension type. ``plugin`` reuses the skill icon today. */
+export const ITEM_TYPE_ICONS: Record<string, LucideIcon> = {
+  skill: Package,
+  subagent: Bot,
+  command: Terminal,
+  hook: Anchor,
+  repo: Server,
+  plugin: Package,
+};
+
+/** Singular -> plural used in REST URLs (``/extensions/{plural}/...``). */
+export const TYPE_PLURAL: Record<string, string> = {
+  skill: "skills",
+  subagent: "subagents",
+  command: "commands",
+  hook: "hooks",
+  plugin: "plugins",
+};
+
 /** Badge colors for extension item types. */
 export const ITEM_TYPE_COLORS: Record<string, string> = {
   skill: "bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/30 dark:text-teal-400 dark:border-teal-700/30",

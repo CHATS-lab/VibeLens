@@ -1,92 +1,292 @@
-import { Check, ChevronLeft, ChevronRight, Code2, Info, Package, Pencil, Plus, RefreshCw, Share2, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Anchor,
+  Bot,
+  ChevronLeft,
+  ChevronRight,
+  Info,
+  type LucideIcon,
+  Package,
+  RefreshCw,
+  Terminal,
+  Trash2,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useExtensionsClient } from "../../app";
 import { useDemoGuard } from "../../hooks/use-demo-guard";
-import type { ExtensionSyncTarget, Skill } from "../../types";
+import type { ExtensionSyncTarget } from "../../types";
 import { SEARCH_DEBOUNCE_MS } from "../../constants";
-import { ConfirmDialog } from "../ui/confirm-dialog";
 import { InstallLocallyDialog } from "../install-locally-dialog";
-import { EditorDialog } from "./editor-dialog";
 import { EmptyState } from "../ui/empty-state";
 import { ErrorBanner } from "../ui/error-banner";
 import { LoadingState } from "../ui/loading-state";
-import { MarkdownRenderer } from "../ui/markdown-renderer";
-import { Modal, ModalHeader, ModalBody } from "../ui/modal";
 import { Tooltip } from "../ui/tooltip";
-import { SourceBadge, TagList, TagPill, ToolBadge, ToolList } from "./source-badges";
-import { SOURCE_LABELS } from "./constants";
 import {
-  NoResultsState,
-  ResultCount,
-  SearchBar,
-  SourceFilterBar,
-} from "./result-shared";
+  LocalExtensionDetailView,
+  type LocalExtensionKind,
+} from "./extensions/extension-detail-view";
+import { UninstallExtensionDialog } from "./extensions/uninstall-extension-dialog";
+import { SourceBadge, TagList, ToolList } from "./source-badges";
+import { NoResultsState, ResultCount, SearchBar, SourceFilterBar } from "./result-shared";
 
 const DEFAULT_PAGE_SIZE = 50;
 const PAGE_SIZE_OPTIONS = [25, 50, 100];
 
-interface EditorState {
-  open: boolean;
-  mode: "create" | "edit";
+interface LocalItem {
   name: string;
-  content: string;
+  description: string;
+  topics: string[];
+  allowed_tools?: string[];
+  installed_in: string[];
 }
 
-const EDITOR_CLOSED: EditorState = { open: false, mode: "create", name: "", content: "" };
+interface KindConfig {
+  key: LocalExtensionKind;
+  apiKey: "skills" | "subagents" | "commands" | "plugins";
+  label: string;
+  pluralLabel: string;
+  icon: LucideIcon;
+  accent: string;
+  accentText: string;
+  description: string;
+  canEdit: boolean;
+  contentLabel: string;
+  contentPlaceholder: string;
+}
 
-export function LocalExtensionsTab({ refreshTrigger = 0 }: { refreshTrigger?: number } = {}) {
+const KIND_CONFIGS: Record<LocalExtensionKind, KindConfig> = {
+  skill: {
+    key: "skill",
+    apiKey: "skills",
+    label: "Skill",
+    pluralLabel: "Skills",
+    icon: Package,
+    accent: "bg-accent-teal-subtle",
+    accentText: "text-accent-teal",
+    description:
+      "Reusable guides that teach your agent how to do a specific job, like writing ads or reviewing code.",
+    canEdit: true,
+    contentLabel: "SKILL.md content",
+    contentPlaceholder:
+      "---\ndescription: What this skill does\nallowed-tools: Read, Edit, Bash\ntags: [development, automation]\n---\n\n# Instructions\n\n...",
+  },
+  subagent: {
+    key: "subagent",
+    apiKey: "subagents",
+    label: "Subagent",
+    pluralLabel: "Subagents",
+    icon: Bot,
+    accent: "bg-accent-violet-subtle",
+    accentText: "text-accent-violet",
+    description:
+      "A helper your agent can hand a small job off to, so the main conversation stays focused.",
+    canEdit: true,
+    contentLabel: "Subagent markdown",
+    contentPlaceholder:
+      "---\nname: my-subagent\ndescription: What this subagent does\n---\n\nInstructions...",
+  },
+  command: {
+    key: "command",
+    apiKey: "commands",
+    label: "Command",
+    pluralLabel: "Commands",
+    icon: Terminal,
+    accent: "bg-accent-cyan-subtle",
+    accentText: "text-accent-cyan",
+    description:
+      "Shortcuts you can type with a slash to kick off a common task, like /review or /ship.",
+    canEdit: true,
+    contentLabel: "Command markdown",
+    contentPlaceholder:
+      "---\nname: my-command\ndescription: Short description shown in the slash menu\n---\n\nCommand body...",
+  },
+  plugin: {
+    key: "plugin",
+    apiKey: "plugins",
+    label: "Plugin",
+    pluralLabel: "Plugins",
+    icon: Anchor,
+    accent: "bg-accent-indigo-subtle",
+    accentText: "text-accent-indigo",
+    description:
+      "A bundle that installs a set of skills, commands, and subagents together. Add new ones from Explore.",
+    canEdit: false,
+    contentLabel: "plugin.json",
+    contentPlaceholder: "",
+  },
+};
+
+const KIND_ORDER: LocalExtensionKind[] = ["skill", "subagent", "command", "plugin"];
+
+interface LocalExtensionsTabProps {
+  refreshTrigger?: number;
+}
+
+export function LocalExtensionsTab({ refreshTrigger = 0 }: LocalExtensionsTabProps = {}) {
   const client = useExtensionsClient();
   const { guardAction, showInstallDialog, setShowInstallDialog } = useDemoGuard();
-  const [skills, setSkills] = useState<Skill[]>([]);
+  const [kind, setKind] = useState<LocalExtensionKind>("skill");
+  const [detailName, setDetailName] = useState<string | null>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
+  const [syncTargetsByType, setSyncTargetsByType] = useState<
+    Record<string, ExtensionSyncTarget[]>
+  >({});
+
+  useEffect(() => {
+    setDetailName(null);
+  }, [kind]);
+
+  const config = KIND_CONFIGS[kind];
+  const syncTargets = syncTargetsByType[kind] ?? [];
+  const combinedRefresh = refreshTrigger + refreshTick;
+
+  useEffect(() => {
+    if (combinedRefresh > 0) client.syncTargets.invalidate();
+    client.syncTargets
+      .get()
+      .then((targets) => setSyncTargetsByType(targets))
+      .catch(() => {});
+  }, [client, combinedRefresh]);
+
+  if (detailName) {
+    return (
+      <LocalExtensionDetailView
+        extensionType={kind}
+        name={detailName}
+        syncTargets={syncTargets}
+        onBack={() => setDetailName(null)}
+        onUninstalled={() => setDetailName(null)}
+      />
+    );
+  }
+
+  return (
+    <div className="max-w-5xl mx-auto px-6 py-8">
+      <div className="flex items-start justify-between gap-3 mb-5">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className={`p-2 rounded-lg ${config.accent}`}>
+            <config.icon className={`w-5 h-5 ${config.accentText}`} />
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-lg font-bold text-primary">Local</h2>
+            <p className="text-sm text-secondary">
+              Manage and sync installed extensions across agent interfaces
+            </p>
+          </div>
+        </div>
+        <Tooltip text="Refresh list">
+          <button
+            onClick={() => setRefreshTick((n) => n + 1)}
+            className="shrink-0 p-2 text-muted hover:text-primary bg-control hover:bg-control-hover border border-card rounded-md transition"
+            aria-label="Refresh"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+          </button>
+        </Tooltip>
+      </div>
+
+      <div className="flex rounded-lg bg-control p-0.5 mb-5 w-fit" role="tablist">
+        {KIND_ORDER.map((k) => {
+          const c = KIND_CONFIGS[k];
+          const Icon = c.icon;
+          const active = kind === k;
+          return (
+            <button
+              key={k}
+              role="tab"
+              aria-selected={active}
+              onClick={() => setKind(k)}
+              className={`flex items-center gap-1.5 px-4 py-1.5 text-xs rounded-md transition ${
+                active
+                  ? "bg-panel text-primary font-semibold shadow-sm"
+                  : "text-muted hover:text-secondary"
+              }`}
+            >
+              <Icon className={`w-3.5 h-3.5 ${active ? c.accentText : ""}`} />
+              {c.pluralLabel}
+            </button>
+          );
+        })}
+      </div>
+
+      <LocalKindPanel
+        kind={kind}
+        config={config}
+        refreshTrigger={combinedRefresh}
+        onOpenDetail={(name) => setDetailName(name)}
+        guardAction={guardAction}
+      />
+
+      {showInstallDialog && (
+        <InstallLocallyDialog onClose={() => setShowInstallDialog(false)} />
+      )}
+    </div>
+  );
+}
+
+interface LocalKindPanelProps {
+  kind: LocalExtensionKind;
+  config: KindConfig;
+  refreshTrigger: number;
+  onOpenDetail: (name: string) => void;
+  guardAction: (fn: () => void | Promise<void>) => void;
+}
+
+function LocalKindPanel({
+  kind,
+  config,
+  refreshTrigger,
+  onOpenDetail,
+  guardAction,
+}: LocalKindPanelProps) {
+  const client = useExtensionsClient();
+  const api = client[config.apiKey];
+  const [items, setItems] = useState<LocalItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [filteredSkills, setFilteredSkills] = useState<Skill[]>([]);
+  const [filteredItems, setFilteredItems] = useState<LocalItem[]>([]);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [editorState, setEditorState] = useState<EditorState>(EDITOR_CLOSED);
-  const [saving, setSaving] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<Skill | null>(null);
-  const [detailSkill, setDetailSkill] = useState<Skill | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<LocalItem | null>(null);
+  const [deleteInFlight, setDeleteInFlight] = useState(false);
   const [sourceFilter, setSourceFilter] = useState<string | null>(null);
-  const [syncTargets, setSkillSyncTargets] = useState<ExtensionSyncTarget[]>([]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
-  const [totalSkills, setTotalSkills] = useState(0);
+  const [total, setTotal] = useState(0);
 
-  const fetchSkills = useCallback(async (forceRefresh = false) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await client.skills.list({
-        page,
-        pageSize,
-        refresh: forceRefresh || undefined,
-      });
-      const items = (data.items ?? []) as unknown as Skill[];
-      setSkills(items);
-      setFilteredSkills(items);
-      setTotalSkills(data.total ?? items.length);
-      if (data.sync_targets) setSkillSyncTargets(data.sync_targets);
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setLoading(false);
-    }
-  }, [client, page, pageSize]);
+  const fetchItems = useCallback(
+    async (forceRefresh = false) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await api.list({
+          page,
+          pageSize,
+          refresh: forceRefresh || undefined,
+        });
+        const newItems = (data.items ?? []) as unknown as LocalItem[];
+        setItems(newItems);
+        setFilteredItems(newItems);
+        setTotal(data.total ?? newItems.length);
+      } catch (err) {
+        setError(String(err));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [api, page, pageSize],
+  );
 
   useEffect(() => {
-    fetchSkills();
-  }, [fetchSkills]);
+    fetchItems();
+  }, [fetchItems]);
 
-  // External refresh trigger (e.g., after installing a skill from an analysis view).
   useEffect(() => {
     if (refreshTrigger === 0) return;
-    fetchSkills();
-  }, [refreshTrigger, fetchSkills]);
+    fetchItems();
+  }, [refreshTrigger, fetchItems]);
 
-  // Apply source filter + search query
   useEffect(() => {
-    let result = skills;
+    let result = items;
     if (sourceFilter) {
       result = result.filter((s) => s.installed_in.includes(sourceFilter));
     }
@@ -96,141 +296,70 @@ export function LocalExtensionsTab({ refreshTrigger = 0 }: { refreshTrigger?: nu
         (s) => s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q),
       );
     }
-    setFilteredSkills(result);
-  }, [skills, sourceFilter, searchQuery]);
+    setFilteredItems(result);
+  }, [items, sourceFilter, searchQuery]);
+
+  useEffect(() => {
+    setSearchQuery("");
+    setSourceFilter(null);
+    setPage(1);
+  }, [kind]);
 
   const handleSearchChange = useCallback(
     (query: string) => {
       setSearchQuery(query);
       if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-
-      // When query is cleared, refetch full list from server
       if (!query.trim()) {
-        fetchSkills();
+        fetchItems();
         return;
       }
-
       searchTimerRef.current = setTimeout(async () => {
         try {
-          const data = await client.skills.list({ search: query, page: 1, pageSize });
-          const items = (data.items ?? []) as unknown as Skill[];
-          setSkills(items);
-          setTotalSkills(data.total ?? items.length);
-          if (data.sync_targets) setSkillSyncTargets(data.sync_targets);
+          const data = await api.list({ search: query, page: 1, pageSize });
+          const newItems = (data.items ?? []) as unknown as LocalItem[];
+          setItems(newItems);
+          setTotal(data.total ?? newItems.length);
         } catch {
           /* fallback to local filter */
         }
       }, SEARCH_DEBOUNCE_MS);
     },
-    [client, fetchSkills, pageSize],
-  );
-
-  const handleSave = useCallback(
-    async (name: string, content: string) => {
-      setSaving(true);
-      setError(null);
-      try {
-        const isCreate = editorState.mode === "create";
-        let installedIn: string[] = [];
-        if (isCreate) {
-          const result = await client.skills.install(name, content, []);
-          const skill = result as unknown as { installed_in?: string[] };
-          installedIn = skill.installed_in ?? [];
-        } else {
-          const result = await client.skills.modify(name, content);
-          const skill = result as unknown as { installed_in?: string[] };
-          installedIn = skill.installed_in ?? [];
-        }
-        setEditorState(EDITOR_CLOSED);
-
-        // Auto-sync to all previously synced agent interfaces after edit
-        if (editorState.mode === "edit" && installedIn.length > 0) {
-          client.skills.syncToAgents(name, installedIn).catch(() => {});
-        }
-
-        await fetchSkills();
-      } catch (err) {
-        setError(String(err));
-      } finally {
-        setSaving(false);
-      }
-    },
-    [client, editorState.mode, fetchSkills],
+    [api, fetchItems, pageSize],
   );
 
   const handleDelete = useCallback(
-    async (skill: Skill) => {
+    async (item: LocalItem) => {
       setError(null);
+      setDeleteInFlight(true);
       try {
-        await client.skills.uninstall(skill.name);
+        await api.uninstall(item.name);
         setDeleteTarget(null);
-        await fetchSkills();
+        await fetchItems();
       } catch (err) {
         setError(String(err));
         setDeleteTarget(null);
+      } finally {
+        setDeleteInFlight(false);
       }
     },
-    [client, fetchSkills],
+    [api, fetchItems],
   );
 
-  const openEditDialog = useCallback(
-    async (skill: Skill) => {
-      try {
-        const data = await client.skills.get(skill.name);
-        setEditorState({ open: true, mode: "edit", name: skill.name, content: data.content || "" });
-      } catch (err) {
-        setError(`Failed to load skill content: ${err}`);
-      }
-    },
-    [client],
-  );
-
-  const availableSourceTypes = Array.from(
-    new Set(skills.flatMap((s) => s.installed_in)),
+  const availableSourceTypes = useMemo(
+    () => Array.from(new Set(items.flatMap((s) => s.installed_in))),
+    [items],
   );
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-8">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-accent-teal-subtle">
-            <Code2 className="w-5 h-5 text-accent-teal" />
-          </div>
-          <div>
-            <h2 className="text-lg font-bold text-primary">Skills</h2>
-            <p className="text-sm text-secondary">Manage and sync skills across agent interfaces</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => guardAction(() => setEditorState({ open: true, mode: "create", name: "", content: "" }))}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-teal-600 hover:bg-teal-500 rounded-md transition"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            New Skill
-          </button>
-          <button
-            onClick={() => fetchSkills(true)}
-            disabled={loading}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-secondary hover:text-primary bg-control hover:bg-control-hover border border-card rounded-md transition disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-          </button>
-        </div>
-      </div>
-
-      {/* Skill explanation */}
+    <>
       <div className="mb-5 px-4 py-3.5 rounded-lg border border-teal-300 dark:border-teal-800/40 bg-teal-50 dark:bg-teal-950/20 overflow-hidden">
         <div className="flex items-center gap-3">
           <div className="shrink-0 p-2 rounded-lg bg-teal-100 dark:bg-teal-500/15 border border-teal-200 dark:border-teal-500/20">
             <Info className="w-4 h-4 text-teal-600 dark:text-teal-400" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-primary">What's a skill?</p>
-            <p className="text-sm text-secondary mt-0.5">
-              A skill is an instruction file that tells your coding agent how to handle specific tasks, like a personalized rulebook. Create them here, install community skills from the <span className="font-semibold text-primary">Explore</span> tab, or let VibeLens generate them from your coding sessions.
-            </p>
+            <p className="text-base font-bold text-primary">{config.pluralLabel}</p>
+            <p className="text-sm text-secondary mt-0.5">{config.description}</p>
           </div>
         </div>
       </div>
@@ -239,162 +368,112 @@ export function LocalExtensionsTab({ refreshTrigger = 0 }: { refreshTrigger?: nu
         items={availableSourceTypes}
         activeKey={sourceFilter}
         onSelect={setSourceFilter}
-        totalCount={skills.length}
-        countByKey={(key) =>
-          skills.filter((s) => s.installed_in.includes(key)).length
-        }
+        totalCount={items.length}
+        countByKey={(key) => items.filter((s) => s.installed_in.includes(key)).length}
       />
 
       <SearchBar value={searchQuery} onChange={handleSearchChange} />
 
       {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
 
-      {loading && skills.length === 0 && <LoadingState label="Loading skills..." />}
+      {loading && items.length === 0 && <LoadingState label={`Loading ${config.pluralLabel.toLowerCase()}...`} />}
 
-      {!loading && !error && skills.length === 0 && (
+      {!loading && !error && items.length === 0 && (
         <EmptyState
-          icon={Package}
-          title="No skills installed"
-          subtitle="Skills are loaded from ~/.claude/skills/ and ~/.codex/skills/ on startup"
-        >
-          <button
-            onClick={() => guardAction(() => setEditorState({ open: true, mode: "create", name: "", content: "" }))}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-teal-600 hover:bg-teal-500 rounded-md transition"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            Create your first skill
-          </button>
-        </EmptyState>
+          icon={config.icon}
+          title={`No ${config.pluralLabel.toLowerCase()} installed`}
+          subtitle="Install one from the Explore tab to get started."
+        />
       )}
 
-      {!loading && skills.length > 0 && filteredSkills.length === 0 && <NoResultsState />}
+      {!loading && items.length > 0 && filteredItems.length === 0 && <NoResultsState />}
 
-      {filteredSkills.length > 0 && (
+      {filteredItems.length > 0 && (
         <div className="space-y-2">
-          <ResultCount filtered={filteredSkills.length} total={totalSkills} />
-          {filteredSkills.map((skill) => (
-            <SkillCard
-              key={skill.name}
-              skill={skill}
-              onEdit={(s) => guardAction(() => openEditDialog(s))}
-              onDelete={() => guardAction(() => setDeleteTarget(skill))}
-              onViewDetail={setDetailSkill}
+          <ResultCount filtered={filteredItems.length} total={total} />
+          {filteredItems.map((item) => (
+            <LocalExtensionCard
+              key={item.name}
+              item={item}
+              config={config}
+              onDelete={() => guardAction(() => setDeleteTarget(item))}
+              onActivate={() => onOpenDetail(item.name)}
             />
           ))}
           <PaginationBar
             page={page}
             pageSize={pageSize}
-            total={totalSkills}
+            total={total}
             onPageChange={setPage}
-            onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+            onPageSizeChange={(size) => {
+              setPageSize(size);
+              setPage(1);
+            }}
           />
         </div>
       )}
 
-      {editorState.open && (
-        <EditorDialog
-          mode={editorState.mode}
-          initialName={editorState.name}
-          initialContent={editorState.content}
-          onSave={handleSave}
-          onCancel={() => setEditorState(EDITOR_CLOSED)}
-          saving={saving}
-        />
-      )}
-
       {deleteTarget && (
-        <ConfirmDialog
-          title={`Delete "${deleteTarget.name}"?`}
-          message="This removes the skill from the central store."
-          confirmLabel="Delete"
-          cancelLabel="Cancel"
+        <UninstallExtensionDialog
+          entityLabel={config.label.toLowerCase()}
+          name={deleteTarget.name}
+          installedIn={deleteTarget.installed_in}
+          loading={deleteInFlight}
           onConfirm={() => handleDelete(deleteTarget)}
           onCancel={() => setDeleteTarget(null)}
-        >
-          {deleteTarget.installed_in.length > 0 && (
-            <div className="mt-3">
-              <p className="text-xs font-medium text-secondary mb-2">
-                The skill will also be removed from these agents:
-              </p>
-              <ul className="space-y-1">
-                {deleteTarget.installed_in.map((agent) => (
-                  <li key={agent} className="flex items-center gap-2 text-xs text-muted px-2 py-1.5 rounded bg-control border border-card">
-                    <span className="font-medium text-secondary">{agent}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </ConfirmDialog>
-      )}
-
-      {detailSkill && (
-        <SkillDetailPopup
-          skill={detailSkill}
-          syncTargets={syncTargets}
-          onClose={() => setDetailSkill(null)}
-          onRefresh={fetchSkills}
         />
       )}
-
-      {showInstallDialog && (
-        <InstallLocallyDialog onClose={() => setShowInstallDialog(false)} />
-      )}
-    </div>
+    </>
   );
 }
 
-/** Compact card for a locally installed skill in the list view. */
-function SkillCard({
-  skill,
-  onEdit,
-  onDelete,
-  onViewDetail,
-}: {
-  skill: Skill;
-  onEdit: (skill: Skill) => void;
+interface LocalExtensionCardProps {
+  item: LocalItem;
+  config: KindConfig;
   onDelete: () => void;
-  onViewDetail: (skill: Skill) => void;
-}) {
-  const tags = skill.topics || [];
-  const allowedTools = skill.allowed_tools || [];
+  onActivate: () => void;
+}
+
+function LocalExtensionCard({
+  item,
+  config,
+  onDelete,
+  onActivate,
+}: LocalExtensionCardProps) {
+  const tags = item.topics ?? [];
+  const allowedTools = item.allowed_tools ?? [];
 
   return (
     <div className="border border-card rounded-lg bg-panel hover:bg-control/80 transition">
       <div className="flex items-start">
         <button
-          onClick={() => onViewDetail(skill)}
+          onClick={onActivate}
           className="flex-1 text-left px-4 py-3 flex items-start gap-3 min-w-0"
         >
-          <div className="shrink-0 mt-0.5 p-1.5 rounded-md bg-accent-teal-subtle">
-            <Package className="w-4 h-4 text-accent-teal" />
+          <div className={`shrink-0 mt-0.5 p-1.5 rounded-md ${config.accent}`}>
+            <config.icon className={`w-4 h-4 ${config.accentText}`} />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-mono text-base font-bold text-primary">{skill.name}</span>
-              {skill.installed_in.map((agent) => (
+              <span className="font-mono text-base font-bold text-primary">{item.name}</span>
+              {item.installed_in.map((agent) => (
                 <SourceBadge key={agent} sourceType={agent} sourcePath="" />
               ))}
             </div>
             <p className="text-sm text-secondary mt-1 line-clamp-2">
-              {skill.description || "No description"}
+              {item.description || "No description"}
             </p>
             <TagList tags={tags} />
-            <ToolList tools={allowedTools} />
+            {allowedTools.length > 0 && <ToolList tools={allowedTools} />}
           </div>
         </button>
         <div className="flex items-center gap-1.5 px-3 py-3 shrink-0">
-          <Tooltip text="Edit skill">
+          <Tooltip text={`Delete ${config.label.toLowerCase()}`}>
             <button
-              onClick={() => onEdit(skill)}
-              className="p-2 text-dimmed hover:text-accent-teal hover:bg-accent-teal-subtle rounded-md transition"
-            >
-              <Pencil className="w-4 h-4" />
-            </button>
-          </Tooltip>
-          <Tooltip text="Delete skill">
-            <button
-              onClick={() => onDelete()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
               className="p-2 text-dimmed hover:text-red-600 dark:hover:text-red-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-md transition"
             >
               <Trash2 className="w-4 h-4" />
@@ -403,197 +482,6 @@ function SkillCard({
         </div>
       </div>
     </div>
-  );
-}
-
-/** Full-screen detail popup for a locally installed skill with sync controls. */
-function SkillDetailPopup({
-  skill: initialSkill,
-  syncTargets,
-  onClose,
-  onRefresh,
-}: {
-  skill: Skill;
-  syncTargets: ExtensionSyncTarget[];
-  onClose: () => void;
-  onRefresh: () => void;
-}) {
-  const client = useExtensionsClient();
-  const { guardAction, showInstallDialog, setShowInstallDialog } = useDemoGuard();
-  const [skill, setSkill] = useState<Skill>(initialSkill);
-  const [content, setContent] = useState<string | null>(null);
-  const [loadingContent, setLoadingContent] = useState(true);
-  const [syncing, setSyncing] = useState<string | null>(null);
-  const [syncMessage, setSyncMessage] = useState<string | null>(null);
-  const [hoveredTarget, setHoveredTarget] = useState<string | null>(null);
-
-  const tags = skill.topics || [];
-  const allowedTools = skill.allowed_tools || [];
-
-  useEffect(() => {
-    client.skills.get(skill.name)
-      .then((data) => setContent(data.content || ""))
-      .catch(() => {})
-      .finally(() => setLoadingContent(false));
-  }, [client, skill.name]);
-
-  const handleSync = useCallback(
-    async (targetKey: string) => {
-      setSyncing(targetKey);
-      setSyncMessage(null);
-      try {
-        const data = await client.skills.syncToAgents(skill.name, [targetKey]);
-        const results = data.results as Record<string, boolean>;
-        const succeeded = results?.[targetKey] === true;
-        if (succeeded) {
-          setSyncMessage(`Synced to ${SOURCE_LABELS[targetKey] || targetKey}`);
-          // Refresh skill data to update installed_in
-          const refreshed = await client.skills.get(skill.name);
-          const refreshedItem = refreshed.item as unknown as Skill;
-          if (refreshedItem) setSkill(refreshedItem);
-          onRefresh();
-        } else {
-          setSyncMessage(`Failed to sync to ${SOURCE_LABELS[targetKey] || targetKey}`);
-        }
-      } catch (err) {
-        setSyncMessage(`Error: ${err}`);
-      } finally {
-        setSyncing(null);
-      }
-    },
-    [client, skill.name, onRefresh],
-  );
-
-  const handleUnsync = useCallback(
-    async (targetKey: string) => {
-      setSyncing(targetKey);
-      setSyncMessage(null);
-      try {
-        await client.skills.unsyncFromAgent(skill.name, targetKey);
-        setSyncMessage(`Removed from ${SOURCE_LABELS[targetKey] || targetKey}`);
-        const refreshed = await client.skills.get(skill.name);
-        const refreshedItem = refreshed.item as unknown as Skill;
-        if (refreshedItem) setSkill(refreshedItem);
-        onRefresh();
-      } catch (err) {
-        setSyncMessage(`Error: ${err}`);
-      } finally {
-        setSyncing(null);
-        setHoveredTarget(null);
-      }
-    },
-    [client, skill.name, onRefresh],
-  );
-
-  return (
-    <Modal onClose={onClose} maxWidth="max-w-2xl">
-      <ModalHeader onClose={onClose}>
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-accent-teal-subtle">
-            <Package className="w-5 h-5 text-accent-teal" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-lg font-bold font-mono text-primary">{skill.name}</h2>
-            </div>
-            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-              {skill.installed_in.map((agent) => (
-                <SourceBadge key={agent} sourceType={agent} sourcePath="" />
-              ))}
-              {tags.map((tag) => <TagPill key={tag} tag={tag} />)}
-            </div>
-          </div>
-        </div>
-      </ModalHeader>
-
-      <ModalBody>
-        <p className="text-sm text-secondary leading-relaxed">
-          {skill.description || "No description"}
-        </p>
-
-        {allowedTools.length > 0 && (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[11px] text-muted">Tools</span>
-              {allowedTools.map((tool) => <ToolBadge key={tool} tool={tool} />)}
-            </div>
-          </div>
-        )}
-
-        {syncTargets.length > 0 && (
-          <div>
-            <div className="flex items-center gap-1.5 mb-2.5">
-              <Share2 className="w-3.5 h-3.5 text-accent-teal" />
-              <span className="text-xs font-semibold text-secondary">Sync to Agents</span>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {syncTargets.map((target) => {
-                const isSynced = skill.installed_in.includes(target.agent);
-                const hasDir = !!target.dir;
-                const label = SOURCE_LABELS[target.agent] || target.agent;
-                const isHovered = hoveredTarget === target.agent && isSynced;
-                const tooltipText = isHovered
-                  ? `Click to remove from ${label}`
-                  : isSynced
-                    ? `Synced to ${label}`
-                    : hasDir
-                      ? `Sync to ${target.dir}`
-                      : `${label} not installed on this system`;
-                return (
-                  <Tooltip key={target.agent} text={tooltipText}>
-                    <button
-                      onClick={() => guardAction(() =>
-                        isSynced ? handleUnsync(target.agent) : handleSync(target.agent)
-                      )}
-                      onMouseEnter={() => isSynced && setHoveredTarget(target.agent)}
-                      onMouseLeave={() => setHoveredTarget(null)}
-                      disabled={syncing === target.agent || (!isSynced && !hasDir)}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full transition ${
-                        isHovered
-                          ? "bg-red-500/80 text-white"
-                          : isSynced
-                            ? "bg-emerald-600 text-white dark:bg-emerald-500"
-                            : hasDir
-                              ? "bg-control text-secondary border border-card hover:border-accent-teal/40 hover:text-accent-teal"
-                              : "bg-subtle text-faint border border-card cursor-not-allowed opacity-50"
-                      }`}
-                    >
-                      {isSynced ? <Check className="w-3 h-3" /> : <Share2 className="w-3 h-3 opacity-50" />}
-                      {label}
-                    </button>
-                  </Tooltip>
-                );
-              })}
-            </div>
-            {syncMessage && (
-              <p className="text-xs text-emerald-600/80 dark:text-emerald-400/70 mt-2">{syncMessage}</p>
-            )}
-          </div>
-        )}
-
-        <div>
-          <div className="flex items-center gap-1.5 mb-2">
-            <Code2 className="w-3.5 h-3.5 text-accent-teal" />
-            <span className="text-xs font-semibold text-secondary">SKILL.md</span>
-          </div>
-          {loadingContent ? (
-            <div className="flex items-center gap-2 py-6 justify-center">
-              <span className="text-xs text-dimmed">Loading content...</span>
-            </div>
-          ) : content ? (
-            <div className="rounded-lg border border-card bg-control/40 p-4 max-h-80 overflow-y-auto text-xs">
-              <MarkdownRenderer content={content} />
-            </div>
-          ) : (
-            <p className="text-xs text-dimmed italic py-4 text-center">No content available</p>
-          )}
-        </div>
-      </ModalBody>
-
-      {showInstallDialog && (
-        <InstallLocallyDialog onClose={() => setShowInstallDialog(false)} />
-      )}
-    </Modal>
   );
 }
 
@@ -623,13 +511,17 @@ function PaginationBar({
           className="bg-control border border-card rounded px-1.5 py-0.5 text-secondary text-xs"
         >
           {PAGE_SIZE_OPTIONS.map((opt) => (
-            <option key={opt} value={opt}>{opt}</option>
+            <option key={opt} value={opt}>
+              {opt}
+            </option>
           ))}
         </select>
         <span>per page</span>
       </div>
       <div className="flex items-center gap-2">
-        <span>{(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} of {total}</span>
+        <span>
+          {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} of {total}
+        </span>
         <button
           onClick={() => onPageChange(page - 1)}
           disabled={page <= 1}
@@ -648,4 +540,3 @@ function PaginationBar({
     </div>
   );
 }
-
