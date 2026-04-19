@@ -1,5 +1,11 @@
 name: Publish to npm
 
+# NOTE: ``NPM_TOKEN`` must be a *granular automation token* with 2FA bypass
+# enabled on the @chats-lab scope. A classic personal access token will
+# fail with ``E403 Two-factor authentication … required to publish``.
+# Rotate at https://www.npmjs.com/settings/~/tokens → Generate New Token →
+# Granular Access Token → "Automation" preset.
+
 on:
   push:
     tags:
