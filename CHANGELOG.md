@@ -2,20 +2,16 @@
 
 ## [Unreleased]
 
-## [1.0.3] - 2026-04-19
-
-### Fixed
-- **npm wrapper Python discovery on Windows**: `npm/bin/vibelens.js` preferred the `py` launcher over `python3` / `python` on Windows, which could resolve to a different Python interpreter than the one on PATH where `pip install vibelens` ran. The wrapper now prefers PATH-based `python3` / `python` first and falls back to `py` only if neither has vibelens installed. A two-pass search (`vibelens-installed` first, then `any Python ≥3.10`) keeps the `not installed` error path working for end users who haven't installed the package yet.
-
-### Changed
-- **Publish workflow** (`.github/workflows/publish.yml`) now creates a GitHub Release (with changelog-extracted release notes and dist/ artifacts attached) after PyPI upload succeeds. Previously the workflow only pushed to PyPI and the GitHub Releases page was not auto-updated.
-
 ## [1.0.2] - 2026-04-19
 
 ### Fixed
 - **Windows install**: lazy-import `fcntl` (POSIX-only) and add a `msvcrt.locking` fallback so `vibelens` installs and runs on Windows. The previous top-level `import fcntl` in `utils/json.py` crashed the CLI at startup.
 - **`Path.home()` captured at import time**: `StorageConfig` / `UploadConfig` / `DonationConfig` default paths and the `PLATFORMS` dict both froze the user home at module import, so tests monkey-patching `HOME` or `Path.home` saw stale state. Defaults now use `default_factory`; `PLATFORMS` gets a `rebuild_platforms()` helper for fixtures that need a fresh build.
 - **`test_agents_endpoint` / `test_plugin_routes`**: fixtures now call `rebuild_platforms()` on setup/teardown so the platform table reflects the patched tmp home.
+- **npm wrapper Python discovery on Windows**: `npm/bin/vibelens.js` preferred the `py` launcher over `python3` / `python` on Windows, which could resolve to a different Python interpreter than the one on PATH where `pip install vibelens` ran. The wrapper now prefers PATH-based `python3` / `python` first and falls back to `py` only if neither has vibelens installed. A two-pass search (`vibelens-installed` first, then `any Python ≥3.10`) keeps the `not installed` error path working for end users who haven't installed the package yet.
+
+### Changed
+- **Publish workflow** (`.github/workflows/publish.yml`) now creates a GitHub Release (with changelog-extracted release notes and dist/ artifacts attached) after PyPI upload succeeds. Previously the workflow only pushed to PyPI and the GitHub Releases page was not auto-updated.
 
 ### Docs
 - `.github/workflows/npm-publish.yml`: header note flagging that `NPM_TOKEN` must be a granular automation token with 2FA bypass (classic personal access tokens now get a 403 from the registry).
