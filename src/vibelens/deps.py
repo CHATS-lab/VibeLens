@@ -1,6 +1,10 @@
-"""Dependency injection singletons for VibeLens."""
+"""Dependency injection singletons for VibeLens.
 
-from collections.abc import Callable
+Service/store classes are imported inside factories to break import cycles
+with the service registries under ``vibelens.services.extensions``.
+"""
+
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -12,20 +16,20 @@ from vibelens.config import (
 )
 from vibelens.llm.backend import InferenceBackend
 from vibelens.llm.backends import create_backend_from_config
-from vibelens.models.enums import AppMode
+from vibelens.models.enums import AgentExtensionType, AppMode
 from vibelens.storage.trajectory.base import BaseTrajectoryStore
 from vibelens.storage.trajectory.disk import DiskTrajectoryStore
 from vibelens.storage.trajectory.local import LocalTrajectoryStore
 from vibelens.utils.json import read_jsonl
 from vibelens.utils.log import get_logger
 
-# Internal singleton registry and upload store registry
+# Sentinel for "key absent from _registry".
 _MISSING = object()
-# Lazy-loaded singletons
+# Sentinel for "inference_backend never resolved"; None is a valid cached value.
 _NOT_CHECKED = object()
-# General singletons like stores and services
+# Lazy singleton registry: name -> instance (e.g. "settings", "skill_service").
 _registry: dict[str, Any] = {}
-# Mapping of session_token to list of upload DiskStores for that user
+# session_token -> upload stores belonging to that browser tab.
 _upload_registry: dict[str, list[DiskTrajectoryStore]] = {}
 
 logger = get_logger(__name__)
@@ -68,17 +72,49 @@ def is_test_mode() -> bool:
 
 def get_share_service():
     """Return cached ShareService singleton."""
-    from vibelens.services.session.share import ShareService
 
-    return _get_or_create("share_service", lambda: ShareService(get_settings().storage.share_dir))
+    def _create():
+        from vibelens.services.session.share import ShareService
+
+        return ShareService(get_settings().storage.share_dir)
+
+    return _get_or_create("share_service", _create)
 
 
 def get_friction_store():
     """Return cached FrictionStore singleton."""
-    from vibelens.services.friction.store import FrictionStore
 
-    settings = get_settings()
-    return _get_or_create("friction_store", lambda: FrictionStore(settings.storage.friction_dir))
+    def _create():
+        from vibelens.services.friction.store import FrictionStore
+
+        return FrictionStore(get_settings().storage.friction_dir)
+
+    return _get_or_create("friction_store", _create)
+
+
+def _iter_supporting(extension_type: AgentExtensionType) -> Iterator[tuple[str, Any]]:
+    """Yield (agent_key, platform) for installed platforms supporting ``extension_type``."""
+    from vibelens.services.extensions.platforms import installed_platforms
+
+    for key, platform in installed_platforms().items():
+        if extension_type in platform.supported_types:
+            yield key, platform
+
+
+def _build_simple_stores(
+    extension_type: AgentExtensionType, dir_attr: str, store_class: Callable[..., Any]
+) -> dict[str, Any]:
+    """Build a per-agent store dict for extension types with a single source dir.
+
+    Skips platforms whose ``dir_attr`` is None.
+    """
+    stores: dict[str, Any] = {}
+    for key, platform in _iter_supporting(extension_type):
+        source_dir = getattr(platform, dir_attr)
+        if source_dir is None:
+            continue
+        stores[key] = store_class(source_dir.expanduser().resolve(), create=True)
+    return stores
 
 
 def get_skill_service():
@@ -90,31 +126,10 @@ def get_skill_service():
 
         settings = get_settings()
         central = SkillStore(settings.storage.managed_skills_dir, create=True)
-        agent_skill_stores = _build_agent_skill_stores()
-        return SkillService(central=central, agents=agent_skill_stores)
+        agents = _build_simple_stores(AgentExtensionType.SKILL, "skills_dir", SkillStore)
+        return SkillService(central=central, agents=agents)
 
     return _get_or_create("skill_service", _create)
-
-
-def _build_agent_skill_stores() -> dict:
-    """Build agent SkillStore instances from platform registry.
-
-    Stores are created only when the platform root exists AND the platform
-    supports the SKILL type.
-    """
-    from vibelens.models.enums import AgentExtensionType
-    from vibelens.services.extensions.platforms import PLATFORMS
-    from vibelens.storage.extension.skill_store import SkillStore
-
-    stores: dict[str, SkillStore] = {}
-    for source, platform in PLATFORMS.items():
-        if AgentExtensionType.SKILL not in platform.supported_types:
-            continue
-        if not platform.root.expanduser().is_dir():
-            continue
-        resolved = platform.skills_dir.expanduser().resolve()
-        stores[source.value] = SkillStore(resolved, create=True)
-    return stores
 
 
 def get_command_service():
@@ -126,31 +141,10 @@ def get_command_service():
 
         settings = get_settings()
         central = CommandStore(settings.storage.managed_commands_dir, create=True)
-        agent_command_stores = _build_agent_command_stores()
-        return CommandService(central=central, agents=agent_command_stores)
+        agents = _build_simple_stores(AgentExtensionType.COMMAND, "commands_dir", CommandStore)
+        return CommandService(central=central, agents=agents)
 
     return _get_or_create("command_service", _create)
-
-
-def _build_agent_command_stores() -> dict:
-    """Build agent CommandStore instances.
-
-    Stores are created only when the platform root exists AND the platform
-    supports COMMAND type.
-    """
-    from vibelens.models.enums import AgentExtensionType
-    from vibelens.services.extensions.platforms import PLATFORMS
-    from vibelens.storage.extension.command_store import CommandStore
-
-    stores: dict[str, CommandStore] = {}
-    for source, platform in PLATFORMS.items():
-        if AgentExtensionType.COMMAND not in platform.supported_types:
-            continue
-        if platform.commands_dir is None or not platform.root.expanduser().is_dir():
-            continue
-        resolved = platform.commands_dir.expanduser().resolve()
-        stores[source.value] = CommandStore(resolved, create=True)
-    return stores
 
 
 def get_subagent_service():
@@ -162,31 +156,10 @@ def get_subagent_service():
 
         settings = get_settings()
         central = SubagentStore(settings.storage.managed_subagents_dir, create=True)
-        agent_subagent_stores = _build_agent_subagent_stores()
-        return SubagentService(central=central, agents=agent_subagent_stores)
+        agents = _build_simple_stores(AgentExtensionType.SUBAGENT, "subagents_dir", SubagentStore)
+        return SubagentService(central=central, agents=agents)
 
     return _get_or_create("subagent_service", _create)
-
-
-def _build_agent_subagent_stores() -> dict:
-    """Build agent SubagentStore instances.
-
-    Stores are created only when the platform root exists AND the platform
-    supports SUBAGENT type.
-    """
-    from vibelens.models.enums import AgentExtensionType
-    from vibelens.services.extensions.platforms import PLATFORMS
-    from vibelens.storage.extension.subagent_store import SubagentStore
-
-    stores: dict[str, SubagentStore] = {}
-    for source, platform in PLATFORMS.items():
-        if AgentExtensionType.SUBAGENT not in platform.supported_types:
-            continue
-        if platform.subagents_dir is None or not platform.root.expanduser().is_dir():
-            continue
-        resolved = platform.subagents_dir.expanduser().resolve()
-        stores[source.value] = SubagentStore(resolved, create=True)
-    return stores
 
 
 def get_hook_service():
@@ -228,8 +201,7 @@ def _build_agent_plugin_stores() -> dict:
     renamed manifest directories; Gemini uses a flat
     ``gemini-extension.json`` with field translation.
     """
-    from vibelens.models.enums import AgentExtensionType, ExtensionSource
-    from vibelens.services.extensions.platforms import PLATFORMS
+    from vibelens.models.enums import ExtensionSource
     from vibelens.storage.extension.plugin_stores import (
         ClaudePluginStore,
         CodexPluginStore,
@@ -247,54 +219,40 @@ def _build_agent_plugin_stores() -> dict:
     }
 
     stores: dict = {}
-    for source, platform in PLATFORMS.items():
-        if AgentExtensionType.PLUGIN not in platform.supported_types:
-            continue
-        if not platform.root.expanduser().is_dir():
-            continue
-        if source == ExtensionSource.CLAUDE:
-            cache_root = (
-                platform.root.expanduser() / "plugins" / "cache" / "vibelens"
-            )
-            stores[source.value] = ClaudePluginStore(cache_root, create=True)
+    for key, platform in _iter_supporting(AgentExtensionType.PLUGIN):
+        if platform.source == ExtensionSource.CLAUDE:
+            cache_root = platform.root.expanduser() / "plugins" / "cache"
+            stores[key] = ClaudePluginStore(cache_root, create=True)
             continue
         if platform.plugins_dir is None:
             continue
-        resolved = platform.plugins_dir.expanduser().resolve()
-        store_class = store_class_map.get(source, PluginStore)
-        stores[source.value] = store_class(resolved, create=True)
+        store_class = store_class_map.get(platform.source, PluginStore)
+        stores[key] = store_class(platform.plugins_dir.expanduser().resolve(), create=True)
     return stores
 
 
-def _build_agent_hook_config_paths() -> dict:
+def _build_agent_hook_config_paths() -> dict[str, Path]:
     """Build mapping of agent key to each platform's hook config file path.
 
-    Only platforms that support HOOK type and have a hook_config_path are
-    included. The file does not need to exist yet — it will be created on
-    first sync.
+    The file does not need to exist yet — it will be created on first sync.
     """
-    from vibelens.models.enums import AgentExtensionType
-    from vibelens.services.extensions.platforms import PLATFORMS
-
     paths: dict[str, Path] = {}
-    for source, platform in PLATFORMS.items():
-        if AgentExtensionType.HOOK not in platform.supported_types:
-            continue
+    for key, platform in _iter_supporting(AgentExtensionType.HOOK):
         if platform.hook_config_path is None:
             continue
-        paths[source.value] = platform.hook_config_path.expanduser().resolve()
+        paths[key] = platform.hook_config_path.expanduser().resolve()
     return paths
 
 
 def get_personalization_store():
     """Return cached PersonalizationStore singleton."""
-    from vibelens.services.personalization.store import PersonalizationStore
 
-    settings = get_settings()
-    return _get_or_create(
-        "personalization_store",
-        lambda: PersonalizationStore(settings.storage.personalization_dir),
-    )
+    def _create():
+        from vibelens.services.personalization.store import PersonalizationStore
+
+        return PersonalizationStore(get_settings().storage.personalization_dir)
+
+    return _get_or_create("personalization_store", _create)
 
 
 def get_inference_config() -> InferenceConfig:
@@ -436,7 +394,8 @@ def get_example_store() -> DiskTrajectoryStore:
     Separate from the upload store so examples live in ``~/.vibelens/examples/``
     and uploads live in ``~/.vibelens/uploads/``.
     """
-    settings = get_settings()
-    return _get_or_create(
-        "example_store", lambda: DiskTrajectoryStore(settings.storage.examples_dir)
-    )
+
+    def _create():
+        return DiskTrajectoryStore(get_settings().storage.examples_dir)
+
+    return _get_or_create("example_store", _create)

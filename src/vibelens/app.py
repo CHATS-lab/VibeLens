@@ -15,6 +15,7 @@ from vibelens.api.demo_guard import DemoGuardMiddleware
 from vibelens.deps import (
     get_example_store,
     get_inference_config,
+    get_plugin_service,
     get_settings,
     get_skill_service,
     get_trajectory_store,
@@ -154,6 +155,7 @@ def _run_background_startup() -> None:
     JSON parsing, so a thread is fine.
     """
     get_skill_service().import_all_agents()
+    get_plugin_service().import_all_agents()
     seed_example_analyses()
 
 

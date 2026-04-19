@@ -72,8 +72,14 @@ class PluginStore(BaseExtensionStore[Plugin]):
         return True
 
     def _copy_impl(self, source: BaseExtensionStore[Plugin], name: str) -> bool:
-        """Copy the plugin tree and relocate the manifest to this store's layout."""
-        source_dir = source.root / name
+        """Copy the plugin tree and relocate the manifest to this store's layout.
+
+        ``source._item_root(name)`` is used instead of ``source.root / name``
+        so stores with non-trivial layouts (e.g. ClaudePluginStore scanning
+        ``<cache>/<marketplace>/<name>/<version>/``) can point at the right
+        on-disk directory.
+        """
+        source_dir = source._item_root(name)
         source_manifest_rel = getattr(source, "_manifest_rel_path", CANONICAL_MANIFEST_REL)
         source_manifest = source_dir / source_manifest_rel
         if not source_manifest.is_file():
