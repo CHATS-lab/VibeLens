@@ -178,6 +178,7 @@ async def get_extension_item(item_id: str) -> dict:
         return full.model_dump(mode="json")
     summary = snap.get_item(item_id)
     if summary is None:
+        logger.error("catalog lookup failed: %s not found", item_id)
         raise HTTPException(status_code=404, detail=f"Item {item_id} not found")
     logger.warning("returning summary for %s; detail hydration failed", item_id)
     return summary.model_dump(mode="json")

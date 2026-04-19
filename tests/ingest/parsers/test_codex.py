@@ -790,6 +790,39 @@ class TestFinalTokenUsage:
         # No total_token_usage, no session extra, no diagnostics
         assert traj.extra is None
 
+    def test_token_count_with_null_info_does_not_crash(self, tmp_path: Path):
+        """Codex aborts a turn before producing usage stats; ``info`` is null.
+
+        Previously ``.get("info", {})`` returned None because the key is
+        present, which crashed ``.get("total_token_usage")``. Guard with
+        ``or {}`` so aborted sessions still parse.
+        """
+        rollout = tmp_path / "rollout.jsonl"
+        _write_rollout(
+            rollout,
+            [
+                _meta_entry(),
+                _turn_context_entry(),
+                _user_msg_entry("hello"),
+                # token_count with info=null, as produced by Codex when a
+                # session is cancelled before the first assistant response.
+                {
+                    "type": "event_msg",
+                    "timestamp": "2025-01-15T10:00:05Z",
+                    "payload": {
+                        "type": "token_count",
+                        "info": None,
+                        "rate_limits": None,
+                    },
+                },
+            ],
+        )
+        trajectories = _parser.parse_file(rollout)
+        assert len(trajectories) == 1
+        traj = trajectories[0]
+        # No usage → no total_token_usage in extra
+        assert (traj.extra or {}).get("total_token_usage") is None
+
 
 class TestToolResultMetadata:
     """Tests for exit_code and wall_time in ObservationResult.extra."""

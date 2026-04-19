@@ -10,8 +10,8 @@ import json
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from pathlib import Path
-from typing import TYPE_CHECKING, Union
 
+from vibelens.ingest.diagnostics import DiagnosticsCollector
 from vibelens.models.enums import AgentType, StepSource
 from vibelens.models.trajectories import (
     Agent,
@@ -22,9 +22,6 @@ from vibelens.models.trajectories import (
 )
 from vibelens.models.trajectories.trajectory import DEFAULT_ATIF_VERSION
 from vibelens.utils.log import get_logger
-
-if TYPE_CHECKING:
-    from vibelens.ingest.diagnostics import DiagnosticsCollector
 
 logger = get_logger(__name__)
 
@@ -328,7 +325,7 @@ class BaseParser(ABC):
 
     @staticmethod
     def iter_jsonl_safe(
-        file_path: Path, diagnostics: Union["DiagnosticsCollector, None"] = None
+        file_path: Path, diagnostics: DiagnosticsCollector | None = None
     ) -> Iterator[dict]:
         """Yield parsed JSON dicts from a JSONL file, catching errors.
 

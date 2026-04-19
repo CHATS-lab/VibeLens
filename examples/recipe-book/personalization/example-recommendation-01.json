@@ -40,20 +40,18 @@
   "recommendations": [
     {
       "item": {
-        "extension_id": "featured:skill:frontend-design",
+        "extension_id": "tree:affaan-m/everything-claude-code:.agents/skills/frontend-design",
         "extension_type": "skill",
         "name": "frontend-design",
-        "repo_name": "anthropics/skills",
-        "source_url": "https://github.com/anthropics/skills/tree/main/skills/frontend-design",
-        "updated_at": "2026-03-25T01:00:33Z",
+        "repo_name": "affaan-m/everything-claude-code",
+        "source_url": "https://github.com/affaan-m/everything-claude-code/tree/main/.agents/skills/frontend-design",
+        "updated_at": "2026-04-16T06:29:28Z",
         "description": "Create distinctive, production-grade frontend interfaces with high design quality.",
-        "tags": [
-          "agent-skills"
-        ],
-        "stars": 116506,
-        "forks": 13373,
-        "license": "",
-        "language": "Python",
+        "tags": [],
+        "stars": 157788,
+        "forks": 24521,
+        "license": "MIT",
+        "language": "JavaScript",
         "install_command": null
       },
       "rationale": "Directly matches your site-building workflow.\n- Covers dark themes, layouts, and responsive CSS\n- Reduces preview-fix cycles with better first-pass output",
@@ -65,18 +63,16 @@
     },
     {
       "item": {
-        "extension_id": "featured:skill:baseline-ui",
+        "extension_id": "tree:sickn33/antigravity-awesome-skills:plugins/antigravity-awesome-skills-claude/skills/baseline-ui",
         "extension_type": "skill",
         "name": "baseline-ui",
         "repo_name": "sickn33/antigravity-awesome-skills",
-        "source_url": "https://github.com/sickn33/antigravity-awesome-skills/tree/main/skills/baseline-ui",
-        "updated_at": "2026-03-25T00:32:41Z",
+        "source_url": "https://github.com/sickn33/antigravity-awesome-skills/tree/main/plugins/antigravity-awesome-skills-claude/skills/baseline-ui",
+        "updated_at": "2026-04-17T20:23:03Z",
         "description": "Validates animation durations, enforces typography scale, and prevents layout anti-patterns in Tailwind CSS projects.",
-        "tags": [
-          "agent-skills"
-        ],
-        "stars": 32684,
-        "forks": 5438,
+        "tags": [],
+        "stars": 33658,
+        "forks": 5584,
         "license": "MIT",
         "language": "Python",
         "install_command": null
@@ -90,18 +86,16 @@
     },
     {
       "item": {
-        "extension_id": "bwc:agent:accessibility-specialist",
+        "extension_id": "tree:github/awesome-copilot:agents/accessibility-runtime-tester.agent.md",
         "extension_type": "subagent",
-        "name": "accessibility-specialist",
-        "repo_name": "davepoon/buildwithclaude",
-        "source_url": "https://github.com/davepoon/buildwithclaude/blob/main/plugins/all-agents/agents/accessibility-specialist.md",
-        "updated_at": "2026-04-12T08:22:24Z",
-        "description": "Ensure web applications meet WCAG 2.1 AA/AAA standards with ARIA attributes and keyboard navigation.",
-        "tags": [
-          "design-experience"
-        ],
-        "stars": 2736,
-        "forks": 307,
+        "name": "Accessibility Runtime Tester",
+        "repo_name": "github/awesome-copilot",
+        "source_url": "https://github.com/github/awesome-copilot/tree/main/agents/accessibility-runtime-tester.agent.md",
+        "updated_at": "2026-04-17T20:41:46Z",
+        "description": "Runtime accessibility specialist for keyboard flows, focus management, dialog behavior, and evidence-backed WCAG validation.",
+        "tags": [],
+        "stars": 30236,
+        "forks": 3582,
         "license": "MIT",
         "language": "Python",
         "install_command": null
@@ -115,20 +109,18 @@
     },
     {
       "item": {
-        "extension_id": "cct:agent:code-reviewer",
+        "extension_id": "tree:affaan-m/everything-claude-code:.kiro/agents/code-reviewer.md",
         "extension_type": "subagent",
         "name": "code-reviewer",
-        "repo_name": "davila7/claude-code-templates",
-        "source_url": "https://github.com/davila7/claude-code-templates/blob/main/cli-tool/components/agents/development-tools/code-reviewer.md",
-        "updated_at": "2026-04-13T04:10:53Z",
-        "description": "Comprehensive code reviews focusing on quality, security, and best practices.",
-        "tags": [
-          "quality-security"
-        ],
-        "stars": 24548,
-        "forks": 2421,
+        "repo_name": "affaan-m/everything-claude-code",
+        "source_url": "https://github.com/affaan-m/everything-claude-code/tree/main/.kiro/agents/code-reviewer.md",
+        "updated_at": "2026-04-16T06:29:28Z",
+        "description": "Expert code review specialist. Proactively reviews code for quality, security, and maintainability.",
+        "tags": [],
+        "stars": 157788,
+        "forks": 24521,
         "license": "MIT",
-        "language": "Python",
+        "language": "JavaScript",
         "install_command": null
       },
       "rationale": "Catches issues before your preview-fix loop.\n- Reviews batch-created files for consistency\n- Spots security and maintainability problems early",
@@ -140,18 +132,16 @@
     },
     {
       "item": {
-        "extension_id": "bwc:skill:github-automation",
+        "extension_id": "tree:sickn33/antigravity-awesome-skills:plugins/antigravity-awesome-skills-claude/skills/github-automation",
         "extension_type": "skill",
         "name": "github-automation",
-        "repo_name": "davepoon/buildwithclaude",
-        "source_url": "https://github.com/davepoon/buildwithclaude/blob/main/plugins/all-agents/skills/github-automation.md",
-        "updated_at": "2026-04-12T08:22:24Z",
+        "repo_name": "sickn33/antigravity-awesome-skills",
+        "source_url": "https://github.com/sickn33/antigravity-awesome-skills/tree/main/plugins/antigravity-awesome-skills-claude/skills/github-automation",
+        "updated_at": "2026-04-17T20:23:03Z",
         "description": "Automate GitHub repositories, issues, pull requests, branches, and CI/CD.",
-        "tags": [
-          "version-control-git"
-        ],
-        "stars": 2736,
-        "forks": 307,
+        "tags": [],
+        "stars": 33658,
+        "forks": 5584,
         "license": "MIT",
         "language": "Python",
         "install_command": null

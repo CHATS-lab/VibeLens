@@ -720,7 +720,10 @@ def _extract_final_token_usage(entries: list[dict]) -> dict | None:
         payload = entry.get("payload", {})
         if payload.get("type") != "token_count":
             continue
-        info = payload.get("info", {})
+        # Codex sometimes writes ``info: null`` when a turn failed before
+        # the usage block was produced; ``.get("info", {})`` returns None
+        # in that case (key is present, value is None), so guard explicitly.
+        info = payload.get("info") or {}
         total_usage = info.get("total_token_usage")
         if isinstance(total_usage, dict) and total_usage:
             return total_usage

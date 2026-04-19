@@ -21,6 +21,7 @@ from vibelens.ingest.parsers import (
     CodexParser,
     DataclawParser,
     GeminiParser,
+    HermesParser,
     count_history_entries,
 )
 
@@ -31,5 +32,6 @@ __all__ = [
     "DataclawParser",
     "DiagnosticsCollector",
     "GeminiParser",
+    "HermesParser",
     "count_history_entries",
 ]
