@@ -31,7 +31,6 @@ from pydantic import BaseModel, Field
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
 from vibelens.ingest.parsers.base import (
-    _SYSTEM_TAG_PREFIXES,
     ROLE_TO_SOURCE,
     BaseParser,
     mark_error_content,
@@ -75,6 +74,15 @@ _TOOL_OUTPUT_TYPES = {"function_call_output", "custom_tool_call_output"}
 
 # Tool call types that initiate tool invocations
 _TOOL_CALL_TYPES = {"function_call", "custom_tool_call"}
+
+# Codex injects several XML-wrapped system turns as role=user messages.
+# We reclassify them to StepSource.SYSTEM so they do not look like user input.
+_CODEX_SYSTEM_TAG_PREFIXES = (
+    "<environment_context",
+    "<turn_aborted",
+    "<subagent_notification",
+    "<user_instructions",
+)
 
 
 class _CodexSessionMeta(NamedTuple):
@@ -497,7 +505,9 @@ def _handle_response_item(
         source = ROLE_TO_SOURCE.get(role, StepSource.USER)
         # Reclassify agent-injected context (e.g. <environment_context>)
         # that arrives as role=user but is system boilerplate.
-        if source == StepSource.USER and content_text.lstrip().startswith(_SYSTEM_TAG_PREFIXES):
+        if source == StepSource.USER and content_text.lstrip().startswith(
+            _CODEX_SYSTEM_TAG_PREFIXES
+        ):
             source = StepSource.SYSTEM
         extra = _build_step_extra(state) if role == "assistant" else None
         status = payload.get("status")

@@ -67,7 +67,16 @@ def mark_error_content(content: str | None) -> str:
     return f"{ERROR_PREFIX}{text}"
 
 
-_SYSTEM_TAG_PREFIXES = (
+# System-XML-tag prefixes are agent-specific (observed via actual session scans):
+#   claude  -> <local-command-caveat, <command-name, <command-message,
+#              <local-command-stdout, <system-reminder, <user-prompt-submit-hook,
+#              <task-notification, <command-args
+#   codex   -> <environment_context, <turn_aborted, <skill, <subagent_notification
+# Each parser module owns the list that fits its format. The union below is
+# used only for agent-agnostic callers (e.g. demo mode loading ATIF files
+# where the originating agent is unknown).
+_ALL_KNOWN_SYSTEM_TAG_PREFIXES = (
+    # claude
     "<system-reminder",
     "<command-name",
     "<command-message",
@@ -76,27 +85,42 @@ _SYSTEM_TAG_PREFIXES = (
     "<local-command-caveat",
     "<local-command-stdout",
     "<task-notification",
-    # Generic agent-injected context tags (Codex, Gemini, etc.)
+    # codex
     "<environment_context",
+    "<turn_aborted",
+    "<subagent_notification",
+    # generic fallbacks seen in wrapped imports
     "<environment-details",
     "<context",
     "<tool-",
     "<instructions",
 )
 
-_SKILL_PREFIX = "Base directory for this skill:"
+# Skill-output marker is a claude-specific convention (the Skill tool writes
+# "Base directory for this skill: ..." as the first line of its result).
+# No other agent produces it, but the string is unique enough that keeping
+# the check agent-agnostic costs nothing.
+_SKILL_OUTPUT_PREFIX = "Base directory for this skill:"
 
 
-def _is_meaningful_prompt(text: str) -> bool:
-    """Return True if the text is a real user prompt, not a slash command or system message."""
+def _is_meaningful_prompt(
+    text: str, extra_system_prefixes: tuple[str, ...] = ()
+) -> bool:
+    """Return True if text looks like a real user prompt rather than system chatter.
+
+    Args:
+        text: Candidate message body.
+        extra_system_prefixes: Agent-specific system XML-tag prefixes to
+            reject in addition to the universal set. Pass an empty tuple
+            when the caller already provides a full list.
+    """
     stripped = text.strip()
     if not stripped:
         return False
-    # System XML tags injected into user entries
-    if stripped.startswith(_SYSTEM_TAG_PREFIXES):
+    prefixes = extra_system_prefixes or _ALL_KNOWN_SYSTEM_TAG_PREFIXES
+    if stripped.startswith(prefixes):
         return False
-    # Skill output injected after a Skill tool_use
-    if stripped.startswith(_SKILL_PREFIX):
+    if stripped.startswith(_SKILL_OUTPUT_PREFIX):
         return False
     is_single_line = "\n" not in stripped
     # Single slash commands like "/permissions", "/compact"
