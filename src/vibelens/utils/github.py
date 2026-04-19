@@ -18,6 +18,35 @@ GITHUB_BLOB_RE = re.compile(
     r"https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/blob/(?P<ref>[^/]+)/(?P<path>.+)"
 )
 
+# Bare repo URL ("https://github.com/owner/repo" with optional trailing slash
+# or ``.git`` suffix). Many catalog plugin items use this shape instead of a
+# tree URL; callers that want to walk the repo root need to handle it.
+GITHUB_REPO_RE = re.compile(
+    r"https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/?#]+?)(?:\.git)?/?$"
+)
+
+
+def parse_github_url(url: str) -> tuple[str, str, str, str] | None:
+    """Normalize any supported GitHub URL to ``(owner, repo, ref, path)``.
+
+    Accepts:
+        * ``https://github.com/{owner}/{repo}`` -> (owner, repo, ``"HEAD"``, ``""``)
+        * ``https://github.com/{owner}/{repo}/tree/{ref}/{path}``
+        * ``https://github.com/{owner}/{repo}/blob/{ref}/{path}``
+
+    Returns None for any other shape.
+    """
+    tree = GITHUB_TREE_RE.match(url)
+    if tree:
+        return tree.group("owner"), tree.group("repo"), tree.group("ref"), tree.group("path")
+    blob = GITHUB_BLOB_RE.match(url)
+    if blob:
+        return blob.group("owner"), blob.group("repo"), blob.group("ref"), blob.group("path")
+    repo = GITHUB_REPO_RE.match(url)
+    if repo:
+        return repo.group("owner"), repo.group("repo"), "HEAD", ""
+    return None
+
 GITHUB_RAW_BASE = "https://raw.githubusercontent.com"
 GITHUB_API_BASE = "https://api.github.com"
 REQUEST_TIMEOUT_SECONDS = 30
@@ -182,27 +211,25 @@ def download_file(source_url: str, target_path: Path) -> bool:
 
 
 def download_directory(source_url: str, target_dir: Path) -> bool:
-    """Download a complete directory from a GitHub tree URL.
+    """Download a complete directory from any supported GitHub URL.
 
-    Fetches all files recursively from the GitHub Contents API and writes
-    them to the local target directory, preserving the directory structure.
+    Accepts tree URLs (``.../tree/<ref>/<path>``) and bare repo URLs
+    (``https://github.com/<owner>/<repo>``); the latter walks from the
+    default branch root. Fetches files recursively via the Contents API
+    and writes them under ``target_dir`` preserving structure.
 
     Args:
-        source_url: GitHub tree URL (e.g. https://github.com/owner/repo/tree/main/skills/foo).
+        source_url: GitHub tree URL or bare repo URL.
         target_dir: Local directory to write files into.
 
     Returns:
         True if at least one file was downloaded successfully.
     """
-    match = GITHUB_TREE_RE.match(source_url)
-    if not match:
+    parsed = parse_github_url(source_url)
+    if parsed is None:
         logger.warning("Cannot parse GitHub URL: %s", source_url)
         return False
-
-    owner = match.group("owner")
-    repo = match.group("repo")
-    ref = match.group("ref")
-    path = match.group("path")
+    owner, repo, ref, path = parsed
 
     target_dir.mkdir(parents=True, exist_ok=True)
 
@@ -305,13 +332,10 @@ def list_github_tree(source_url: str, max_entries: int = 500) -> tuple[list[dict
     ``max_entries``. For a single-file ``tree/.../x.md`` URL, the sole entry
     is the file itself. Returns ``([], False)`` on any HTTP failure.
     """
-    match = GITHUB_TREE_RE.match(source_url)
-    if not match:
+    parsed = parse_github_url(source_url)
+    if parsed is None:
         return [], False
-    owner = match.group("owner")
-    repo = match.group("repo")
-    ref = match.group("ref")
-    path = match.group("path")
+    owner, repo, ref, path = parsed
     entries: list[dict] = []
     try:
         with httpx.Client(
@@ -345,15 +369,13 @@ def fetch_github_tree_file(source_url: str, relative: str) -> str | None:
     Returns:
         UTF-8 text content, or None on failure.
     """
-    match = GITHUB_TREE_RE.match(source_url)
-    if not match:
+    parsed = parse_github_url(source_url)
+    if parsed is None:
         return None
-    owner = match.group("owner")
-    repo = match.group("repo")
-    ref = match.group("ref")
-    base_path = match.group("path").rstrip("/")
+    owner, repo, ref, path = parsed
+    base_path = path.rstrip("/")
     remote_path = f"{base_path}/{relative}".strip("/") if relative else base_path
-    raw_url = f"{GITHUB_RAW_BASE}/{owner}/{repo}/{ref}/{remote_path}"
+    raw_url = f"{GITHUB_RAW_BASE}/{owner}/{repo}/{ref}/{remote_path}".rstrip("/")
     try:
         with httpx.Client(
             timeout=REQUEST_TIMEOUT_SECONDS, headers=_github_headers()

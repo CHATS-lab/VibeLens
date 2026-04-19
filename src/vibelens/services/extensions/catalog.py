@@ -11,12 +11,14 @@ from vibelens.models.personalization.recommendation import UserProfile
 from vibelens.services.extensions.catalog_resolver import install_catalog_item
 from vibelens.storage.extension.catalog import CatalogSnapshot, load_catalog
 from vibelens.utils.github import (
+    GITHUB_REPO_RE,
     fetch_github_tree_file,
     github_blob_to_raw_url,
     github_tree_file_to_raw_url,
     github_tree_to_raw_url,
     is_github_single_file_tree,
     list_github_tree,
+    parse_github_url,
 )
 from vibelens.utils.http import async_fetch_text
 from vibelens.utils.log import get_logger
@@ -329,12 +331,13 @@ def _sort_items(
 async def _resolve_content(item: AgentExtensionItem) -> dict:
     """Resolve displayable content for an extension item from GitHub.
 
-    Branching on source URL shape:
+    Branching on extension type and URL shape (first hit wins):
 
-    * REPO -> fetch the repo README.
+    * REPO -> repo README at HEAD.
+    * PLUGIN -> README (if present), else ``.claude-plugin/plugin.json``.
     * Blob URL -> fetch the blob's raw content.
-    * Tree URL pointing at a single file (e.g. ``.../tree/main/agents/x.md``)
-      -> fetch that file directly.
+    * Tree URL pointing at a single file -> fetch that file directly.
+    * Bare repo URL -> fetch README at HEAD.
     * Tree URL pointing at a directory -> fetch ``SKILL.md`` inside it.
     """
     if item.extension_type == AgentExtensionType.REPO and item.repo_full_name:
@@ -348,6 +351,29 @@ async def _resolve_content(item: AgentExtensionItem) -> dict:
             "content": None,
             "content_type": None,
             "error": "Failed to fetch README from GitHub",
+        }
+
+    if item.extension_type == AgentExtensionType.PLUGIN:
+        parsed = parse_github_url(item.source_url)
+        if parsed:
+            owner, repo, ref, base = parsed
+            base_path = base.rstrip("/")
+            for candidate in ("README.md", ".claude-plugin/plugin.json"):
+                rel = f"{base_path}/{candidate}".strip("/") if base_path else candidate
+                raw_url = f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{rel}"
+                content = await async_fetch_text(raw_url)
+                if content:
+                    kind = "readme" if candidate.endswith("README.md") else "markdown"
+                    return {
+                        "item_id": item.extension_id,
+                        "content": content,
+                        "content_type": kind,
+                    }
+        return {
+            "item_id": item.extension_id,
+            "content": None,
+            "content_type": None,
+            "error": "Failed to fetch README or plugin.json from GitHub",
         }
 
     blob_raw_url = github_blob_to_raw_url(blob_url=item.source_url)
@@ -378,6 +404,26 @@ async def _resolve_content(item: AgentExtensionItem) -> dict:
                 "content_type": None,
                 "error": "Failed to fetch file from GitHub",
             }
+
+    # Bare-repo URL (e.g. "https://github.com/owner/repo"): fetch README at HEAD.
+    if GITHUB_REPO_RE.match(item.source_url):
+        parsed = parse_github_url(item.source_url)
+        if parsed:
+            owner, repo, _, _ = parsed
+            readme_url = f"https://raw.githubusercontent.com/{owner}/{repo}/HEAD/README.md"
+            content = await async_fetch_text(readme_url)
+            if content:
+                return {
+                    "item_id": item.extension_id,
+                    "content": content,
+                    "content_type": "readme",
+                }
+        return {
+            "item_id": item.extension_id,
+            "content": None,
+            "content_type": None,
+            "error": "Failed to fetch README from GitHub",
+        }
 
     raw_url = github_tree_to_raw_url(tree_url=item.source_url, filename="SKILL.md")
     if raw_url:

@@ -127,6 +127,110 @@ async def test_repo_item_fetches_readme(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_plugin_tree_url_fetches_readme_from_plugin_dir(monkeypatch):
+    """Plugins with a tree URL should fetch README.md from inside the plugin
+    path, not SKILL.md. README takes precedence over plugin.json.
+    """
+    fetched_urls: list[str] = []
+
+    async def fake_fetch(url: str) -> str | None:
+        fetched_urls.append(url)
+        return "# Plugin readme\n" if url.endswith("README.md") else None
+
+    monkeypatch.setattr(catalog_module, "async_fetch_text", fake_fetch)
+    item = _make_item(
+        extension_type=AgentExtensionType.PLUGIN,
+        source_url="https://github.com/wshobson/agents/tree/main/plugins/documentation-standards",
+        name="documentation-standards",
+    )
+
+    result = await _resolve_content(item)
+
+    assert result["content_type"] == "readme"
+    assert result["content"].startswith("# Plugin readme")
+    assert fetched_urls[0] == (
+        "https://raw.githubusercontent.com/wshobson/agents/main/"
+        "plugins/documentation-standards/README.md"
+    )
+
+
+@pytest.mark.asyncio
+async def test_plugin_tree_url_falls_back_to_manifest_when_no_readme(monkeypatch):
+    """When README is missing, plugin content falls back to plugin.json."""
+    fetched_urls: list[str] = []
+
+    async def fake_fetch(url: str) -> str | None:
+        fetched_urls.append(url)
+        if url.endswith("plugin.json"):
+            return '{"name": "demo"}'
+        return None
+
+    monkeypatch.setattr(catalog_module, "async_fetch_text", fake_fetch)
+    item = _make_item(
+        extension_type=AgentExtensionType.PLUGIN,
+        source_url="https://github.com/wshobson/agents/tree/main/plugins/documentation-standards",
+        name="documentation-standards",
+    )
+
+    result = await _resolve_content(item)
+
+    assert result["content_type"] == "markdown"
+    assert '"name": "demo"' in result["content"]
+    # First README attempt, then plugin.json.
+    assert len(fetched_urls) == 2
+    assert fetched_urls[0].endswith("README.md")
+    assert fetched_urls[1].endswith(".claude-plugin/plugin.json")
+
+
+@pytest.mark.asyncio
+async def test_plugin_bare_repo_url_fetches_readme_from_root(monkeypatch):
+    """Catalog entries with a bare repo URL (no tree/) must still resolve."""
+    fetched_urls: list[str] = []
+
+    async def fake_fetch(url: str) -> str | None:
+        fetched_urls.append(url)
+        return "# Root readme" if url.endswith("README.md") else None
+
+    monkeypatch.setattr(catalog_module, "async_fetch_text", fake_fetch)
+    item = _make_item(
+        extension_type=AgentExtensionType.PLUGIN,
+        source_url="https://github.com/affaan-m/everything-claude-code",
+        name="everything-claude-code",
+    )
+
+    result = await _resolve_content(item)
+
+    assert result["content_type"] == "readme"
+    assert fetched_urls[0] == (
+        "https://raw.githubusercontent.com/affaan-m/everything-claude-code/HEAD/README.md"
+    )
+
+
+@pytest.mark.asyncio
+async def test_bare_repo_non_plugin_fetches_readme_at_head(monkeypatch):
+    """Any bare-repo catalog URL (not just plugins) should resolve to README."""
+    fetched_urls: list[str] = []
+
+    async def fake_fetch(url: str) -> str | None:
+        fetched_urls.append(url)
+        return "# readme"
+
+    monkeypatch.setattr(catalog_module, "async_fetch_text", fake_fetch)
+    item = _make_item(
+        extension_type=AgentExtensionType.SKILL,
+        source_url="https://github.com/acme/widget",
+        name="widget",
+    )
+
+    result = await _resolve_content(item)
+
+    assert result["content_type"] == "readme"
+    assert fetched_urls == [
+        "https://raw.githubusercontent.com/acme/widget/HEAD/README.md"
+    ]
+
+
+@pytest.mark.asyncio
 async def test_missing_content_returns_error_field(monkeypatch):
     async def fake_fetch(url: str) -> str | None:
         return None
