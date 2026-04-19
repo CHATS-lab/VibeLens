@@ -7,10 +7,20 @@
 - Catalog list API drops `category` and `platform` query parameters (accepted-but-ignored for backward compatibility). Metadata endpoint returns `topics` instead of `categories`.
 - Catalog scoring weights rebalanced (relevance 50%, quality 30%, popularity 15%, composability 5%) since platforms is unavailable this release.
 - Startup latency increases ~1–3s to warm the new catalog. The legacy `~/.vibelens/catalog/` user cache is deleted on startup (contents not migrated).
+- Trajectory-index cache uses per-file invalidation instead of all-or-nothing. Touching one session JSONL re-parses only that file (~200 ms) rather than rebuilding the whole index (~12 s). The cache file `~/.vibelens/session_index.json` schema bumps to v3; pre-existing v2 caches are discarded cleanly on first startup.
+- Dashboard tool-usage warming now uses a persisted per-session cache at `~/.vibelens/tool_usage_cache.json`. Warm restarts skip ~99% of trajectory loading and complete in <1 s instead of ~2 m 43 s. Cold start cost is unchanged but writes the cache for subsequent runs.
+
+### Fixed
+- Files that produce no parseable trajectory (Claude Code Desktop file-history snapshots, etc.) are now memoized in the index cache and skipped on subsequent startups, eliminating the per-startup parse-and-fail loop.
 
 ### Added
 - `scripts/build_catalog.py` converts `agent-tool-hub` output into the bundled two-tier catalog (summary + offsets + per-type JSONs).
 - `MCP_SERVER` extension type.
+- `SessionToolUsage` model + `tool_usage_cache` module backing the per-session warming cache.
+- `build_partial_session_index` for path-scoped trajectory-index rebuilds.
+
+### Disabled (temporarily)
+- `_enrich_continuation_refs` is commented out — the chain extractor has a bug that misses some links. Re-enable once the bug is fixed.
 
 ### Removed
 - Catalog `install_content` / `install_method` payloads. Every install now fetches from `source_url` at install time.
