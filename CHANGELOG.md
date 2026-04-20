@@ -2,17 +2,35 @@
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-04-20
+
 ### Added
 - **Hermes agent parser** (`ingest/parsers/hermes.py`) covering JSONL stream + snapshot formats, state.db enrichment, chat-surface project paths, and `system_prompt` / `base_url` surfaced in trajectory `extra`.
+- **Frontend test harness** (Vitest + jsdom + @testing-library). 34 tests covering every API client and the highest-value hooks. `npm run test` runs the full suite in under 1s. Wired into CI.
+- **Per-domain API clients** in `frontend/src/api/`: `analysis.ts` (friction + 3 personalization modes, shares `baseUrl`), `llm.ts`, `sessions.ts`, `dashboard.ts`, `upload.ts`, `donation.ts`. Components no longer call `fetchWithToken` directly.
+- **Reusable frontend hooks** in `frontend/src/hooks/`: `useJobPolling` (terminal-state job polls), `useCostEstimate` (POST-estimate → dialog flow), `useCopyFeedback` (clipboard + tri-state feedback), `useResetOnKey` (monotonic reset signal), `useSessionData` (trajectories + stats + flow), `useShareSession` (share dialog + link copy), `useDashboardData`, `useDashboardExport`.
+- **Frontend CI job** (`.github/workflows/ci.yml`) running `tsc --noEmit`, `npm run test`, and `npm run build` on every push and PR, in parallel with the existing Python matrix.
+- **Sticky back button** on extension detail pages (Local + Explore + Recommend/Customize/Evolve) that stays pinned at the top-left while scrolling.
 
 ### Changed
 - **Renames**: `ingest/parsers/claude_code.py` → `claude.py` (class `ClaudeCodeParser` → `ClaudeParser`); `claude_code_web.py` → `claude_web.py` (`ClaudeCodeWebParser` → `ClaudeWebParser`). External `AgentType` values (`"claude"`, `"claude_web"`) unchanged.
 - **`BaseParser.iter_jsonl_safe`** accepts either a `Path` (file streaming) or `str` (in-memory content), replacing the private per-parser JSONL loops that lived in claude, codex, hermes, openclaw.
 - **Agent-specific system-tag prefixes** moved out of base into their owning parsers (`_CODEX_SYSTEM_TAG_PREFIXES` in codex, claude's already in claude). Base's union renamed to `_ALL_KNOWN_SYSTEM_TAG_PREFIXES` and documented as an agent-agnostic fallback for demo-mode ATIF loading.
+- **Route-level code splitting** via `React.lazy`. Main bundle dropped from 924 KB to 302 KB (gzip 260 KB → 89 KB, ~3× smaller). Heavy dependencies (markdown renderer 103 KB gzip, syntax highlighting, flow diagram) now load on demand.
+- **`session-view.tsx`: 814 → 407 lines.** Data fetching extracted to `useSessionData`, share flow to `useShareSession`, top-bar rendering to `SessionViewHeader`.
+- **`dashboard-view.tsx`: 707 → 629 lines.** Three fetching effects extracted to `useDashboardData`; export flow extracted to `useDashboardExport`.
+- **`extension-detail-view.tsx`: shared layout extracted to `detail-shell.tsx`** so catalog and local detail views share scaffolding without duplication.
+- **Extension detail back-button label** shortened from "Back to extensions" / "Back to local extensions" to just "Back".
+- **Shared frontend timing constants** (`COPY_FEEDBACK_MS`, `JOB_POLL_INTERVAL_MS`, `RESIZE_DEBOUNCE_MS`) consolidated in `frontend/src/constants.ts`. Previously duplicated across four files with drifted values.
+- **`CLAUDE.md` / `DESIGN.md`** updated to describe the `api/`, `hooks/`, and `test/` layers, the factory-client pattern, testing conventions, and the `useEffect`-to-notify-parent anti-pattern.
 
 ### Fixed
 - **Claude duplicate-step-id regression**: some `~/.claude` sessions (12 out of 3,357 observed locally) were rejected by the `Trajectory` validator because Claude Code re-emitted identical JSONL entries after compaction replay. Entries are now deduplicated by `uuid` before step assembly.
 - **Gemini missing `agent.model_name`**: the agent-level model was never populated (0% local coverage). Derived it from the most recently-seen step model, restoring 100% coverage.
+- **Sub-tab bar now hides for every detail page** (Local, Explore, and the Recommend/Customize/Evolve analysis detail views), not just Local. Viewing an extension no longer shows the noisy sub-tab header.
+- **Filter-bar skill counts refresh after uninstall** from the detail view. Previously "Claude (5)" stayed stale after deleting the last Claude-synced skill.
+- **Re-clicking the top-level "Personalization" nav** while on a detail page returns to the list. Previously it was a no-op because `setMainView("skills")` was already the current state.
+- **File-tree filename truncation** now shows ellipsis for long paths. The `Tooltip` wrapper's `inline-flex` span was not forwarding width, so the inner `truncate` class never triggered.
 
 ## [1.0.2] - 2026-04-19
 

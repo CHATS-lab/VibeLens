@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAppContext } from "../../app";
+import { sessionsClient } from "../../api/sessions";
 import type { Trajectory } from "../../types";
 import { SessionView } from "./session-view";
 import { LoadingSpinner } from "../ui/loading-spinner";
@@ -10,6 +11,7 @@ interface SharedSessionViewProps {
 
 export function SharedSessionView({ shareToken }: SharedSessionViewProps) {
   const { fetchWithToken } = useAppContext();
+  const api = useMemo(() => sessionsClient(fetchWithToken), [fetchWithToken]);
   const [trajectories, setTrajectories] = useState<Trajectory[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -17,18 +19,22 @@ export function SharedSessionView({ shareToken }: SharedSessionViewProps) {
   useEffect(() => {
     setLoading(true);
     setError("");
-    fetchWithToken(`/api/shares/${shareToken}`)
-      .then((res) => {
-        if (!res.ok) throw new Error(res.status === 404 ? "Share not found or has been revoked" : `Failed to load: ${res.status}`);
-        return res.json();
-      })
-      .then((data: Trajectory[]) => {
+    api
+      .getShare(shareToken)
+      .then((data) => {
         if (!data.length) throw new Error("Share contains no session data");
         setTrajectories(data);
       })
-      .catch((err: Error) => setError(err.message))
+      .catch((err: Error) => {
+        // Translate HTTP 404 into a human-friendly message for revoked shares.
+        setError(
+          err.message.includes("404")
+            ? "Share not found or has been revoked"
+            : err.message,
+        );
+      })
       .finally(() => setLoading(false));
-  }, [shareToken, fetchWithToken]);
+  }, [api, shareToken]);
 
   if (loading) {
     return <LoadingSpinner label="Loading shared session" />;

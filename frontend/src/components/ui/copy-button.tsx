@@ -1,8 +1,7 @@
 import { Check, Copy } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
+import { useCopyFeedback } from "../../hooks/use-copy-feedback";
 import { Tooltip } from "./tooltip";
-
-const FEEDBACK_TIMEOUT_MS = 1500;
 
 interface CopyButtonProps {
   text: string;
@@ -10,14 +9,10 @@ interface CopyButtonProps {
 }
 
 export function CopyButton({ text, className = "" }: CopyButtonProps) {
-  const [copied, setCopied] = useState(false);
-
+  const { copied, copy } = useCopyFeedback();
   const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), FEEDBACK_TIMEOUT_MS);
-    });
-  }, [text]);
+    copy(text);
+  }, [copy, text]);
 
   return (
     <Tooltip text={copied ? "Copied!" : "Copy"}>

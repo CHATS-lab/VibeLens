@@ -5,21 +5,39 @@ import {
   Settings,
   Share2,
 } from "lucide-react";
-import { useEffect, useRef, useState, useCallback, useMemo, createContext, useContext } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, useCallback, useMemo, createContext, useContext } from "react";
 import { createExtensionsClient, type ExtensionsClient } from "./api/extensions";
+import { donationClient } from "./api/donation";
 import { ConfirmDialog } from "./components/ui/confirm-dialog";
 import { DonationConsentDialog } from "./components/donation/donation-consent-dialog";
 import { DonationResultDialog } from "./components/donation/donation-result-dialog";
 import { DonationHistoryDialog } from "./components/donation/donation-history-dialog";
 import { ResizeHandle } from "./components/ui/resize-handle";
 import { SessionList, type ViewMode } from "./components/session/session-list";
-import { SessionView } from "./components/session/session-view";
-import { SharedSessionView } from "./components/session/shared-session-view";
+import { LoadingSpinner } from "./components/ui/loading-spinner";
 import { UploadDialog } from "./components/upload/upload-dialog";
-import { DashboardView } from "./components/dashboard/dashboard-view";
-import { FrictionPanel } from "./components/friction/friction-panel";
-import { PersonalizationPanel } from "./components/personalization/personalization-panel";
 import { SettingsDialog } from "./components/settings-dialog";
+
+// Heavy route-level views. Code-split so the initial bundle only loads what
+// the user lands on (session list + browse). Analysis panels pull in markdown,
+// syntax highlighting, and domain-specific chart code.
+const SessionView = lazy(() =>
+  import("./components/session/session-view").then((m) => ({ default: m.SessionView })),
+);
+const SharedSessionView = lazy(() =>
+  import("./components/session/shared-session-view").then((m) => ({ default: m.SharedSessionView })),
+);
+const DashboardView = lazy(() =>
+  import("./components/dashboard/dashboard-view").then((m) => ({ default: m.DashboardView })),
+);
+const FrictionPanel = lazy(() =>
+  import("./components/friction/friction-panel").then((m) => ({ default: m.FrictionPanel })),
+);
+const PersonalizationPanel = lazy(() =>
+  import("./components/personalization/personalization-panel").then((m) => ({
+    default: m.PersonalizationPanel,
+  })),
+);
 import { Tooltip } from "./components/ui/tooltip";
 import { RecommendationWelcomeDialog, shouldShowRecWelcome } from "./components/recommendation-welcome-dialog";
 import { SpotlightTour } from "./components/tutorial/spotlight-tour";
@@ -46,6 +64,7 @@ interface AppContextValue {
   maxSessions: number;
   fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
   extensionsClient: ExtensionsClient;
+  setSidebarOpen: (open: boolean) => void;
 }
 
 const DEFAULT_MAX_ZIP_BYTES = 500 * 1024 * 1024;
@@ -60,6 +79,7 @@ const AppContext = createContext<AppContextValue>({
   maxSessions: DEFAULT_MAX_SESSIONS,
   fetchWithToken: defaultFetch,
   extensionsClient: createExtensionsClient(defaultFetch),
+  setSidebarOpen: () => {},
 });
 
 export function useAppContext(): AppContextValue {
@@ -90,6 +110,7 @@ export function App() {
   const [maxSessions, setMaxSessions] = useState(DEFAULT_MAX_SESSIONS);
   const [agentFilter, setAgentFilter] = useState("all");
   const [mainView, setMainView] = useState<MainView>("browse");
+  const [skillsResetKey, setSkillsResetKey] = useState(0);
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showRecWelcome, setShowRecWelcome] = useState(shouldShowRecWelcome);
@@ -135,6 +156,7 @@ export function App() {
     () => createExtensionsClient(fetchWithToken),
     [fetchWithToken],
   );
+  const donationApi = useMemo(() => donationClient(fetchWithToken), [fetchWithToken]);
 
   const contextValue: AppContextValue = {
     sessionToken,
@@ -143,6 +165,7 @@ export function App() {
     maxSessions,
     fetchWithToken,
     extensionsClient,
+    setSidebarOpen,
   };
 
   const handleSidebarResize = useCallback((delta: number) => {
@@ -257,13 +280,7 @@ export function App() {
   const handleDownloadClick = async () => {
     if (checkedIds.size === 0) return;
     try {
-      const res = await fetchWithToken("/api/sessions/download", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_ids: [...checkedIds] }),
-      });
-      if (!res.ok) return;
-      const blob = await res.blob();
+      const blob = await donationApi.download([...checkedIds]);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -283,31 +300,7 @@ export function App() {
   const handleDonateConfirm = useCallback(async () => {
     setDialog({ kind: "donating" });
     try {
-      const res = await fetchWithToken("/api/sessions/donate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_ids: [...checkedIds] }),
-      });
-      if (!res.ok) {
-        let errorMsg = `HTTP ${res.status}`;
-        try {
-          const body = await res.json();
-          errorMsg = body.detail || JSON.stringify(body);
-        } catch {
-          errorMsg = await res.text().catch(() => errorMsg);
-        }
-        setDialog({
-          kind: "donate-result",
-          result: {
-            total: checkedIds.size,
-            donated: 0,
-            donation_id: null,
-            errors: [{ session_id: "", error: errorMsg }],
-          },
-        });
-        return;
-      }
-      const result: DonateResult = await res.json();
+      const result = await donationApi.donate([...checkedIds]);
       setDialog({ kind: "donate-result", result });
     } catch (err) {
       setDialog({
@@ -316,11 +309,11 @@ export function App() {
           total: checkedIds.size,
           donated: 0,
           donation_id: null,
-          errors: [{ session_id: "", error: String(err) }],
+          errors: [{ session_id: "", error: err instanceof Error ? err.message : String(err) }],
         },
       });
     }
-  }, [checkedIds, fetchWithToken]);
+  }, [checkedIds, donationApi]);
 
   const handleDialogClose = () => {
     if (dialog.kind === "donate-result" && dialog.result.donated > 0) {
@@ -394,7 +387,9 @@ export function App() {
             </div>
           </div>
           <div className="flex-1 min-h-0">
-            <SharedSessionView shareToken={shareToken} />
+            <Suspense fallback={<LoadingSpinner label="Loading shared session" />}>
+              <SharedSessionView shareToken={shareToken} />
+            </Suspense>
           </div>
         </div>
       </AppContext.Provider>
@@ -511,7 +506,13 @@ export function App() {
               <Tooltip text="Create reusable skills from your coding patterns. Requires LLM call.">
                 <button
                   data-tour="personalization-tab"
-                  onClick={() => setMainView("skills")}
+                  onClick={() => {
+                    if (mainView === "skills") {
+                      setSkillsResetKey((k) => k + 1);
+                    } else {
+                      setMainView("skills");
+                    }
+                  }}
                   className={`min-w-[100px] text-center px-4 py-1.5 text-sm font-semibold rounded-md transition ${
                     mainView === "skills"
                       ? "bg-control/70 text-primary"
@@ -562,8 +563,9 @@ export function App() {
 
           {/* Content Area */}
           <div className="flex-1 min-h-0 relative">
+            <Suspense fallback={<LoadingSpinner />}>
             {mainView === "skills" ? (
-              <PersonalizationPanel checkedIds={checkedIds} activeJobId={skillJobId} onJobIdChange={setSkillJobId} />
+              <PersonalizationPanel checkedIds={checkedIds} activeJobId={skillJobId} onJobIdChange={setSkillJobId} resetKey={skillsResetKey} />
             ) : mainView === "friction" ? (
               <FrictionPanel checkedIds={checkedIds} activeJobId={frictionJobId} onJobIdChange={setFrictionJobId} />
             ) : mainView === "analyze" ? (
@@ -594,6 +596,7 @@ export function App() {
                 </div>
               </div>
             )}
+            </Suspense>
           </div>
         </main>
 

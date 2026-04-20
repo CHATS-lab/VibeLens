@@ -1,0 +1,16 @@
+import{c as h,r as n,$ as b,j as x}from"./index-D9sYom8d.js";/**
+ * @license lucide-react v0.577.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */const k=[["path",{d:"M12 20v2",key:"1lh1kg"}],["path",{d:"M12 2v2",key:"tus03m"}],["path",{d:"M17 20v2",key:"1rnc9c"}],["path",{d:"M17 2v2",key:"11trls"}],["path",{d:"M2 12h2",key:"1t8f8n"}],["path",{d:"M2 17h2",key:"7oei6x"}],["path",{d:"M2 7h2",key:"asdhe0"}],["path",{d:"M20 12h2",key:"1q8mjw"}],["path",{d:"M20 17h2",key:"1fpfkl"}],["path",{d:"M20 7h2",key:"1o8tra"}],["path",{d:"M7 20v2",key:"4gnj0m"}],["path",{d:"M7 2v2",key:"1i4yhu"}],["rect",{x:"4",y:"4",width:"16",height:"16",rx:"2",key:"1vbyd7"}],["rect",{x:"8",y:"8",width:"8",height:"8",rx:"1",key:"z9xiuo"}]],E=h("cpu",k);/**
+ * @license lucide-react v0.577.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */const f=[["line",{x1:"12",x2:"12",y1:"2",y2:"22",key:"7eqyqh"}],["path",{d:"M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6",key:"1b0p4s"}]],H=h("dollar-sign",f);/**
+ * @license lucide-react v0.577.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */const M=[["line",{x1:"4",x2:"20",y1:"9",y2:"9",key:"4lhtct"}],["line",{x1:"4",x2:"20",y1:"15",y2:"15",key:"vyu0kd"}],["line",{x1:"10",x2:"8",y1:"3",y2:"21",key:"1ggp8o"}],["line",{x1:"16",x2:"14",y1:"3",y2:"21",key:"weycgp"}]],w=h("hash",M),L=52,A=13,O=3,T=28,S=20,g=12,C=12,D=["Mon","","Wed","","Fri","",""],W=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],I=["var(--color-heatmap-0)","var(--color-heatmap-1)","var(--color-heatmap-2)","var(--color-heatmap-3)","var(--color-heatmap-4)"],N=["bg-blue-500","bg-amber-400","bg-rose-500","bg-emerald-500","bg-violet-500","bg-orange-500","bg-cyan-400","bg-fuchsia-500"],P=["bg-cyan-500","bg-teal-400","bg-sky-500","bg-indigo-400","bg-emerald-500","bg-amber-400","bg-violet-500","bg-rose-400","bg-orange-400","bg-lime-400","bg-pink-400","bg-blue-400"],m=300,_=480;function R({state:e}){const a=n.useRef(null),[c,l]=n.useState({left:0,top:0}),r=e!=null&&typeof e.content!="string",t=r?_:m;return n.useEffect(()=>{if(!e)return;const o=a.current,d=o?o.offsetWidth:t,p=o?o.offsetHeight:40,u=window.innerWidth,y=window.innerHeight;let i=e.x+g,s=e.y-8;i+d>u-8&&(i=e.x-d-g),s+p>y-8&&(s=y-p-8),s<8&&(s=8),l({left:i,top:s})},[e,t]),e?b.createPortal(x.jsx("div",{ref:a,className:`fixed z-[9999] pointer-events-none px-3 py-2.5 rounded-lg bg-white dark:bg-control border border-default dark:border-hover text-[13px] leading-relaxed text-primary shadow-lg dark:shadow-2xl ${r?"whitespace-pre-wrap":"whitespace-pre-line"}`,style:{left:c.left,top:c.top,maxWidth:t},children:e.content}),document.body):null}function j(){const[e,a]=n.useState(null),c=n.useCallback((t,o)=>{a({x:t.clientX,y:t.clientY,content:o})},[]),l=n.useCallback(t=>{a(o=>o?{...o,x:t.clientX,y:t.clientY}:null)},[]),r=n.useCallback(()=>a(null),[]);return{tip:e,show:c,move:l,hide:r}}export{E as C,H as D,w as H,T as L,W as M,C as P,R as T,I as a,L as b,A as c,O as d,D as e,S as f,N as g,P as h,j as u};

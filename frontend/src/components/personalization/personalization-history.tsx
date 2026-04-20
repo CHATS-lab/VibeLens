@@ -1,6 +1,7 @@
 import { Calendar, Clock, Coins, Layers, Loader2, Square, Timer, Trash2, Workflow } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAppContext } from "../../app";
+import { analysisClient } from "../../api/analysis";
 import { useDemoGuard } from "../../hooks/use-demo-guard";
 import type { PersonalizationMeta, PersonalizationResult, PersonalizationMode } from "../../types";
 import { ConfirmDialog } from "../ui/confirm-dialog";
@@ -169,11 +170,8 @@ export function PersonalizationHistory({
     setLoading(true);
     try {
       const apiBase = filterMode ? MODE_API_BASE[filterMode] : "/api/recommendation";
-      const res = await fetchWithToken(`${apiBase}/history`);
-      if (res.ok) {
-        const data: PersonalizationMeta[] = await res.json();
-        setAnalyses(data);
-      }
+      const api = analysisClient(fetchWithToken, apiBase);
+      setAnalyses(await api.history<PersonalizationMeta>());
     } catch {
       // Silently ignore — sidebar is best-effort
     } finally {
@@ -194,12 +192,8 @@ export function PersonalizationHistory({
     async (meta: PersonalizationMeta) => {
       setLoadingId(meta.id);
       try {
-        const apiBase = MODE_API_BASE[meta.mode];
-        const res = await fetchWithToken(`${apiBase}/${meta.id}`);
-        if (res.ok) {
-          const result: PersonalizationResult = await res.json();
-          onSelect(result);
-        }
+        const api = analysisClient(fetchWithToken, MODE_API_BASE[meta.mode]);
+        onSelect(await api.load<PersonalizationResult>(meta.id));
       } catch {
         // Ignore load errors
       } finally {
@@ -212,10 +206,8 @@ export function PersonalizationHistory({
   const handleDelete = useCallback(
     async (analysisId: string, mode: PersonalizationMode) => {
       try {
-        const apiBase = MODE_API_BASE[mode];
-        await fetchWithToken(`${apiBase}/${analysisId}`, {
-          method: "DELETE",
-        });
+        const api = analysisClient(fetchWithToken, MODE_API_BASE[mode]);
+        await api.remove(analysisId);
         setAnalyses((prev) => prev.filter((a) => a.id !== analysisId));
       } catch {
         // Ignore delete errors

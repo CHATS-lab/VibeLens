@@ -1,5 +1,4 @@
 import {
-  ArrowLeft,
   Check,
   Clock,
   Download,
@@ -13,7 +12,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { formatCount, formatRelativeDate } from "./extension-format";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useExtensionsClient } from "../../../app";
 import { typeApi, type TypeApiKey } from "../../../api/extensions";
 import type {
@@ -26,13 +25,7 @@ import { useDemoGuard } from "../../../hooks/use-demo-guard";
 import { InstallLocallyDialog } from "../../install-locally-dialog";
 import { Tooltip } from "../../ui/tooltip";
 import { CopyButton } from "../../ui/copy-button";
-import {
-  ExtensionDetailContent,
-  stripFrontmatter,
-  type ContentMode,
-  type TocEntry,
-} from "./extension-detail-content";
-import { ExtensionFileTree } from "./extension-file-tree";
+import { DetailShell, pickPrimaryPath } from "./detail-shell";
 import { TypeBadge } from "./extension-card";
 import {
   ITEM_TYPE_ICON_COLORS,
@@ -43,174 +36,6 @@ import {
 import { TopicsRow } from "./topics-row";
 import { UninstallExtensionDialog } from "./uninstall-extension-dialog";
 import { SOURCE_LABELS } from "../constants";
-
-const PRIMARY_FILENAMES: Record<string, string[]> = {
-  skill: ["SKILL.md"],
-  plugin: [".claude-plugin/plugin.json", "plugin.json"],
-  subagent: [],
-  command: [],
-};
-
-function extractTocEntries(markdown: string): TocEntry[] {
-  const regex = /^(#{1,3})\s+(.+)$/gm;
-  const entries: TocEntry[] = [];
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(markdown)) !== null) {
-    const level = match[1].length;
-    const text = match[2].trim();
-    const slug = text
-      .toLowerCase()
-      .replace(/[^\w\s-]/g, "")
-      .replace(/\s+/g, "-");
-    entries.push({ level, text, slug });
-  }
-  return entries;
-}
-
-/** Pick the "primary" file to open by default, based on type conventions. */
-function pickPrimaryPath(entries: ExtensionTreeEntry[], extensionType: string): string | null {
-  if (entries.length === 0) return null;
-  const files = entries.filter((e) => e.kind === "file");
-  if (files.length === 0) return null;
-  const preferred = PRIMARY_FILENAMES[extensionType] ?? [];
-  for (const candidate of preferred) {
-    const hit = files.find((f) => f.path === candidate || f.path.endsWith(`/${candidate}`));
-    if (hit) return hit.path;
-  }
-  const md = files.find((f) => f.path.toLowerCase().endsWith(".md"));
-  return md ? md.path : files[0].path;
-}
-
-/** Common detail-page layout: header card + file tree sidebar + content pane. */
-interface DetailShellProps {
-  headerContent: React.ReactNode;
-  metadataContent: React.ReactNode;
-  onBack: () => void;
-  entries: ExtensionTreeEntry[];
-  selectedPath: string | null;
-  onSelectPath: (path: string) => void;
-  rootLabel: string;
-  fileContent: string | null;
-  fileError: string | null;
-  loading: boolean;
-  backLabel?: string;
-  initialCollapsed?: boolean;
-  onSaveContent?: (path: string, content: string) => Promise<void>;
-}
-
-function DetailShell({
-  headerContent,
-  metadataContent,
-  onBack,
-  entries,
-  selectedPath,
-  onSelectPath,
-  rootLabel,
-  fileContent,
-  fileError,
-  loading,
-  backLabel = "Back to extensions",
-  initialCollapsed = false,
-  onSaveContent,
-}: DetailShellProps) {
-  const tocEntries = useMemo(
-    () => (fileContent ? extractTocEntries(stripFrontmatter(fileContent)) : []),
-    [fileContent],
-  );
-  const hasTree = entries.some((e) => e.kind === "file");
-  const [treeCollapsed, setTreeCollapsed] = useState(initialCollapsed);
-  const [contentMode, setContentMode] = useState<ContentMode>("preview");
-  const showToc = contentMode === "preview" && tocEntries.length > 2;
-
-  return (
-    <div className="max-w-6xl mx-auto px-6 py-6">
-      <button
-        onClick={onBack}
-        className="flex items-center gap-1.5 text-sm text-muted hover:text-secondary mb-4 transition"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        {backLabel}
-      </button>
-
-      <div className="border border-card rounded-xl bg-panel overflow-hidden mb-6">
-        {headerContent}
-        {metadataContent}
-      </div>
-
-      <div className="mb-2">
-        <h3 className="text-[11px] font-semibold text-muted uppercase tracking-wider">
-          Content
-        </h3>
-      </div>
-
-      <div className="flex gap-6 items-start">
-        <div className="flex-1 min-w-0 flex min-h-[420px] border border-card rounded-xl bg-panel overflow-hidden">
-          {hasTree && (
-            <ExtensionFileTree
-              entries={entries}
-              selected={selectedPath}
-              onSelect={onSelectPath}
-              rootLabel={rootLabel}
-              collapsed={treeCollapsed}
-              onToggleCollapsed={() => setTreeCollapsed((v) => !v)}
-            />
-          )}
-          <div className="flex-1 min-w-0 overflow-y-auto">
-            {loading ? (
-              <div className="flex items-center gap-2 text-sm text-muted py-8 justify-center">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Loading content...
-              </div>
-            ) : fileError ? (
-              <div className="mx-4 mt-4 flex items-start gap-2 px-4 py-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/30">
-                <p className="text-sm text-red-700 dark:text-red-300">{fileError}</p>
-              </div>
-            ) : fileContent !== null ? (
-              <ExtensionDetailContent
-                content={fileContent}
-                itemName={selectedPath ?? undefined}
-                mode={contentMode}
-                onModeChange={setContentMode}
-                onSave={
-                  onSaveContent && selectedPath
-                    ? (text) => onSaveContent(selectedPath, text)
-                    : undefined
-                }
-              />
-            ) : (
-              <p className="text-center text-sm text-muted py-8">
-                Select a file from the left to preview its contents.
-              </p>
-            )}
-          </div>
-        </div>
-
-        {showToc && (
-          <nav className="hidden lg:block w-56 shrink-0 sticky top-6 self-start">
-            <h3 className="text-[11px] font-semibold text-muted uppercase tracking-wider mb-3">
-              On this page
-            </h3>
-            <ul className="space-y-0.5 border-l border-card">
-              {tocEntries.map((entry) => (
-                <li key={entry.slug}>
-                  <a
-                    href={`#${entry.slug}`}
-                    className="block text-xs text-muted hover:text-primary transition truncate py-1"
-                    style={{ paddingLeft: `${(entry.level - 1) * 10 + 12}px` }}
-                  >
-                    {entry.text}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </nav>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ---------- Catalog detail view (Explore page) ---------- */
 
 interface CatalogDetailViewProps {
   item: ExtensionItemSummary;
@@ -513,7 +338,11 @@ export function ExtensionDetailView({
 
 export type LocalExtensionKind = "skill" | "subagent" | "command" | "plugin";
 
-const EDITABLE_KINDS: ReadonlySet<LocalExtensionKind> = new Set(["skill", "subagent", "command"]);
+const EDITABLE_KINDS: ReadonlySet<LocalExtensionKind> = new Set([
+  "skill",
+  "subagent",
+  "command",
+]);
 
 /** Compose the on-disk install path for a synced agent.
  * Dir-based types (skill, plugin) land at ``{dir}/{name}``; single-file types
@@ -695,15 +524,15 @@ export function LocalExtensionDetailView({
     [api, extensionType, installedIn, name, refreshItem, syncTargets],
   );
 
-  const Icon = ITEM_TYPE_ICONS[extensionType] || Package;
-  const iconColors = ITEM_TYPE_ICON_COLORS[extensionType] || ITEM_TYPE_ICON_COLORS.skill;
+  const LocalIcon = ITEM_TYPE_ICONS[extensionType] || Package;
+  const localIconColors = ITEM_TYPE_ICON_COLORS[extensionType] || ITEM_TYPE_ICON_COLORS.skill;
 
-  const headerContent = (
+  const localHeader = (
     <div className="px-6 pt-5 pb-4">
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-4 min-w-0 flex-1">
-          <div className={`shrink-0 p-3 rounded-xl ${iconColors.bg}`}>
-            <Icon className={`w-6 h-6 ${iconColors.text}`} />
+          <div className={`shrink-0 p-3 rounded-xl ${localIconColors.bg}`}>
+            <LocalIcon className={`w-6 h-6 ${localIconColors.text}`} />
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-3 flex-wrap mb-1.5">
@@ -731,7 +560,7 @@ export function LocalExtensionDetailView({
     </div>
   );
 
-  const metadataContent = (
+  const localMetadata = (
     <>
       {topics.length > 0 && (
         <div className="px-6 py-3 border-t border-card/50 bg-control/30">
@@ -741,7 +570,7 @@ export function LocalExtensionDetailView({
       {syncTargets.length > 0 && (
         <div className="px-6 py-3 border-t border-card/50">
           <div className="flex items-center gap-1.5 mb-2.5">
-            <Share2 className={`w-3.5 h-3.5 ${iconColors.text}`} />
+            <Share2 className={`w-3.5 h-3.5 ${localIconColors.text}`} />
             <span className="text-xs font-semibold text-secondary">Sync to Agents</span>
           </div>
           <div className="flex flex-wrap gap-1.5">
@@ -794,8 +623,8 @@ export function LocalExtensionDetailView({
   return (
     <>
       <DetailShell
-        headerContent={headerContent}
-        metadataContent={metadataContent}
+        headerContent={localHeader}
+        metadataContent={localMetadata}
         onBack={onBack}
         entries={entries}
         selectedPath={selectedPath}
@@ -804,7 +633,6 @@ export function LocalExtensionDetailView({
         fileContent={fileContent}
         fileError={fileError}
         loading={loading}
-        backLabel="Back to local extensions"
         initialCollapsed
         onSaveContent={canSaveSelected ? handleSaveContent : undefined}
       />

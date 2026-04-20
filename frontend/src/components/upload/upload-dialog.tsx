@@ -10,8 +10,9 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppContext } from "../../app";
+import { uploadClient } from "../../api/upload";
 import type { AgentType, OSPlatform, UploadCommands, UploadResult } from "../../types";
 import { CopyButton } from "../ui/copy-button";
 import {
@@ -32,6 +33,7 @@ interface UploadDialogProps {
 
 export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
   const { fetchWithToken, sessionToken, maxZipBytes } = useAppContext();
+  const api = useMemo(() => uploadClient(fetchWithToken), [fetchWithToken]);
   const maxZipMB = Math.round(maxZipBytes / (1024 * 1024));
   const [step, setStep] = useState<UploadStep>("select");
   const [agentType, setAgentType] = useState<AgentType>(DEFAULT_AGENT);
@@ -51,19 +53,14 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
   useEffect(() => {
     if (step !== "upload" || isWebExport) return;
     setCommandLoading(true);
-    fetchWithToken(
-      `/api/upload/commands?agent_type=${agentType}&os_platform=${osPlatform}`
-    )
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
-      })
-      .then((data: UploadCommands) => setCommands(data))
+    api
+      .commands(agentType, osPlatform)
+      .then(setCommands)
       .catch(() =>
-        setCommands({ command: "# Failed to load command", description: "" })
+        setCommands({ command: "# Failed to load command", description: "" }),
       )
       .finally(() => setCommandLoading(false));
-  }, [step, agentType, osPlatform, isWebExport, fetchWithToken]);
+  }, [step, agentType, osPlatform, isWebExport, api]);
 
   const fileTooLarge = file ? file.size > maxZipBytes : false;
 

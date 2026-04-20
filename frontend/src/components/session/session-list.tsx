@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppContext } from "../../app";
+import { sessionsClient } from "../../api/sessions";
 import type { Trajectory } from "../../types";
 import { baseProjectName } from "../../utils";
 import { SearchOptionsDialog } from "./search-options-dialog";
@@ -70,6 +71,7 @@ export function SessionList({
   isDemo = false,
 }: SessionListProps) {
   const { fetchWithToken } = useAppContext();
+  const api = useMemo(() => sessionsClient(fetchWithToken), [fetchWithToken]);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(
@@ -98,21 +100,16 @@ export function SessionList({
       }
 
       setSearchLoading(true);
-      const params = new URLSearchParams({
-        q: query.trim(),
-        sources: [...sources].join(","),
-      });
-
-      fetchWithToken(`/api/sessions/search?${params}`)
-        .then((r) => r.json())
-        .then((ids: string[]) => setSearchResults(new Set(ids)))
+      api
+        .search(query.trim(), [...sources])
+        .then((ids) => setSearchResults(new Set(ids)))
         .catch((err) => {
           console.error("Search failed:", err);
           setSearchResults(null);
         })
         .finally(() => setSearchLoading(false));
     },
-    [fetchWithToken]
+    [api]
   );
 
   useEffect(() => {

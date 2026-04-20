@@ -14,8 +14,6 @@ export const SEVERITY_DESCRIPTIONS: Record<number, string> = {
   5: "Critical: Gave up on the task entirely",
 };
 
-export const POLL_INTERVAL_MS = 3000;
-
 export const FRICTION_TUTORIAL = {
   title: "How does this work?",
   description: "VibeLens reviews your coding sessions to find where things went wrong: getting stuck, repeating yourself, or fixing agent mistakes. You get practical tips to avoid those issues next time.",

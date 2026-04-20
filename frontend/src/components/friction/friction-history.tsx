@@ -1,11 +1,14 @@
 import { Calendar, Clock, Coins, History, Layers, Loader2, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAppContext } from "../../app";
+import { analysisClient } from "../../api/analysis";
 import { useDemoGuard } from "../../hooks/use-demo-guard";
 import type { FrictionAnalysisResult, FrictionMeta } from "../../types";
 import { formatCost } from "../../utils";
 import { ConfirmDialog } from "../ui/confirm-dialog";
 import { InstallLocallyDialog } from "../install-locally-dialog";
+
+const FRICTION_API_BASE = "/api/analysis/friction";
 
 interface FrictionHistoryProps {
   onSelect: (result: FrictionAnalysisResult) => void;
@@ -15,6 +18,10 @@ interface FrictionHistoryProps {
 
 export function FrictionHistory({ onSelect, refreshTrigger, activeJobId }: FrictionHistoryProps) {
   const { fetchWithToken } = useAppContext();
+  const api = useMemo(
+    () => analysisClient(fetchWithToken, FRICTION_API_BASE),
+    [fetchWithToken],
+  );
   const [items, setItems] = useState<FrictionMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -22,14 +29,13 @@ export function FrictionHistory({ onSelect, refreshTrigger, activeJobId }: Frict
   const fetchHistory = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetchWithToken("/api/analysis/friction/history");
-      if (res.ok) setItems(await res.json());
+      setItems(await api.history<FrictionMeta>());
     } catch {
       /* best-effort */
     } finally {
       setLoading(false);
     }
-  }, [fetchWithToken]);
+  }, [api]);
 
   useEffect(() => {
     fetchHistory();
@@ -37,26 +43,23 @@ export function FrictionHistory({ onSelect, refreshTrigger, activeJobId }: Frict
 
   const handleSelect = useCallback(async (analysisId: string) => {
     try {
-      const res = await fetchWithToken(`/api/analysis/friction/${analysisId}`);
-      if (res.ok) onSelect(await res.json());
+      onSelect(await api.load<FrictionAnalysisResult>(analysisId));
     } catch {
       /* best-effort */
     }
-  }, [fetchWithToken, onSelect]);
+  }, [api, onSelect]);
 
   const handleDelete = useCallback(async (analysisId: string) => {
     setDeletingId(analysisId);
     try {
-      const res = await fetchWithToken(`/api/analysis/friction/${analysisId}`, {
-        method: "DELETE",
-      });
-      if (res.ok) setItems((prev) => prev.filter((i) => i.id !== analysisId));
+      await api.remove(analysisId);
+      setItems((prev) => prev.filter((i) => i.id !== analysisId));
     } catch {
       /* best-effort */
     } finally {
       setDeletingId(null);
     }
-  }, [fetchWithToken]);
+  }, [api]);
 
   if (loading) {
     return (

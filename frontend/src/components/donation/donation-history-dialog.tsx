@@ -2,7 +2,9 @@ import { Check, Copy, ExternalLink, Heart, History, Loader2 } from "lucide-react
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Modal, ModalBody, ModalHeader } from "../ui/modal";
 import { buildWithdrawUrl, formatDonatedAt } from "./donation-constants";
-import type { DonationHistoryEntry, DonationHistoryResponse } from "../../types";
+import { donationClient } from "../../api/donation";
+import { useCopyFeedback } from "../../hooks/use-copy-feedback";
+import type { DonationHistoryEntry } from "../../types";
 
 interface DonationHistoryDialogProps {
   fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
@@ -14,43 +16,12 @@ type LoadState =
   | { kind: "error"; message: string }
   | { kind: "ready"; entries: DonationHistoryEntry[] };
 
-const COPY_FEEDBACK_MS = 1500;
-
-async function copyToClipboard(text: string): Promise<boolean> {
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch {
-    /* fall through */
-  }
-  try {
-    const textarea = document.createElement("textarea");
-    textarea.value = text;
-    textarea.setAttribute("readonly", "");
-    textarea.style.position = "absolute";
-    textarea.style.left = "-9999px";
-    document.body.appendChild(textarea);
-    textarea.select();
-    const ok = document.execCommand("copy");
-    document.body.removeChild(textarea);
-    return ok;
-  } catch {
-    return false;
-  }
-}
-
 function HistoryRow({ entry }: { entry: DonationHistoryEntry }) {
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyFeedback();
 
-  const handleCopy = useCallback(async () => {
-    const ok = await copyToClipboard(entry.donation_id);
-    if (ok) {
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), COPY_FEEDBACK_MS);
-    }
-  }, [entry.donation_id]);
+  const handleCopy = useCallback(() => {
+    copy(entry.donation_id);
+  }, [copy, entry.donation_id]);
 
   const formattedAt = useMemo(() => formatDonatedAt(entry.donated_at), [entry.donated_at]);
 
@@ -91,22 +62,18 @@ function HistoryRow({ entry }: { entry: DonationHistoryEntry }) {
 }
 
 export function DonationHistoryDialog({ fetchWithToken, onClose }: DonationHistoryDialogProps) {
+  const api = useMemo(() => donationClient(fetchWithToken), [fetchWithToken]);
   const [state, setState] = useState<LoadState>({ kind: "loading" });
 
   const load = useCallback(async () => {
     setState({ kind: "loading" });
     try {
-      const res = await fetchWithToken("/api/sessions/donations/history");
-      if (!res.ok) {
-        setState({ kind: "error", message: `HTTP ${res.status}` });
-        return;
-      }
-      const body: DonationHistoryResponse = await res.json();
+      const body = await api.history();
       setState({ kind: "ready", entries: body.entries });
     } catch (err) {
       setState({ kind: "error", message: String(err) });
     }
-  }, [fetchWithToken]);
+  }, [api]);
 
   useEffect(() => {
     void load();

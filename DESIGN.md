@@ -310,7 +310,7 @@ Used in flow diagram tool chips and category breakdowns:
 | Interact | `bg-cyan-500/20` | `text-cyan-600 dark:text-cyan-300` | interact | AskUserQuestion, AskUser, EnterPlanMode, ExitPlanMode, EnterWorktree |
 | Other | `bg-zinc-500/20` | `text-zinc-500 dark:text-zinc-400` | other | (fallback for unmapped tools) |
 
-Tool category mappings are maintained in parallel: `frontend/src/components/conversation/flow-layout.ts` (TypeScript) and `src/vibelens/services/session/tool_categories.py` (Python). Both must be kept in sync.
+Tool category mappings are maintained in parallel: `frontend/src/components/session/flow-layout.ts` (TypeScript) and `src/vibelens/services/session/tool_categories.py` (Python). Both must be kept in sync.
 
 ### Severity Colors (Friction Analysis)
 
@@ -350,24 +350,40 @@ Tool category mappings are maintained in parallel: `frontend/src/components/conv
 
 ## 9. File Architecture
 
+### Top-level layout (`frontend/src/`)
+
+- `api/` — Per-domain API clients. One file per domain (`analysis`, `llm`, `sessions`, `dashboard`, `upload`, `donation`, `extensions`). Each exports a factory `<domain>Client(fetchWithToken)` returning a typed client.
+- `hooks/` — Cross-cutting React hooks. See §13.
+- `components/` — Feature panels and UI primitives (`ui/`).
+- `api/*.test.ts`, `hooks/*.test.ts` — Vitest tests co-located with the source.
+- `test/setup.ts` — Vitest global setup (jest-dom matchers).
+- `constants.ts` — Shared timing and display constants (`COPY_FEEDBACK_MS`, `JOB_POLL_INTERVAL_MS`, etc.).
+- `utils.ts` — Pure helpers (`copyToClipboard`, `formatDuration`, `formatCost`, `extractUserText`, etc.).
+- `types.ts` — Shared domain types.
+
 ### Theme Definition
 - `frontend/src/index.css` -- CSS custom properties in `:root` (light) and `.dark` (dark)
 - `frontend/tailwind.config.js` -- Maps CSS variables to Tailwind token names via `extend.colors`
 - `frontend/src/styles.ts` -- Shared constants: phase colors, category styles, severity colors, layout dimensions
 
 ### Component Structure
+
 Feature panels follow a consistent file-splitting pattern:
 - `*-panel.tsx` -- Thin orchestrator with tab routing and top-level state
 - `*-tab.tsx` -- One file per tab with its own state management
-- `*-cards.tsx` -- Card and detail popup components
-- `*-shared.tsx` -- Reusable sub-components (search bars, filter bars, empty states)
+- `*-view.tsx` -- A single view's render logic (e.g. result view, detail view)
+- `*-view-header.tsx` -- Header sub-component when the page header is non-trivial
+- `*-history.tsx` -- Right-sidebar history panel
+- `*-shared.tsx` / `result-shared.tsx` -- Reusable sub-components (search bars, filter bars, empty states)
 - `*-constants.ts` -- Color maps, label maps, config arrays
 
 ### Shared Primitives
 - `components/ui/modal.tsx` -- `Modal`, `ModalHeader`, `ModalBody`, `ModalFooter`
 - `components/ui/tooltip.tsx` -- Portal-rendered `Tooltip` with auto-flip
 - `components/ui/confirm-dialog.tsx` -- Confirmation dialogs for destructive actions
+- `components/ui/copy-button.tsx` -- Icon-only copy button backed by `useCopyFeedback`
 - `components/ui/markdown-renderer.tsx` -- Syntax-highlighted markdown rendering
+- `components/ui/empty-state.tsx`, `error-banner.tsx`, `loading-state.tsx`, `loading-spinner.tsx` -- List/panel fallback states
 
 ## 10. Chart & Data Visualization
 
@@ -458,3 +474,57 @@ History cards in right sidebar panels (skills history, friction history) use a f
 - Project group headers: `border-b border-card`
 - Active session: `bg-accent-cyan-subtle` highlight
 - Hover: `hover:bg-control/60`
+
+## 13. API and Hook Layers
+
+### API clients
+
+Every I/O call goes through a typed client in `frontend/src/api/`. Components never call `fetchWithToken` directly.
+
+**Shape:**
+```typescript
+// api/example.ts
+import type { FetchWithToken } from "./analysis";
+
+export function exampleClient(fetchWithToken: FetchWithToken) {
+  return {
+    list: async () => { ... },
+    get: async (id: string) => { ... },
+  };
+}
+```
+
+**Rules:**
+- One file per domain. Current domains: `analysis` (friction + 3 personalization modes, shares `baseUrl`), `llm`, `sessions`, `dashboard`, `upload`, `donation`, `extensions`.
+- Every method returns a typed `Promise<T>`. Errors throw `Error` with the server's `detail` field when present.
+- Parse JSON once inside the client. Callers get domain objects, not `Response`.
+- Share `FetchWithToken` from `api/analysis.ts` — don't redefine.
+- In components, memoize the client: `const api = useMemo(() => sessionsClient(fetchWithToken), [fetchWithToken]);`
+
+**Testing:** Every client has a `*.test.ts` next to it. Mock `fetchWithToken` with `vi.fn()` and assert the URL, method, body, and the parsed return. Keep tests pure — no React rendering.
+
+### Cross-cutting hooks
+
+Extract a hook when the same `useEffect` pattern or state machine appears in 2+ files.
+
+Current hooks (`frontend/src/hooks/`):
+- `useDemoGuard` — guards write actions in demo mode, shows install dialog instead.
+- `useCopyFeedback` — clipboard + tri-state (`idle`/`copied`/`failed`) with auto-reset.
+- `useJobPolling` — polls `${apiBase}/jobs/${id}` to a terminal state. Callers supply three `useCallback`-wrapped callbacks (`onCompleted`, `onFailed`, `onCancelled`).
+- `useCostEstimate` — shared `POST /estimate → dialog → confirm/cancel` flow for analysis panels.
+- `useResetOnKey` — run a reset when a monotonically-incrementing key bumps past zero. Convention: `0` means "no-op on initial mount".
+- `useSessionData` — owns all fetching for the session detail view (trajectories, stats, flow).
+
+**Anti-patterns to avoid:**
+- **Notifying a parent via `useEffect`**: `useEffect(() => onChange?.(x !== null), [x, onChange])` re-fires on every render if the callback is not stable. Instead, wrap the state setter and call the callback at the state-change site.
+- **Inline async state in components**: if a component has `const [loading, set] = useState(); useEffect(() => fetch...)`, consider extracting to a hook the second time you write it.
+- **Ad-hoc `setInterval` polling**: use `useJobPolling` (job-status) or centralize new polling shapes via a hook.
+
+## 14. Testing
+
+- Framework: **Vitest + jsdom + @testing-library/react + @testing-library/jest-dom**. Config in `frontend/vitest.config.ts`.
+- Scripts: `npm run test` (single run), `npm run test:watch` (watch mode). The full suite runs in under 1 second.
+- **Where to put tests:** co-located next to source (`use-copy-feedback.ts` → `use-copy-feedback.test.ts`).
+- **What to cover by default:** API clients (mock `fetchWithToken`), hooks (`renderHook` from `@testing-library/react` + fake timers for timeouts). These are the highest-leverage surfaces.
+- **What not to test (yet):** full component trees. Component rendering tests need a mocked `AppContext` and would be brittle against JSX changes.
+- Run `cd frontend && npm run test` before committing any hook or API-client change.

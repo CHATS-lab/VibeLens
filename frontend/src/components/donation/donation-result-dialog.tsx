@@ -1,7 +1,8 @@
 import { Check, Copy, ExternalLink, Heart } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import { Modal, ModalBody, ModalFooter, ModalHeader } from "../ui/modal";
 import { buildWithdrawUrl } from "./donation-constants";
+import { useCopyFeedback } from "../../hooks/use-copy-feedback";
 import type { DonateResult } from "../../types";
 
 interface DonationResultDialogProps {
@@ -9,46 +10,14 @@ interface DonationResultDialogProps {
   onClose: () => void;
 }
 
-type CopyState = "idle" | "copied" | "failed";
-
-const COPY_FEEDBACK_MS = 1500;
-
-async function copyToClipboard(text: string): Promise<boolean> {
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch {
-    /* fall through to textarea fallback */
-  }
-  try {
-    const textarea = document.createElement("textarea");
-    textarea.value = text;
-    textarea.setAttribute("readonly", "");
-    textarea.style.position = "absolute";
-    textarea.style.left = "-9999px";
-    document.body.appendChild(textarea);
-    textarea.select();
-    const ok = document.execCommand("copy");
-    document.body.removeChild(textarea);
-    return ok;
-  } catch {
-    return false;
-  }
-}
-
 export function DonationResultDialog({ result, onClose }: DonationResultDialogProps) {
-  const [copyState, setCopyState] = useState<CopyState>("idle");
+  const { state: copyState, copy } = useCopyFeedback();
   const hasErrors = result.errors.length > 0;
   const donationId = result.donation_id ?? "";
 
-  const handleCopy = useCallback(async () => {
-    if (!donationId) return;
-    const ok = await copyToClipboard(donationId);
-    setCopyState(ok ? "copied" : "failed");
-    window.setTimeout(() => setCopyState("idle"), COPY_FEEDBACK_MS);
-  }, [donationId]);
+  const handleCopy = useCallback(() => {
+    if (donationId) copy(donationId);
+  }, [copy, donationId]);
 
   const copyLabel =
     copyState === "copied" ? "Copied!" : copyState === "failed" ? "Copy failed" : "Copy";

@@ -1,6 +1,7 @@
 import { Check, Loader2, Pencil } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CliBackendModels, LiteLLMPreset, LLMStatus } from "../../types";
+import { llmClient } from "../../api/llm";
 import {
   ACCENT_STYLES,
   BACKEND_OPTIONS,
@@ -53,6 +54,7 @@ export function LLMConfigForm({
   llmStatus: LLMStatus | null;
   accentColor?: AccentColor;
 }) {
+  const api = useMemo(() => llmClient(fetchWithToken), [fetchWithToken]);
   const [backend, setBackend] = useState(llmStatus?.backend_id === "mock" ? "litellm" : llmStatus?.backend_id ?? "litellm");
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState(llmStatus?.model ?? "");
@@ -72,19 +74,9 @@ export function LLMConfigForm({
   const hasExistingKey = !!llmStatus?.api_key_masked;
 
   useEffect(() => {
-    fetchWithToken("/api/llm/cli-models")
-      .then((r) => r.ok ? r.json() : null)
-      .then((data) => {
-        if (data) setCliModels(data);
-      })
-      .catch(() => {});
-    fetchWithToken("/api/llm/litellm-presets")
-      .then((r) => r.ok ? r.json() : null)
-      .then((data) => {
-        if (data?.models) setLitellmPresets(data.models);
-      })
-      .catch(() => {});
-  }, [fetchWithToken]);
+    api.cliModels().then(setCliModels).catch(() => {});
+    api.litellmPresets().then(setLitellmPresets).catch(() => {});
+  }, [api]);
 
   // Auto-select an installed CLI backend on first load when no config
   // has been saved. Runs once after cliModels arrives.
@@ -115,32 +107,24 @@ export function LLMConfigForm({
     setSubmitting(true);
     setConfigError(null);
     try {
-      const payload: Record<string, unknown> = { backend: backend.trim() };
+      const payload: { backend: string; api_key?: string; model?: string; base_url?: string } = {
+        backend: backend.trim(),
+      };
       if (isCliBackend) {
-        if (cliModel.trim()) {
-          payload.model = cliModel.trim();
-        }
+        if (cliModel.trim()) payload.model = cliModel.trim();
       } else if (backend !== "disabled") {
         payload.api_key = apiKey.trim();
         payload.model = model.trim();
         if (baseUrl.trim()) payload.base_url = baseUrl.trim();
       }
-      const res = await fetchWithToken("/api/llm/configure", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.detail || `HTTP ${res.status}`);
-      }
+      await api.configure(payload);
       onConfigured();
     } catch (err) {
       setConfigError(err instanceof Error ? err.message : String(err));
     } finally {
       setSubmitting(false);
     }
-  }, [backend, apiKey, model, cliModel, baseUrl, isCliBackend, hasExistingKey, fetchWithToken, onConfigured]);
+  }, [api, backend, apiKey, model, cliModel, baseUrl, isCliBackend, hasExistingKey, onConfigured]);
 
   const cliMeta = cliModels[backend];
   const hasCliModels = cliMeta && cliMeta.models.length > 0;

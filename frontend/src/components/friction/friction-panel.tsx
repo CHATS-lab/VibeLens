@@ -9,15 +9,17 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppContext } from "../../app";
 import type {
-  AnalysisJobResponse,
-  AnalysisJobStatus,
-  CostEstimate,
   FrictionAnalysisResult,
+  FrictionMeta,
   LLMStatus,
 } from "../../types";
 import { formatCost } from "../../utils";
 import { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH } from "../../styles";
 import { SHOW_ANALYSIS_DETAIL_SECTIONS } from "../../constants";
+import { analysisClient } from "../../api/analysis";
+import { llmClient } from "../../api/llm";
+import { useCostEstimate } from "../../hooks/use-cost-estimate";
+import { useJobPolling } from "../../hooks/use-job-polling";
 import { AnalysisLoadingScreen } from "../analysis-loading-screen";
 import { DemoBanner } from "../demo-banner";
 import { AnalysisWelcomePage, TutorialBanner } from "../analysis-welcome";
@@ -25,7 +27,7 @@ import { CostEstimateDialog } from "../cost-estimate-dialog";
 import { Tooltip } from "../ui/tooltip";
 import { FrictionHistory } from "./friction-history";
 import { WarningsBanner } from "../warnings-banner";
-import { FRICTION_TUTORIAL, POLL_INTERVAL_MS } from "./friction-constants";
+import { FRICTION_TUTORIAL } from "./friction-constants";
 import { MitigationsSection } from "./friction-mitigations";
 import { FrictionTypesSection } from "./friction-types";
 
@@ -35,8 +37,15 @@ interface FrictionPanelProps {
   onJobIdChange: (id: string | null) => void;
 }
 
+const FRICTION_API_BASE = "/api/analysis/friction";
+
 export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: FrictionPanelProps) {
   const { fetchWithToken, appMode, maxSessions } = useAppContext();
+  const api = useMemo(
+    () => analysisClient(fetchWithToken, FRICTION_API_BASE),
+    [fetchWithToken],
+  );
+  const llmApi = useMemo(() => llmClient(fetchWithToken), [fetchWithToken]);
   const [result, setResult] = useState<FrictionAnalysisResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -77,63 +86,39 @@ export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: Fricti
 
   const refreshLlmStatus = useCallback(async () => {
     try {
-      const res = await fetchWithToken("/api/llm/status");
-      if (res.ok) setLlmStatus(await res.json());
+      setLlmStatus(await llmApi.status());
     } catch {
-      /* ignore — status check is best-effort */
+      /* best-effort */
     }
-  }, [fetchWithToken]);
+  }, [llmApi]);
 
   useEffect(() => {
     refreshLlmStatus();
   }, [refreshLlmStatus]);
 
-  const [estimate, setEstimate] = useState<CostEstimate | null>(null);
-  const [estimating, setEstimating] = useState(false);
+  const { estimate, estimating, requestEstimate, clearEstimate } = useCostEstimate(
+    fetchWithToken,
+    setError,
+  );
 
-  const handleRequestAnalysis = useCallback(async () => {
+  const handleRequestAnalysis = useCallback(() => {
     if (checkedIds.size === 0) return;
-    setEstimating(true);
     setError(null);
-    try {
-      const res = await fetchWithToken("/api/analysis/friction/estimate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_ids: [...checkedIds] }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.detail || `HTTP ${res.status}`);
-      }
-      setEstimate(await res.json());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setEstimating(false);
-    }
-  }, [checkedIds, fetchWithToken]);
+    requestEstimate(`${FRICTION_API_BASE}/estimate`, {
+      session_ids: [...checkedIds],
+    });
+  }, [checkedIds, requestEstimate]);
 
   const handleConfirmAnalysis = useCallback(async () => {
-    setEstimate(null);
+    clearEstimate();
     setLoading(true);
     setError(null);
     try {
-      const res = await fetchWithToken("/api/analysis/friction", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_ids: [...checkedIds] }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.detail || `HTTP ${res.status}`);
-      }
-      const data: AnalysisJobResponse = await res.json();
+      const data = await api.submit({ session_ids: [...checkedIds] });
       if (data.status === "completed" && data.analysis_id) {
-        const loadRes = await fetchWithToken(`/api/analysis/friction/${data.analysis_id}`);
-        if (loadRes.ok) {
-          setResult(await loadRes.json());
-          setHistoryRefresh((n) => n + 1);
-        }
+        const loaded = await api.load<FrictionAnalysisResult>(data.analysis_id);
+        setResult(loaded);
+        setHistoryRefresh((n) => n + 1);
         setLoading(false);
       } else {
         onJobIdChange(data.job_id);
@@ -142,7 +127,7 @@ export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: Fricti
       setError(err instanceof Error ? err.message : String(err));
       setLoading(false);
     }
-  }, [checkedIds, fetchWithToken, onJobIdChange]);
+  }, [api, checkedIds, clearEstimate, onJobIdChange]);
 
   const handleHistorySelect = useCallback((loaded: FrictionAnalysisResult) => {
     setResult(loaded);
@@ -155,18 +140,14 @@ export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: Fricti
     demoLoadedRef.current = true;
     (async () => {
       try {
-        const res = await fetchWithToken("/api/analysis/friction/history");
-        if (!res.ok) return;
-        const history: { id: string }[] = await res.json();
+        const history = await api.history<FrictionMeta>();
         if (history.length === 0) return;
-        const loadRes = await fetchWithToken(`/api/analysis/friction/${history[0].id}`);
-        if (!loadRes.ok) return;
-        handleHistorySelect(await loadRes.json());
+        handleHistorySelect(await api.load<FrictionAnalysisResult>(history[0].id));
       } catch {
         /* best-effort — fall back to welcome page */
       }
     })();
-  }, [appMode, fetchWithToken, handleHistorySelect]);
+  }, [api, appMode, handleHistorySelect]);
 
   const handleNewAnalysis = useCallback(() => {
     setResult(null);
@@ -174,48 +155,52 @@ export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: Fricti
   }, []);
 
   useEffect(() => {
-    if (!activeJobId) return;
-    setLoading(true);
-    const interval = setInterval(async () => {
+    if (activeJobId) setLoading(true);
+  }, [activeJobId]);
+
+  const handleJobCompleted = useCallback(
+    async (analysisId: string) => {
+      onJobIdChange(null);
+      setLoading(false);
       try {
-        const res = await fetchWithToken(`/api/analysis/friction/jobs/${activeJobId}`);
-        if (!res.ok) return;
-        const status: AnalysisJobStatus = await res.json();
-        if (status.status === "completed" && status.analysis_id) {
-          onJobIdChange(null);
-          setLoading(false);
-          const loadRes = await fetchWithToken(`/api/analysis/friction/${status.analysis_id}`);
-          if (loadRes.ok) {
-            setResult(await loadRes.json());
-            setHistoryRefresh((n) => n + 1);
-          }
-        } else if (status.status === "failed") {
-          onJobIdChange(null);
-          setLoading(false);
-          setError(status.error_message || "Analysis failed");
-        } else if (status.status === "cancelled") {
-          onJobIdChange(null);
-          setLoading(false);
-        }
+        const loaded = await api.load<FrictionAnalysisResult>(analysisId);
+        setResult(loaded);
+        setHistoryRefresh((n) => n + 1);
       } catch {
-        /* polling is best-effort */
+        /* best-effort */
       }
-    }, POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [activeJobId, fetchWithToken, onJobIdChange]);
+    },
+    [api, onJobIdChange],
+  );
+  const handleJobFailed = useCallback(
+    (message: string) => {
+      onJobIdChange(null);
+      setLoading(false);
+      setError(message);
+    },
+    [onJobIdChange],
+  );
+  const handleJobCancelled = useCallback(() => {
+    onJobIdChange(null);
+    setLoading(false);
+  }, [onJobIdChange]);
+
+  useJobPolling(activeJobId, FRICTION_API_BASE, fetchWithToken, {
+    onCompleted: handleJobCompleted,
+    onFailed: handleJobFailed,
+    onCancelled: handleJobCancelled,
+  });
 
   const handleStopAnalysis = useCallback(async () => {
     if (!activeJobId) return;
     try {
-      await fetchWithToken(`/api/analysis/friction/jobs/${activeJobId}/cancel`, {
-        method: "POST",
-      });
+      await api.cancelJob(activeJobId);
     } catch {
       /* best-effort */
     }
     onJobIdChange(null);
     setLoading(false);
-  }, [activeJobId, fetchWithToken, onJobIdChange]);
+  }, [activeJobId, api, onJobIdChange]);
 
   const sidebar = useMemo(() => (
     <>
@@ -269,7 +254,7 @@ export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: Fricti
       estimate={estimate}
       sessionCount={checkedIds.size}
       onConfirm={handleConfirmAnalysis}
-      onCancel={() => setEstimate(null)}
+      onCancel={clearEstimate}
     />
   );
 
