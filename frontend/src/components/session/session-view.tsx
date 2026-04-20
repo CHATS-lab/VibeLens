@@ -1,9 +1,5 @@
 import {
-  Loader2,
   Download,
-  Share2,
-  Check,
-  Copy,
   BarChart3,
   Bot,
   Clock,
@@ -31,6 +27,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppContext } from "../../app";
 import { sessionsClient } from "../../api/sessions";
 import { useSessionData } from "../../hooks/use-session-data";
+import { useShareSession } from "./session-share-dialog";
 import type { Step, Trajectory } from "../../types";
 import { StepBlock } from "./step-block";
 import { SubAgentBlock } from "./sub-agent-block";
@@ -40,7 +37,6 @@ import { FlowDiagram } from "./flow-diagram";
 import { computeFlow } from "./flow-layout";
 import { formatDuration, extractUserText, baseProjectName } from "../../utils";
 import { LoadingSpinner } from "../ui/loading-spinner";
-import { Modal, ModalHeader, ModalBody } from "../ui/modal";
 import { Tooltip } from "../ui/tooltip";
 import { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH } from "../../styles";
 import { SESSION_ID_SHORT, SCROLL_SUPPRESS_MS } from "../../constants";
@@ -57,14 +53,11 @@ interface SessionViewProps {
 }
 
 export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavigateSession, allSessions, pendingScrollStepId, onScrollComplete }: SessionViewProps) {
-  const { fetchWithToken, appMode } = useAppContext();
+  const { fetchWithToken } = useAppContext();
   const api = useMemo(() => sessionsClient(fetchWithToken), [fetchWithToken]);
   const [activeStepId, setActiveStepId] = useState<string | null>(null);
   const [promptNavWidth, setPromptNavWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
   const [navCollapsed, setNavCollapsed] = useState(false);
-  const [shareDialog, setShareDialog] = useState<
-    { kind: "hidden" } | { kind: "demo-blocked" } | { kind: "sharing" } | { kind: "ready"; url: string; copied: boolean }
-  >({ kind: "hidden" });
 
   const [viewMode, setViewMode] = useState<"concise" | "detail" | "workflow">(
     pendingScrollStepId ? "detail" : "concise",
@@ -81,6 +74,8 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
     shareToken,
     loadFlow: viewMode === "workflow",
   });
+
+  const share = useShareSession(sessionId, trajectories);
 
   // Clear any lingering step selection when the user navigates to a new session.
   useEffect(() => {
@@ -302,28 +297,6 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
     );
   }
 
-  const handleShare = async () => {
-    const isUploaded = trajectories.some((t) => !!t._upload_id);
-    if (appMode === "demo" && isUploaded) {
-      setShareDialog({ kind: "demo-blocked" });
-      return;
-    }
-    setShareDialog({ kind: "sharing" });
-    try {
-      const data = await api.createShare(sessionId);
-      const shareUrl = `${window.location.origin}/?share=${data.session_id}`;
-      setShareDialog({ kind: "ready", url: shareUrl, copied: false });
-    } catch (err) {
-      console.error("Share failed:", err);
-      setShareDialog({ kind: "hidden" });
-    }
-  };
-
-  const handleCopyShareUrl = async (url: string) => {
-    await navigator.clipboard.writeText(url);
-    setShareDialog({ kind: "ready", url, copied: true });
-  };
-
   if (!main) return null;
 
   const metrics = main.final_metrics;
@@ -431,16 +404,9 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
               {!isSharedView && (
                 <Tooltip text="Share session link">
                   <button
-                    onClick={handleShare}
-                    disabled={shareDialog.kind === "sharing"}
+                    {...share.buttonProps}
                     className="p-2 text-muted hover:text-secondary hover:bg-control rounded transition text-xs disabled:opacity-50"
-                  >
-                    {shareDialog.kind === "sharing" ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Share2 className="w-4 h-4" />
-                    )}
-                  </button>
+                  />
                 </Tooltip>
               )}
               <Tooltip text="Download as JSON">
@@ -709,66 +675,7 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
       </div>
     </div>
 
-    {/* Share link dialog */}
-    {shareDialog.kind === "ready" && (
-      <Modal onClose={() => setShareDialog({ kind: "hidden" })} maxWidth="max-w-lg">
-        <ModalHeader onClose={() => setShareDialog({ kind: "hidden" })}>
-          <div className="flex items-center gap-2.5">
-            <div className="p-1.5 rounded-md bg-accent-cyan-muted border border-accent-cyan">
-              <Share2 className="w-4 h-4 text-accent-cyan" />
-            </div>
-            <div>
-              <h2 className="text-sm font-semibold text-primary">Share session</h2>
-              <p className="text-xs text-dimmed mt-0.5">Anyone with this link can view the session</p>
-            </div>
-          </div>
-        </ModalHeader>
-        <ModalBody>
-          <div className="flex items-center gap-2">
-            <input
-              readOnly
-              value={shareDialog.url}
-              onFocus={(e) => e.target.select()}
-              className="flex-1 bg-control border border-card rounded-lg px-3 py-2.5 text-sm text-secondary font-mono select-all focus:outline-none focus:border-accent-cyan-focus transition"
-            />
-            <button
-              onClick={() => handleCopyShareUrl(shareDialog.url)}
-              className={`shrink-0 flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-xs font-medium transition ${
-                shareDialog.copied
-                  ? "bg-emerald-700 text-white"
-                  : "bg-cyan-700 hover:bg-cyan-600 text-white"
-              }`}
-            >
-              {shareDialog.copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-              {shareDialog.copied ? "Copied!" : "Copy link"}
-            </button>
-          </div>
-        </ModalBody>
-      </Modal>
-    )}
-
-    {/* Demo mode: cannot share uploaded sessions */}
-    {shareDialog.kind === "demo-blocked" && (
-      <Modal onClose={() => setShareDialog({ kind: "hidden" })} maxWidth="max-w-md">
-        <ModalBody>
-          <div className="text-center bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-lg p-6">
-            <p className="text-sm font-semibold text-rose-700 dark:text-rose-300 mb-2">Cannot share uploaded sessions</p>
-            <p className="text-xs text-rose-600 dark:text-rose-400">
-              Uploaded sessions are temporary and only visible in your browser tab.
-              Install VibeLens locally to share sessions with a permanent link.
-            </p>
-            <a
-              href="https://github.com/chats-lab/VibeLens"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-block mt-4 px-4 py-2 rounded text-xs font-medium bg-rose-200 hover:bg-rose-300 dark:bg-rose-800/50 dark:hover:bg-rose-700/50 text-rose-700 dark:text-rose-200 transition"
-            >
-              Install VibeLens
-            </a>
-          </div>
-        </ModalBody>
-      </Modal>
-    )}
+    {share.dialogs}
     </>
   );
 }
