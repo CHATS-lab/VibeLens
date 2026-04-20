@@ -30,7 +30,8 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppContext } from "../../app";
 import { sessionsClient } from "../../api/sessions";
-import type { Step, Trajectory, FlowData } from "../../types";
+import { useSessionData } from "../../hooks/use-session-data";
+import type { Step, Trajectory } from "../../types";
 import { StepBlock } from "./step-block";
 import { SubAgentBlock } from "./sub-agent-block";
 import { StepTimeline } from "./step-timeline";
@@ -58,13 +59,9 @@ interface SessionViewProps {
 export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavigateSession, allSessions, pendingScrollStepId, onScrollComplete }: SessionViewProps) {
   const { fetchWithToken, appMode } = useAppContext();
   const api = useMemo(() => sessionsClient(fetchWithToken), [fetchWithToken]);
-  const [trajectories, setTrajectories] = useState<Trajectory[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [activeStepId, setActiveStepId] = useState<string | null>(null);
   const [promptNavWidth, setPromptNavWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
   const [navCollapsed, setNavCollapsed] = useState(false);
-  const [sessionCost, setSessionCost] = useState<number | null>(null);
   const [shareDialog, setShareDialog] = useState<
     { kind: "hidden" } | { kind: "demo-blocked" } | { kind: "sharing" } | { kind: "ready"; url: string; copied: boolean }
   >({ kind: "hidden" });
@@ -73,65 +70,28 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
     pendingScrollStepId ? "detail" : "concise",
   );
   const [navMode, setNavMode] = useState<NavMode>("prompts");
-  const [flowData, setFlowData] = useState<FlowData | null>(null);
-  const [flowLoading, setFlowLoading] = useState(false);
   const [headerExpanded, setHeaderExpanded] = useState(false);
   const stepsRef = useRef<HTMLDivElement>(null);
   const isNavigatingRef = useRef(false);
   const isSharedView = !!sharedTrajectories;
+
+  const { trajectories, loading, error, sessionCost, flowData, flowLoading } = useSessionData({
+    sessionId,
+    sharedTrajectories,
+    shareToken,
+    loadFlow: viewMode === "workflow",
+  });
+
+  // Clear any lingering step selection when the user navigates to a new session.
+  useEffect(() => {
+    setActiveStepId(null);
+  }, [sessionId]);
 
   const handlePromptNavResize = useCallback((delta: number) => {
     setPromptNavWidth((w) =>
       Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, w + delta))
     );
   }, []);
-
-  useEffect(() => {
-    setActiveStepId(null);
-    setSessionCost(null);
-    setFlowData(null);
-
-    // When rendering shared data, skip the API fetch
-    if (sharedTrajectories) {
-      setTrajectories(sharedTrajectories);
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    setError("");
-    setTrajectories([]);
-
-    api
-      .get(sessionId)
-      .then((data) => setTrajectories(data))
-      .catch((err: Error) => setError(err.message))
-      .finally(() => setLoading(false));
-  }, [sessionId, api, sharedTrajectories]);
-
-  // Fetch session analytics for cost estimation (non-blocking, skip for shared views)
-  useEffect(() => {
-    if (!sessionId || loading || isSharedView) return;
-    api
-      .stats(sessionId)
-      .then((data) => {
-        if (data?.cost_usd != null) setSessionCost(data.cost_usd);
-      })
-      .catch((err) => console.error("Failed to load session stats:", err));
-  }, [sessionId, loading, api, isSharedView]);
-
-  // Fetch flow data lazily when user toggles to flow view
-  useEffect(() => {
-    if (viewMode !== "workflow" || flowData || flowLoading || !sessionId) return;
-    setFlowLoading(true);
-    api
-      .flow(sessionId, isSharedView ? shareToken : null)
-      .then((data) => {
-        if (data) setFlowData(data);
-      })
-      .catch((err) => console.error("Failed to load flow data:", err))
-      .finally(() => setFlowLoading(false));
-  }, [viewMode, flowData, flowLoading, sessionId, api, isSharedView, shareToken]);
 
   const main = useMemo(
     () => trajectories.find((t) => !t.parent_trajectory_ref) ?? trajectories[0] ?? null,
