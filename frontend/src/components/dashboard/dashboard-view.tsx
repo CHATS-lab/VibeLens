@@ -16,6 +16,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppContext } from "../../app";
 import { dashboardClient } from "../../api/dashboard";
 import { DASHBOARD_POLL_INTERVAL_MS } from "../../constants";
+import { useDashboardData } from "../../hooks/use-dashboard-data";
+import { useDashboardExport } from "../../hooks/use-dashboard-export";
 import type { DashboardStats, ToolUsageStat } from "../../types";
 import { formatTokens, formatDuration, formatCost, baseProjectName } from "../../utils";
 import { LoadingSpinnerRings } from "../ui/loading-spinner";
@@ -34,109 +36,29 @@ interface DashboardViewProps {
 }
 
 export function DashboardView({ cache }: DashboardViewProps) {
-  const { fetchWithToken } = useAppContext();
-  const api = useMemo(() => dashboardClient(fetchWithToken), [fetchWithToken]);
-  const [stats, setStats] = useState<DashboardStats | null>(cache?.stats ?? null);
-  const [toolUsage, setToolUsage] = useState<ToolUsageStat[]>(cache?.toolUsage ?? []);
-  const [loading, setLoading] = useState(!cache);
-  const [error, setError] = useState<string | null>(null);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
-  const [exporting, setExporting] = useState<"csv" | "json" | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
   const [showAllProjects, setShowAllProjects] = useState(false);
   const { tip, show, move, hide } = useTooltip();
 
-  // Populate from cache when it arrives (background preload)
-  useEffect(() => {
-    if (!cache) return;
-    if (cache.stats && !stats) {
-      setStats(cache.stats);
-      setLoading(false);
-    }
-    if (cache.toolUsage.length > 0) {
-      setToolUsage(cache.toolUsage);
-    }
-  }, [cache, stats]);
+  const { stats, toolUsage, loading, error, refreshing, refresh, restoreFromCache } =
+    useDashboardData({ cache, selectedProject, selectedAgent });
+  const { exporting, exportDashboard } = useDashboardExport();
 
-  // Fallback: fetch stats directly if cache hasn't arrived after mount.
-  // Stats use metadata (fast); tool usage loads all sessions (slow) and arrives later.
-  useEffect(() => {
-    if (cache || stats || selectedProject || selectedAgent) return;
-    api
-      .stats()
-      .then(setStats)
-      .catch((err) => setError(String(err)))
-      .finally(() => setLoading(false));
-    api.toolUsage().then(setToolUsage).catch(() => {});
-  }, [cache, stats, api, selectedProject, selectedAgent]);
-
-  // Fetch on-demand when filtering by project or agent
-  useEffect(() => {
-    if (!selectedProject && !selectedAgent) return;
-    setLoading(true);
-    setError(null);
-    const filters = { project: selectedProject, agent: selectedAgent };
-    Promise.all([api.stats(filters), api.toolUsage(filters)])
-      .then(([dashData, toolData]) => {
-        setStats(dashData);
-        setToolUsage(toolData);
-      })
-      .catch((err) => setError(String(err)))
-      .finally(() => setLoading(false));
-  }, [api, selectedProject, selectedAgent]);
-
-  // Restore cached global data when clearing filters
   const handleClearFilters = useCallback(() => {
     setSelectedProject(null);
     setSelectedAgent(null);
-    if (cache) {
-      setStats(cache.stats);
-      setToolUsage(cache.toolUsage);
-    }
-  }, [cache]);
-
+    restoreFromCache();
+  }, [restoreFromCache]);
 
   const handleRefresh = useCallback(async () => {
-    setRefreshing(true);
-    setError(null);
-    try {
-      // Re-scan sessions from disk, then invalidate cache and recompute stats
-      await api.refreshSessions();
-      const [dashData, toolData] = await Promise.all([
-        api.stats(undefined, { refresh: true }),
-        api.toolUsage(),
-      ]);
-      setStats(dashData);
-      setToolUsage(toolData);
-      setSelectedProject(null);
-      setSelectedAgent(null);
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setRefreshing(false);
-    }
-  }, [api]);
+    await refresh();
+    setSelectedProject(null);
+    setSelectedAgent(null);
+  }, [refresh]);
 
-  const handleExport = async (format: "csv" | "json") => {
-    setExporting(format);
-    try {
-      const blob = await api.export(format, {
-        project: selectedProject,
-        agent: selectedAgent,
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `vibelens-dashboard.${format}`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error("Export failed:", err);
-    } finally {
-      setExporting(null);
-    }
-  };
+  const handleExport = (format: "csv" | "json") =>
+    exportDashboard(format, { project: selectedProject, agent: selectedAgent });
 
   if (loading) {
     return <WarmingProgressBar />;
