@@ -2,6 +2,7 @@ import { Check, Copy, ExternalLink, Heart, History, Loader2 } from "lucide-react
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Modal, ModalBody, ModalHeader } from "../ui/modal";
 import { buildWithdrawUrl, formatDonatedAt } from "./donation-constants";
+import { copyToClipboard } from "../../utils";
 import type { DonationHistoryEntry, DonationHistoryResponse } from "../../types";
 
 interface DonationHistoryDialogProps {
@@ -15,31 +16,6 @@ type LoadState =
   | { kind: "ready"; entries: DonationHistoryEntry[] };
 
 const COPY_FEEDBACK_MS = 1500;
-
-async function copyToClipboard(text: string): Promise<boolean> {
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch {
-    /* fall through */
-  }
-  try {
-    const textarea = document.createElement("textarea");
-    textarea.value = text;
-    textarea.setAttribute("readonly", "");
-    textarea.style.position = "absolute";
-    textarea.style.left = "-9999px";
-    document.body.appendChild(textarea);
-    textarea.select();
-    const ok = document.execCommand("copy");
-    document.body.removeChild(textarea);
-    return ok;
-  } catch {
-    return false;
-  }
-}
 
 function HistoryRow({ entry }: { entry: DonationHistoryEntry }) {
   const [copied, setCopied] = useState(false);

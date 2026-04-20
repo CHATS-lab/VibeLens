@@ -1,6 +1,7 @@
 import { Check, History, Info, PanelRightClose, PanelRightOpen, Search, Sparkles, TrendingUp } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppContext, useExtensionsClient } from "../../app";
+import { useResetOnKey } from "../../hooks/use-reset-on-key";
 import type { AnalysisJobResponse, AnalysisJobStatus, CostEstimate, ExtensionItemSummary, LLMStatus, PersonalizationResult, Skill, PersonalizationMode } from "../../types";
 import { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "../../styles";
 import { AnalysisLoadingScreen } from "../analysis-loading-screen";
@@ -86,9 +87,10 @@ interface PersonalizationPanelProps {
   checkedIds: Set<string>;
   activeJobId: string | null;
   onJobIdChange: (id: string | null) => void;
+  resetKey?: number;
 }
 
-export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }: PersonalizationPanelProps) {
+export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange, resetKey = 0 }: PersonalizationPanelProps) {
   const { fetchWithToken, appMode, maxSessions } = useAppContext();
   const [activeTab, setActiveTab] = useState<PersonalizationTab>(() => {
     const stored = localStorage.getItem("vibelens-personalization-tab");
@@ -100,14 +102,24 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(true);
   const [analysisDetailItem, setAnalysisDetailItem] = useState<ExtensionItemSummary | null>(null);
+  const [localDetailOpen, setLocalDetailOpen] = useState(false);
+  const [exploreDetailOpen, setExploreDetailOpen] = useState(false);
   const [historyRefresh, setHistoryRefresh] = useState(0);
   const [localRefresh, setLocalRefresh] = useState(0);
   const [exploreResetKey, setExploreResetKey] = useState(0);
+  const [localResetKey, setLocalResetKey] = useState(0);
   const [llmStatus, setLlmStatus] = useState<LLMStatus | null>(null);
   const [estimate, setEstimate] = useState<CostEstimate | null>(null);
   const [estimating, setEstimating] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
   const draggingRef = useRef(false);
+
+  // Re-clicking the top-level Personalization nav: close any open detail page.
+  useResetOnKey(resetKey, () => {
+    setAnalysisDetailItem(null);
+    setExploreResetKey((k) => k + 1);
+    setLocalResetKey((k) => k + 1);
+  });
 
   const handleDragStart = useCallback(
     (e: React.MouseEvent) => {
@@ -406,10 +418,12 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
 
   const isAnalysisTab = activeTab !== "local" && activeTab !== "explore";
   const currentMode = MODE_MAP[activeTab];
+  const anyDetailOpen = localDetailOpen || exploreDetailOpen || analysisDetailItem !== null;
 
   return (
     <div className="h-full flex flex-col">
-      {/* Sub-tab bar — unified teal accent, enlarged text */}
+      {/* Sub-tab bar — hidden while viewing any extension detail page */}
+      {!anyDetailOpen && (
       <div className="flex items-center gap-1 px-4 py-2 border-b border-card shrink-0">
         {TAB_CONFIG.map((tab) => (
           <Tooltip key={tab.id} text={tab.tooltip} className="flex-1 min-w-0">
@@ -438,6 +452,7 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
           </Tooltip>
         ))}
       </div>
+      )}
 
       {/* Content area */}
       <div className="flex-1 min-h-0 flex">
@@ -447,10 +462,17 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange }:
               <TutorialBanner tutorial={MODE_DESCRIPTIONS[currentMode].tutorial} accentColor="teal" />
             </div>
           )}
-          {activeTab === "local" && <LocalExtensionsTab refreshTrigger={localRefresh} />}
+          {activeTab === "local" && (
+            <LocalExtensionsTab
+              refreshTrigger={localRefresh}
+              onDetailOpenChange={setLocalDetailOpen}
+              resetKey={localResetKey}
+            />
+          )}
           {activeTab === "explore" && (
             <ExtensionExploreTab
               resetKey={exploreResetKey}
+              onDetailOpenChange={setExploreDetailOpen}
               onSwitchToRecommend={() => {
                 setActiveTab("retrieve");
                 localStorage.setItem("vibelens-personalization-tab", "retrieve");

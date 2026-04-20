@@ -92,6 +92,7 @@ export function App() {
   const [maxSessions, setMaxSessions] = useState(DEFAULT_MAX_SESSIONS);
   const [agentFilter, setAgentFilter] = useState("all");
   const [mainView, setMainView] = useState<MainView>("browse");
+  const [skillsResetKey, setSkillsResetKey] = useState(0);
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showRecWelcome, setShowRecWelcome] = useState(shouldShowRecWelcome);
@@ -514,7 +515,13 @@ export function App() {
               <Tooltip text="Create reusable skills from your coding patterns. Requires LLM call.">
                 <button
                   data-tour="personalization-tab"
-                  onClick={() => setMainView("skills")}
+                  onClick={() => {
+                    if (mainView === "skills") {
+                      setSkillsResetKey((k) => k + 1);
+                    } else {
+                      setMainView("skills");
+                    }
+                  }}
                   className={`min-w-[100px] text-center px-4 py-1.5 text-sm font-semibold rounded-md transition ${
                     mainView === "skills"
                       ? "bg-control/70 text-primary"
@@ -566,7 +573,7 @@ export function App() {
           {/* Content Area */}
           <div className="flex-1 min-h-0 relative">
             {mainView === "skills" ? (
-              <PersonalizationPanel checkedIds={checkedIds} activeJobId={skillJobId} onJobIdChange={setSkillJobId} />
+              <PersonalizationPanel checkedIds={checkedIds} activeJobId={skillJobId} onJobIdChange={setSkillJobId} resetKey={skillsResetKey} />
             ) : mainView === "friction" ? (
               <FrictionPanel checkedIds={checkedIds} activeJobId={frictionJobId} onJobIdChange={setFrictionJobId} />
             ) : mainView === "analyze" ? (

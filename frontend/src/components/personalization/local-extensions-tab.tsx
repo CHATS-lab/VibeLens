@@ -13,6 +13,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useExtensionsClient } from "../../app";
 import { useDemoGuard } from "../../hooks/use-demo-guard";
+import { useResetOnKey } from "../../hooks/use-reset-on-key";
 import type { ExtensionSyncTarget } from "../../types";
 import { SEARCH_DEBOUNCE_MS } from "../../constants";
 import { InstallLocallyDialog } from "../install-locally-dialog";
@@ -119,9 +120,15 @@ const KIND_ORDER: LocalExtensionKind[] = ["skill", "plugin", "subagent", "comman
 
 interface LocalExtensionsTabProps {
   refreshTrigger?: number;
+  onDetailOpenChange?: (open: boolean) => void;
+  resetKey?: number;
 }
 
-export function LocalExtensionsTab({ refreshTrigger = 0 }: LocalExtensionsTabProps = {}) {
+export function LocalExtensionsTab({
+  refreshTrigger = 0,
+  onDetailOpenChange,
+  resetKey = 0,
+}: LocalExtensionsTabProps = {}) {
   const client = useExtensionsClient();
   const { guardAction, showInstallDialog, setShowInstallDialog } = useDemoGuard();
   const [kind, setKind] = useState<LocalExtensionKind>("skill");
@@ -131,9 +138,19 @@ export function LocalExtensionsTab({ refreshTrigger = 0 }: LocalExtensionsTabPro
     Record<string, ExtensionSyncTarget[]>
   >({});
 
+  const setDetail = useCallback(
+    (next: string | null) => {
+      setDetailName(next);
+      onDetailOpenChange?.(next !== null);
+    },
+    [onDetailOpenChange],
+  );
+
   useEffect(() => {
-    setDetailName(null);
-  }, [kind]);
+    setDetail(null);
+  }, [kind, setDetail]);
+
+  useResetOnKey(resetKey, () => setDetail(null));
 
   const config = KIND_CONFIGS[kind];
   const syncTargets = syncTargetsByType[kind] ?? [];
@@ -153,8 +170,11 @@ export function LocalExtensionsTab({ refreshTrigger = 0 }: LocalExtensionsTabPro
         extensionType={kind}
         name={detailName}
         syncTargets={syncTargets}
-        onBack={() => setDetailName(null)}
-        onUninstalled={() => setDetailName(null)}
+        onBack={() => setDetail(null)}
+        onUninstalled={() => {
+          setDetail(null);
+          setRefreshTick((n) => n + 1);
+        }}
       />
     );
   }
@@ -212,7 +232,7 @@ export function LocalExtensionsTab({ refreshTrigger = 0 }: LocalExtensionsTabPro
         kind={kind}
         config={config}
         refreshTrigger={combinedRefresh}
-        onOpenDetail={(name) => setDetailName(name)}
+        onOpenDetail={(name) => setDetail(name)}
         guardAction={guardAction}
       />
 

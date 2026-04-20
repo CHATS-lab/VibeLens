@@ -109,7 +109,7 @@ function DetailShell({
   fileContent,
   fileError,
   loading,
-  backLabel = "Back to extensions",
+  backLabel = "Back",
   initialCollapsed = false,
   onSaveContent,
 }: DetailShellProps) {
@@ -129,15 +129,16 @@ function DetailShell({
   const showToc = contentMode === "preview" && tocEntries.length > 2;
 
   return (
-    <div className="max-w-[1400px] mx-auto px-6 py-6">
+    <div className="pb-6">
       <button
         onClick={onBack}
-        className="flex items-center gap-1.5 text-sm text-muted hover:text-secondary mb-4 transition"
+        className="sticky top-0 z-20 left-0 w-fit ml-3 mt-3 flex items-center gap-1.5 px-2 py-1 text-sm text-muted hover:text-secondary bg-canvas/95 backdrop-blur-sm rounded transition"
       >
         <ArrowLeft className="w-4 h-4" />
         {backLabel}
       </button>
 
+      <div className="max-w-[1400px] mx-auto px-6 mt-3">
       <div className="border border-card rounded-xl bg-panel overflow-hidden mb-6">
         {headerContent}
         {metadataContent}
@@ -205,6 +206,7 @@ function DetailShell({
             </ul>
           </nav>
         )}
+      </div>
       </div>
     </div>
   );
@@ -804,7 +806,6 @@ export function LocalExtensionDetailView({
         fileContent={fileContent}
         fileError={fileError}
         loading={loading}
-        backLabel="Back to local extensions"
         initialCollapsed
         onSaveContent={canSaveSelected ? handleSaveContent : undefined}
       />

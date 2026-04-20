@@ -170,7 +170,7 @@ export function ExtensionFileTree({
           />
         </div>
       </div>
-      <ul className="flex-1 overflow-y-auto py-1 pr-1">
+      <ul className="flex-1 overflow-y-auto overflow-x-hidden py-1 pr-1">
         {filteredFiles !== null
           ? (
             filteredFiles.length === 0 ? (
@@ -240,11 +240,11 @@ function TreeRow({
   const open = !collapsedDirs.has(node.path);
   return (
     <>
-      <li>
-        <Tooltip text={node.path}>
+      <li className="min-w-0">
+        <Tooltip text={node.path} className="w-full min-w-0">
           <button
             onClick={() => onToggleDir(node.path)}
-            className="w-full min-w-0 flex items-center gap-1 py-0.5 text-left text-[11px] text-secondary hover:bg-control/60 rounded transition"
+            className="w-full min-w-0 overflow-hidden flex items-center gap-1 py-0.5 text-left text-[11px] text-secondary hover:bg-control/60 rounded transition"
             style={{ paddingLeft: `${8 + depth * 12}px`, paddingRight: 8 }}
           >
             {open ? (
@@ -287,11 +287,11 @@ interface TreeFileProps {
 
 function TreeFile({ path, label, depth, selected, onSelect }: TreeFileProps) {
   return (
-    <li>
-      <Tooltip text={path}>
+    <li className="min-w-0">
+      <Tooltip text={path} className="w-full min-w-0">
         <button
           onClick={() => onSelect(path)}
-          className={`w-full min-w-0 flex items-center gap-1.5 py-0.5 text-left font-mono text-[11px] rounded transition ${
+          className={`w-full min-w-0 overflow-hidden flex items-center gap-1.5 py-0.5 text-left font-mono text-[11px] rounded transition ${
             selected
               ? "bg-accent-amber-subtle text-amber-700 dark:text-amber-300"
               : "text-secondary hover:bg-control/60"

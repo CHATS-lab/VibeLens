@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useExtensionsClient } from "../../../app";
+import { useResetOnKey } from "../../../hooks/use-reset-on-key";
 import { TOGGLE_ACTIVE, TOGGLE_BUTTON_BASE, TOGGLE_CONTAINER, TOGGLE_INACTIVE } from "../../../styles";
 import type { ExtensionItemSummary, ExtensionSyncTarget } from "../../../types";
 import { EmptyState } from "../../ui/empty-state";
@@ -117,9 +118,14 @@ function FilterDropdown({ value, options, onChange, icon, placeholder }: FilterD
 interface ExtensionExploreTabProps {
   resetKey?: number;
   onSwitchToRecommend?: () => void;
+  onDetailOpenChange?: (open: boolean) => void;
 }
 
-export function ExtensionExploreTab({ resetKey = 0, onSwitchToRecommend }: ExtensionExploreTabProps) {
+export function ExtensionExploreTab({
+  resetKey = 0,
+  onSwitchToRecommend,
+  onDetailOpenChange,
+}: ExtensionExploreTabProps) {
   const client = useExtensionsClient();
 
   const [items, setItems] = useState<ExtensionItemSummary[]>([]);
@@ -136,13 +142,18 @@ export function ExtensionExploreTab({ resetKey = 0, onSwitchToRecommend }: Exten
   const [page, setPage] = useState(1);
 
   const [installedIds, setInstalledIds] = useState<Set<string>>(new Set());
-  const [detailItem, setDetailItem] = useState<ExtensionItemSummary | null>(null);
+  const [detailItem, setDetailItemState] = useState<ExtensionItemSummary | null>(null);
   const [syncTargetsByType, setSyncTargetsByType] = useState<Record<string, ExtensionSyncTarget[]>>({});
 
-  // Reset to list view when the explore tab is re-clicked
-  useEffect(() => {
-    if (resetKey > 0) setDetailItem(null);
-  }, [resetKey]);
+  const setDetailItem = useCallback(
+    (next: ExtensionItemSummary | null) => {
+      setDetailItemState(next);
+      onDetailOpenChange?.(next !== null);
+    },
+    [onDetailOpenChange],
+  );
+
+  useResetOnKey(resetKey, () => setDetailItem(null));
 
   // Load catalog metadata and sync targets once on mount
   useEffect(() => {
