@@ -4,11 +4,22 @@ Agent session visualization and personalization platform.
 
 ## Frontend Conventions (React + Vite + Tailwind)
 
-Refer to `DESIGN.md`
+Refer to `DESIGN.md` for visual/layout conventions.
+
+Code conventions:
+- **I/O lives in `frontend/src/api/<domain>.ts`**. Components never call `fetchWithToken` directly — they take a client from the matching `<domain>Client(fetchWithToken)` factory. One factory per API domain (analysis, llm, sessions, dashboard, upload, donation, extensions). Memoize with `useMemo` so references are stable.
+- **Cross-cutting state lives in `frontend/src/hooks/`**. Existing patterns to reuse: `useJobPolling`, `useCostEstimate`, `useCopyFeedback`, `useResetOnKey`, `useSessionData`, `useDemoGuard`. If a `useEffect` pattern appears in 2+ files, extract a hook.
+- **Don't notify a parent via `useEffect`** (`useEffect(() => onChange?.(x), [x])`). Wrap the setter and call the callback at the state-change site.
+- **Shared timing constants live in `frontend/src/constants.ts`** (`COPY_FEEDBACK_MS`, `JOB_POLL_INTERVAL_MS`, `SEARCH_DEBOUNCE_MS`). Don't redeclare per file.
+
+Before commit (frontend changes):
+- `cd frontend && npx tsc --noEmit` — type check (fast).
+- `cd frontend && npm run test` — vitest suite (<1s).
+- `cd frontend && npm run build` — build into `src/vibelens/static/`. Commit the static output.
 
 ## Testing
 
-The full suite takes ~2m45s. Run only what you need:
+The full suite takes ~5m. Run only what you need:
 
 - **Default during edits:** target the test file(s) that exercise the code you changed. `uv run pytest tests/<path>/<file>.py -v -s`.
 - **Multi-file change:** run the test directory matching the area, e.g. `uv run pytest tests/storage/ tests/ingest/`.
