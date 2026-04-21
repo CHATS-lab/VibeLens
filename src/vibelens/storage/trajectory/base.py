@@ -181,8 +181,17 @@ class BaseTrajectoryStore(ABC):
         and self._metadata_cache (session_id -> summary dict).
         """
 
+    def _invalidate_if_stale(self) -> None:  # noqa: B027 — intentional no-op default
+        """Hook: subclasses may clear the cache when external state has changed.
+
+        Called on every _ensure_index(_snapshot) access. The default is a
+        no-op because stores with no external writer (e.g. the disk store,
+        which only mutates via save()) cannot go stale.
+        """
+
     def _ensure_index(self) -> dict[str, dict]:
         """Lazy-load and return the cached metadata index."""
+        self._invalidate_if_stale()
         if self._metadata_cache is None:
             self._build_index()
         return self._metadata_cache  # type: ignore[return-value]
@@ -198,6 +207,7 @@ class BaseTrajectoryStore(ABC):
             Tuple of (metadata_cache, index) captured atomically after
             the index is guaranteed to be populated.
         """
+        self._invalidate_if_stale()
         if self._metadata_cache is None:
             self._build_index()
         return self._metadata_cache, self._index  # type: ignore[return-value]

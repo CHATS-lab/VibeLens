@@ -9,6 +9,7 @@ import pytest
 from vibelens.ingest.parsers.claude import ClaudeParser
 from vibelens.models.enums import AgentType
 from vibelens.storage.trajectory.local import LocalTrajectoryStore as LocalSource
+from vibelens.storage.trajectory.local import _extract_session_id
 
 
 @pytest.fixture
@@ -350,10 +351,13 @@ class TestCacheHitOrRebuild:
         # Build initial index and warm cache
         source.list_metadata()
 
-        # Invalidate in-memory state
+        # Invalidate in-memory state, then repopulate _index via the walk
+        # so _try_load_from_cache has something to partition against.
         source._metadata_cache = None
-        source._index = {}
-        source._discover_files()
+        source._index = {
+            _extract_session_id(fpath, parser.AGENT_TYPE): (fpath, parser)
+            for parser, fpath, _mtime in source._walk_session_files()
+        }
 
         # Modify one file to make it stale
         session_file = test_project / "session-001.jsonl"

@@ -202,3 +202,139 @@ def test_partition_files_skips_dropped_with_unchanged_mtime(tmp_path):
     assert partition.unchanged == {}
     assert partition.changed == {}
     assert fresh_dropped == {str(bad): bad_mtime}
+
+
+def _write_claude_session(projects_dir: Path, sid: str, text: str = "prompt") -> Path:
+    """Write a minimal valid Claude session file and return its path."""
+    session_file = projects_dir / f"{sid}.jsonl"
+    session_file.write_text(
+        json.dumps(
+            {
+                "type": "user",
+                "uuid": f"u-{sid}",
+                "sessionId": sid,
+                "timestamp": 1707734674932,
+                "message": {"role": "user", "content": text},
+            }
+        )
+        + "\n"
+    )
+    return session_file
+
+
+def test_long_lived_store_detects_new_session_without_explicit_refresh(
+    isolated_cache, claude_data_dirs, caplog
+):
+    """A session created after first list_metadata() must appear on next call
+    without any explicit invalidate_index() — this is the bug the fix solves."""
+    store = LocalTrajectoryStore(data_dirs=claude_data_dirs)
+    initial = {m["session_id"] for m in store.list_metadata()}
+    assert initial == {"session-A", "session-B"}
+
+    # Simulate: app was started earlier; user creates a new session now.
+    projects_dir = (
+        claude_data_dirs[AgentType.CLAUDE] / "projects" / "-Users-Test-Project"
+    )
+    _write_claude_session(projects_dir, "session-C")
+
+    # Simulate elapsed time past the staleness-check TTL.
+    store._last_staleness_check = 0.0
+
+    caplog.clear()
+    after = {m["session_id"] for m in store.list_metadata()}
+    assert "session-C" in after, (
+        f"new session not detected by long-lived store: {after}"
+    )
+
+    # Confirm the rebuild went through the partial (not full) path:
+    # 2 unchanged hydrated from cache, 1 new parsed.
+    messages = [r.getMessage() for r in caplog.records]
+    partial_lines = [
+        m for m in messages if "2 unchanged" in m and "1 added" in m and "0 re-parsed" in m
+    ]
+    assert partial_lines, f"expected partial-rebuild log, got: {messages}"
+
+
+def test_long_lived_store_detects_modified_session(
+    isolated_cache, claude_data_dirs, caplog
+):
+    """Modifying an existing session file after first list_metadata() must
+    trigger re-parse of just that file on the next list call."""
+    store = LocalTrajectoryStore(data_dirs=claude_data_dirs)
+    store.list_metadata()  # warm
+
+    session_a = (
+        claude_data_dirs[AgentType.CLAUDE]
+        / "projects"
+        / "-Users-Test-Project"
+        / "session-A.jsonl"
+    )
+    # Append a second entry — changes file size + mtime.
+    session_a.write_text(
+        session_a.read_text()
+        + json.dumps(
+            {
+                "type": "user",
+                "uuid": "u-session-A-2",
+                "sessionId": "session-A",
+                "timestamp": 1707734700000,
+                "message": {"role": "user", "content": "follow-up"},
+            }
+        )
+        + "\n"
+    )
+
+    # Simulate elapsed time past the staleness-check TTL.
+    store._last_staleness_check = 0.0
+
+    caplog.clear()
+    store.list_metadata()
+    messages = [r.getMessage() for r in caplog.records]
+    partial_lines = [
+        m for m in messages if "1 unchanged" in m and "1 re-parsed" in m and "0 added" in m
+    ]
+    assert partial_lines, f"expected partial re-parse log, got: {messages}"
+
+
+def test_unchanged_disk_does_not_rebuild(isolated_cache, claude_data_dirs, caplog):
+    """Repeated list_metadata() calls with no disk changes must not trigger
+    any rebuild — the in-memory cache is returned directly."""
+    store = LocalTrajectoryStore(data_dirs=claude_data_dirs)
+    store.list_metadata()  # first build
+
+    caplog.clear()
+    for _ in range(3):
+        store.list_metadata()
+
+    messages = [r.getMessage() for r in caplog.records]
+    # Neither fast-path nor partial-path nor full-rebuild log should appear.
+    assert not any("Loaded" in m and "sessions from index cache" in m for m in messages)
+    assert not any("Indexed" in m and "sessions across" in m for m in messages)
+
+
+def test_staleness_check_rate_limited(isolated_cache, claude_data_dirs, monkeypatch):
+    """Rapid list_metadata() calls must scan disk at most once per TTL."""
+    store = LocalTrajectoryStore(data_dirs=claude_data_dirs)
+    store.list_metadata()  # warm
+
+    scan_count = 0
+    real_scan = store._scan_disk_mtimes
+
+    def counting_scan():
+        nonlocal scan_count
+        scan_count += 1
+        return real_scan()
+
+    monkeypatch.setattr(store, "_scan_disk_mtimes", counting_scan)
+
+    for _ in range(20):
+        store.list_metadata()
+
+    assert scan_count == 0, (
+        f"within TTL, no disk scan should happen; got {scan_count}"
+    )
+
+    # After TTL elapses, the next call does scan.
+    store._last_staleness_check = 0.0
+    store.list_metadata()
+    assert scan_count == 1, f"after TTL reset, expected 1 scan; got {scan_count}"

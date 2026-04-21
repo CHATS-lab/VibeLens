@@ -7,6 +7,8 @@ across all agents.
 """
 
 import threading
+import time
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -25,6 +27,13 @@ from vibelens.utils import get_logger
 
 logger = get_logger(__name__)
 
+# Minimum interval between disk scans on the read hot path. A full walk of
+# ~/.claude/projects/ is ~100-200 ms with thousands of session files; a single
+# HTTP request fans out to many _ensure_index() calls, so without a TTL we
+# walk disk 10+ times per page load. 10s cap trades that cost against
+# new-session detection latency.
+_STALENESS_CHECK_MIN_INTERVAL_S = 10
+
 
 @dataclass(frozen=True)
 class CachePartition:
@@ -39,8 +48,11 @@ class CachePartition:
 def _extract_session_id(filepath: Path, agent_type: AgentType) -> str:
     """Derive a unique session_id from the file path.
 
-    Claude Code uses the filename stem as UUID directly. Other agents
-    are prefixed with their agent type to avoid ID collisions.
+    Agents whose session files are named with globally-unique UUIDs
+    (Claude) can use the filename stem directly. Agents whose filenames
+    are not unique across sessions (e.g. Codex rollouts, Gemini chat logs)
+    are prefixed with their agent type to avoid id collisions inside the
+    shared index dict.
 
     Args:
         filepath: Path to the session file.
@@ -64,7 +76,7 @@ def _partition_files(
 
     Args:
         file_index: Current session_id -> (filepath, parser) map after
-            ``_discover_files`` and ``_remap_index``.
+            discovery (``_walk_session_files``) and ``_remap_index``.
         cached_mtimes: filepath_str -> mtime_ns from the previous cache.
         dropped_paths: filepath_str -> mtime_ns for files the previous build
             dropped as empty/invalid. Files in here with unchanged mtimes are
@@ -86,10 +98,10 @@ def _partition_files(
         try:
             current_mtime = fpath.stat().st_mtime_ns
         except OSError:
-            # File vanished between _discover_files and stat; treat as removed
-            # by skipping it entirely. The removed_paths logic below ignores it
-            # too because it is not in cached_mtimes if previously absent, or
-            # it will be in removed_paths if it was previously cached.
+            # File vanished between discovery and stat; skip it. The
+            # removed_paths logic below ignores it too — either it wasn't
+            # in cached_mtimes (previously absent) or it will fall into
+            # removed_paths (previously cached).
             continue
         current_paths.add(path_str)
 
@@ -129,6 +141,8 @@ class LocalTrajectoryStore(BaseTrajectoryStore):
         self._build_lock = threading.Lock()
         self._parsers: list[BaseParser] = [cls() for cls in LOCAL_PARSER_CLASSES]
         self._data_dirs: dict[BaseParser, Path] = {}
+        self._indexed_mtimes: dict[str, int] = {}
+        self._last_staleness_check: float = 0.0
 
         if data_dirs is not None:
             for parser in self._parsers:
@@ -170,6 +184,55 @@ class LocalTrajectoryStore(BaseTrajectoryStore):
         full rebuild runs.
         """
         super().invalidate_index()
+        self._indexed_mtimes = {}
+        self._last_staleness_check = 0.0
+
+    def _invalidate_if_stale(self) -> None:
+        """Drop the in-memory index if any session file was added/modified/removed.
+
+        Rate-limited: at most one disk walk per _STALENESS_CHECK_MIN_INTERVAL_S.
+        A single HTTP request typically triggers many _ensure_index() calls
+        down different code paths; without this gate each one would walk disk.
+        """
+        if self._metadata_cache is None:
+            return
+        now = time.monotonic()
+        if now - self._last_staleness_check < _STALENESS_CHECK_MIN_INTERVAL_S:
+            return
+        self._last_staleness_check = now
+        if self._scan_disk_mtimes() == self._indexed_mtimes:
+            return
+        # Release the lock before _build_index reacquires it — threading.Lock
+        # is non-reentrant. A concurrent rebuild racing past this clear is
+        # harmless: worst case is one extra rebuild.
+        with self._build_lock:
+            if self._metadata_cache is not None:
+                self._metadata_cache = None
+                self._index = {}
+
+    def _scan_disk_mtimes(self) -> dict[str, int]:
+        """Return {filepath_str: mtime_ns} for every currently-discoverable session file."""
+        return {
+            str(fpath): mtime
+            for _parser, fpath, mtime in self._walk_session_files()
+            if mtime is not None
+        }
+
+    def _walk_session_files(self) -> Iterator[tuple[BaseParser, Path, int | None]]:
+        """Iterate (parser, filepath, mtime_ns) for all session files on disk.
+
+        mtime is None when the file vanished between rglob and stat.
+        """
+        for parser in self._parsers:
+            data_dir = self._data_dirs.get(parser)
+            if not data_dir or not data_dir.exists():
+                continue
+            for filepath in parser.discover_session_files(data_dir):
+                try:
+                    mtime = filepath.stat().st_mtime_ns
+                except OSError:
+                    mtime = None
+                yield parser, filepath, mtime
 
     def _build_index(self) -> None:
         """Build metadata index from all agent data directories.
@@ -180,24 +243,22 @@ class LocalTrajectoryStore(BaseTrajectoryStore):
         and reuses the result.
         """
         with self._build_lock:
-            # Another thread may have built the index while we waited
             if self._metadata_cache is not None:
                 return
-            self._discover_files()
-            if self._try_load_from_cache():
-                return
-            self._full_rebuild()
-
-    def _discover_files(self) -> None:
-        """Populate _index with session_id -> (filepath, parser) for all agents."""
-        self._index = {}
-        for parser in self._parsers:
-            data_dir = self._data_dirs.get(parser)
-            if not data_dir or not data_dir.exists():
-                continue
-            for filepath in parser.discover_session_files(data_dir):
-                session_id = _extract_session_id(filepath, parser.AGENT_TYPE)
-                self._index[session_id] = (filepath, parser)
+            # Snapshot mtimes for every discovered file, including ones that
+            # later get dropped as empty/invalid — otherwise _invalidate_if_stale
+            # would see them as "new" on every call and thrash.
+            self._index = {}
+            mtimes: dict[str, int] = {}
+            for parser, fpath, mtime in self._walk_session_files():
+                sid = _extract_session_id(fpath, parser.AGENT_TYPE)
+                self._index[sid] = (fpath, parser)
+                if mtime is not None:
+                    mtimes[str(fpath)] = mtime
+            if not self._try_load_from_cache():
+                self._full_rebuild()
+            self._indexed_mtimes = mtimes
+            self._last_staleness_check = time.monotonic()
 
     def _try_load_from_cache(self) -> bool:
         """Load index from persistent cache, taking a partial-rebuild path when possible.
@@ -326,7 +387,7 @@ class LocalTrajectoryStore(BaseTrajectoryStore):
     def _remap_index(self, path_to_session_id: dict[str, str]) -> None:
         """Remap _index keys using the cached path -> real session_id mapping.
 
-        After _discover_files, _index uses filename-based keys. Some sessions
+        After the initial walk, _index uses filename-based keys. Some sessions
         (orphans, Codex rollouts) have real IDs different from the filename.
         The cache stores the correct mapping so we can restore _index properly.
         """
@@ -343,7 +404,7 @@ class LocalTrajectoryStore(BaseTrajectoryStore):
         """Full index rebuild: parse all files, write cache."""
         # Capture mtimes BEFORE rebuild — build_session_index mutates _index
         # (remaps orphaned IDs, drops empty files), so we need the pre-remap
-        # paths to match what _discover_files will produce on next startup.
+        # paths to match what the discovery walk will produce on next startup.
         pre_rebuild_mtimes = collect_file_mtimes(self._index)
 
         trajectories, dropped_paths = build_session_index(self._index, self._data_dirs)
