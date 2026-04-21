@@ -11,6 +11,7 @@ import { useState } from "react";
 import type { Step, ToolCall, ObservationResult, ContentPart } from "../../types";
 import { sanitizeText, extractMessageText } from "../../utils";
 import { PREVIEW_LONG } from "../../constants";
+import { CopyButton } from "../ui/copy-button";
 import { MarkdownRenderer } from "../ui/markdown-renderer";
 import { ContentRenderer } from "./content-renderer";
 import { ToolUseBlock } from "./tool-input-renderers";
@@ -56,7 +57,10 @@ function UserStep({ step }: { step: Step }) {
 
   return (
     <div className="flex justify-end">
-      <div className="max-w-[85%] bg-blue-50/80 dark:bg-white/[0.06] text-primary rounded-2xl rounded-br-md px-4 py-2.5 text-sm overflow-hidden break-words">
+      <div className="group relative max-w-[85%] bg-blue-50/80 dark:bg-white/[0.06] text-primary rounded-2xl rounded-br-md px-4 py-2.5 text-sm overflow-hidden break-words">
+        <div className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 transition-opacity bg-blue-50/80 dark:bg-[#2a2b2e] rounded">
+          <CopyButton text={text} />
+        </div>
         {!expanded ? (
           <>
             <div className="line-clamp-4">
@@ -170,7 +174,10 @@ function AutoPromptStep({ step }: { step: Step }) {
         )}
       </button>
       {open && (
-        <div className="mt-1 bg-teal-50/60 dark:bg-teal-950/20 border border-teal-200/50 dark:border-teal-500/25 rounded-lg p-3">
+        <div className="group relative mt-1 bg-teal-50/60 dark:bg-teal-950/20 border border-teal-200/50 dark:border-teal-500/25 rounded-lg p-3">
+          <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-teal-50/80 dark:bg-teal-950/60 rounded">
+            <CopyButton text={text} />
+          </div>
           <pre className="text-xs text-teal-800 dark:text-teal-100 whitespace-pre-wrap overflow-x-auto max-h-96 overflow-y-auto">
             {text}
           </pre>
@@ -286,17 +293,24 @@ function ConcurrentToolsBlock({
 }
 
 function TextBlock({ content }: { content: string | ContentPart[] }) {
+  const copyText = extractMessageText(content);
   if (typeof content === "string") {
     const cleaned = sanitizeText(content);
     if (!cleaned) return null;
     return (
-      <div className="max-w-[85%] text-primary text-sm break-words overflow-hidden">
+      <div className="group relative max-w-[85%] text-primary text-sm break-words overflow-hidden">
+        <div className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity bg-canvas rounded">
+          <CopyButton text={copyText} />
+        </div>
         <MarkdownRenderer content={cleaned} />
       </div>
     );
   }
   return (
-    <div className="max-w-[85%] text-primary text-sm break-words overflow-hidden">
+    <div className="group relative max-w-[85%] text-primary text-sm break-words overflow-hidden">
+      <div className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity">
+        <CopyButton text={copyText} />
+      </div>
       <ContentRenderer content={content} />
     </div>
   );
