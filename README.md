@@ -193,6 +193,8 @@ vibelens serve --config config/self-use.yaml
 vibelens serve --host 0.0.0.0 --port 8080
 ```
 
+VibeLens checks PyPI once an hour for new versions when you open Settings. Disable with `VIBELENS_DISABLE_UPDATE_CHECK=1`.
+
 ### Troubleshooting
 
 Top issues. For the full list, see [docs/INSTALL.md](docs/INSTALL.md#troubleshooting).

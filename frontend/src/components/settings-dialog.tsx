@@ -2,6 +2,8 @@ import { X, Bug, Lightbulb, Sparkles, Compass } from "lucide-react";
 import { TOUR_STORAGE_KEY } from "./tutorial/tour-steps";
 import { useSettings } from "../settings-context";
 import type { FontScale, ThemePreference, FontFamily } from "../settings-context";
+import type { UseVersionResult } from "../hooks/use-version";
+import { VersionSection } from "./version-section";
 
 const GITHUB_ISSUES_URL = "https://github.com/CHATS-lab/VibeLens/issues/new";
 
@@ -62,6 +64,7 @@ const FONT_CARDS: { key: FontFamily; label: string; fontFamily: string }[] = [
 ];
 
 interface SettingsDialogProps {
+  version: UseVersionResult;
   onClose: () => void;
   onShowOnboarding?: () => void;
 }
@@ -76,7 +79,7 @@ function openFeedback(label: string): void {
   window.open(`${GITHUB_ISSUES_URL}?${params}`, "_blank", "noopener,noreferrer");
 }
 
-export function SettingsDialog({ onClose, onShowOnboarding }: SettingsDialogProps) {
+export function SettingsDialog({ version, onClose, onShowOnboarding }: SettingsDialogProps) {
   const { fontScale, setFontScale, fontScaleOptions, theme, setTheme, themeOptions, fontFamily, setFontFamily } = useSettings();
 
   return (
@@ -102,6 +105,8 @@ export function SettingsDialog({ onClose, onShowOnboarding }: SettingsDialogProp
 
         {/* Body */}
         <div className="px-5 py-4 space-y-5">
+          <VersionSection version={version} />
+
           {/* Theme */}
           <div>
             <h3 className="text-xs font-semibold text-muted uppercase tracking-wider mb-3">

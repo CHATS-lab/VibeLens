@@ -8,6 +8,9 @@ import {
 import { lazy, Suspense, useEffect, useRef, useState, useCallback, useMemo, createContext, useContext } from "react";
 import { createExtensionsClient, type ExtensionsClient } from "./api/extensions";
 import { donationClient } from "./api/donation";
+import { versionClient } from "./api/version";
+import { useVersion } from "./hooks/use-version";
+import { VersionFooter } from "./components/version-footer";
 import { ConfirmDialog } from "./components/ui/confirm-dialog";
 import { DonationConsentDialog } from "./components/donation/donation-consent-dialog";
 import { DonationResultDialog } from "./components/donation/donation-result-dialog";
@@ -157,6 +160,8 @@ export function App() {
     [fetchWithToken],
   );
   const donationApi = useMemo(() => donationClient(fetchWithToken), [fetchWithToken]);
+  const versionApi = useMemo(() => versionClient(fetchWithToken), [fetchWithToken]);
+  const version = useVersion(versionApi);
 
   const contextValue: AppContextValue = {
     sessionToken,
@@ -537,6 +542,10 @@ export function App() {
               </Tooltip>
             </div>
             <div className="flex items-center gap-1">
+              <VersionFooter
+                version={version}
+                onOpenSettings={() => setShowSettingsDialog(true)}
+              />
               <Tooltip text="GitHub repository">
                 <a
                   href="https://github.com/CHATS-lab/VibeLens"
@@ -614,6 +623,7 @@ export function App() {
         {/* Settings dialog */}
         {showSettingsDialog && (
           <SettingsDialog
+            version={version}
             onClose={() => setShowSettingsDialog(false)}
             onShowOnboarding={() => {
               setShowSettingsDialog(false);

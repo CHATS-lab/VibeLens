@@ -19,7 +19,9 @@ from vibelens.llm.pricing import lookup_pricing
 from vibelens.llm.providers import mask_api_key
 from vibelens.models.llm.inference import BackendType
 from vibelens.schemas.llm import LLMConfigureRequest
+from vibelens.schemas.system import VersionInfo
 from vibelens.services.dashboard.loader import get_warming_status
+from vibelens.services.version import get_version_info
 from vibelens.utils.log import get_logger
 
 router = APIRouter(tags=["system"])
@@ -39,6 +41,16 @@ async def get_server_settings() -> dict:
         "max_zip_bytes": settings.upload.max_zip_bytes,
         "max_sessions": settings.inference.max_sessions,
     }
+
+
+@router.get("/version", response_model=VersionInfo)
+def get_version() -> VersionInfo:
+    """Return current + latest version info and recommended upgrade commands.
+
+    Defined as sync so Starlette runs it in a threadpool — the PyPI fetch uses
+    a blocking ``httpx.get`` call and would stall the event loop on cache miss.
+    """
+    return get_version_info(current=__version__)
 
 
 @router.get("/warming-status")
