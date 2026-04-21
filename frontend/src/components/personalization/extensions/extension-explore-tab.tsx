@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useExtensionsClient } from "../../../app";
+import { SEARCH_DEBOUNCE_MS } from "../../../constants";
 import { useResetOnKey } from "../../../hooks/use-reset-on-key";
 import { TOGGLE_ACTIVE, TOGGLE_BUTTON_BASE, TOGGLE_CONTAINER, TOGGLE_INACTIVE } from "../../../styles";
 import type { ExtensionItemSummary, ExtensionSyncTarget } from "../../../types";
@@ -53,8 +54,6 @@ const TYPE_PILL_LABELS: Record<string, string> = {
   "": "All",
   ...ITEM_TYPE_LABELS,
 };
-
-const SEARCH_DEBOUNCE_MS = 300;
 
 interface FilterDropdownProps {
   value: string;

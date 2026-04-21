@@ -36,4 +36,14 @@ describe("sessionsClient", () => {
     const api = sessionsClient(fetchSpy as never);
     await expect(api.createShare("sid")).rejects.toThrow("403");
   });
+
+  it("listAllIds hits /api/sessions and maps session_id", async () => {
+    const fetchSpy = vi.fn(async () => ({
+      ok: true,
+      json: async () => [{ session_id: "a" }, { session_id: "b" }],
+    }));
+    const api = sessionsClient(fetchSpy as never);
+    expect(await api.listAllIds()).toEqual(["a", "b"]);
+    expect(fetchSpy).toHaveBeenCalledWith("/api/sessions");
+  });
 });

@@ -16,6 +16,7 @@ async function jsonOrThrow<T>(res: Response): Promise<T> {
 
 export interface SessionsClient {
   get: (sessionId: string) => Promise<Trajectory[]>;
+  listAllIds: () => Promise<string[]>;
   search: (query: string, sources: string[]) => Promise<string[]>;
   stats: (sessionId: string) => Promise<SessionStats | null>;
   flow: (sessionId: string, shareToken?: string | null) => Promise<FlowData | null>;
@@ -27,6 +28,12 @@ export interface SessionsClient {
 export function sessionsClient(fetchWithToken: FetchWithToken): SessionsClient {
   return {
     get: async (sessionId) => jsonOrThrow(await fetchWithToken(`/api/sessions/${sessionId}`)),
+    listAllIds: async () => {
+      const sessions = await jsonOrThrow<{ session_id: string }[]>(
+        await fetchWithToken("/api/sessions"),
+      );
+      return sessions.map((s) => s.session_id);
+    },
     search: async (query, sources) => {
       const params = new URLSearchParams({ q: query, sources: sources.join(",") });
       return jsonOrThrow(await fetchWithToken(`/api/sessions/search?${params}`));

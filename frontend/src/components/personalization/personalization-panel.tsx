@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppContext, useExtensionsClient } from "../../app";
 import { analysisClient } from "../../api/analysis";
 import { llmClient } from "../../api/llm";
+import { sessionsClient } from "../../api/sessions";
 import { useJobPolling } from "../../hooks/use-job-polling";
 import { useResetOnKey } from "../../hooks/use-reset-on-key";
 import type { ExtensionItemSummary, LLMStatus, PersonalizationResult, Skill, PersonalizationMode } from "../../types";
@@ -95,6 +96,7 @@ interface PersonalizationPanelProps {
 export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange, resetKey = 0 }: PersonalizationPanelProps) {
   const { fetchWithToken, appMode, maxSessions } = useAppContext();
   const llmApi = useMemo(() => llmClient(fetchWithToken), [fetchWithToken]);
+  const sessionsApi = useMemo(() => sessionsClient(fetchWithToken), [fetchWithToken]);
   const [activeTab, setActiveTab] = useState<PersonalizationTab>(() => {
     const stored = localStorage.getItem("vibelens-personalization-tab");
     if (stored && TAB_CONFIG.some((t) => t.id === stored)) return stored as PersonalizationTab;
@@ -172,12 +174,10 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange, r
   const resolvedSessionIdsRef = useRef<string[]>([]);
   const [showSkillSelector, setShowSkillSelector] = useState(false);
 
-  const fetchAllSessionIds = useCallback(async (): Promise<string[]> => {
-    const res = await fetchWithToken("/api/sessions");
-    if (!res.ok) throw new Error("Failed to load sessions");
-    const sessions: { session_id: string }[] = await res.json();
-    return sessions.map((s) => s.session_id);
-  }, [fetchWithToken]);
+  const fetchAllSessionIds = useCallback(
+    () => sessionsApi.listAllIds(),
+    [sessionsApi],
+  );
 
   const proceedToEstimate = useCallback(
     (mode: PersonalizationMode, overrideSessionIds?: string[]) => {
