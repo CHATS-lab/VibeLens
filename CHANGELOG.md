@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- **Version display and update prompt** in the sidebar. Shows the running version, polls PyPI (1 h TTL) for the latest stable release, and surfaces a copyable upgrade command matching the detected install method (`uv` / `pip` / `npx`). Supports skip-this-version (persisted in `localStorage`), dev-build detection (current > PyPI latest), and a retry affordance when the PyPI fetch fails. Opt-out via `VIBELENS_DISABLE_UPDATE_CHECK=1`. New endpoint: `GET /api/version`.
+
 ## [1.0.4] - 2026-04-20
 
 ### Added
