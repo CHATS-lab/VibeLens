@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-04-22
+
 ### Added
 - **Ranked BM25F session search**. `/api/sessions/search?q=...` now returns `[{session_id, score}]` ordered by relevance instead of a flat id list. Session search scores across four fields (user_prompts, agent_messages, tool_calls, session_id) with a session_id exact/first-segment-prefix tier that dominates content matches. Cold Tier 2 build ~42s on 1,362 real sessions; query p50 1.5ms, p95 2.5ms. Session list UI renders results in rank order; source-filter checkbox dialog removed.
 - **Shared BM25F search core** at `services/search/` (tokenizer, `InvertedIndex`, ranking helpers). Both the extension catalog and session search build on the same engine, so ranking improvements land in both places automatically.
@@ -16,6 +18,7 @@
 - **Per-step cost now populated during ingest.** `compute_step_cost` / `compute_trajectory_cost` moved from `services/dashboard/pricing.py` (deleted) to `llm/pricing.py`, and the parser writes the derived USD cost back to `step.metrics.cost_usd` for every agent step. `final_metrics.total_cost_usd` is no longer `None` for Claude / Hermes / Codex sessions. CACHE_VERSION bumped to 5 to force a one-time rebuild of the on-disk index cache.
 - **Recommendation engine** now uses the shared ranker — "Personalized" catalog sort and L3 recommendation retrieval go through `rank_catalog(SortMode.PERSONALIZED)` instead of a separate TF-IDF path. `services/recommendation/retrieval.py` and `scoring.py` deleted.
 - **Frontend API and hook conventions enforced**: I/O lives in `frontend/src/api/<domain>.ts`, cross-cutting state in `frontend/src/hooks/`, shared timing constants in `frontend/src/constants.ts`. `useEffect`-to-notify-parent anti-pattern removed.
+- **LiteLLM backend module renamed** from `llm/backends/litellm_backend.py` to `llm/backends/litellm.py`.
 - Replaced the `scikit-learn` dependency with `rank-bm25` for a smaller install footprint.
 
 ### Fixed
