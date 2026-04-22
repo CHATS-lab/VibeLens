@@ -17,6 +17,7 @@ from vibelens.models.enums import SessionPhase
 from vibelens.models.session.phase import PhaseSegment
 from vibelens.models.trajectories import Step
 from vibelens.services.session.tool_categories import TOOL_CATEGORY_MAP
+from vibelens.utils import timed
 
 # Number of consecutive steps examined to classify a session phase
 PHASE_WINDOW_SIZE = 5
@@ -27,6 +28,7 @@ PHASE_WINDOW_SIZE = 5
 _DOMINANCE_THRESHOLD = 0.35
 
 
+@timed("detect_phases")
 def detect_phases(steps: list[Step]) -> list[PhaseSegment]:
     """Detect conversation phases using a sliding window over agent steps.
 

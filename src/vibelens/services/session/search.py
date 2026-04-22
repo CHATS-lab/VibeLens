@@ -20,7 +20,8 @@ from vibelens.models.enums import StepSource
 from vibelens.models.trajectories import Trajectory
 from vibelens.models.trajectories.content import ContentPart
 from vibelens.services.session.store_resolver import list_all_metadata, load_from_stores
-from vibelens.utils import get_logger
+from vibelens.utils import get_logger, log_duration_summary
+from vibelens.utils.timestamps import monotonic_ms
 
 logger = get_logger(__name__)
 
@@ -126,19 +127,30 @@ class _SearchIndex:
             logger.info("Building full search index for %d sessions", len(session_ids))
 
             new_entries: dict[str, _SearchEntry] = {}
+            per_session_ms: list[int] = []
+            build_start = monotonic_ms()
+
             with ThreadPoolExecutor(max_workers=MAX_PARALLEL_WORKERS) as pool:
                 futures = {
-                    pool.submit(_load_session_entry, sid, session_token): sid for sid in session_ids
+                    pool.submit(_load_session_entry, sid, session_token): sid
+                    for sid in session_ids
                 }
                 for future in futures:
-                    entry = future.result()
+                    entry, duration_ms = future.result()
+                    per_session_ms.append(duration_ms)
                     if entry:
                         new_entries[entry.session_id] = entry
 
             with self._lock:
                 self._full_entries = new_entries
 
-            logger.info("Search index Tier 2 built: %d entries (full text)", len(new_entries))
+            log_duration_summary(
+                logger,
+                "build_full_search_index_per_session",
+                per_session_ms,
+                total_ms=monotonic_ms() - build_start,
+                loaded=len(new_entries),
+            )
         finally:
             self._full_building = False
 
@@ -176,7 +188,7 @@ class _SearchIndex:
                 pool.submit(_load_session_entry, sid, session_token): sid for sid in session_ids
             }
             for future in futures:
-                entry = future.result()
+                entry, _duration_ms = future.result()
                 if entry:
                     with self._lock:
                         self._full_entries[entry.session_id] = entry
@@ -221,7 +233,7 @@ class _SearchIndex:
                     pool.submit(_load_session_entry, sid, session_token): sid for sid in new_ids
                 }
                 for future in futures:
-                    entry = future.result()
+                    entry, _duration_ms = future.result()
                     if entry:
                         with self._lock:
                             self._full_entries[entry.session_id] = entry
@@ -234,6 +246,8 @@ class _SearchIndex:
         logger.info("Search index Tier 2 invalidated (Tier 1 preserved)")
 
 
+# Module-level singleton: one search index per process, shared by every
+# caller of build_search_index / search_sessions / refresh_search_index.
 _index = _SearchIndex()
 
 
@@ -288,31 +302,40 @@ def refresh_search_index(session_token: str | None = None) -> None:
     _index.refresh(session_token)
 
 
-def _load_session_entry(session_id: str, session_token: str | None) -> _SearchEntry | None:
+def _load_session_entry(
+    session_id: str, session_token: str | None
+) -> tuple[_SearchEntry | None, int]:
     """Load a single session's trajectories and extract searchable text.
 
     Called by ThreadPoolExecutor workers during parallel index builds.
+    Returns the duration alongside the entry so the caller can aggregate
+    per-session timings into one summary line instead of emitting one
+    INFO log per session.
 
     Args:
         session_id: Session to load.
         session_token: Browser tab token for upload scoping.
 
     Returns:
-        Search entry or None if session cannot be loaded.
+        ``(entry, duration_ms)``. ``entry`` is None when the session
+        cannot be loaded; ``duration_ms`` is always the wall time spent
+        in this call.
     """
+    start = monotonic_ms()
     try:
         trajectories = load_from_stores(session_id, session_token)
         if not trajectories:
-            return None
-        return _SearchEntry(
+            return None, monotonic_ms() - start
+        entry = _SearchEntry(
             session_id=session_id,
             user_prompts=_extract_user_prompts(trajectories),
             agent_messages=_extract_agent_messages(trajectories),
             tool_calls=_extract_tool_calls(trajectories),
         )
+        return entry, monotonic_ms() - start
     except Exception:
         logger.debug("Failed to load session %s for search index", session_id)
-        return None
+        return None, monotonic_ms() - start
 
 
 def _entry_matches(entry: _SearchEntry, query: str, sources: list[str]) -> bool:

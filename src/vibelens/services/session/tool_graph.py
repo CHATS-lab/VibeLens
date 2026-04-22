@@ -11,7 +11,10 @@ chronological list.
 from vibelens.models.session.tool_graph import ToolDependencyGraph, ToolEdge
 from vibelens.models.trajectories import Step
 from vibelens.services.session.tool_categories import TOOL_CATEGORY_MAP
+from vibelens.utils import timed
 
+# Argument keys treated as file-path references when detecting
+# read→edit and read→write dependencies between tool calls.
 _FILE_PATH_KEYS = {"file_path", "path", "filename", "notebook_path", "directory"}
 
 # Max step gap for inferring causal edges between tool calls.
@@ -46,6 +49,7 @@ class _FlatCall:
         self.index = index
 
 
+@timed("build_tool_graph")
 def build_tool_graph(steps: list[Step], session_id: str = "") -> ToolDependencyGraph:
     """Build a dependency graph from a session's tool calls.
 

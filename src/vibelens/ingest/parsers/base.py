@@ -7,6 +7,7 @@ the file and delegates to ``parse``.
 """
 
 import json
+import logging
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Iterator
 from pathlib import Path
@@ -21,6 +22,7 @@ from vibelens.models.trajectories import (
     TrajectoryRef,
 )
 from vibelens.models.trajectories.trajectory import DEFAULT_ATIF_VERSION
+from vibelens.utils import log_duration
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -227,7 +229,14 @@ class BaseParser(ABC):
         except (OSError, UnicodeDecodeError) as exc:
             logger.warning("Cannot read file %s: %s", file_path, exc)
             return []
-        return self.parse(content, source_path=str(file_path))
+        with log_duration(
+            logger,
+            "parse_file",
+            level=logging.DEBUG,
+            parser=type(self).__name__,
+            bytes=len(content),
+        ):
+            return self.parse(content, source_path=str(file_path))
 
     @staticmethod
     def truncate_first_message(text: str) -> str:

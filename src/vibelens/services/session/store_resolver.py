@@ -8,6 +8,8 @@ In demo mode, iterates the user's registered upload stores (from the
 upload registry in deps.py) plus the shared example store.
 """
 
+import logging
+
 from vibelens.deps import (
     get_all_upload_stores,
     get_example_store,
@@ -15,7 +17,7 @@ from vibelens.deps import (
     get_upload_stores,
     is_demo_mode,
 )
-from vibelens.utils import get_logger
+from vibelens.utils import get_logger, log_duration
 
 logger = get_logger(__name__)
 
@@ -85,20 +87,21 @@ def load_from_stores(session_id: str, session_token: str | None = None) -> list 
     Returns:
         List of Trajectory objects, or None if not found in any store.
     """
-    if not is_demo_mode():
-        result = get_trajectory_store().load(session_id)
-        if result is not None:
-            return result
+    with log_duration(logger, "load_from_stores", level=logging.DEBUG, session_id=session_id):
+        if not is_demo_mode():
+            result = get_trajectory_store().load(session_id)
+            if result is not None:
+                return result
+            return get_example_store().load(session_id)
+
+        # Search user's upload stores first
+        for store in get_upload_stores(session_token):
+            result = store.load(session_id)
+            if result is not None:
+                return result
+
+        # Fall back to example store
         return get_example_store().load(session_id)
-
-    # Search user's upload stores first
-    for store in get_upload_stores(session_token):
-        result = store.load(session_id)
-        if result is not None:
-            return result
-
-    # Fall back to example store
-    return get_example_store().load(session_id)
 
 
 def load_from_all_stores(session_id: str) -> list | None:

@@ -10,8 +10,10 @@ from vibelens.models.dashboard.dashboard import SessionAnalytics
 from vibelens.models.trajectories import Trajectory
 from vibelens.services.dashboard.pricing import compute_trajectory_cost
 from vibelens.services.session.phase import detect_phases
+from vibelens.utils import timed
 
 
+@timed("compute_session_analytics")
 def compute_session_analytics(trajectories: list[Trajectory]) -> SessionAnalytics:
     """Compute detailed analytics for a single session.
 
