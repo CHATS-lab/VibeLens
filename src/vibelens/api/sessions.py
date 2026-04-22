@@ -4,7 +4,7 @@ import io
 import json
 import zipfile
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Query
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from vibelens.schemas.session import DownloadRequest
@@ -45,22 +45,30 @@ async def list_sessions_endpoint(
 
 @router.get("/sessions/search")
 async def search_sessions_endpoint(
-    q: str = "", sources: str = "user_prompts", x_session_token: str | None = Header(None)
-) -> list[str]:
-    """Search sessions by query across selected text sources.
+    search_text: str = Query("", alias="q", description="Search query."),
+    x_session_token: str | None = Header(None),
+) -> list[dict]:
+    """Search sessions by query, returning BM25F-ranked results.
+
+    The engine scores across all four indexed fields (user_prompts,
+    agent_messages, tool_calls, session_id) and lets BM25 weights do the
+    selecting. Tier 2 is rebuilt in the background at startup; during
+    the first ~24 s after launch, results fall back to Tier 1 metadata
+    substring matching.
 
     Args:
-        q: Search query string.
-        sources: Comma-separated source names (user_prompts, agent_content, session_id).
+        search_text: The user's search query. Exposed to clients as ``?q=``
+            for URL compactness; internally addressed by its full name.
         x_session_token: Browser tab token for upload scoping.
 
     Returns:
-        List of matching session IDs.
+        List of ``{"session_id": str, "score": float}`` entries ordered
+        best first. ``score`` is 0.0 for Tier 1 fallback matches.
     """
-    if not q:
+    if not search_text:
         return []
-    source_list = [s.strip() for s in sources.split(",") if s.strip()]
-    return search_sessions(q, source_list, session_token=x_session_token)
+    hits = search_sessions(search_text, session_token=x_session_token)
+    return [{"session_id": h.session_id, "score": h.composite_score} for h in hits]
 
 
 @router.get("/sessions/{session_id}")
