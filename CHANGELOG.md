@@ -3,11 +3,23 @@
 ## [Unreleased]
 
 ### Added
+- **Ranked BM25F session search**. `/api/sessions/search?q=...` now returns `[{session_id, score}]` ordered by relevance instead of a flat id list. Session search scores across four fields (user_prompts, agent_messages, tool_calls, session_id) with a session_id exact/first-segment-prefix tier that dominates content matches. Cold Tier 2 build ~42s on 1,362 real sessions; query p50 1.5ms, p95 2.5ms. Session list UI renders results in rank order; source-filter checkbox dialog removed.
+- **Shared BM25F search core** at `services/search/` (tokenizer, `InvertedIndex`, ranking helpers). Both the extension catalog and session search build on the same engine, so ranking improvements land in both places automatically.
+- **Redesigned extension catalog search** with tiered name-match (exact > all-tokens > partial-token > substring) dominating a BM25F composite blended with quality, popularity, recency, and profile signals. New `SortMode.DEFAULT` is the initial dropdown value; `PERSONALIZED` (was "For You") uses the saved user profile; legacy `popularity` and `relevance` sort values coerced at the API boundary. Query p50 ~37ms at 28K items.
 - **Version display and update prompt** in the sidebar. Shows the running version, polls PyPI (1 h TTL) for the latest stable release, and surfaces a copyable upgrade command matching the detected install method (`uv` / `pip` / `npx`). Supports skip-this-version (persisted in `localStorage`), dev-build detection (current > PyPI latest), and a retry affordance when the PyPI fetch fails. Opt-out via `VIBELENS_DISABLE_UPDATE_CHECK=1`. New endpoint: `GET /api/version`.
+- **Timing helpers** in `utils/timestamps.py`: `log_duration` context manager, `timed` decorator, and `log_duration_summary` for batch aggregates. Grepable output format (`timing op=... duration_ms=...`) applied to session-search build, ingest parsing, and dashboard analytics hot paths.
+- **Copy buttons** on user, agent, and plan blocks in the session view.
+
+### Changed
+- **Recommendation engine** now uses the shared ranker — "Personalized" catalog sort and L3 recommendation retrieval go through `rank_catalog(SortMode.PERSONALIZED)` instead of a separate TF-IDF path. `services/recommendation/retrieval.py` and `scoring.py` deleted.
+- **Frontend API and hook conventions enforced**: I/O lives in `frontend/src/api/<domain>.ts`, cross-cutting state in `frontend/src/hooks/`, shared timing constants in `frontend/src/constants.ts`. `useEffect`-to-notify-parent anti-pattern removed.
+- Replaced the `scikit-learn` dependency with `rank-bm25` for a smaller install footprint.
 
 ### Fixed
+- **Storage** now auto-detects new and modified sessions without requiring a server restart.
 - **Upload dialog "Failed to load command"** for Claude Code. The frontend `AgentType` value was `"claude_code"` but the backend enum uses `"claude"`, so `/api/upload/commands` returned 400 and the panel fell back to the error placeholder. Renamed the frontend value to `"claude"` (display label "Claude Code" unchanged).
 - **React state leaks from index-based keys** on `PatternCard` (workflow patterns) and `MitigationCard` (friction mitigations). Both hold local `useState`, and the mitigations list is sorted by confidence each render, so reordering leaked expansion state between cards. Switched to stable title-based keys.
+- **Frontmatter parse warnings** now include the source path so skill/command/subagent authors can locate a malformed document without grepping for the exception.
 
 ## [1.0.4] - 2026-04-20
 
