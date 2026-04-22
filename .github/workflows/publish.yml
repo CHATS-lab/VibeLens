@@ -58,10 +58,23 @@ jobs:
           sys.stdout.write(m.group(1).strip() if m else f"Release v{version}")
           PY
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
-          body_path: release_notes.md
-          files: dist/*
+      # Create the GitHub Release when the operator hasn't already done
+      # it manually, otherwise just attach the build artifacts. Uploading
+      # the wheel + sdist + attestations to the release page is what we
+      # actually need here; the release itself is cheap to create and the
+      # operator sometimes beats the workflow to it.
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; uploading build artifacts."
+            gh release upload "$TAG" dist/* --clobber
+          else
+            echo "Creating release $TAG."
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --notes-file release_notes.md \
+              dist/*
+          fi
