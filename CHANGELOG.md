@@ -5,6 +5,10 @@
 ### Added
 - **Version display and update prompt** in the sidebar. Shows the running version, polls PyPI (1 h TTL) for the latest stable release, and surfaces a copyable upgrade command matching the detected install method (`uv` / `pip` / `npx`). Supports skip-this-version (persisted in `localStorage`), dev-build detection (current > PyPI latest), and a retry affordance when the PyPI fetch fails. Opt-out via `VIBELENS_DISABLE_UPDATE_CHECK=1`. New endpoint: `GET /api/version`.
 
+### Fixed
+- **Upload dialog "Failed to load command"** for Claude Code. The frontend `AgentType` value was `"claude_code"` but the backend enum uses `"claude"`, so `/api/upload/commands` returned 400 and the panel fell back to the error placeholder. Renamed the frontend value to `"claude"` (display label "Claude Code" unchanged).
+- **React state leaks from index-based keys** on `PatternCard` (workflow patterns) and `MitigationCard` (friction mitigations). Both hold local `useState`, and the mitigations list is sorted by confidence each render, so reordering leaked expansion state between cards. Switched to stable title-based keys.
+
 ## [1.0.4] - 2026-04-20
 
 ### Added
