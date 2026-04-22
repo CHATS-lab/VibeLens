@@ -12,19 +12,26 @@ export function MetaPill({
   color,
   bg,
   tooltip,
+  onClick,
 }: {
   icon: React.ReactNode;
   label: string;
   color: string;
   bg?: string;
   tooltip?: string;
+  /** Optional click handler. Presence makes the pill a real button. */
+  onClick?: (event: React.MouseEvent) => void;
 }) {
   const bgClass = bg ?? "bg-control border border-card";
+  const sharedClass = `inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] hover:bg-control-hover transition-colors ${bgClass} ${color}`;
 
-  const pill = (
-    <span
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] hover:bg-control-hover transition-colors ${bgClass} ${color}`}
-    >
+  const pill = onClick ? (
+    <button type="button" onClick={onClick} className={`${sharedClass} cursor-pointer`}>
+      {icon}
+      <span>{label}</span>
+    </button>
+  ) : (
+    <span className={sharedClass}>
       {icon}
       <span>{label}</span>
     </span>

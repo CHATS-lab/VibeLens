@@ -5,6 +5,7 @@ import {
   BarChart3,
   Bot,
   Calendar,
+  Check,
   ChevronDown,
   ChevronRight,
   Clock,
@@ -27,6 +28,7 @@ import { useMemo } from "react";
 import { useAppContext } from "../../app";
 import { sessionsClient } from "../../api/sessions";
 import { SESSION_ID_SHORT } from "../../constants";
+import { useCopyFeedback } from "../../hooks/use-copy-feedback";
 import type { Step, Trajectory } from "../../types";
 import { baseProjectName, extractUserText, formatDuration } from "../../utils";
 import { Tooltip } from "../ui/tooltip";
@@ -73,6 +75,7 @@ export function SessionViewHeader({
 }: SessionViewHeaderProps) {
   const { fetchWithToken } = useAppContext();
   const api = useMemo(() => sessionsClient(fetchWithToken), [fetchWithToken]);
+  const { copy: copySessionId, copied: sessionIdCopied } = useCopyFeedback();
 
   const metrics = main.final_metrics;
   const promptCount = steps.filter(
@@ -119,11 +122,24 @@ export function SessionViewHeader({
               )}
             </button>
             <MetaPill
-              icon={<Hash className="w-3 h-3" />}
+              icon={
+                sessionIdCopied ? (
+                  <Check className="w-3 h-3" />
+                ) : (
+                  <Hash className="w-3 h-3" />
+                )
+              }
               label={main.session_id.slice(0, SESSION_ID_SHORT)}
               color="text-accent-cyan"
               bg="bg-accent-cyan-muted border border-accent-cyan"
-              tooltip={`Session ID: ${main.session_id}`}
+              tooltip={
+                sessionIdCopied ? "Copied!" : `Click to copy: ${main.session_id}`
+              }
+              onClick={(event) => {
+                // Stop the outer "expand header" click from firing too.
+                event.stopPropagation();
+                void copySessionId(main.session_id);
+              }}
             />
             <Tooltip text={main.first_message || "Session"} className="min-w-0">
               <h2 className="text-lg font-semibold text-primary truncate">
