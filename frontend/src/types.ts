@@ -1,4 +1,4 @@
-export type AgentType = "claude_code" | "claude_web" | "codex" | "gemini";
+export type AgentType = "claude" | "claude_web" | "codex" | "gemini";
 export type OSPlatform = "macos" | "linux" | "windows";
 
 export interface Agent {

@@ -14,7 +14,7 @@ export function PatternSection({ patterns }: { patterns: WorkflowPattern[] }) {
         tooltip="Recurring habits and patterns found across your sessions"
       />
       <div className="space-y-3">
-        {patterns.map((p, i) => <PatternCard key={i} pattern={p} index={i} />)}
+        {patterns.map((p, i) => <PatternCard key={p.title} pattern={p} index={i} />)}
       </div>
     </section>
   );

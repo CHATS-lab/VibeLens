@@ -24,8 +24,8 @@ export function MitigationsSection({ mitigations, frictionTypes }: { mitigations
         </div>
       </Tooltip>
       <div className="space-y-3">
-        {sorted.map((m, i) => (
-          <MitigationCard key={i} mitigation={m} frictionTypes={frictionTypes} />
+        {sorted.map((m) => (
+          <MitigationCard key={m.title} mitigation={m} frictionTypes={frictionTypes} />
         ))}
       </div>
     </div>
