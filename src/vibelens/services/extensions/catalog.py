@@ -9,6 +9,12 @@ from vibelens.models.enums import AgentExtensionType
 from vibelens.models.extension import AgentExtensionItem
 from vibelens.models.personalization.recommendation import UserProfile
 from vibelens.services.extensions.catalog_resolver import install_catalog_item
+from vibelens.services.extensions.search import (
+    ExtensionQuery,
+    SortMode,
+    coerce_legacy_sort,
+    rank_catalog,
+)
 from vibelens.storage.extension.catalog import CatalogSnapshot, load_catalog
 from vibelens.utils.github import (
     GITHUB_REPO_RE,
@@ -33,18 +39,19 @@ _file_cache: TTLCache = TTLCache(maxsize=256, ttl=3600)
 
 
 def list_extensions(
-    search: str | None,
+    search_text: str | None,
     extension_type: str | None,
     sort: str,
     page: int,
     per_page: int,
 ) -> tuple[list[dict], int]:
-    """Filter, sort, paginate catalog items.
+    """Rank, filter, paginate catalog items via the unified search module.
 
     Args:
-        search: Keyword to match against name, description, and topics.
-        extension_type: Filter by extension type value.
-        sort: Sort criterion -- quality, name, popularity, recent, or relevance.
+        search_text: User-typed query string. Empty or None triggers browse mode.
+        extension_type: Filter by extension type value (applied before scoring).
+        sort: Sort criterion -- default, personalized, quality, name, recent.
+            Legacy values (popularity, relevance) are coerced.
         page: Page number, 1-indexed.
         per_page: Number of items per page.
 
@@ -55,15 +62,33 @@ def list_extensions(
         ValueError: If no catalog is available.
     """
     catalog = _get_catalog()
-    filtered = _filter_items(catalog.items, search, extension_type)
-    profile = _load_latest_profile() if sort == "relevance" else None
-    sorted_items = _sort_items(filtered, sort, profile=profile)
 
-    total = len(sorted_items)
+    sort_mode = coerce_legacy_sort(sort)
+    profile = _load_latest_profile()
+    if sort_mode is SortMode.PERSONALIZED and (not profile or not profile.search_keywords):
+        logger.info("personalized sort requested without profile; falling back to default")
+        sort_mode = SortMode.DEFAULT
+
+    type_filter = _coerce_extension_type(extension_type)
+
+    extension_query = ExtensionQuery(
+        search_text=search_text or "",
+        profile=profile,
+        sort=sort_mode,
+        extension_type=type_filter,
+    )
+    ranked = rank_catalog(extension_query)
+
+    total = len(ranked)
     start = (page - 1) * per_page
-    page_items = sorted_items[start : start + per_page]
+    page_scored = ranked[start : start + per_page]
 
-    return [item.model_dump(mode="json") for item in page_items], total
+    items: list[dict] = []
+    for scored in page_scored:
+        item = catalog.get_item(scored.extension_id)
+        if item is not None:
+            items.append(item.model_dump(mode="json"))
+    return items, total
 
 
 def get_extension_metadata() -> tuple[list[str], bool]:
@@ -210,7 +235,6 @@ def fetch_extension_file(item_id: str, relative: str) -> dict:
     return result
 
 
-
 def install_extension(item_id: str, target_platform: str, overwrite: bool) -> tuple[str, Path]:
     """Install an extension item to the target agent platform.
 
@@ -265,37 +289,6 @@ def _get_catalog() -> CatalogSnapshot:
     return catalog
 
 
-def _filter_items(
-    items: list[AgentExtensionItem], search: str | None, extension_type: str | None
-) -> list[AgentExtensionItem]:
-    """Apply search and type filter to items."""
-    result = items
-
-    if search:
-        q = search.lower()
-        result = [
-            i
-            for i in result
-            if q in i.name.lower()
-            or q in (i.description or "").lower()
-            or any(q in t.lower() for t in i.topics)
-        ]
-
-    if extension_type:
-        result = [i for i in result if i.extension_type.value == extension_type]
-
-    return result
-
-
-def _score_relevance(item: AgentExtensionItem, keywords: list[str]) -> float:
-    """Score item relevance against user profile keywords."""
-    if not keywords:
-        return 0.0
-    text = f"{item.name} {item.description or ''} {' '.join(item.topics)}".lower()
-    hits = sum(1 for kw in keywords if kw in text)
-    return hits / len(keywords)
-
-
 def _load_latest_profile() -> UserProfile | None:
     """Load user profile from the most recent recommendation analysis."""
     store = get_personalization_store()
@@ -308,24 +301,19 @@ def _load_latest_profile() -> UserProfile | None:
     return result.user_profile
 
 
-def _sort_items(
-    items: list[AgentExtensionItem], sort: str, profile: UserProfile | None = None
-) -> list[AgentExtensionItem]:
-    """Sort items by the given criterion."""
-    if sort == "name":
-        return sorted(items, key=lambda i: i.name.lower())
-    if sort == "popularity":
-        return sorted(items, key=lambda i: i.popularity, reverse=True)
-    if sort == "recent":
-        return sorted(items, key=lambda i: i.updated_at or "", reverse=True)
-    if sort == "relevance" and profile and profile.search_keywords:
-        keywords = [kw.lower() for kw in profile.search_keywords]
-        return sorted(
-            items,
-            key=lambda i: (_score_relevance(i, keywords), i.quality_score),
-            reverse=True,
-        )
-    return sorted(items, key=lambda i: i.quality_score, reverse=True)
+def _coerce_extension_type(raw: str | None) -> AgentExtensionType | None:
+    """Coerce an HTTP-level string to :class:`AgentExtensionType`.
+
+    Unknown values are logged and treated as "no filter" so a stale
+    client can't break catalog browse with a 500.
+    """
+    if not raw:
+        return None
+    try:
+        return AgentExtensionType(raw)
+    except ValueError:
+        logger.warning("unknown extension_type %r; ignoring filter", raw)
+        return None
 
 
 async def _resolve_content(item: AgentExtensionItem) -> dict:

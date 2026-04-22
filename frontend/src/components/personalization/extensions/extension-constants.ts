@@ -61,12 +61,15 @@ export const EXTENSION_PAGE_SIZE = 50;
 
 /** Sort options for extension browsing. */
 export const SORT_OPTIONS: { value: string; label: string; needsProfile?: boolean }[] = [
+  { value: "default", label: "Default" },
+  { value: "personalized", label: "Personalized", needsProfile: true },
   { value: "quality", label: "Quality" },
   { value: "name", label: "Name" },
-  { value: "popularity", label: "Popularity" },
   { value: "recent", label: "Recent" },
-  { value: "relevance", label: "For You", needsProfile: true },
 ];
+
+/** Default sort value. Blends quality, text, profile, popularity, and recency. */
+export const DEFAULT_SORT = "default";
 
 /** View mode for extension list. */
 export type ExtensionViewMode = "list" | "card";

@@ -43,7 +43,7 @@ async def list_extensions_endpoint(
         description="Deprecated: platforms are not derived in this release.",
     ),
     sort: str = Query(
-        default="quality", description="Sort: quality, name, popularity, recent, relevance."
+        default="default", description="Sort: default, personalized, quality, name, recent."
     ),
     page: int = Query(default=1, ge=1, description="Page number."),
     per_page: int = Query(default=50, ge=1, le=200, description="Items per page."),
@@ -52,12 +52,18 @@ async def list_extensions_endpoint(
 
     The ``category`` and ``platform`` query parameters are accepted for
     backward compatibility with older clients and ignored server-side.
+    Legacy ``sort`` values (``popularity``, ``relevance``) are coerced
+    server-side to ``default`` and ``personalized`` respectively.
     """
     if category is not None or platform is not None:
         logger.debug("ignoring deprecated filter(s): category=%r platform=%r", category, platform)
     try:
         items, total = list_extensions(
-            search=search, extension_type=extension_type, sort=sort, page=page, per_page=per_page
+            search_text=search,
+            extension_type=extension_type,
+            sort=sort,
+            page=page,
+            per_page=per_page,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

@@ -27,7 +27,7 @@ import { EmptyState } from "../../ui/empty-state";
 import { ErrorBanner } from "../../ui/error-banner";
 import { LoadingState } from "../../ui/loading-state";
 import { ExtensionCard } from "./extension-card";
-import { EXTENSION_PAGE_SIZE, ITEM_TYPE_ICON_COLORS, ITEM_TYPE_LABELS, SORT_OPTIONS, type ExtensionViewMode } from "./extension-constants";
+import { DEFAULT_SORT, EXTENSION_PAGE_SIZE, ITEM_TYPE_ICON_COLORS, ITEM_TYPE_LABELS, SORT_OPTIONS, type ExtensionViewMode } from "./extension-constants";
 import { ExtensionDetailView } from "./extension-detail-view";
 import { ExtensionPagination } from "./extension-pagination";
 import { NoResultsState } from "../result-shared";
@@ -135,7 +135,7 @@ export function ExtensionExploreTab({
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
-  const [sortBy, setSortBy] = useState("quality");
+  const [sortBy, setSortBy] = useState(DEFAULT_SORT);
   const [viewMode, setViewMode] = useState<ExtensionViewMode>("list");
   const [hasProfile, setHasProfile] = useState(false);
   const [page, setPage] = useState(1);

@@ -24,6 +24,7 @@ from vibelens.deps import (
 )
 from vibelens.models.enums import AppMode
 from vibelens.services.dashboard.loader import warm_cache
+from vibelens.services.extensions.search import warm_index as warm_extension_search_index
 from vibelens.services.job_tracker import cleanup_stale as cleanup_stale_jobs
 from vibelens.services.session.demo import load_demo_examples, seed_example_analyses
 from vibelens.services.session.search import (
@@ -87,6 +88,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Dashboard cache warming and full-text search run in background
     asyncio.create_task(_async_warm_cache())
     asyncio.create_task(_async_build_full_search_index())
+    # Extension catalog search index (~0.5s cold build on 28K items)
+    asyncio.create_task(_async_warm_extension_index())
 
     # Periodic incremental search index refresh (diff-based, <1s typical)
     search_refresh_task = asyncio.create_task(_periodic_search_refresh())
@@ -126,6 +129,14 @@ async def _async_build_full_search_index() -> None:
         await asyncio.to_thread(build_full_search_index)
     except Exception:
         logger.warning("Full search index build failed", exc_info=True)
+
+
+async def _async_warm_extension_index() -> None:
+    """Build the extension catalog search index in a background thread."""
+    try:
+        await asyncio.to_thread(warm_extension_search_index)
+    except Exception:
+        logger.warning("Extension catalog search index warm failed", exc_info=True)
 
 
 # How often to diff-refresh the search index for new sessions

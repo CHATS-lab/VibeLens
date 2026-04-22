@@ -109,10 +109,19 @@ def load_catalog() -> CatalogSnapshot | None:
 
 
 def reset_catalog_cache() -> None:
-    """Drop the cached catalog so the next call reloads from disk."""
+    """Drop the cached catalog so the next call reloads from disk.
+
+    Also resets the dependent catalog search index; next search rebuilds
+    it from the reloaded catalog. Imported lazily to avoid a circular
+    edge (search module imports ``load_catalog`` from this module).
+    """
     global _cached_catalog, _cache_checked  # noqa: PLW0603
     _cached_catalog = None
     _cache_checked = False
+
+    from vibelens.services.extensions.search import reset_index
+
+    reset_index()
 
 
 def load_catalog_from_dir(dir_path: Path) -> CatalogSnapshot | None:

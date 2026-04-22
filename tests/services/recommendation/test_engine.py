@@ -10,7 +10,6 @@ from vibelens.services.recommendation.engine import (
     RATIONALE_MIN_RELEVANCE,
     RECOMMENDATION_OUTPUT_TOKENS,
     RECOMMENDATION_TIMEOUT_SECONDS,
-    RETRIEVAL_TOP_K,
     SCORING_TOP_K,
     _build_rationale_candidates,
 )
@@ -35,7 +34,6 @@ def _mock_item(*, name: str, description: str | None) -> AgentExtensionItem:
 
 def test_engine_constants():
     """Engine constants are defined with expected values."""
-    assert RETRIEVAL_TOP_K == 200
     assert SCORING_TOP_K == 100
     assert RATIONALE_MAX_RESULTS == 15
     assert RATIONALE_MAX_RESULTS_LIMIT == 50

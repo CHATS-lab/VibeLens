@@ -3,7 +3,7 @@
 Pipeline:
   L1: Context extraction (no LLM) — load sessions, compress to digest
   L2: LLM profile generation (1 call) — extract UserProfile from digest
-  L3: TF-IDF retrieval + weighted scoring (no LLM)
+  L3: Unified catalog search (no LLM) — retrieve + rank candidates
   L4: LLM rationale generation (1 call) — personalize top candidates
 """
 
@@ -35,6 +35,7 @@ from vibelens.prompts.recommendation import (
     RECOMMENDATION_RATIONALE_PROMPT,
 )
 from vibelens.services.analysis_store import generate_analysis_id
+from vibelens.services.extensions.search import ExtensionQuery, SortMode, rank_catalog
 from vibelens.services.inference_shared import (
     CACHE_MAXSIZE,
     CACHE_TTL_SECONDS,
@@ -48,8 +49,6 @@ from vibelens.services.inference_shared import (
     truncate_digest_to_fit,
 )
 from vibelens.services.personalization.shared import parse_llm_output
-from vibelens.services.recommendation.retrieval import KeywordRetrieval
-from vibelens.services.recommendation.scoring import score_candidates
 from vibelens.services.session.store_resolver import list_all_metadata
 from vibelens.storage.extension.catalog import CatalogSnapshot, load_catalog
 from vibelens.utils.content import truncate
@@ -57,9 +56,7 @@ from vibelens.utils.log import clear_analysis_id, get_logger, set_analysis_id
 
 logger = get_logger(__name__)
 
-# L3 retrieval: how many raw TF-IDF candidates to fetch
-RETRIEVAL_TOP_K = 200
-# L3 scoring: how many candidates survive weighted scoring for L4 input
+# L3 ranking: how many candidates survive ranking for L4 input.
 SCORING_TOP_K = 100
 # L4: maximum recommendations to return (CLI --top-n can override, capped here)
 RATIONALE_MAX_RESULTS = 15
@@ -142,7 +139,7 @@ async def analyze_recommendation(
 
     L1: Extract session contexts (no LLM)
     L2: Generate user profile via LLM (1 call)
-    L3: TF-IDF retrieval + weighted scoring (no LLM)
+    L3: Unified catalog search, profile-weighted (no LLM)
     L4: Generate personalized rationales via LLM (1 call)
 
     Args:
@@ -335,29 +332,32 @@ async def _generate_profile(
 def _retrieve_and_score(
     catalog: CatalogSnapshot, profile: UserProfile
 ) -> list[tuple[AgentExtensionItem, float]]:
-    """L3: TF-IDF retrieval then weighted scoring.
+    """L3: Rank catalog via unified search with ``PERSONALIZED`` weights.
+
+    Delegates to :func:`services.extensions.search.search`. The resulting
+    ranked list is truncated to ``SCORING_TOP_K`` candidates before
+    handing off to L4 rationale generation.
 
     Args:
-        catalog: Loaded catalog snapshot.
+        catalog: Loaded catalog snapshot (used to hydrate items by id).
         profile: User profile from L2.
 
     Returns:
-        Top-k scored (ExtensionItem, composite_score) pairs.
+        Top-k (ExtensionItem, composite_score) pairs for L4 input.
     """
-    retrieval = KeywordRetrieval()
-    retrieval.build_index(catalog.items)
-
-    query = " ".join(profile.search_keywords)
-    raw_candidates = retrieval.search(query=query, top_k=RETRIEVAL_TOP_K)
-    keyword_count = len(profile.search_keywords)
-    logger.info("L3 retrieval: %d candidates from %d keywords", len(raw_candidates), keyword_count)
-
-    if not raw_candidates:
-        return []
-
-    scored = score_candidates(candidates=raw_candidates, profile=profile, top_k=SCORING_TOP_K)
-    logger.info("L3 scoring: %d → %d candidates", len(raw_candidates), len(scored))
-    return scored
+    extension_query = ExtensionQuery(profile=profile, sort=SortMode.PERSONALIZED)
+    ranked = rank_catalog(extension_query, top_k=SCORING_TOP_K)
+    logger.info(
+        "L3 ranking: %d candidates from %d search_keywords",
+        len(ranked),
+        len(profile.search_keywords),
+    )
+    results: list[tuple[AgentExtensionItem, float]] = []
+    for scored in ranked:
+        item = catalog.get_full(scored.extension_id) or catalog.get_item(scored.extension_id)
+        if item is not None:
+            results.append((item, scored.composite_score))
+    return results
 
 
 def _build_rationale_candidates(

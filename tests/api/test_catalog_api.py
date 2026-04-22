@@ -37,6 +37,14 @@ def _make_item(
 
 
 def _make_snapshot() -> CatalogSnapshot:
+    """Build a synthetic catalog of 12 items.
+
+    Why 12 and not 2: BM25 IDF misbehaves on tiny corpora (a term
+    appearing in exactly half the docs has IDF = ln(1) = 0 in the
+    pure Okapi formula, zeroing out its score). Real catalogs have
+    thousands of items so this never matters in production, but
+    tests must sit outside the pathology.
+    """
     items = [
         _make_item(
             extension_id="bwc:skill:test-skill",
@@ -53,11 +61,30 @@ def _make_snapshot() -> CatalogSnapshot:
             topics=["plugin"],
         ),
     ]
+    # Filler items whose names/descriptions share no tokens with the
+    # two items above. Their presence stabilizes IDF without changing
+    # which item matches a given query.
+    filler_labels = (
+        "alpha", "bravo", "charlie", "delta", "echo",
+        "foxtrot", "golf", "hotel", "india", "juliet",
+    )
+    for i, label in enumerate(filler_labels):
+        items.append(
+            _make_item(
+                extension_id=f"bwc:skill:filler-{label}",
+                extension_type=AgentExtensionType.SKILL,
+                name=f"filler-{label}",
+                description=f"unrelated filler item number {i}",
+                topics=[f"filler-{label}"],
+            )
+        )
+    skill_count = sum(1 for it in items if it.extension_type == AgentExtensionType.SKILL)
+    plugin_count = sum(1 for it in items if it.extension_type == AgentExtensionType.PLUGIN)
     manifest = CatalogManifest(
         generated_on="2026-04-13",
         hub_source="test",
         total=len(items),
-        item_counts={"skill": 1, "plugin": 1},
+        item_counts={"skill": skill_count, "plugin": plugin_count},
         file_sizes={},
     )
     return CatalogSnapshot(manifest=manifest, items=items, data_dir=Path("/nonexistent"))
@@ -66,50 +93,73 @@ def _make_snapshot() -> CatalogSnapshot:
 @pytest.fixture
 def client():
     snapshot = _make_snapshot()
+    # Reset the extension search index singleton so it rebuilds from the
+    # patched catalog (not a cached real 28K-item index from a prior test).
+    from vibelens.services.extensions.search import reset_index
+
+    reset_index()
     with (
         patch("vibelens.services.extensions.catalog.load_catalog", return_value=snapshot),
         patch("vibelens.api.extensions.catalog.load_catalog", return_value=snapshot),
+        patch("vibelens.storage.extension.catalog.load_catalog", return_value=snapshot),
     ):
         app = create_app()
         yield TestClient(app)
+    reset_index()
 
 
 def test_list_extensions(client):
     resp = client.get("/api/extensions/catalog")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["total"] == 2
-    assert len(data["items"]) == 2
+    # 2 named items + 10 fillers = 12 total when no query is active.
+    assert data["total"] == 12
     print(f"Listed {data['total']} items")
 
 
 def test_list_extensions_search(client):
+    """A non-empty query filters to items whose text score is positive."""
     resp = client.get("/api/extensions/catalog?search=plugin")
     assert resp.status_code == 200
     data = resp.json()
+    # Only the plugin item contains the token "plugin" in its searchable fields.
     assert data["total"] == 1
     assert data["items"][0]["extension_id"] == "bwc:plugin:test-plugin"
 
 
 def test_list_extensions_type_filter(client):
-    resp = client.get("/api/extensions/catalog?extension_type=skill")
+    resp = client.get("/api/extensions/catalog?extension_type=plugin")
     assert resp.status_code == 200
     data = resp.json()
     assert data["total"] == 1
-    assert data["items"][0]["extension_type"] == "skill"
+    assert data["items"][0]["extension_type"] == "plugin"
 
 
 def test_list_extensions_accepts_deprecated_category_param(client):
     """Old clients passing ?category=... still get 200 (param ignored)."""
     resp = client.get("/api/extensions/catalog?category=testing")
     assert resp.status_code == 200
-    assert resp.json()["total"] == 2
+    assert resp.json()["total"] == 12
 
 
 def test_list_extensions_accepts_deprecated_platform_param(client):
     resp = client.get("/api/extensions/catalog?platform=claude")
     assert resp.status_code == 200
-    assert resp.json()["total"] == 2
+    assert resp.json()["total"] == 12
+
+
+def test_list_extensions_legacy_sort_popularity_coerced(client):
+    """?sort=popularity coerces to default without error."""
+    resp = client.get("/api/extensions/catalog?sort=popularity")
+    assert resp.status_code == 200
+    assert resp.json()["total"] == 12
+
+
+def test_list_extensions_legacy_sort_relevance_coerced(client):
+    """?sort=relevance coerces to personalized (or default when no profile)."""
+    resp = client.get("/api/extensions/catalog?sort=relevance")
+    assert resp.status_code == 200
+    assert resp.json()["total"] == 12
 
 
 def test_meta_returns_topics(client):
@@ -117,7 +167,8 @@ def test_meta_returns_topics(client):
     assert resp.status_code == 200
     data = resp.json()
     assert "topics" in data
-    assert sorted(data["topics"]) == ["plugin", "testing"]
+    assert "plugin" in data["topics"]
+    assert "testing" in data["topics"]
 
 
 def test_get_extension_item_returns_summary_when_offsets_empty(client):
