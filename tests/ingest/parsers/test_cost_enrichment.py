@@ -1,0 +1,127 @@
+"""Tests for per-step cost enrichment during ingest.
+
+Ensures ``_compute_final_metrics`` populates ``step.metrics.cost_usd``
+when a step has token metrics but no pre-computed cost, using the
+shared pricing table.
+"""
+
+from datetime import datetime, timezone
+
+from vibelens.ingest.parsers.base import _compute_final_metrics
+from vibelens.models.enums import StepSource
+from vibelens.models.trajectories import Metrics, Step
+
+
+def _agent_step(
+    step_id: str, prompt: int, completion: int, cached: int = 0, cache_write: int = 0
+) -> Step:
+    """Build an agent step with token metrics and no pre-computed cost."""
+    return Step(
+        step_id=step_id,
+        timestamp=datetime(2026, 4, 22, 10, 0, tzinfo=timezone.utc),
+        source=StepSource.AGENT,
+        model_name="claude-opus-4-7",
+        message="ok",
+        metrics=Metrics(
+            prompt_tokens=prompt,
+            completion_tokens=completion,
+            cached_tokens=cached,
+            cache_creation_tokens=cache_write,
+            cost_usd=None,  # explicit: parsers leave this empty for Claude/Hermes/Codex
+        ),
+    )
+
+
+def test_enriches_step_cost_for_claude_style_step():
+    """An agent step with token metrics gets cost_usd filled in-place."""
+    step = _agent_step("s1", prompt=1000, completion=500)
+    _compute_final_metrics([step], session_model="claude-opus-4-7")
+
+    print(f"step.metrics.cost_usd after enrichment: {step.metrics.cost_usd}")
+    assert step.metrics.cost_usd is not None
+    assert step.metrics.cost_usd > 0
+
+
+def test_final_metrics_total_cost_equals_sum_of_step_costs():
+    """``total_cost_usd`` is the sum of the now-populated per-step costs."""
+    steps = [
+        _agent_step("s1", prompt=2000, completion=400),
+        _agent_step("s2", prompt=3000, completion=600),
+        _agent_step("s3", prompt=1500, completion=200, cached=500),
+    ]
+    fm = _compute_final_metrics(steps, session_model="claude-opus-4-7")
+
+    step_sum = sum(s.metrics.cost_usd for s in steps if s.metrics.cost_usd)
+    print(f"fm.total_cost_usd={fm.total_cost_usd} step_sum={step_sum}")
+    assert fm.total_cost_usd is not None
+    assert abs(fm.total_cost_usd - step_sum) < 1e-9
+
+
+def test_no_model_leaves_cost_as_none():
+    """If the step has neither step.model_name nor session_model, no cost."""
+    step = Step(
+        step_id="s1",
+        timestamp=datetime(2026, 4, 22, 10, 0, tzinfo=timezone.utc),
+        source=StepSource.AGENT,
+        message="ok",
+        metrics=Metrics(prompt_tokens=1000, completion_tokens=500, cost_usd=None),
+    )
+    fm = _compute_final_metrics([step], session_model=None)
+
+    print(f"cost when no model: {step.metrics.cost_usd}, final: {fm.total_cost_usd}")
+    assert step.metrics.cost_usd is None
+    assert fm.total_cost_usd is None
+
+
+def test_unknown_model_leaves_cost_as_none():
+    """A model missing from the pricing table doesn't crash; leaves None."""
+    step = Step(
+        step_id="s1",
+        timestamp=datetime(2026, 4, 22, 10, 0, tzinfo=timezone.utc),
+        source=StepSource.AGENT,
+        model_name="some-unreleased-model-9000",
+        message="ok",
+        metrics=Metrics(prompt_tokens=1000, completion_tokens=500, cost_usd=None),
+    )
+    fm = _compute_final_metrics([step], session_model=None)
+
+    print(f"cost for unknown model: {step.metrics.cost_usd}")
+    assert step.metrics.cost_usd is None
+    assert fm.total_cost_usd is None
+
+
+def test_preserves_precomputed_cost():
+    """When the parser wrote cost_usd (e.g. openclaw), we don't overwrite it."""
+    step = Step(
+        step_id="s1",
+        timestamp=datetime(2026, 4, 22, 10, 0, tzinfo=timezone.utc),
+        source=StepSource.AGENT,
+        model_name="claude-opus-4-7",
+        message="ok",
+        metrics=Metrics(
+            prompt_tokens=1000,
+            completion_tokens=500,
+            cost_usd=42.0,  # parser pre-populated
+        ),
+    )
+    fm = _compute_final_metrics([step], session_model="claude-opus-4-7")
+
+    print(f"preserved cost: {step.metrics.cost_usd}")
+    assert step.metrics.cost_usd == 42.0
+    assert fm.total_cost_usd == 42.0
+
+
+def test_user_and_system_steps_never_get_cost():
+    """Steps without metrics stay without cost; no accidental enrichment."""
+    user = Step(
+        step_id="u1",
+        timestamp=datetime(2026, 4, 22, 10, 0, tzinfo=timezone.utc),
+        source=StepSource.USER,
+        message="hi",
+    )
+    agent = _agent_step("s1", prompt=500, completion=100)
+    fm = _compute_final_metrics([user, agent], session_model="claude-opus-4-7")
+
+    assert user.metrics is None, "user step should have no metrics block"
+    assert agent.metrics.cost_usd is not None
+    assert fm.total_cost_usd is not None

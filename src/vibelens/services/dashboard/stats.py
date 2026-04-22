@@ -10,6 +10,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
 from vibelens.llm.normalizer import normalize_model_name
+from vibelens.llm.pricing import compute_cost_from_tokens, compute_step_cost
 from vibelens.models.dashboard.dashboard import (
     DailyStat,
     DashboardStats,
@@ -17,8 +18,7 @@ from vibelens.models.dashboard.dashboard import (
     ProjectDetail,
 )
 from vibelens.models.enums import StepSource
-from vibelens.models.trajectories import Trajectory
-from vibelens.services.dashboard.pricing import compute_trajectory_cost
+from vibelens.models.trajectories import Step, Trajectory
 from vibelens.utils import get_logger
 from vibelens.utils.timestamps import local_date_key, local_tz, parse_metadata_timestamp
 
@@ -94,6 +94,24 @@ def filter_metadata(
     return result
 
 
+class _StepBucket:
+    """One session's contribution to a single local date.
+
+    Populated from per-step timestamps; lets a cross-day session
+    distribute messages / tokens / cost across the days its steps
+    actually landed on, while session_count / heatmap / peak hours
+    stay anchored to ``Trajectory.timestamp`` (the session's creation
+    time).
+    """
+
+    __slots__ = ("messages", "tokens", "cost_usd")
+
+    def __init__(self) -> None:
+        self.messages: int = 0
+        self.tokens: int = 0
+        self.cost_usd: float = 0.0
+
+
 class SessionAggregate:
     """Aggregated metrics for a single session."""
 
@@ -110,6 +128,7 @@ class SessionAggregate:
         "timestamp",
         "agent_name",
         "cost_usd",
+        "daily_breakdown",
     )
 
     def __init__(self) -> None:
@@ -125,6 +144,11 @@ class SessionAggregate:
         self.timestamp: datetime | None = None
         self.agent_name: str = "unknown"
         self.cost_usd: float = 0.0
+        # local_date_key -> _StepBucket; None when the aggregator had no
+        # usable per-step timestamps (e.g. metadata-only fast path).
+        # Populated sums equal the session totals; a single-day session
+        # just has one bucket.
+        self.daily_breakdown: dict[str, _StepBucket] | None = None
 
 
 class _DailyAccumulator:
@@ -190,14 +214,15 @@ class _StatsAccumulator:
         self.heatmap: dict[str, int] = defaultdict(int)
         self.projects_seen: set[str] = set()
 
-    def _to_local(self, ts: datetime) -> datetime:
-        """Convert timestamp to local timezone (naive assumed UTC)."""
-        if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=timezone.utc)
-        return ts.astimezone(self.local_tz)
-
     def add_session(self, session: SessionAggregate) -> None:
-        """Accumulate one session's metrics."""
+        """Accumulate one session's metrics.
+
+        Session-level dimensions (session_count, daily_activity, hourly,
+        heatmap, duration) anchor on ``session.timestamp``. Messages /
+        tokens / cost are bucketed per-day from ``session.daily_breakdown``
+        so a session spanning yesterday 23:30 → today 00:30 shows
+        activity on both daily bars.
+        """
         tokens = session.input_tokens + session.output_tokens
 
         self.total_messages += session.messages
@@ -208,7 +233,6 @@ class _StatsAccumulator:
         self.total_tool_calls += session.tool_calls
         self.total_duration += session.duration
 
-        # Cost accumulation
         if session.cost_usd > 0:
             self.total_cost_usd += session.cost_usd
             canonical = normalize_model_name(session.model) or session.model
@@ -226,45 +250,67 @@ class _StatsAccumulator:
         if not session.timestamp:
             return
 
-        local_ts = self._to_local(session.timestamp)
+        session_ts = session.timestamp
+        if session_ts.tzinfo is None:
+            session_ts = session_ts.replace(tzinfo=timezone.utc)
+        local_ts = session_ts.astimezone(self.local_tz)
+        creation_key = local_date_key(local_ts)
 
-        # Period breakdowns (year / month / week)
-        self._accumulate_period(self.year, local_ts >= self.year_start, session, tokens)
-        self._accumulate_period(self.month, local_ts >= self.month_start, session, tokens)
-        self._accumulate_period(self.week, local_ts >= self.week_start, session, tokens)
-
-        # Daily bucket (local time)
-        date_key = local_date_key(local_ts)
-        bucket = self.daily_buckets.get(date_key)
-        if bucket is None:
-            bucket = _DailyAccumulator()
-            self.daily_buckets[date_key] = bucket
-        bucket.session_count += 1
-        bucket.total_messages += session.messages
-        bucket.total_tokens += tokens
-        bucket.total_duration += session.duration
-        bucket.total_cost_usd += session.cost_usd
-
-        self.daily_activity[date_key] += 1
+        # Creation-day-only counters.
+        self.daily_activity[creation_key] += 1
         self.hourly_dist[local_ts.hour] += 1
         self.heatmap[f"{local_ts.weekday()}_{local_ts.hour}"] += 1
 
+        # Messages / tokens / cost credited to each breakdown day.
+        breakdown = session.daily_breakdown or {}
+        for day_key, bucket in breakdown.items():
+            day = self.daily_buckets.setdefault(day_key, _DailyAccumulator())
+            day.total_messages += bucket.messages
+            day.total_tokens += bucket.tokens
+            day.total_cost_usd += bucket.cost_usd
+        # session_count and duration are session-identity fields: the
+        # creation day owns them, regardless of how the activity was split.
+        creation_day = self.daily_buckets.setdefault(creation_key, _DailyAccumulator())
+        creation_day.session_count += 1
+        creation_day.total_duration += session.duration
+
+        # Period stats. Session-identity fields (sessions / duration /
+        # tool_calls / token sub-totals) land once on the creation day.
+        # Activity fields (messages / tokens / cost) sum every breakdown
+        # day inside the period — so a session crossing into the period
+        # contributes its in-period activity even if created earlier.
+        for period, period_start in (
+            (self.year, self.year_start),
+            (self.month, self.month_start),
+            (self.week, self.week_start),
+        ):
+            self._accumulate_period(period, period_start, creation_key, session, breakdown)
+
     def _accumulate_period(
-        self, period: PeriodStats, in_period: bool, session: SessionAggregate, tokens: int
+        self,
+        period: PeriodStats,
+        period_start: datetime,
+        creation_key: str,
+        session: SessionAggregate,
+        breakdown: dict[str, _StepBucket],
     ) -> None:
-        """Add session metrics to a period if it falls within the boundary."""
-        if not in_period:
-            return
-        period.sessions += 1
-        period.messages += session.messages
-        period.tokens += tokens
-        period.tool_calls += session.tool_calls
-        period.duration += session.duration
-        period.input_tokens += session.input_tokens
-        period.output_tokens += session.output_tokens
-        period.cache_read_tokens += session.cache_read_tokens
-        period.cache_creation_tokens += session.cache_creation_tokens
-        period.cost_usd += session.cost_usd
+        """Fold a session's metrics into one period's totals."""
+        period_start_key = local_date_key(period_start)
+        if creation_key >= period_start_key:
+            period.sessions += 1
+            period.tool_calls += session.tool_calls
+            period.duration += session.duration
+            period.input_tokens += session.input_tokens
+            period.output_tokens += session.output_tokens
+            period.cache_read_tokens += session.cache_read_tokens
+            period.cache_creation_tokens += session.cache_creation_tokens
+
+        for day_key, bucket in breakdown.items():
+            if day_key < period_start_key:
+                continue
+            period.messages += bucket.messages
+            period.tokens += bucket.tokens
+            period.cost_usd += bucket.cost_usd
 
     def build(self, total_sessions: int) -> DashboardStats:
         """Build the final DashboardStats from accumulated data."""
@@ -362,37 +408,31 @@ def compute_dashboard_stats_from_metadata(metadata_list: list[dict]) -> Dashboar
 def _aggregate_metadata(meta: dict) -> SessionAggregate:
     """Extract aggregate metrics from a single metadata dict.
 
-    Reads from the enriched final_metrics and agent fields stored in
-    the metadata cache, avoiding full trajectory loading.
+    Reads the enriched ``final_metrics`` and ``agent`` fields the ingest
+    index cache already populated — avoids loading the full trajectory.
+    Every metric is credited to the session's creation day (the fast
+    path has no step-level granularity), but the output still matches
+    the full-trajectory shape so ``add_session`` has one code path.
     """
     agg = SessionAggregate()
     agg.project = meta.get("project_path") or NO_PROJECT
     agg.agent_name = (meta.get("agent") or {}).get("name") or "unknown"
+    agg.timestamp = parse_metadata_timestamp(meta)
 
-    # Parse timestamp
-    ts = parse_metadata_timestamp(meta)
-    agg.timestamp = ts
-
-    # Model from agent metadata
-    agent = meta.get("agent") or {}
-    model = agent.get("model_name")
+    model = (meta.get("agent") or {}).get("model_name")
     if _is_real_model(model):
         agg.model = model
 
-    # Extract metrics from enriched final_metrics
-    fm = meta.get("final_metrics") or {}
-    agg.input_tokens = fm.get("total_prompt_tokens") or 0
-    agg.output_tokens = fm.get("total_completion_tokens") or 0
-    agg.cache_read_tokens = fm.get("total_cache_read") or 0
-    agg.cache_creation_tokens = fm.get("total_cache_write") or 0
-    agg.tool_calls = fm.get("tool_call_count") or 0
-    agg.messages = fm.get("total_steps") or 0
-    agg.duration = fm.get("duration") or 0
+    final_metrics = meta.get("final_metrics") or {}
+    agg.input_tokens = final_metrics.get("total_prompt_tokens") or 0
+    agg.output_tokens = final_metrics.get("total_completion_tokens") or 0
+    agg.cache_read_tokens = final_metrics.get("total_cache_read") or 0
+    agg.cache_creation_tokens = final_metrics.get("total_cache_write") or 0
+    agg.tool_calls = final_metrics.get("tool_call_count") or 0
+    agg.messages = final_metrics.get("total_steps") or 0
+    agg.duration = final_metrics.get("duration") or 0
 
-    # Cost estimation from pricing table using token totals + model
     if agg.model != UNKNOWN_MODEL:
-        from vibelens.services.dashboard.pricing import compute_cost_from_tokens
-
         cost = compute_cost_from_tokens(
             agg.model,
             agg.input_tokens,
@@ -403,6 +443,13 @@ def _aggregate_metadata(meta: dict) -> SessionAggregate:
         if cost is not None:
             agg.cost_usd = cost
 
+    day = _to_local_date_key(agg.timestamp)
+    if day:
+        bucket = _StepBucket()
+        bucket.messages = agg.messages
+        bucket.tokens = agg.input_tokens + agg.output_tokens
+        bucket.cost_usd = agg.cost_usd
+        agg.daily_breakdown = {day: bucket}
     return agg
 
 
@@ -419,50 +466,106 @@ def _is_real_model(name: str | None) -> bool:
 
 
 def aggregate_session(traj: Trajectory) -> SessionAggregate:
-    """Extract aggregate metrics from a single trajectory."""
+    """Extract aggregate metrics from a single trajectory.
+
+    Walks every step once to produce session-level totals and a
+    per-local-date breakdown of messages / tokens / cost. The breakdown
+    lets a cross-day session split its activity across the days its
+    steps actually landed on; session_count / heatmap / peak hours and
+    duration still anchor to ``traj.timestamp`` at the caller.
+
+    Per-step cost is read from ``step.metrics.cost_usd`` when populated
+    (ingest writes it there for every agent step) and computed on the
+    fly otherwise — lets ad-hoc tests or alternative Trajectory builders
+    still get correct aggregates.
+    """
     agg = SessionAggregate()
-    # Exclude system steps (context continuations, tool result summaries)
-    # from the message count — they inflate numbers without representing
-    # real user-agent interaction.
-    agg.messages = sum(1 for s in traj.steps if s.source != StepSource.SYSTEM)
     agg.project = traj.project_path or NO_PROJECT
     agg.timestamp = traj.timestamp
     agg.agent_name = (traj.agent.name if traj.agent else None) or "unknown"
+    session_model = traj.agent.model_name if traj.agent else None
+    agg.model = _resolve_model(session_model, traj.steps)
 
-    # Model from agent, then step-level fallback; skip placeholders
-    if traj.agent and _is_real_model(traj.agent.model_name):
-        agg.model = traj.agent.model_name
-    else:
-        for step in traj.steps:
-            if _is_real_model(step.model_name):
-                agg.model = step.model_name
-                break
+    # Local-date fallback for steps that lack their own timestamp.
+    fallback_date = _to_local_date_key(traj.timestamp)
 
-    # Aggregate step-level metrics
+    breakdown: dict[str, _StepBucket] = {}
+    any_cost_found = False
     for step in traj.steps:
-        for _tc in step.tool_calls:
-            agg.tool_calls += 1
+        agg.tool_calls += len(step.tool_calls)
+        is_message = step.source != StepSource.SYSTEM
+        if is_message:
+            agg.messages += 1
+
+        tokens_this_step = 0
+        cost_this_step = 0.0
         if step.metrics:
-            agg.input_tokens += step.metrics.prompt_tokens
-            agg.output_tokens += step.metrics.completion_tokens
-            agg.cache_read_tokens += step.metrics.cached_tokens
-            agg.cache_creation_tokens += step.metrics.cache_creation_tokens
+            metrics = step.metrics
+            agg.input_tokens += metrics.prompt_tokens
+            agg.output_tokens += metrics.completion_tokens
+            agg.cache_read_tokens += metrics.cached_tokens
+            agg.cache_creation_tokens += metrics.cache_creation_tokens
+            tokens_this_step = metrics.prompt_tokens + metrics.completion_tokens
+            step_cost = metrics.cost_usd
+            if step_cost is None:
+                step_cost = compute_step_cost(step, session_model)
+            if step_cost is not None:
+                cost_this_step = step_cost
+                any_cost_found = True
 
-    # Cost estimation from pricing table
-    traj_cost = compute_trajectory_cost(traj)
-    if traj_cost is not None:
-        agg.cost_usd = traj_cost
+        day = _to_local_date_key(step.timestamp) or fallback_date
+        if day and (is_message or tokens_this_step or cost_this_step):
+            bucket = breakdown.setdefault(day, _StepBucket())
+            bucket.messages += int(is_message)
+            bucket.tokens += tokens_this_step
+            bucket.cost_usd += cost_this_step
 
-    # Duration from final_metrics or from timestamp span
+    if any_cost_found:
+        agg.cost_usd = sum(b.cost_usd for b in breakdown.values())
+    agg.daily_breakdown = breakdown or None
+    agg.duration = _session_duration(traj)
+    return agg
+
+
+def _resolve_model(session_model: str | None, steps: list[Step]) -> str:
+    """Pick the best real model name from the trajectory.
+
+    Prefers the session-level ``agent.model_name``; falls back to the
+    first step whose ``model_name`` is a real identifier (parsers emit
+    ``<unknown>`` placeholders that we skip).
+    """
+    if _is_real_model(session_model):
+        return session_model
+    for step in steps:
+        if _is_real_model(step.model_name):
+            return step.model_name
+    return UNKNOWN_MODEL
+
+
+def _session_duration(traj: Trajectory) -> int:
+    """Session wall-clock duration in seconds.
+
+    Uses ``final_metrics.duration`` when the parser recorded it (avoids
+    recomputing what ingest already knows), otherwise spans the first
+    and last step timestamps.
+    """
     if traj.final_metrics and traj.final_metrics.duration > 0:
-        agg.duration = traj.final_metrics.duration
-    elif len(traj.steps) >= 2:
+        return traj.final_metrics.duration
+    if len(traj.steps) >= 2:
         first_ts = traj.steps[0].timestamp
         last_ts = traj.steps[-1].timestamp
         if first_ts and last_ts:
-            agg.duration = max(0, int((last_ts - first_ts).total_seconds()))
+            return max(0, int((last_ts - first_ts).total_seconds()))
+    return 0
 
-    return agg
+
+def _to_local_date_key(timestamp: datetime | None) -> str | None:
+    """``YYYY-MM-DD`` in local tz, or ``None`` when ``timestamp`` is missing."""
+    if timestamp is None:
+        return None
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
+    return local_date_key(timestamp.astimezone(local_tz()))
 
 
 def _in_date_range(meta: dict, date_from: str | None, date_to: str | None) -> bool:

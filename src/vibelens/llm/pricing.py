@@ -1,4 +1,4 @@
-"""LLM pricing lookup.
+"""LLM pricing lookup and trajectory cost computation.
 
 Pricing comes from ``litellm.model_cost`` (a curated table of ~2700 models
 maintained upstream by the LiteLLM project, refreshed on every package
@@ -10,14 +10,19 @@ where the LiteLLM data is wrong, missing, or doesn't capture a tier
 nuance we want to model (e.g. Anthropic's 1M-context surcharge). Lookup
 checks overrides first, then falls back to LiteLLM.
 
-Cost computation that operates on trajectory models lives in
-``vibelens.services.dashboard.pricing``.
+:func:`compute_step_cost` and :func:`compute_trajectory_cost` apply the
+looked-up rates to token counts stored on :class:`Step` / :class:`Trajectory`.
+They live here (not in ``services/dashboard/``) so ingest parsers can
+populate :attr:`Step.metrics.cost_usd` without violating the
+``llm → services`` layering.
 """
 
 import litellm
 
 from vibelens.llm.normalizer import normalize_model_name
 from vibelens.models.llm.pricing import ModelPricing
+from vibelens.models.trajectories.step import Step
+from vibelens.models.trajectories.trajectory import Trajectory
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -183,3 +188,75 @@ def _from_litellm(model_name: str) -> ModelPricing | None:
             cache_write_per_mtok=cache_write * TOKENS_PER_MTOK,
         )
     return None
+
+
+def compute_cost_from_tokens(
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    cache_read_tokens: int = 0,
+    cache_creation_tokens: int = 0,
+) -> float | None:
+    """Compute estimated USD cost from aggregate token counts.
+
+    Used by metadata-based dashboard stats to estimate cost without
+    loading full trajectories.
+    """
+    pricing = lookup_pricing(model)
+    if not pricing:
+        return None
+    non_cached_input = max(0, input_tokens - cache_read_tokens)
+    return (
+        non_cached_input * pricing.input_per_mtok
+        + cache_read_tokens * pricing.cache_read_per_mtok
+        + cache_creation_tokens * pricing.cache_write_per_mtok
+        + output_tokens * pricing.output_per_mtok
+    ) / TOKENS_PER_MTOK
+
+
+def compute_step_cost(step: Step, session_model: str | None = None) -> float | None:
+    """Compute the estimated USD cost for a single step.
+
+    Uses ``step.model_name`` with fallback to ``session_model`` for pricing
+    lookup. Returns ``None`` when the step has no metrics or the model is
+    unrecognized.
+
+    Formula:
+        (prompt - cached) * input_rate
+        + cached * cache_hit_rate
+        + cache_creation * cache_write_rate
+        + completion * output_rate
+    """
+    if not step.metrics:
+        return None
+
+    model = step.model_name or session_model
+    pricing = lookup_pricing(model)
+    if not pricing:
+        return None
+
+    metrics = step.metrics
+    non_cached_input = max(0, metrics.prompt_tokens - metrics.cached_tokens)
+    return (
+        non_cached_input * pricing.input_per_mtok
+        + metrics.cached_tokens * pricing.cache_read_per_mtok
+        + metrics.cache_creation_tokens * pricing.cache_write_per_mtok
+        + metrics.completion_tokens * pricing.output_per_mtok
+    ) / TOKENS_PER_MTOK
+
+
+def compute_trajectory_cost(trajectory: Trajectory) -> float | None:
+    """Compute the total estimated USD cost for a trajectory.
+
+    Sums :func:`compute_step_cost` across all steps. Returns ``None``
+    when no step has a computable cost (e.g. every model is unknown).
+    """
+    session_model = trajectory.agent.model_name if trajectory.agent else None
+    total = 0.0
+    has_any_cost = False
+    for step in trajectory.steps:
+        step_cost = compute_step_cost(step, session_model)
+        if step_cost is not None:
+            total += step_cost
+            has_any_cost = True
+    return total if has_any_cost else None

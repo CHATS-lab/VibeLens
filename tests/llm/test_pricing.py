@@ -1,12 +1,12 @@
 """Tests for pricing module: normalization, lookup, and cost computation."""
 
 from vibelens.llm.normalizer import normalize_model_name
-from vibelens.llm.pricing import lookup_pricing
-from vibelens.models.trajectories import Agent, Metrics, Step, Trajectory
-from vibelens.services.dashboard.pricing import (
+from vibelens.llm.pricing import (
     compute_step_cost,
     compute_trajectory_cost,
+    lookup_pricing,
 )
+from vibelens.models.trajectories import Agent, Metrics, Step, Trajectory
 
 
 class TestNormalizeModelName:

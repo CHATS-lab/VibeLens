@@ -348,7 +348,9 @@ class BaseParser(ABC):
             first_message=self.find_first_user_text(steps),
             agent=agent,
             steps=steps,
-            final_metrics=_compute_final_metrics(steps),
+            final_metrics=_compute_final_metrics(
+                steps, agent.model_name if agent else None
+            ),
             prev_trajectory_ref=prev_trajectory_ref,
             parent_trajectory_ref=parent_trajectory_ref,
             extra=extra,
@@ -407,15 +409,29 @@ def _iter_parsed_jsonl(
         yield parsed
 
 
-def _compute_final_metrics(steps: list[Step]) -> FinalMetrics:
-    """Compute aggregate FinalMetrics from step-level metrics.
+def _compute_final_metrics(steps: list[Step], session_model: str | None) -> FinalMetrics:
+    """Compute aggregate FinalMetrics and populate per-step cost as a side effect.
+
+    When a step has token metrics but no pre-computed ``cost_usd`` (the
+    common case for Claude / Hermes / Codex — only openclaw records it
+    in source), we look up pricing and write the derived cost back to
+    ``step.metrics.cost_usd`` so downstream code can read a canonical
+    per-step cost without re-querying the pricing table.
 
     Args:
         steps: All steps in the trajectory.
+        session_model: Agent-level model name used as a fallback when
+            ``step.model_name`` is missing (Claude populates it per-step,
+            Gemini does not).
 
     Returns:
-        FinalMetrics with token totals, duration, tool counts, and cache stats.
+        FinalMetrics with token totals, duration, tool counts, cache stats,
+        and an aggregated ``total_cost_usd`` that equals the sum of the
+        (now-populated) per-step costs.
     """
+    # Local import avoids a module-level cycle at interpreter startup.
+    from vibelens.llm.pricing import compute_step_cost
+
     total_prompt = 0
     total_completion = 0
     total_cost: float | None = None
@@ -425,13 +441,21 @@ def _compute_final_metrics(steps: list[Step]) -> FinalMetrics:
 
     for step in steps:
         tool_call_count += len(step.tool_calls)
-        if step.metrics:
-            total_prompt += step.metrics.prompt_tokens
-            total_completion += step.metrics.completion_tokens
-            total_cache_read += step.metrics.cached_tokens
-            total_cache_write += step.metrics.cache_creation_tokens
-            if step.metrics.cost_usd is not None:
-                total_cost = (total_cost or 0.0) + step.metrics.cost_usd
+        if not step.metrics:
+            continue
+        total_prompt += step.metrics.prompt_tokens
+        total_completion += step.metrics.completion_tokens
+        total_cache_read += step.metrics.cached_tokens
+        total_cache_write += step.metrics.cache_creation_tokens
+
+        # Populate per-step cost when the parser didn't (e.g. Claude JSONL
+        # has no cost field; openclaw does, and ``compute_step_cost`` will
+        # re-derive a consistent value either way).
+        if step.metrics.cost_usd is None:
+            step.metrics.cost_usd = compute_step_cost(step, session_model)
+
+        if step.metrics.cost_usd is not None:
+            total_cost = (total_cost or 0.0) + step.metrics.cost_usd
 
     # Compute wall-clock duration from step timestamps
     timestamps = [s.timestamp for s in steps if s.timestamp]

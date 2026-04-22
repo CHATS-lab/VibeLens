@@ -589,3 +589,166 @@ class TestEdgeCases:
         assert result.total_output_tokens >= 500_000
         assert result.total_cost_usd > 0
         print(f"Large tokens: cost=${result.total_cost_usd:.4f}")
+
+
+def _make_cross_day_trajectory(
+    session_id: str,
+    day1_ts: datetime,
+    day2_ts: datetime,
+    model: str = "claude-sonnet-4-6",
+) -> Trajectory:
+    """Build a trajectory with one agent step on each of two local days.
+
+    Each agent step carries the same token metrics, so the per-day
+    tokens should split evenly when bucketed by step timestamp.
+    """
+    steps = [
+        Step(
+            step_id="u1",
+            source="user",
+            message="Let's keep going tomorrow",
+            timestamp=day1_ts,
+        ),
+        Step(
+            step_id="a1",
+            source="agent",
+            message="Sure",
+            timestamp=day1_ts + timedelta(minutes=5),
+            metrics=Metrics(prompt_tokens=1000, completion_tokens=200),
+        ),
+        Step(
+            step_id="u2",
+            source="user",
+            message="Morning",
+            timestamp=day2_ts,
+        ),
+        Step(
+            step_id="a2",
+            source="agent",
+            message="Continuing",
+            timestamp=day2_ts + timedelta(minutes=5),
+            metrics=Metrics(prompt_tokens=1000, completion_tokens=200),
+        ),
+    ]
+    return Trajectory(
+        session_id=session_id,
+        project_path="/Users/test/myproject",
+        timestamp=day1_ts,  # creation = day 1
+        agent=Agent(name="claude-code", model_name=model),
+        steps=steps,
+        final_metrics=FinalMetrics(duration=120, total_steps=4, tool_call_count=0),
+    )
+
+
+class TestCrossDayBucketing:
+    """Step-timestamp bucketing behavior for cross-day sessions."""
+
+    def _bracketing_days(self):
+        """Return timestamps and local-date keys for a session that crosses midnight.
+
+        Uses a recent local-evening anchor to stay safely inside the
+        year/month/week periods regardless of when the test runs.
+        """
+        from vibelens.utils.timestamps import local_date_key, local_tz
+
+        now = datetime.now(tz=local_tz())
+        day1_ts = now.replace(hour=23, minute=30, second=0, microsecond=0) - timedelta(days=3)
+        day2_ts = day1_ts + timedelta(hours=2)  # 01:30 the next local day
+        return day1_ts, day2_ts, local_date_key(day1_ts), local_date_key(day2_ts)
+
+    def test_messages_split_across_days(self):
+        """A session with one user step per day puts one message in each bar."""
+        day1_ts, day2_ts, day1_key, day2_key = self._bracketing_days()
+        traj = _make_cross_day_trajectory("sess-1", day1_ts, day2_ts)
+        result = compute_dashboard_stats([traj])
+
+        day_map = {d.date: d for d in result.daily_stats}
+        print(f"day1 {day1_key}: {day_map[day1_key].total_messages} messages")
+        print(f"day2 {day2_key}: {day_map[day2_key].total_messages} messages")
+        assert day_map[day1_key].total_messages == 2  # 1 user + 1 agent
+        assert day_map[day2_key].total_messages == 2
+
+    def test_tokens_split_across_days(self):
+        """Tokens go to the day of the step that earned them."""
+        day1_ts, day2_ts, day1_key, day2_key = self._bracketing_days()
+        traj = _make_cross_day_trajectory("sess-1", day1_ts, day2_ts)
+        result = compute_dashboard_stats([traj])
+
+        day_map = {d.date: d for d in result.daily_stats}
+        day1_tokens = day_map[day1_key].total_tokens
+        day2_tokens = day_map[day2_key].total_tokens
+        print(f"tokens: day1={day1_tokens} day2={day2_tokens} total={day1_tokens + day2_tokens}")
+        # Each agent step contributes 1000+200=1200 tokens.
+        assert day1_tokens == 1200
+        assert day2_tokens == 1200
+        assert day1_tokens + day2_tokens == result.total_tokens
+
+    def test_cost_split_across_days(self):
+        """Cost follows step timestamps and sums back to the session total."""
+        day1_ts, day2_ts, day1_key, day2_key = self._bracketing_days()
+        traj = _make_cross_day_trajectory("sess-1", day1_ts, day2_ts)
+        result = compute_dashboard_stats([traj])
+
+        day_map = {d.date: d for d in result.daily_stats}
+        day1_cost = day_map[day1_key].total_cost_usd
+        day2_cost = day_map[day2_key].total_cost_usd
+        print(f"cost: day1=${day1_cost:.4f} day2=${day2_cost:.4f}")
+        assert day1_cost > 0
+        assert day2_cost > 0
+        assert abs((day1_cost + day2_cost) - result.total_cost_usd) < 1e-6
+
+    def test_session_count_stays_on_creation_day(self):
+        """session_count, hourly_dist, heatmap all anchor to the creation day."""
+        day1_ts, day2_ts, day1_key, day2_key = self._bracketing_days()
+        traj = _make_cross_day_trajectory("sess-1", day1_ts, day2_ts)
+        result = compute_dashboard_stats([traj])
+
+        day_map = {d.date: d for d in result.daily_stats}
+        print(
+            f"session counts: day1={day_map[day1_key].session_count} "
+            f"day2={day_map[day2_key].session_count}"
+        )
+        assert day_map[day1_key].session_count == 1
+        assert day_map[day2_key].session_count == 0
+        assert result.daily_activity[day1_key] == 1
+        assert day2_key not in result.daily_activity
+        # Heatmap cell for day 1 fires; no separate cell for day 2's 01:30.
+        creation_cell = f"{day1_ts.weekday()}_{day1_ts.hour}"
+        day2_cell = f"{day2_ts.weekday()}_{day2_ts.hour}"
+        assert result.weekday_hour_heatmap.get(creation_cell) == 1
+        assert result.weekday_hour_heatmap.get(day2_cell, 0) == 0
+
+    def test_duration_stays_on_creation_day(self):
+        """Duration is session wall-clock, anchored to the creation day."""
+        day1_ts, day2_ts, day1_key, day2_key = self._bracketing_days()
+        traj = _make_cross_day_trajectory("sess-1", day1_ts, day2_ts)
+        result = compute_dashboard_stats([traj])
+
+        day_map = {d.date: d for d in result.daily_stats}
+        print(
+            f"duration: day1={day_map[day1_key].total_duration} "
+            f"day2={day_map[day2_key].total_duration}"
+        )
+        assert day_map[day1_key].total_duration == traj.final_metrics.duration
+        # Day 2 bucket exists only for messages/tokens/cost, not duration.
+        assert day_map[day2_key].total_duration == 0
+
+    def test_single_day_session_unchanged(self):
+        """Regression: a session whose steps all live in one day behaves as before."""
+        from vibelens.utils.timestamps import local_date_key, local_tz
+
+        session_ts = datetime.now(tz=local_tz()).replace(
+            hour=10, minute=0, second=0, microsecond=0
+        )
+        traj = _make_trajectory(timestamp=session_ts)
+        result = compute_dashboard_stats([traj])
+
+        session_key = local_date_key(session_ts)
+        day_map = {d.date: d for d in result.daily_stats}
+        assert list(day_map.keys()) == [session_key]
+        assert day_map[session_key].session_count == 1
+        assert day_map[session_key].total_messages == result.total_messages
+        assert day_map[session_key].total_tokens == result.total_tokens
+        assert day_map[session_key].total_cost_usd == pytest.approx(
+            result.total_cost_usd, rel=1e-9
+        )
