@@ -1,26 +1,26 @@
 """Catalog search index.
 
-Five independent ``BM25Okapi`` instances (one per field), composed at
-query time into a weighted per-field BM25 score. Module-level singleton
-built lazily and reset when the catalog reloads.
+Composes the shared :class:`~vibelens.services.search.InvertedIndex` for
+per-field BM25, then layers extension-specific signals on top:
 
-Signals that do not depend on the query (quality, popularity, recency)
-are precomputed as numpy arrays at build time so ranking is dominated
-by vectorized arithmetic, not Python loops.
+  * quality / popularity / recency precomputed arrays (query-independent)
+  * type_mask per :class:`AgentExtensionType`
+  * raw name tokens for the name-match tier bands
+
+Module-level singleton built lazily and reset when the catalog reloads.
 """
 
 import math
 import re
 import threading
-from collections import defaultdict
 from datetime import datetime, timezone
 
 import numpy as np
-from rank_bm25 import BM25Okapi
 
 from vibelens.models.enums import AgentExtensionType
 from vibelens.models.extension import AgentExtensionItem
-from vibelens.services.extensions.search.tokenizer import _TOKEN_RE, tokenize
+from vibelens.services.search import InvertedIndex, tokenize
+from vibelens.services.search.tokenizer import _TOKEN_RE
 from vibelens.utils.log import get_logger
 from vibelens.utils.timestamps import parse_iso_timestamp
 
@@ -36,7 +36,6 @@ FIELD_WEIGHTS: dict[str, float] = {
     "readme": 0.5,
 }
 
-_MIN_PREFIX_LEN = 3
 _RECENCY_HALFLIFE_DAYS = 180.0
 _MAX_QUALITY_SCORE = 100.0
 
@@ -75,7 +74,12 @@ def _recency_decay(updated_at: str | None, now: datetime) -> float:
 
 
 class CatalogSearchIndex:
-    """Weighted per-field BM25 over a fixed list of catalog items."""
+    """Weighted per-field BM25 over a fixed list of catalog items.
+
+    Holds a generic :class:`InvertedIndex` for text scoring plus the
+    extension-specific precomputed signal arrays and raw-name structures
+    consulted by :mod:`scorer` at query time.
+    """
 
     def __init__(self, items: list[AgentExtensionItem]) -> None:
         """Tokenize every field and build one BM25 per field.
@@ -87,9 +91,6 @@ class CatalogSearchIndex:
         self._items = items
         self._ids = [item.extension_id for item in items]
         self._id_to_idx = {eid: i for i, eid in enumerate(self._ids)}
-        self._bm25: dict[str, BM25Okapi] = {}
-        self._vocab: dict[str, set[str]] = {}
-        self._prefix_map: dict[str, set[str]] = defaultdict(set)
 
         n = len(items)
         # Precomputed signal arrays (query-independent).
@@ -98,19 +99,14 @@ class CatalogSearchIndex:
         self.recency_signal = np.zeros(n, dtype=np.float32)
         self.type_mask: dict[AgentExtensionType, np.ndarray] = {}
 
-        # Lowercased names for exact/prefix matching and alphabetical sort.
         names_lower_list: list[str] = []
         # Union of raw-tokenized names (pre-stem) for token-boundary name matching.
         name_token_sets: list[set[str]] = []
 
-        # Sparse inverted index: field -> token -> sorted int32 array of
-        # document indices containing the token. Much smaller than dense
-        # bool arrays when the vocabulary is long-tailed.
-        self._postings: dict[str, dict[str, np.ndarray]] = {f: {} for f in FIELD_WEIGHTS}
-
         if not items:
             self.names_lower_arr = np.empty(0, dtype=object)
-            self._name_token_sets = []
+            self._name_token_sets: list[set[str]] = []
+            self._inverted = InvertedIndex([], FIELD_WEIGHTS)
             logger.info("catalog search index built over empty catalog")
             return
 
@@ -135,44 +131,15 @@ class CatalogSearchIndex:
             )
             self.type_mask[ext_type] = mask
 
-        for field in FIELD_WEIGHTS:
-            try:
-                tokenized = [tokenize(_field_text(item, field)) for item in items]
-                # rank-bm25 rejects corpora where every doc is empty; guard that.
-                if not any(tokenized):
-                    logger.warning("field %s has no tokens across catalog; skipping", field)
-                    continue
-                # Empty docs get a sentinel token that never matches a real query.
-                corpus = [t if t else [f"__empty_{field}__"] for t in tokenized]
-                self._bm25[field] = BM25Okapi(corpus)
-                vocab = {tok for doc in tokenized for tok in doc}
-                self._vocab[field] = vocab
-                # Invert the corpus: token -> sorted array of item indices.
-                # Single pass over (doc, token) pairs, O(total_token_count).
-                postings_lists: dict[str, list[int]] = {tok: [] for tok in vocab}
-                for doc_i, doc_tokens in enumerate(tokenized):
-                    for tok in set(doc_tokens):
-                        postings_lists[tok].append(doc_i)
-                self._postings[field] = {
-                    tok: np.asarray(hits, dtype=np.int32)
-                    for tok, hits in postings_lists.items()
-                }
-            except (ValueError, ZeroDivisionError) as exc:
-                logger.warning("failed to build bm25 for field %s: %s", field, exc)
-
-        all_tokens: set[str] = set()
-        for vocab in self._vocab.values():
-            all_tokens.update(vocab)
-        max_prefix_len = min(12, max((len(t) for t in all_tokens), default=0))
-        for tok in all_tokens:
-            for n_prefix in range(_MIN_PREFIX_LEN, min(len(tok), max_prefix_len) + 1):
-                self._prefix_map[tok[:n_prefix]].add(tok)
+        tokenized_corpus = [
+            {field: tokenize(_field_text(item, field)) for field in FIELD_WEIGHTS} for item in items
+        ]
+        self._inverted = InvertedIndex(tokenized_corpus, FIELD_WEIGHTS)
 
         logger.info(
-            "catalog search index built: %d items, %d fields, %d unique tokens",
+            "catalog search index built: %d items, %d fields indexed",
             len(items),
-            len(self._bm25),
-            len(all_tokens),
+            sum(1 for f in FIELD_WEIGHTS if self._inverted.score_field(f, ["__probe__"]).size > 0),
         )
 
     def num_items(self) -> int:
@@ -187,60 +154,33 @@ class CatalogSearchIndex:
         """Return the index for ``extension_id`` or None if unknown."""
         return self._id_to_idx.get(extension_id)
 
-    def expand_prefix(self, prefix: str) -> list[str]:
-        """Return every indexed token starting with ``prefix``.
+    @property
+    def inverted(self) -> InvertedIndex:
+        """The underlying generic inverted index used by the scorer."""
+        return self._inverted
 
-        Used only on the last token of a user-typed query. The returned
-        list is treated as an OR of tokens at scoring time.
-        """
-        if len(prefix) < _MIN_PREFIX_LEN:
-            return []
-        return list(self._prefix_map.get(prefix, ()))
+    # ---- Methods delegated to the inverted index (kept for scorer's API) ----
+    def score_field(self, field: str, query_tokens: list[str]) -> np.ndarray:
+        """Score all items for one field as a numpy array."""
+        return self._inverted.score_field(field, query_tokens)
+
+    def per_field_has_token(self, field: str, token: str) -> np.ndarray:
+        """Bool mask: True where ``token`` appears in the item's ``field`` text."""
+        return self._inverted.per_field_has_token(field, token)
+
+    def posting_indices(self, field: str, token: str) -> np.ndarray:
+        """Sorted int32 array of item indices containing ``token`` in ``field``."""
+        return self._inverted.posting_indices(field, token)
+
+    def expand_prefix(self, prefix: str) -> list[str]:
+        """Return every indexed token starting with ``prefix``."""
+        return self._inverted.expand_prefix(prefix)
 
     def token_in_any_vocab(self, token: str) -> bool:
         """True when ``token`` is an exact match in at least one field vocab."""
-        return any(token in vocab for vocab in self._vocab.values())
+        return self._inverted.token_in_any_vocab(token)
 
-    def score_field(self, field: str, query_tokens: list[str]) -> np.ndarray:
-        """Score all items for one field as a numpy array.
-
-        Args:
-            field: One of the indexed fields (name, topics, etc.).
-            query_tokens: Already-tokenized query.
-
-        Returns:
-            Array of length ``num_items``. Zeros if field or tokens empty.
-        """
-        bm25 = self._bm25.get(field)
-        n = len(self._items)
-        if bm25 is None or not query_tokens or n == 0:
-            return np.zeros(n, dtype=np.float32)
-        return np.asarray(bm25.get_scores(query_tokens), dtype=np.float32)
-
-    def per_field_has_token(self, field: str, token: str) -> np.ndarray:
-        """Bool mask: True where ``token`` appears in the item's ``field`` text.
-
-        Materialized from the sparse postings on demand. O(n) allocation
-        but only O(k) writes where k = number of items containing the token.
-        """
-        n = len(self._items)
-        postings = self._postings.get(field, {})
-        hits = postings.get(token)
-        mask = np.zeros(n, dtype=bool)
-        if hits is not None and len(hits) > 0:
-            mask[hits] = True
-        return mask
-
-    def posting_indices(self, field: str, token: str) -> np.ndarray:
-        """Sorted int32 array of item indices containing ``token`` in ``field``.
-
-        Empty array if the token isn't in the field's vocabulary.
-        """
-        postings = self._postings.get(field, {})
-        hits = postings.get(token)
-        if hits is None:
-            return np.empty(0, dtype=np.int32)
-        return hits
+    # ---- Name-tier helpers (extension-specific) ----
 
     def exact_name_match(self, query: str) -> np.ndarray:
         """Bool mask: item.name equals query ignoring case and separators.
@@ -259,12 +199,7 @@ class CatalogSearchIndex:
         )
 
     def name_token_match(self, raw_tokens: list[str]) -> np.ndarray:
-        """Bool mask: every raw (pre-stem) query token is a name token.
-
-        Stronger than "name contains substring": uses word boundaries so
-        that `paper-writing` matches `paper-writing` and `paper-writer` but
-        not items where the letters appear mid-word.
-        """
+        """Bool mask: every raw (pre-stem) query token is a name token."""
         n = len(self._items)
         if not raw_tokens or n == 0:
             return np.zeros(n, dtype=bool)
@@ -272,20 +207,14 @@ class CatalogSearchIndex:
         for tok in raw_tokens:
             if not tok:
                 continue
-            per = np.fromiter(
-                (tok in toks for toks in self._name_token_sets), count=n, dtype=bool
-            )
+            per = np.fromiter((tok in toks for toks in self._name_token_sets), count=n, dtype=bool)
             mask &= per
             if not mask.any():
                 return mask
         return mask
 
     def name_token_count(self, raw_tokens: list[str]) -> np.ndarray:
-        """Count per item: how many raw query tokens are whole name tokens.
-
-        Used for partial-tier scoring — an item whose name contains 2 of 3
-        query tokens outranks one with 0 but not one with all 3.
-        """
+        """Count per item: how many raw query tokens are whole name tokens."""
         n = len(self._items)
         if not raw_tokens or n == 0:
             return np.zeros(n, dtype=np.int16)
@@ -299,11 +228,7 @@ class CatalogSearchIndex:
         return counts
 
     def name_contains_query(self, query: str) -> np.ndarray:
-        """Bool mask: raw (post-cleanup) query string appears in item name.
-
-        Lets 'paper-writ' match 'paper-writing', even though the stemmed
-        tokens don't align exactly.
-        """
+        """Bool mask: raw (post-cleanup) query string appears in item name."""
         q = query.strip().lower()
         n = len(self._items)
         if len(q) < 3 or n == 0:

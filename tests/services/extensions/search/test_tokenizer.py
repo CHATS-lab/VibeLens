@@ -1,6 +1,6 @@
 """Tokenizer tests: splitting, casing, stopwords, stemming, prefix edges."""
 
-from vibelens.services.extensions.search.tokenizer import tokenize
+from vibelens.services.search.tokenizer import tokenize
 
 
 def test_tokenize_basic_split():

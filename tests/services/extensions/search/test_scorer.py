@@ -20,11 +20,8 @@ def test_weight_rows_sum_to_one():
 
 def test_effective_weights_redistributes_empty_text():
     """Zeroing `text` rescales the rest to sum to 1."""
-    weights = _effective_weights(
-        mode_weights=WEIGHTS_BY_MODE[SortMode.PERSONALIZED],
-        has_text=False,
-        has_profile=True,
-    )
+    present = {"profile", "quality", "popularity", "recency"}  # no "text"
+    weights = _effective_weights(WEIGHTS_BY_MODE[SortMode.PERSONALIZED], present)
     print(f"weights={weights}")
     assert weights["text"] == 0.0
     assert abs(sum(weights.values()) - 1.0) < 1e-9
@@ -34,11 +31,8 @@ def test_effective_weights_redistributes_empty_text():
 
 def test_effective_weights_redistributes_missing_profile():
     """Zeroing `profile` rescales the rest."""
-    weights = _effective_weights(
-        mode_weights=WEIGHTS_BY_MODE[SortMode.DEFAULT],
-        has_text=True,
-        has_profile=False,
-    )
+    present = {"text", "quality", "popularity", "recency"}  # no "profile"
+    weights = _effective_weights(WEIGHTS_BY_MODE[SortMode.DEFAULT], present)
     print(f"weights={weights}")
     assert weights["profile"] == 0.0
     assert abs(sum(weights.values()) - 1.0) < 1e-9

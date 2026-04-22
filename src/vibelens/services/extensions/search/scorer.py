@@ -19,9 +19,9 @@ import re
 import numpy as np
 
 from vibelens.models.enums import AgentExtensionType
-from vibelens.services.extensions.search.index import FIELD_WEIGHTS, CatalogSearchIndex
+from vibelens.services.extensions.search.index import CatalogSearchIndex
 from vibelens.services.extensions.search.query import ScoredExtension, SortMode
-from vibelens.services.extensions.search.tokenizer import tokenize
+from vibelens.services.search import score_text_query
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -101,12 +101,10 @@ def rank_extensions(
         return []
 
     has_text = bool(search_text.strip())
-    name_scores = (
-        _name_match_tiers(index, search_text) if has_text else np.zeros(n, dtype=np.int32)
-    )
+    name_scores = _name_match_tiers(index, search_text) if has_text else np.zeros(n, dtype=np.int32)
 
     text_scores = (
-        _score_text_query(index, search_text, expand_last_as_prefix=True)
+        score_text_query(index.inverted, search_text, expand_last_as_prefix=True)
         if has_text
         else np.zeros(n, dtype=np.float32)
     )
@@ -119,21 +117,20 @@ def rank_extensions(
             return []
 
     if sort is SortMode.NAME:
-        return _build_results(
-            index, selected, name_scores, text_scores, top_k, alpha_tiebreak=True
-        )
+        return _build_results(index, selected, name_scores, text_scores, top_k, alpha_tiebreak=True)
 
     profile_scores = (
-        _score_text_query(index, " ".join(profile_keywords), expand_last_as_prefix=False)
+        score_text_query(index.inverted, " ".join(profile_keywords), expand_last_as_prefix=False)
         if profile_keywords
         else np.zeros(n, dtype=np.float32)
     )
 
-    weights = _effective_weights(
-        mode_weights=WEIGHTS_BY_MODE[sort],
-        has_text=has_text,
-        has_profile=bool(profile_keywords),
-    )
+    present: set[str] = {"quality", "popularity", "recency"}
+    if has_text:
+        present.add("text")
+    if profile_keywords:
+        present.add("profile")
+    weights = _effective_weights(WEIGHTS_BY_MODE[sort], present)
     composite = (
         weights["text"] * text_scores
         + weights["profile"] * profile_scores
@@ -210,7 +207,6 @@ def _build_results(
     name_scores: np.ndarray,
     text_scores: np.ndarray,
     top_k: int | None,
-    *,
     composite: np.ndarray | None = None,
     profile_scores: np.ndarray | None = None,
     weights: dict[str, float] | None = None,
@@ -262,99 +258,14 @@ def _build_results(
 
 
 def _effective_weights(
-    mode_weights: dict[str, float], has_text: bool, has_profile: bool
+    mode_weights: dict[str, float], present_signals: set[str]
 ) -> dict[str, float]:
-    """Zero out missing-input weights and renormalize the rest to 1.0."""
-    weights = dict(mode_weights)
-    if not has_text:
-        weights["text"] = 0.0
-    if not has_profile:
-        weights["profile"] = 0.0
-    total = sum(weights.values())
-    if total <= 0:
-        return {k: 1.0 / len(weights) for k in weights}
-    return {k: v / total for k, v in weights.items()}
+    """Zero out missing-input weights and renormalize the rest to 1.0.
 
-
-def _score_text_query(
-    index: CatalogSearchIndex, text: str, expand_last_as_prefix: bool
-) -> np.ndarray:
-    """Score every item against the tokenized query, summed across fields.
-
-    AND semantics: every required (non-prefix) query token must appear
-    somewhere in the item. Prefix-expanded last tokens contribute as OR.
-    Items failing the AND match are scored zero.
+    Thin wrapper around :func:`vibelens.services.search.effective_weights`
+    kept here so the call site reads naturally alongside the
+    extension-specific WEIGHTS_BY_MODE table.
     """
-    n = index.num_items()
-    raw_tokens = tokenize(text)
-    if not raw_tokens or n == 0:
-        return np.zeros(n, dtype=np.float32)
+    from vibelens.services.search import effective_weights as _shared_effective_weights
 
-    required_tokens, optional_tokens = _split_required_and_prefix(
-        index, text, raw_tokens, expand_last_as_prefix
-    )
-
-    match_mask = _and_match_mask(index, required_tokens, n)
-    if not match_mask.any():
-        return np.zeros(n, dtype=np.float32)
-
-    if optional_tokens:
-        optional_mask = _or_match_mask(index, optional_tokens, n)
-        match_mask &= optional_mask
-        if not match_mask.any():
-            return np.zeros(n, dtype=np.float32)
-
-    scoring_tokens = required_tokens + optional_tokens
-    combined = np.zeros(n, dtype=np.float32)
-    for field, weight in FIELD_WEIGHTS.items():
-        combined += weight * index.score_field(field, scoring_tokens)
-    combined = np.where(match_mask, combined, 0.0)
-
-    max_score = float(combined.max()) if combined.size else 0.0
-    if max_score <= 0:
-        return np.zeros(n, dtype=np.float32)
-    return combined / max_score
-
-
-def _split_required_and_prefix(
-    index: CatalogSearchIndex,
-    raw_text: str,
-    tokens: list[str],
-    expand_last_as_prefix: bool,
-) -> tuple[list[str], list[str]]:
-    """Split tokens into (required-AND, optional-OR-prefix-expansions)."""
-    if not expand_last_as_prefix or raw_text.endswith((" ", "\t", "\n")) or not tokens:
-        return tokens, []
-    last = tokens[-1]
-    if index.token_in_any_vocab(last):
-        return tokens, []
-    expansions = index.expand_prefix(last)
-    if not expansions:
-        return tokens, []
-    return tokens[:-1], expansions[:10]
-
-
-def _and_match_mask(
-    index: CatalogSearchIndex, tokens: list[str], n: int
-) -> np.ndarray:
-    """Bool mask: items where every token appears in at least one field."""
-    mask = np.ones(n, dtype=bool)
-    for tok in tokens:
-        per_token = np.zeros(n, dtype=bool)
-        for field in FIELD_WEIGHTS:
-            per_token |= index.per_field_has_token(field, tok)
-        mask &= per_token
-        if not mask.any():
-            return mask
-    return mask
-
-
-def _or_match_mask(
-    index: CatalogSearchIndex, tokens: list[str], n: int
-) -> np.ndarray:
-    """Bool mask: items where at least one of ``tokens`` appears anywhere."""
-    mask = np.zeros(n, dtype=bool)
-    for tok in tokens:
-        for field in FIELD_WEIGHTS:
-            mask |= index.per_field_has_token(field, tok)
-    return mask
+    return _shared_effective_weights(mode_weights, present_signals=present_signals)
