@@ -52,150 +52,150 @@ def _build_platforms() -> dict[ExtensionSource, AgentPlatform]:
     """
     return {
         ExtensionSource.CLAUDE: AgentPlatform(
-        source=ExtensionSource.CLAUDE,
-        root=_home(".claude"),
-        skills_dir=_home(".claude", "skills"),
-        commands_dir=_home(".claude", "commands"),
-        subagents_dir=_home(".claude", "agents"),
-        plugins_dir=None,
-        hook_config_path=_home(".claude", "settings.json"),
-        supported_types=frozenset(
-            {
-                AgentExtensionType.SKILL,
-                AgentExtensionType.COMMAND,
-                AgentExtensionType.SUBAGENT,
-                AgentExtensionType.HOOK,
-                AgentExtensionType.PLUGIN,
-            }
+            source=ExtensionSource.CLAUDE,
+            root=_home(".claude"),
+            skills_dir=_home(".claude", "skills"),
+            commands_dir=_home(".claude", "commands"),
+            subagents_dir=_home(".claude", "agents"),
+            plugins_dir=None,
+            hook_config_path=_home(".claude", "settings.json"),
+            supported_types=frozenset(
+                {
+                    AgentExtensionType.SKILL,
+                    AgentExtensionType.COMMAND,
+                    AgentExtensionType.SUBAGENT,
+                    AgentExtensionType.HOOK,
+                    AgentExtensionType.PLUGIN,
+                }
+            ),
+            extra_paths={"claude_json": _home(".claude.json")},
         ),
-        extra_paths={"claude_json": _home(".claude.json")},
-    ),
-    ExtensionSource.CODEX: AgentPlatform(
-        source=ExtensionSource.CODEX,
-        root=_home(".codex"),
-        skills_dir=_home(".codex", "skills"),
-        subagents_dir=_home(".codex", "agents"),
-        plugins_dir=_home(".codex", "plugins"),
-        hook_config_path=_home(".codex", "hooks.json"),
-        supported_types=frozenset(
-            {
-                AgentExtensionType.SKILL,
-                AgentExtensionType.SUBAGENT,
-                AgentExtensionType.HOOK,
-                AgentExtensionType.PLUGIN,
-            }
+        ExtensionSource.CODEX: AgentPlatform(
+            source=ExtensionSource.CODEX,
+            root=_home(".codex"),
+            skills_dir=_home(".codex", "skills"),
+            subagents_dir=_home(".codex", "agents"),
+            plugins_dir=_home(".codex", "plugins"),
+            hook_config_path=_home(".codex", "hooks.json"),
+            supported_types=frozenset(
+                {
+                    AgentExtensionType.SKILL,
+                    AgentExtensionType.SUBAGENT,
+                    AgentExtensionType.HOOK,
+                    AgentExtensionType.PLUGIN,
+                }
+            ),
         ),
-    ),
-    ExtensionSource.CURSOR: AgentPlatform(
-        source=ExtensionSource.CURSOR,
-        root=_home(".cursor"),
-        skills_dir=_home(".cursor", "skills"),
-        commands_dir=_home(".cursor", "commands"),
-        subagents_dir=_home(".cursor", "agents"),
-        plugins_dir=_home(".cursor", "plugins"),
-        hook_config_path=_home(".cursor", "hooks.json"),
-        supported_types=frozenset(
-            {
-                AgentExtensionType.SKILL,
-                AgentExtensionType.COMMAND,
-                AgentExtensionType.SUBAGENT,
-                AgentExtensionType.HOOK,
-                AgentExtensionType.PLUGIN,
-            }
+        ExtensionSource.CURSOR: AgentPlatform(
+            source=ExtensionSource.CURSOR,
+            root=_home(".cursor"),
+            skills_dir=_home(".cursor", "skills"),
+            commands_dir=_home(".cursor", "commands"),
+            subagents_dir=_home(".cursor", "agents"),
+            plugins_dir=_home(".cursor", "plugins"),
+            hook_config_path=_home(".cursor", "hooks.json"),
+            supported_types=frozenset(
+                {
+                    AgentExtensionType.SKILL,
+                    AgentExtensionType.COMMAND,
+                    AgentExtensionType.SUBAGENT,
+                    AgentExtensionType.HOOK,
+                    AgentExtensionType.PLUGIN,
+                }
+            ),
         ),
-    ),
-    ExtensionSource.OPENCODE: AgentPlatform(
-        source=ExtensionSource.OPENCODE,
-        root=_home(".config", "opencode"),
-        skills_dir=_home(".config", "opencode", "skills"),
-        commands_dir=_home(".config", "opencode", "commands"),
-        subagents_dir=_home(".config", "opencode", "agents"),
-        supported_types=frozenset(
-            {
-                AgentExtensionType.SKILL,
-                AgentExtensionType.COMMAND,
-                AgentExtensionType.SUBAGENT,
-            }
+        ExtensionSource.OPENCODE: AgentPlatform(
+            source=ExtensionSource.OPENCODE,
+            root=_home(".config", "opencode"),
+            skills_dir=_home(".config", "opencode", "skills"),
+            commands_dir=_home(".config", "opencode", "commands"),
+            subagents_dir=_home(".config", "opencode", "agents"),
+            supported_types=frozenset(
+                {
+                    AgentExtensionType.SKILL,
+                    AgentExtensionType.COMMAND,
+                    AgentExtensionType.SUBAGENT,
+                }
+            ),
         ),
-    ),
-    ExtensionSource.GEMINI: AgentPlatform(
-        source=ExtensionSource.GEMINI,
-        root=_home(".gemini"),
-        skills_dir=_home(".gemini", "skills"),
-        subagents_dir=_home(".gemini", "subagents"),
-        plugins_dir=_home(".gemini", "extensions"),
-        hook_config_path=_home(".gemini", "settings.json"),
-        supported_types=frozenset(
-            {
-                AgentExtensionType.SKILL,
-                AgentExtensionType.SUBAGENT,
-                AgentExtensionType.HOOK,
-                AgentExtensionType.PLUGIN,
-            }
+        ExtensionSource.GEMINI: AgentPlatform(
+            source=ExtensionSource.GEMINI,
+            root=_home(".gemini"),
+            skills_dir=_home(".gemini", "skills"),
+            subagents_dir=_home(".gemini", "subagents"),
+            plugins_dir=_home(".gemini", "extensions"),
+            hook_config_path=_home(".gemini", "settings.json"),
+            supported_types=frozenset(
+                {
+                    AgentExtensionType.SKILL,
+                    AgentExtensionType.SUBAGENT,
+                    AgentExtensionType.HOOK,
+                    AgentExtensionType.PLUGIN,
+                }
+            ),
         ),
-    ),
-    ExtensionSource.COPILOT: AgentPlatform(
-        source=ExtensionSource.COPILOT,
-        root=_home(".copilot"),
-        skills_dir=_home(".copilot", "skills"),
-        plugins_dir=_home(".copilot", "plugins"),
-        hook_config_path=_home(".copilot", "config.json"),
-        supported_types=frozenset(
-            {
-                AgentExtensionType.SKILL,
-                AgentExtensionType.HOOK,
-                AgentExtensionType.PLUGIN,
-            }
+        ExtensionSource.COPILOT: AgentPlatform(
+            source=ExtensionSource.COPILOT,
+            root=_home(".copilot"),
+            skills_dir=_home(".copilot", "skills"),
+            plugins_dir=_home(".copilot", "plugins"),
+            hook_config_path=_home(".copilot", "config.json"),
+            supported_types=frozenset(
+                {
+                    AgentExtensionType.SKILL,
+                    AgentExtensionType.HOOK,
+                    AgentExtensionType.PLUGIN,
+                }
+            ),
         ),
-    ),
-    ExtensionSource.ANTIGRAVITY: AgentPlatform(
-        source=ExtensionSource.ANTIGRAVITY,
-        root=_home(".gemini", "antigravity"),
-        skills_dir=_home(".gemini", "antigravity", "global_skills"),
-        commands_dir=_home(".gemini", "antigravity", "commands"),
-        subagents_dir=_home(".gemini", "antigravity", "agents"),
-        supported_types=frozenset(
-            {
-                AgentExtensionType.SKILL,
-                AgentExtensionType.COMMAND,
-                AgentExtensionType.SUBAGENT,
-            }
+        ExtensionSource.ANTIGRAVITY: AgentPlatform(
+            source=ExtensionSource.ANTIGRAVITY,
+            root=_home(".gemini", "antigravity"),
+            skills_dir=_home(".gemini", "antigravity", "global_skills"),
+            commands_dir=_home(".gemini", "antigravity", "commands"),
+            subagents_dir=_home(".gemini", "antigravity", "agents"),
+            supported_types=frozenset(
+                {
+                    AgentExtensionType.SKILL,
+                    AgentExtensionType.COMMAND,
+                    AgentExtensionType.SUBAGENT,
+                }
+            ),
         ),
-    ),
-    ExtensionSource.QWEN: AgentPlatform(
-        source=ExtensionSource.QWEN,
-        root=_home(".qwen"),
-        skills_dir=_home(".qwen", "skills"),
-        subagents_dir=_home(".qwen", "agents"),
-        hook_config_path=_home(".qwen", "settings.json"),
-        supported_types=frozenset(
-            {
-                AgentExtensionType.SKILL,
-                AgentExtensionType.SUBAGENT,
-                AgentExtensionType.HOOK,
-            }
+        ExtensionSource.QWEN: AgentPlatform(
+            source=ExtensionSource.QWEN,
+            root=_home(".qwen"),
+            skills_dir=_home(".qwen", "skills"),
+            subagents_dir=_home(".qwen", "agents"),
+            hook_config_path=_home(".qwen", "settings.json"),
+            supported_types=frozenset(
+                {
+                    AgentExtensionType.SKILL,
+                    AgentExtensionType.SUBAGENT,
+                    AgentExtensionType.HOOK,
+                }
+            ),
         ),
-    ),
-    ExtensionSource.KIMI: AgentPlatform(
-        source=ExtensionSource.KIMI,
-        root=_home(".config", "agents"),
-        skills_dir=_home(".config", "agents", "skills"),
-        subagents_dir=_home(".config", "agents", "agents"),
-        supported_types=frozenset({AgentExtensionType.SKILL, AgentExtensionType.SUBAGENT}),
-    ),
-    ExtensionSource.OPENCLAW: AgentPlatform(
-        source=ExtensionSource.OPENCLAW,
-        root=_home(".openclaw"),
-        skills_dir=_home(".openclaw", "skills"),
-        supported_types=frozenset({AgentExtensionType.SKILL}),
-    ),
-    ExtensionSource.OPENHANDS: AgentPlatform(
-        source=ExtensionSource.OPENHANDS,
-        root=_home(".openhands"),
-        skills_dir=_home(".openhands", "skills"),
-        supported_types=frozenset({AgentExtensionType.SKILL}),
-    ),
-}
+        ExtensionSource.KIMI: AgentPlatform(
+            source=ExtensionSource.KIMI,
+            root=_home(".config", "agents"),
+            skills_dir=_home(".config", "agents", "skills"),
+            subagents_dir=_home(".config", "agents", "agents"),
+            supported_types=frozenset({AgentExtensionType.SKILL, AgentExtensionType.SUBAGENT}),
+        ),
+        ExtensionSource.OPENCLAW: AgentPlatform(
+            source=ExtensionSource.OPENCLAW,
+            root=_home(".openclaw"),
+            skills_dir=_home(".openclaw", "skills"),
+            supported_types=frozenset({AgentExtensionType.SKILL}),
+        ),
+        ExtensionSource.OPENHANDS: AgentPlatform(
+            source=ExtensionSource.OPENHANDS,
+            root=_home(".openhands"),
+            skills_dir=_home(".openhands", "skills"),
+            supported_types=frozenset({AgentExtensionType.SKILL}),
+        ),
+    }
 
 
 PLATFORMS: dict[ExtensionSource, AgentPlatform] = _build_platforms()
