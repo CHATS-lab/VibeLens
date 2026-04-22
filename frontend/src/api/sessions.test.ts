@@ -2,13 +2,21 @@ import { describe, expect, it, vi } from "vitest";
 import { sessionsClient } from "./sessions";
 
 describe("sessionsClient", () => {
-  it("search URL-encodes query and sources", async () => {
-    const fetchSpy = vi.fn(async () => ({ ok: true, json: async () => [] }));
+  it("search URL-encodes the query and returns scored results", async () => {
+    const fetchSpy = vi.fn(async () => ({
+      ok: true,
+      json: async () => [
+        { session_id: "a", score: 1.2 },
+        { session_id: "b", score: 0.4 },
+      ],
+    }));
     const api = sessionsClient(fetchSpy as never);
-    await api.search("hello world", ["user_prompts", "session_id"]);
-    expect(fetchSpy).toHaveBeenCalledWith(
-      "/api/sessions/search?q=hello+world&sources=user_prompts%2Csession_id",
-    );
+    const hits = await api.search("hello world");
+    expect(fetchSpy).toHaveBeenCalledWith("/api/sessions/search?q=hello+world");
+    expect(hits).toEqual([
+      { session_id: "a", score: 1.2 },
+      { session_id: "b", score: 0.4 },
+    ]);
   });
 
   it("flow uses share endpoint when shareToken is present", async () => {

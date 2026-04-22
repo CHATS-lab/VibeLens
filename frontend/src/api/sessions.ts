@@ -9,6 +9,11 @@ export interface ShareCreateResponse {
   session_id: string;
 }
 
+export interface ScoredSession {
+  session_id: string;
+  score: number;
+}
+
 async function jsonOrThrow<T>(res: Response): Promise<T> {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
@@ -17,7 +22,7 @@ async function jsonOrThrow<T>(res: Response): Promise<T> {
 export interface SessionsClient {
   get: (sessionId: string) => Promise<Trajectory[]>;
   listAllIds: () => Promise<string[]>;
-  search: (query: string, sources: string[]) => Promise<string[]>;
+  search: (query: string) => Promise<ScoredSession[]>;
   stats: (sessionId: string) => Promise<SessionStats | null>;
   flow: (sessionId: string, shareToken?: string | null) => Promise<FlowData | null>;
   createShare: (sessionId: string) => Promise<ShareCreateResponse>;
@@ -34,8 +39,8 @@ export function sessionsClient(fetchWithToken: FetchWithToken): SessionsClient {
       );
       return sessions.map((s) => s.session_id);
     },
-    search: async (query, sources) => {
-      const params = new URLSearchParams({ q: query, sources: sources.join(",") });
+    search: async (query) => {
+      const params = new URLSearchParams({ q: query });
       return jsonOrThrow(await fetchWithToken(`/api/sessions/search?${params}`));
     },
     stats: async (sessionId) => {
