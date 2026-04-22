@@ -76,7 +76,7 @@ def _create_litellm_backend(model: str, config: InferenceConfig) -> InferenceBac
     Returns:
         Configured LiteLLMBackend instance.
     """
-    from vibelens.llm.backends.litellm_backend import LiteLLMBackend
+    from vibelens.llm.backends.litellm import LiteLLMBackend
 
     # Pass model_override when legacy alias rewrote the model name
     override = model if model != config.model else None

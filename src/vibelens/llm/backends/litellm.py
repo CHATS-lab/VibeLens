@@ -3,8 +3,6 @@
 Unified backend for all LLM providers via litellm. Replaces vendor-specific
 HTTP handling (Anthropic, OpenAI) with a single implementation that supports
 any provider litellm can route to.
-
-File named litellm_backend.py (not litellm.py) to avoid shadowing the package.
 """
 
 from collections.abc import AsyncIterator
