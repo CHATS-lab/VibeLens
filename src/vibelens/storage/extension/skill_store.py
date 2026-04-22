@@ -82,7 +82,7 @@ def parse_skill_md(name: str, text: str) -> Skill:
     Returns:
         Parsed Skill with metadata from frontmatter.
     """
-    frontmatter = parse_frontmatter(text)
+    frontmatter = parse_frontmatter(text, source=f"{name}/SKILL.md")
     description = str(frontmatter.pop("description", ""))
     tags = frontmatter.pop("tags", [])
     if not isinstance(tags, list):

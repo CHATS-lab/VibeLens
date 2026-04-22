@@ -46,7 +46,7 @@ class CommandStore(BaseExtensionStore[Command]):
 
     def _include(self, name: str, raw: str) -> bool:
         """Exclude files with fork: true (those are subagents)."""
-        frontmatter = parse_frontmatter(raw)
+        frontmatter = parse_frontmatter(raw, source=str(self._item_path(name)))
         return not frontmatter.get("fork", False)
 
 
@@ -60,7 +60,7 @@ def parse_command_md(name: str, text: str) -> Command:
     Returns:
         Parsed Command with metadata from frontmatter.
     """
-    frontmatter = parse_frontmatter(text)
+    frontmatter = parse_frontmatter(text, source=name)
     description = str(frontmatter.pop("description", ""))
     tags = frontmatter.pop("tags", [])
     if not isinstance(tags, list):

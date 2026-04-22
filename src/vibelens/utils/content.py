@@ -157,10 +157,16 @@ def is_error_content(content: str) -> bool:
     return any(signal in lower for signal in ERROR_SIGNALS)
 
 
-def parse_frontmatter(text: str) -> dict:
+def parse_frontmatter(text: str, source: str | None = None) -> dict:
     """Extract YAML frontmatter from markdown text.
 
-    Returns empty dict if no valid frontmatter found.
+    Args:
+        text: Full markdown document including optional frontmatter block.
+        source: Identifier for the source file, used only in warning logs so
+            skill authors can locate a malformed document.
+
+    Returns:
+        Parsed frontmatter dict, or empty dict if none/invalid.
     """
     lines = text.split("\n")
     if not lines or lines[0].strip() != FRONTMATTER_DELIMITER:
@@ -180,7 +186,8 @@ def parse_frontmatter(text: str) -> dict:
         parsed = yaml.safe_load(yaml_text)
         return parsed if isinstance(parsed, dict) else {}
     except yaml.YAMLError as exc:
-        logger.warning("Failed to parse YAML frontmatter: %s", exc)
+        where = f" in {source}" if source else ""
+        logger.warning("Failed to parse YAML frontmatter%s: %s", where, exc)
         return {}
 
 

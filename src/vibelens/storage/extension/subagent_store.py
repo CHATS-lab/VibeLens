@@ -56,7 +56,7 @@ def parse_subagent_md(name: str, text: str) -> Subagent:
     Returns:
         Parsed Subagent with metadata from frontmatter.
     """
-    frontmatter = parse_frontmatter(text)
+    frontmatter = parse_frontmatter(text, source=name)
     description = str(frontmatter.pop("description", ""))
     tags = frontmatter.pop("tags", [])
     if not isinstance(tags, list):
