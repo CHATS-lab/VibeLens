@@ -36,16 +36,9 @@
 
 Your AI coding agents run hundreds of tool calls, burn thousands of tokens, and you have no idea what happened. VibeLens changes that.
 
-```bash
-# macOS / Linux. Paste into Terminal.
-curl -LsSf https://raw.githubusercontent.com/CHATS-lab/VibeLens/main/install.sh | sh
-```
-
-No Python, no pip, nothing to set up first. The script installs [uv](https://docs.astral.sh/uv/) (a single binary), fetches VibeLens, and opens it in your browser.
+See [Quick Start](#quick-start) to install in one command. Works with **Claude Code**, **Codex**, **OpenClaw**, **Hermes** and more out of the box.
 
 > **Just want a look?** Try the [live demo](https://vibelens.chats-lab.org/). Nothing to install.
-
-One install. Reads local logs. Works with **Claude Code**, **Codex CLI**, **Gemini CLI**, and **OpenClaw** out of the box.
 
 ## Features
 
@@ -113,64 +106,84 @@ VibeLens auto-detects the agent format. Just point it at your session directory 
 
 ## Quick Start
 
-### One-liner (recommended)
+**Requirement:** either [uv](https://docs.astral.sh/uv/) (preferred) or Python 3.10+.
 
-Zero prerequisites: no Python, no pip. The commands below install [uv](https://docs.astral.sh/uv/) first, then run VibeLens.
+Run the one-liner:
 
 ```bash
 # macOS / Linux. Paste into Terminal.
 curl -LsSf https://raw.githubusercontent.com/CHATS-lab/VibeLens/main/install.sh | sh
 ```
-
 ```powershell
 # Windows. Paste into PowerShell.
 irm https://raw.githubusercontent.com/CHATS-lab/VibeLens/main/install.ps1 | iex
 ```
 
-VibeLens starts on **http://localhost:12001** and your browser opens automatically. Change it with `--port` (for example, `vibelens serve --port 8080`).
-
-### Pick your path
-
-| Your situation | Command |
-|----------------|---------|
-| **Nothing installed** (recommended) | one-liner above |
-| Already have Python 3.10+ | `pip install vibelens && vibelens serve` |
-| Prefer the npm workflow (Python also required) | `npx @chats-lab/vibelens serve` |
-| Want to hack on VibeLens | [developer setup](#developer-setup) |
-
-### What happens on first run
-
-1. Your browser opens to **http://localhost:12001**.
-2. If you have Claude Code, Codex CLI, Gemini CLI, or OpenClaw sessions, VibeLens auto-detects them from `~/.claude/`, `~/.codex/`, `~/.gemini/`, or `~/.openclaw/`.
-3. Otherwise, bundled example sessions (recipe-book) show up so you can look around.
-4. **Productivity Tips** and **Personalization** need a language-model API key. Optional; configure later in Settings.
-
-### pip (if you already have Python 3.10+)
+After installation, start VibeLens any time with:
 
 ```bash
-pip install vibelens
 vibelens serve
 ```
 
-Check your version first with `python3 --version`. Need Python? See [docs/INSTALL.md](docs/INSTALL.md#installing-python).
+VibeLens opens on **http://localhost:12001** and your browser launches automatically.
 
-### uv (run without a permanent install)
+Change it with `--port` (for example, `vibelens serve --port 8080`). Press `Ctrl+C` to stop.
 
-```bash
-uvx vibelens serve
-```
+<details>
+<summary><b>Don't have uv or Python yet?</b></summary>
 
-This fetches VibeLens into uv's cache and runs it without a global install. The one-liner above calls this under the hood.
-
-### npm (if you already have Python and prefer the npm workflow)
-
-VibeLens is a Python app with an npm wrapper for convenience. The wrapper still requires **Python 3.10+** and an installed `vibelens` package. Use this when you already have both and want `npx`/`npm` ergonomics.
+**Install uv** (recommended — single binary, no Python needed):
 
 ```bash
-npx @chats-lab/vibelens serve
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+# or: brew install uv
+```
+```powershell
+# Windows
+irm https://astral.sh/uv/install.ps1 | iex
+# or: winget install --id=astral-sh.uv -e
 ```
 
-Or install globally: `npm install -g @chats-lab/vibelens`.
+**Install or upgrade Python 3.10+** (alternative):
+
+```bash
+# macOS
+brew install python@3.12
+
+# Debian / Ubuntu
+sudo apt update && sudo apt install -y python3 python3-pip
+
+# Fedora / RHEL
+sudo dnf install -y python3 python3-pip
+
+# Arch
+sudo pacman -S python python-pip
+```
+```powershell
+# Windows
+winget install --id Python.Python.3.12 -e
+# or: choco install python
+```
+
+Official downloads: [python.org](https://www.python.org/downloads/) · [uv docs](https://docs.astral.sh/uv/getting-started/installation/)
+
+</details>
+
+<details>
+<summary><b>Prefer a manual install?</b></summary>
+
+| Your situation | Command |
+|----------------|---------|
+| Have `uv` | `uv tool install vibelens && vibelens serve` |
+| Have Python 3.10+ | `pip install vibelens && vibelens serve` |
+| Want to run without installing | `uvx vibelens serve` |
+| Prefer the npm workflow (Python also required) | `npx @chats-lab/vibelens serve` |
+| Want to hack on VibeLens | [developer setup](#developer-setup) |
+
+The npm wrapper requires Python 3.10+ and an installed `vibelens` package — it's a convenience layer, not a replacement. Install globally with `npm install -g @chats-lab/vibelens` if you prefer.
+
+</details>
 
 ### Developer setup
 
@@ -194,6 +207,27 @@ vibelens serve --host 0.0.0.0 --port 8080
 ```
 
 VibeLens checks PyPI once an hour for new versions when you open Settings. Disable with `VIBELENS_DISABLE_UPDATE_CHECK=1`.
+
+### Uninstall
+
+Match the command to how you installed:
+
+```bash
+# Installed with uv (one-liner picked this path, or you ran `uv tool install`)
+uv tool uninstall vibelens
+
+# Installed with pip
+pip uninstall vibelens
+
+# Installed globally via npm
+npm uninstall -g @chats-lab/vibelens
+```
+
+VibeLens stores logs and cached data under `~/.vibelens/` and `logs/` in the working directory. Remove them if you want a clean slate:
+
+```bash
+rm -rf ~/.vibelens
+```
 
 ### Troubleshooting
 

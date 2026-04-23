@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- **Bundled default config and example sessions into the package.** `vibelens/data/config/default.yaml`, `vibelens/data/config/demo.yaml`, and `vibelens/data/examples/recipe-book/` now ship inside the wheel. `discover_config_path()` falls back to the bundled `default.yaml` when CWD search finds nothing, and `DemoConfig.session_paths` resolves to the bundled `recipe-book` directory when `example_sessions` is empty. PyPI users running `vibelens serve` from any directory now see the example sessions and inherit sane defaults. Top-level `examples/recipe-book/` moved to `src/vibelens/data/examples/recipe-book/`.
+
 ## [1.0.5] - 2026-04-22
 
 ### Added
