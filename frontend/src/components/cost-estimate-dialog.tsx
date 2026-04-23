@@ -9,11 +9,13 @@ export function CostEstimateDialog({
   sessionCount,
   onConfirm,
   onCancel,
+  backendId,
 }: {
   estimate: CostEstimate;
   sessionCount: number;
   onConfirm: () => void;
   onCancel: () => void;
+  backendId?: string | null;
 }) {
   const [agreed, setAgreed] = useState(false);
 
@@ -54,7 +56,7 @@ export function CostEstimateDialog({
               </p>
             )}
           </div>
-          <ConsentSection agreed={agreed} onAgreeChange={setAgreed} />
+          <ConsentSection agreed={agreed} onAgreeChange={setAgreed} backendId={backendId} />
         </div>
       </ModalBody>
       <ModalFooter>

@@ -1,37 +1,37 @@
 {
   "id": "example-recommendation-01",
   "mode": "recommendation",
-  "title": "Five Extensions That Match Your Frontend Workflow",
+  "title": "Five Extensions That Fit Your Website-Building Rhythm",
   "session_ids": [
     "example-claude-01"
   ],
   "skipped_session_ids": [],
   "workflow_patterns": [
     {
-      "title": "Preview-Fix-Verify Cycle",
-      "description": "You launch the site, screenshot it, spot issues, fix them, and re-check. This repeats multiple times per session.",
+      "title": "Preview, Feedback, and Fix Rounds",
+      "description": "You open the site, share a picture, and the agent fixes what you flag. This repeats across each session until the site looks right.",
       "example_refs": [
         {
           "session_id": "example-claude-01",
           "start_step_id": "655decd2-4c91-4e71-b91b-536255dc7c34",
-          "end_step_id": "ab0818ab-7762-4517-8a1f-1676b071b04d"
+          "end_step_id": "msg_01QP44jtagCVyNwCRkLKLerC"
         },
         {
           "session_id": "example-claude-01",
           "start_step_id": "91b0eb4e-958f-4ff4-b590-0123a2ffd97d",
-          "end_step_id": "0ac22a63-368a-4d88-8f27-0afc54e97503"
+          "end_step_id": "msg_01Cwsvtz8zeqo7ReJduShcLc"
         }
       ],
       "frequency": 2
     },
     {
-      "title": "Batch File Creation From Plan",
-      "description": "The agent creates multiple CSS and component files at once following a detailed plan laid out earlier.",
+      "title": "Building the Whole Site in One Pass",
+      "description": "The agent writes every file the site needs in a single pass after planning, then opens it in a browser for review.",
       "example_refs": [
         {
           "session_id": "example-claude-01",
-          "start_step_id": "0d743274-1776-4b7d-9062-bf7320b59a19",
-          "end_step_id": "df2befc0-ffcf-488a-9b61-57bbb80bdabe"
+          "start_step_id": "msg_013zAeuSbE4dZQocmJBqPjN9",
+          "end_step_id": "msg_01REznSsFpLXhyVGVpT84LgP"
         }
       ],
       "frequency": 1
@@ -54,7 +54,7 @@
         "language": "JavaScript",
         "install_command": null
       },
-      "rationale": "Directly matches your site-building workflow.\n- Covers dark themes, layouts, and responsive CSS\n- Reduces preview-fix cycles with better first-pass output",
+      "rationale": "Matches your website-building flow end to end.\n- Shapes the first draft closer to what you want\n- Fewer rounds of picture and layout fixes",
       "scores": {
         "relevance": 0.95,
         "quality": 0.9,
@@ -77,7 +77,7 @@
         "language": "Python",
         "install_command": null
       },
-      "rationale": "Catches the CSS issues you keep fixing manually.\n- Enforces consistent typography and spacing\n- Flags accessibility gaps before you preview",
+      "rationale": "Catches the small style slips you keep flagging.\n- Keeps headings and spacing consistent across cards\n- Flags layout that breaks on narrow screens",
       "scores": {
         "relevance": 0.88,
         "quality": 0.89,
@@ -100,7 +100,7 @@
         "language": "Python",
         "install_command": null
       },
-      "rationale": "Your batch file creation skips accessibility checks.\n- Adds ARIA and keyboard nav to new components\n- Prevents rework from missed a11y issues",
+      "rationale": "Would have caught the close-mark that did nothing.\n- Checks pop-up close paths and keyboard flow\n- Flags dead buttons before you see them",
       "scores": {
         "relevance": 0.82,
         "quality": 0.75,
@@ -123,7 +123,7 @@
         "language": "JavaScript",
         "install_command": null
       },
-      "rationale": "Catches issues before your preview-fix loop.\n- Reviews batch-created files for consistency\n- Spots security and maintainability problems early",
+      "rationale": "Reviews the whole set of files you write in one pass.\n- Spots mixed styles across files you just made\n- Gives a second pair of eyes before the first preview",
       "scores": {
         "relevance": 0.78,
         "quality": 0.73,
@@ -146,7 +146,7 @@
         "language": "Python",
         "install_command": null
       },
-      "rationale": "Automates the PR and branch work around your sessions.\n- Creates PRs from your batch changes\n- Manages branches for preview-fix iterations",
+      "rationale": "Handles the busy-work after each fix round.\n- Opens a pull request from your changes\n- Keeps branches tidy between preview rounds",
       "scores": {
         "relevance": 0.7,
         "quality": 0.75,
@@ -160,48 +160,36 @@
       "frontend"
     ],
     "languages": [
-      "typescript",
+      "html",
       "css",
-      "html"
+      "javascript"
     ],
     "frameworks": [
-      "react",
-      "tailwind",
-      "vite"
+      "static-site"
     ],
     "agent_platforms": [
       "claude-code"
     ],
     "bottlenecks": [
-      "repeated preview-fix cycles for visual bugs",
-      "accessibility issues caught late",
-      "inconsistent styling across batch-created files"
+      "repeated screenshot-fix rounds on visual bugs",
+      "placeholder pictures that do not match the subject",
+      "dead buttons slipping into the first preview"
     ],
-    "workflow_style": "plan-first builder who creates many files at once, then iterates on visual issues through screenshots",
+    "workflow_style": "plan first, write the whole site in one pass, then polish through screenshot rounds",
     "search_keywords": [
       "frontend",
-      "react",
-      "tailwind",
-      "css",
-      "responsive",
-      "dark-theme",
-      "accessibility",
-      "wcag",
-      "aria",
-      "typography",
+      "website",
+      "static-site",
       "layout",
-      "animation",
-      "component",
-      "design-system",
-      "code-review",
-      "git",
-      "pr",
-      "deploy",
-      "vite",
-      "build",
-      "preview",
+      "responsive",
       "screenshot",
-      "visual-regression"
+      "preview",
+      "accessibility",
+      "pop-up",
+      "image",
+      "picture",
+      "review",
+      "code-review"
     ]
   },
   "creations": [],

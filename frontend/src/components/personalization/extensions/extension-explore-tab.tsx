@@ -31,6 +31,7 @@ import { DEFAULT_SORT, EXTENSION_PAGE_SIZE, ITEM_TYPE_ICON_COLORS, ITEM_TYPE_LAB
 import { ExtensionDetailView } from "./extension-detail-view";
 import { ExtensionPagination } from "./extension-pagination";
 import { NoResultsState } from "../result-shared";
+import { StickyHeader, useScrollAnchors } from "./scroll-helpers";
 
 const TYPE_PILL_ORDER: readonly string[] = [
   "",
@@ -144,6 +145,8 @@ export function ExtensionExploreTab({
   const [detailItem, setDetailItemState] = useState<ExtensionItemSummary | null>(null);
   const [syncTargetsByType, setSyncTargetsByType] = useState<Record<string, ExtensionSyncTarget[]>>({});
 
+  const { topRef, bottomRef, scrollButtons } = useScrollAnchors();
+
   const setDetailItem = useCallback(
     (next: ExtensionItemSummary | null) => {
       setDetailItemState(next);
@@ -229,6 +232,7 @@ export function ExtensionExploreTab({
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-8">
+      <div ref={topRef} />
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-3">
@@ -297,26 +301,28 @@ export function ExtensionExploreTab({
         })}
       </div>
 
-      {/* Search + Sort */}
-      <div className="flex items-center gap-2 mb-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted pointer-events-none" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search skills, agents, commands, hooks, MCPs..."
-            className="w-full pl-10 pr-4 py-2 text-sm bg-panel border border-card rounded-lg text-primary placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-600 transition"
+      {/* Search + Sort (sticky so it stays visible when scrolling) */}
+      <StickyHeader>
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search skills, agents, commands, hooks, MCPs..."
+              className="w-full pl-10 pr-4 py-2 text-sm bg-panel border border-card rounded-lg text-primary placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-600 transition"
+            />
+          </div>
+          <FilterDropdown
+            value={sortBy}
+            options={sortOptions}
+            onChange={(v) => { setSortBy(v); setPage(1); }}
+            icon={<SlidersHorizontal className="w-3.5 h-3.5 text-muted shrink-0" />}
+            placeholder="Sort"
           />
         </div>
-        <FilterDropdown
-          value={sortBy}
-          options={sortOptions}
-          onChange={(v) => { setSortBy(v); setPage(1); }}
-          icon={<SlidersHorizontal className="w-3.5 h-3.5 text-muted shrink-0" />}
-          placeholder="Sort"
-        />
-      </div>
+      </StickyHeader>
 
       {/* Recommend tutorial banner */}
       {onSwitchToRecommend && (
@@ -371,6 +377,8 @@ export function ExtensionExploreTab({
       )}
 
       <ExtensionPagination page={page} totalPages={totalPages} onPageChange={setPage} />
+      <div ref={bottomRef} />
+      {scrollButtons}
     </div>
   );
 }

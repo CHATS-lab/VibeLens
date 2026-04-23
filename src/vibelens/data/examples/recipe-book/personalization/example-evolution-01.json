@@ -58,8 +58,8 @@
       "description": "Adds a picture-picking rule and a before-screenshot check to the example-skill-frontend-design skill.",
       "edits": [
         {
-          "old_string": "",
-          "new_string": "\n\n## Picking Pictures That Fit the Subject\n\nNever plug in random placeholder images. For every card, pick a picture that matches the subject (food for a recipe, a place for a travel item). Use a steady source so the same picture shows up every time the page loads, and give each image a short text label so the page still makes sense if the picture is missing.\n\n## Before-Screenshot Check\n\nBefore sharing a screenshot with the user, click through the site yourself:\n\n- every button and close-mark does something\n- pop-ups close by the close-mark, by clicking outside, and by pressing escape\n- the search box filters the cards\n- the page still looks right on a phone-width window\n\nCatching these here saves a feedback round.",
+          "old_string": "## Fix Round\n\nAfter the first preview, wait for user notes. For each note, change the smallest piece that fixes it. Share a new picture. Repeat until the user is happy.",
+          "new_string": "## Picking Pictures That Fit the Subject\n\nNever plug in random placeholder images. For every card, pick a picture that matches the subject (food for a recipe, a place for a travel item). Use a steady source so the same picture shows up every time the page loads, and give each image a short text label so the page still makes sense if the picture is missing.\n\n## Before-Screenshot Check\n\nBefore sharing a screenshot with the user, click through the site yourself:\n\n- every button and close-mark does something\n- pop-ups close by the close-mark, by clicking outside, and by pressing escape\n- the search box filters the cards\n- the page still looks right on a phone-width window\n\nCatching these here saves a feedback round.\n\n## Fix Round\n\nAfter the first preview, wait for user notes. For each note, change the smallest piece that fixes it. Share a new picture. Repeat until the user is happy.",
           "replace_all": false
         }
       ],
@@ -76,8 +76,8 @@
       "description": "Adds a click-through script and screen-size screenshots to the example-skill-webapp-testing skill.",
       "edits": [
         {
-          "old_string": "",
-          "new_string": "\n\n## Click-Through Before the Screenshot\n\nBefore the first screenshot, run a short script that opens each pop-up and closes it three ways: by the close-mark, by clicking outside, and by pressing escape. Flag any case that did not work. This catches buttons that look fine in a picture but do nothing when clicked.\n\n## Screenshots at Three Screen Sizes\n\nAlways capture the site at three widths: phone (about 375 pixels), tablet (about 768 pixels), and desktop (about 1440 pixels). Show all three to the user at once so layout problems on small screens cannot hide behind a desktop-only view.",
+          "old_string": "## After Feedback\n\n- Wait for the user's notes before changing anything.\n- Take a fresh picture after the fix and share it again.",
+          "new_string": "## Click-Through Before the Screenshot\n\nBefore the first screenshot, run a short script that opens each pop-up and closes it three ways: by the close-mark, by clicking outside, and by pressing escape. Flag any case that did not work. This catches buttons that look fine in a picture but do nothing when clicked.\n\n## Screenshots at Three Screen Sizes\n\nAlways capture the site at three widths: phone (about 375 pixels), tablet (about 768 pixels), and desktop (about 1440 pixels). Show all three to the user at once so layout problems on small screens cannot hide behind a desktop-only view.\n\n## After Feedback\n\n- Wait for the user's notes before changing anything.\n- Take a fresh picture after the fix and share it again.",
           "replace_all": false
         }
       ],

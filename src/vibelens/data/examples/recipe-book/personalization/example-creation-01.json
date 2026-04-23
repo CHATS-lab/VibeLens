@@ -5,69 +5,57 @@
     "example-claude-01"
   ],
   "skipped_session_ids": [],
-  "title": "Two Common Workflows Could Be Automated as Skills",
+  "title": "Your Website Builds Repeat a Four-Step Pattern",
   "workflow_patterns": [
     {
-      "title": "Planning the Whole Project Before Starting",
-      "description": "You ask the agent to build something, and it spends time making a detailed plan before writing any code. It explores folders and writes out every step first.",
+      "title": "Planning Every Step Before Starting",
+      "description": "You ask for a website and the agent writes out a full plan before touching any files. It checks the folder, lists every piece it will make, and waits for your go-ahead.",
       "example_refs": [
         {
           "session_id": "example-claude-01",
           "start_step_id": "2851ce15-2b3a-4a23-8756-7fdd13932434",
-          "end_step_id": "0c4447d4-a5c8-4519-ba5c-5374c2a837ae"
-        }
-      ],
-      "frequency": 1
-    },
-    {
-      "title": "Creating Many Files at Once",
-      "description": "The agent creates multiple style and code files in batches, following the layout from the plan. Each file handles colors, layout, or animations separately.",
-      "example_refs": [
-        {
-          "session_id": "example-claude-01",
-          "start_step_id": "0d743274-1776-4b7d-9062-bf7320b59a19",
-          "end_step_id": "df2befc0-ffcf-488a-9b61-57bbb80bdabe"
+          "end_step_id": "msg_01LfXUXkG2AGegU6eX6qJZyd"
         }
       ],
       "frequency": 1
     },
     {
       "title": "Preview, Feedback, and Fix Rounds",
-      "description": "The agent starts the site locally, takes a screenshot, you review it and point out problems (wrong images, broken buttons), then the agent fixes and re-checks.",
+      "description": "The agent opens the site on your computer and shows a picture. You point out what looks wrong. It fixes the spots and shows a new picture. This repeats until the site looks right.",
       "example_refs": [
         {
           "session_id": "example-claude-01",
           "start_step_id": "655decd2-4c91-4e71-b91b-536255dc7c34",
-          "end_step_id": "ab0818ab-7762-4517-8a1f-1676b071b04d"
+          "end_step_id": "msg_01QP44jtagCVyNwCRkLKLerC"
         },
         {
           "session_id": "example-claude-01",
-          "start_step_id": "91b0eb4e-958f-4ff4-b590-0123a2ffd97d",
-          "end_step_id": "0ac22a63-368a-4d88-8f27-0afc54e97503"
+          "start_step_id": "9c35e5af-1d3c-4642-a127-13e0f5c25005",
+          "end_step_id": "msg_01U79taSKbpQQsiEUxtcPmgP"
         }
       ],
       "frequency": 2
     },
     {
-      "title": "Searching for Images Online",
-      "description": "The agent uses a helper to search the web for image URLs, then puts those URLs into the site's code files.",
+      "title": "Finding Pictures That Match the Topic",
+      "description": "The agent looks online for pictures that fit your subject, then drops them into the site so each card shows the right image.",
       "example_refs": [
         {
           "session_id": "example-claude-01",
-          "start_step_id": "9180e56d-20cb-444b-bf82-872ae91fa3aa",
-          "end_step_id": "572883c9-2f87-461b-9e77-26c30dbc5b4a"
+          "start_step_id": "msg_01Fis8Ew7F7f4hVAadhLvoDC",
+          "end_step_id": "msg_01LqsEbE1pzMu5Wifyq8Y65w"
         }
       ],
       "frequency": 1
     },
     {
-      "title": "Fixing Bugs You Reported",
-      "description": "You told the agent a button wasn't working, it read the code, found the missing piece, fixed it, and confirmed it worked.",
+      "title": "Fixing the Broken Bits You Report",
+      "description": "You tell the agent a button does not work. It reads the code, spots the missing link, patches it, and confirms the button works now.",
       "example_refs": [
         {
           "session_id": "example-claude-01",
           "start_step_id": "91b0eb4e-958f-4ff4-b590-0123a2ffd97d",
-          "end_step_id": "0ac22a63-368a-4d88-8f27-0afc54e97503"
+          "end_step_id": "msg_01Cwsvtz8zeqo7ReJduShcLc"
         }
       ],
       "frequency": 1
@@ -77,10 +65,10 @@
   "creations": [
     {
       "element_type": "skill",
-      "element_name": "static-site-scaffold",
-      "description": "Set up a complete static HTML/CSS/JS website from a description. Trigger: 'build a static site', 'create a website', 'set up a project'.",
-      "skill_md_content": "---\ndescription: Set up a complete static HTML/CSS/JS website from a description. Trigger: 'build a static site', 'create a website', 'set up a project'.\ntags: [frontend, scaffolding, html, css, static-site]\nallowed_tools: [Write, Bash, Read, Edit]\n---\n\n# Static Site Setup\n\nGenerate a complete static website project from a brief description. Produces a structured set of files with organized styles, responsive layout, and working interactivity.\n\n## Directory Structure\n\nAlways create this standard layout:\n```\nproject/\n├── index.html\n├── css/\n│   ├── variables.css    # Shared values: colors, spacing, fonts, shadows\n│   ├── base.css         # Default body styles, text sizes, scrollbar\n│   ├── layout.css       # Header, card grid, footer, screen size adjustments\n│   ├── components.css   # Cards, popups, search box, filter buttons, labels\n│   └── animations.css   # Entrance effects, hover changes, popup transitions\n├── js/\n│   ├── data.js          # Sample data as a list of items\n│   └── app.js           # Rendering, filtering, search, popup, click handling\n└── favicon.svg          # Simple icon matching the theme\n```\n\n## Step 1: Define Shared Values\n\nStart with `css/variables.css`. Put ALL colors, fonts, and spacing here as reusable values:\n\n```css\n:root {\n  /* Colors */\n  --color-bg-primary: #1a1a2e;\n  --color-bg-card: #16213e;\n  --color-accent: #e94560;\n  --color-text: #eee;\n  --color-text-muted: #aaa;\n\n  /* Fonts */\n  --font-heading: 'Playfair Display', Georgia, serif;\n  --font-body: 'Inter', system-ui, sans-serif;\n\n  /* Spacing */\n  --space-xs: 0.25rem;\n  --space-sm: 0.5rem;\n  --space-md: 1rem;\n  --space-lg: 2rem;\n  --space-xl: 3rem;\n\n  /* Shadows */\n  --shadow-card: 0 4px 24px rgba(0,0,0,0.3);\n  --shadow-hover: 0 8px 32px rgba(0,0,0,0.5);\n}\n```\n\nNever put color or spacing values directly in other CSS files. Always refer back to variables.\n\n## Step 2: Create Base Styles\n\n`css/base.css` provides defaults:\n- Box-sizing border-box on all elements\n- Zero margin/padding reset\n- Body font, background, and text color from variables\n- Smooth scrolling\n- Custom scrollbar styling for dark themes\n\n## Step 3: Build Layout\n\n`css/layout.css` handles structure:\n- Sticky header with gradient or glass effect\n- CSS Grid for cards: `grid-template-columns: repeat(auto-fill, minmax(320px, 1fr))`\n- Footer with muted text\n- One adjustment for narrow screens\n\n## Step 4: Style Components\n\n`css/components.css` defines reusable pieces:\n- **Cards**: image with hover zoom, gradient overlay, text section\n- **Popup**: fixed overlay, scrollable content, close button with hover\n- **Search input**: full-width, styled for dark theme\n- **Filter buttons**: horizontal scrollable row, active state with accent color\n- **Labels**: semi-transparent background\n\n## Step 5: Add Animations\n\n`css/animations.css` defines effects:\n- Fade-in-up for card entrance with staggered delay\n- Shimmer effect for loading placeholders\n- Hover changes on cards (slight grow, shadow, overlay shift)\n- Popup fade-in and scale transition\n\n## Step 6: Write Sample Data\n\n`js/data.js` contains 6-10 sample items as a list of objects. Each item has:\n- `id` (number)\n- `title` (string)\n- `description` (string)\n- `category` (string from 3-4 categories)\n- `image` (URL from Unsplash with specific IDs for consistent, relevant images)\n- Fields specific to the topic (e.g., `ingredients`, `duration`, `difficulty`)\n\n## Step 7: Write App Logic\n\n`js/app.js` handles all interactivity:\n- **Render function**: builds card HTML from data, inserts into grid\n- **Search**: delayed input handler filtering by title, description, and details\n- **Category filter**: button click toggles active category, re-renders filtered cards\n- **Popup**: click card to open detail view, close via X button, clicking outside, or Escape key\n- **Accessibility**: announce changes to screen readers, keep focus inside popup\n\n## Step 8: Assemble HTML\n\n`index.html` ties everything together:\n- Google Fonts link for heading + body fonts\n- CSS imports in order: variables, base, layout, components, animations\n- Semantic HTML: `<header>`, `<main>`, `<footer>`\n- JS imports with `defer`: data first, then app\n- Empty `<div id=\"modal\">` for dynamic popup content\n\n## Step 9: Create Favicon\n\nSimple SVG icon (under 20 lines) matching the project theme.\n\n## Verification\n\n```bash\n# Start local server\npython3 -m http.server 8080 &\n\n# Verify all files exist\nfind project/ -type f | sort\n\n# Check no broken references to shared values\ngrep -r 'var(--' project/css/ | grep -v ':root'\n```\n\nOpen http://localhost:8080 and verify:\n- Cards render with images\n- Search filters correctly\n- Category buttons work\n- Popup opens and closes (X, clicking outside, Escape)\n- Layout adjusts on narrow screens\n",
-      "rationale": "The same 9-file creation pattern appeared in every build.\n- Consistent file structure could be set up automatically\n- Removes the need to create each file one by one",
+      "element_name": "website-generator",
+      "description": "Builds a small website from a one-line brief, then polishes it through screenshot rounds until it looks right.",
+      "skill_md_content": "---\nname: website-generator\ndescription: Builds a small website from a one-line brief, then polishes it through screenshot rounds until it looks right. Use when the user asks to build a website, create a landing page, or put together a simple site.\n---\n\n# Website Generator\n\n## Overview\n\nTurn a short brief (\"a recipe book\", \"a travel log\") into a working website. Plan the pieces, write them in one pass, show a screenshot, collect feedback, and fix the rough spots. Engage when the user asks for a website, landing page, or simple static site — not for editing an existing site or for server-backed apps.\n\n## Quick Start\n\n1. Read the brief and pick a subject (food, travel, books, etc.).\n2. Lay out the files you will create.\n3. Write them all.\n4. Open the site on the user's computer.\n5. Share a screenshot.\n6. Fix what the user flags, then show a new screenshot.\n\n## Step 1: Plan the Pieces\n\nList what you will make before writing anything:\n\n- one main page\n- a small set of style files (one for shared values, one for the layout, one for the card look, one for the pop-up, one for motion)\n- a small data file with 6 to 10 sample items\n- a script that shows the items, handles search, and opens a pop-up\n- a tiny icon for the browser tab\n\nShow the plan to the user and wait for go-ahead only if the brief is unclear. Otherwise continue.\n\n## Step 2: Build in One Pass\n\nWrite all files in a single pass. Keep every colour, spacing value, and font name in the shared values file — never in the other files. Each card should include:\n\n- a picture\n- a short title\n- a one-line summary\n- a tag (category)\n- a pop-up view with more detail\n\n## Step 3: Pick Pictures That Match\n\nFor each item, pick one picture that fits the subject. Use a steady source that gives the same picture every time (not a random placeholder service). A recipe card should show food, a travel card should show a place. If a picture turns out wrong, swap it — do not leave a mismatched image in place.\n\n## Step 4: Open the Site\n\nStart a small local server so the user can view the site in a browser. Share the web address.\n\n## Step 5: Screenshot, Fix, Repeat\n\nTake a full-page screenshot and show it to the user. Ask what looks off. For each note:\n\n- read the file that controls that piece\n- make a targeted edit\n- take a new screenshot\n\nStop when the user is happy.\n\n## Pre-Screenshot Checklist\n\nBefore sharing the first screenshot, click through the site yourself:\n\n- every button and close-mark works\n- every picture loads and matches its card\n- the search box filters the cards\n- the page still looks right on a phone-width window\n\nCatching these here saves a feedback round.\n\n## Troubleshooting\n\n- **Wrong pictures appear**: the picture source is returning random images. Switch to a steady source and pick one picture per card by hand.\n- **A button does nothing**: the button exists in the markup but no code listens to it. Add a click handler in the script file.\n- **The pop-up will not close**: the close-mark is inside the pop-up but the close code is attached to the background. Move the handler to the close-mark, or close on any click outside the pop-up body.\n- **Layout breaks on narrow screens**: one of the style rules has a fixed width. Switch it to a flexible width that shrinks.\n",
+      "rationale": "The same build-preview-fix shape repeats across the session.\n- One skill covers plan, build, screenshot, and fix\n- Replaces four ad-hoc passes with one steady flow",
       "tools_used": [
         "Write",
         "Bash",
@@ -88,29 +76,12 @@
         "Edit"
       ],
       "addressed_patterns": [
-        "Planning the Whole Project Before Starting",
-        "Creating Many Files at Once"
+        "Planning Every Step Before Starting",
+        "Preview, Feedback, and Fix Rounds",
+        "Finding Pictures That Match the Topic",
+        "Fixing the Broken Bits You Report"
       ],
       "confidence": 0.88
-    },
-    {
-      "element_type": "skill",
-      "element_name": "visual-review-loop",
-      "description": "Start the site locally and go through preview-feedback-fix rounds. Trigger: 'review the site', 'take a screenshot', 'visual check'.",
-      "skill_md_content": "---\ndescription: Start the site locally and go through preview-feedback-fix rounds. Trigger: 'review the site', 'take a screenshot', 'visual check'.\ntags: [testing, visual-review, playwright, iteration, frontend]\nallowed_tools: [Bash, Read, Edit, Write, AskUserQuestion]\n---\n\n# Visual Review Loop\n\nStructured process for improving a website through screenshots, user feedback, and targeted fixes.\n\n## Step 1: Start the Site Locally\n\nStart a local server if not already running:\n```bash\npython3 -m http.server 8080 &\n```\n\nCheck that it responds:\n```bash\ncurl -s -o /dev/null -w '%{http_code}' http://localhost:8080\n```\n\n## Step 2: Take a Screenshot\n\nWrite a Playwright script to capture the current state:\n```python\nfrom playwright.sync_api import sync_playwright\n\nwith sync_playwright() as p:\n    browser = p.chromium.launch()\n    page = browser.new_page(viewport={'width': 1440, 'height': 900})\n    page.goto('http://localhost:8080', wait_until='networkidle')\n    # Wait for images and animations to finish\n    page.wait_for_timeout(2000)\n    page.screenshot(path='/tmp/review-screenshot.png', full_page=True)\n    browser.close()\n```\n\nShow the screenshot to the user using the Read tool on the image file.\n\n## Step 3: Ask What Needs to Change\n\nPresent the screenshot and ask the user what to fix. Common issues:\n- **Content problems**: wrong images, placeholder text, missing data\n- **Layout problems**: alignment, spacing, overflow, narrow screen issues\n- **Broken interactions**: buttons not working, popup stuck, scroll issues\n- **Style problems**: colors, fonts, contrast, hover effects\n\n## Step 4: Make the Fixes\n\nFor each piece of feedback:\n1. Read the relevant source file\n2. Find the specific code that needs to change\n3. Make a targeted edit (not a full rewrite)\n4. If fixing image issues, search for correct URLs online\n\n## Step 5: Re-check and Verify\n\nRun the Playwright script again to capture the updated state. Show the new screenshot to the user.\n\nRepeat steps 3-5 until the user is happy with the result.\n\n## Before the First Screenshot Checklist\n\nBefore taking the first screenshot, verify these common issues:\n- [ ] All buttons and close actions actually work (click each one)\n- [ ] Images have descriptive text and proper URLs\n- [ ] No errors in the browser console (check with `page.on('console', ...)`)\n- [ ] Layout looks right at phone (375px), tablet (768px), and desktop (1440px) widths\n- [ ] Keyboard navigation works (Tab, Escape, Enter)\n",
-      "rationale": "The preview-feedback-fix cycle repeated twice in one session.\n- A pre-check list would have caught the broken button\n- Structured rounds reduce overhead each time",
-      "tools_used": [
-        "Bash",
-        "Read",
-        "Edit",
-        "Write",
-        "AskUserQuestion"
-      ],
-      "addressed_patterns": [
-        "Preview, Feedback, and Fix Rounds",
-        "Fixing Bugs You Reported"
-      ],
-      "confidence": 0.82
     }
   ],
   "evolutions": [],

@@ -25,6 +25,7 @@ import {
   LocalExtensionDetailView,
   type LocalExtensionKind,
 } from "./extensions/extension-detail-view";
+import { StickyHeader, useScrollAnchors } from "./extensions/scroll-helpers";
 import { UninstallExtensionDialog } from "./extensions/uninstall-extension-dialog";
 import { SourceBadge, TagList, ToolList } from "./source-badges";
 import { NoResultsState, ResultCount, SearchBar, SourceFilterBar } from "./result-shared";
@@ -137,6 +138,7 @@ export function LocalExtensionsTab({
   const [syncTargetsByType, setSyncTargetsByType] = useState<
     Record<string, ExtensionSyncTarget[]>
   >({});
+  const { topRef, bottomRef, scrollButtons } = useScrollAnchors();
 
   const setDetail = useCallback(
     (next: string | null) => {
@@ -181,6 +183,7 @@ export function LocalExtensionsTab({
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-8">
+      <div ref={topRef} />
       <div className="flex items-start justify-between gap-3 mb-5">
         <div className="flex items-center gap-3 min-w-0">
           <div className={`p-2 rounded-lg ${config.accent}`}>
@@ -239,6 +242,9 @@ export function LocalExtensionsTab({
       {showInstallDialog && (
         <InstallLocallyDialog onClose={() => setShowInstallDialog(false)} />
       )}
+
+      <div ref={bottomRef} />
+      {scrollButtons}
     </div>
   );
 }
@@ -392,7 +398,11 @@ function LocalKindPanel({
         countByKey={(key) => items.filter((s) => s.installed_in.includes(key)).length}
       />
 
-      <SearchBar value={searchQuery} onChange={handleSearchChange} />
+      <StickyHeader>
+        <div className="[&>div]:!mb-0">
+          <SearchBar value={searchQuery} onChange={handleSearchChange} />
+        </div>
+      </StickyHeader>
 
       {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
 

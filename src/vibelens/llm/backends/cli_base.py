@@ -22,6 +22,11 @@ from vibelens.models.trajectories.metrics import Metrics
 from vibelens.utils.log import get_logger
 from vibelens.utils.timestamps import monotonic_ms
 
+# Dedicated cwd for analysis subprocesses. Keeps CLI-derived session files
+# (claude/codex/gemini/openclaw write logs relative to cwd) in one place
+# instead of polluting whichever directory VibeLens was launched from.
+ANALYSIS_CWD: Path = Path.home() / ".vibelens" / "analysis-cwd"
+
 # Signature for per-backend extractors passed to ``_parse_single_json``.
 # Returns (text, metrics, model) — metrics may be None when the backend
 # reports no usage; cost lives inside ``Metrics.cost_usd``.
@@ -137,6 +142,7 @@ class CliBackend(InferenceBackend):
             prompt_text = self._build_prompt(request)
             prompt_bytes = prompt_text.encode("utf-8")
             env = self._build_env()
+            ANALYSIS_CWD.mkdir(parents=True, exist_ok=True)
 
             start_ms = monotonic_ms()
             try:
@@ -146,6 +152,7 @@ class CliBackend(InferenceBackend):
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                     env=env,
+                    cwd=str(ANALYSIS_CWD),
                 )
                 timeout = request.timeout or self._timeout
                 stdout, stderr = await asyncio.wait_for(

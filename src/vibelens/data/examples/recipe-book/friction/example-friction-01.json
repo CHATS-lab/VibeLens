@@ -1,39 +1,46 @@
 {
   "id": "KR88Y-Td_oYtMdpK",
-  "title": "Wrong Images and Broken Close Button Caused Rework",
+  "title": "Wrong Pictures and a Dead Close Button Made You Rework",
   "mitigations": [
     {
-      "title": "Use food photos, not random images",
-      "action": "Use curated, content-relevant image URLs instead of random placeholder services that show unrelated pictures.",
-      "rationale": "Random placeholders showed landscapes instead of food.\n- Users judge recipe sites by food imagery\n- Curated images match the actual content",
+      "title": "Pick Pictures That Match the Subject",
+      "action": "For every card, pick a picture that fits the subject instead of a random placeholder. Swap any image that does not match before showing the site.",
+      "rationale": "Random placeholders showed unrelated scenes on food cards.\n- A recipe page lives or dies on food photos\n- Matching pictures set the tone the user wanted",
       "confidence": 0.92,
-      "addressed_friction_types": ["used-wrong-images"]
+      "addressed_friction_types": [
+        "used-wrong-pictures"
+      ]
     },
     {
-      "title": "Test buttons before showing the site",
-      "action": "After adding interactive elements like modals and buttons, click each one to verify it works before presenting to the user.",
-      "rationale": "The close button looked correct but did nothing.\n- A quick click test catches missing connections\n- Prevents users from getting stuck",
+      "title": "Click Every Button Before Sharing",
+      "action": "Before showing the site, click each button and close-mark. If anything does nothing, fix it first.",
+      "rationale": "The close-mark looked right but did nothing.\n- A short click-through catches missing wiring\n- Keeps the user from getting stuck in a pop-up",
       "confidence": 0.88,
-      "addressed_friction_types": ["close-button-didnt-work"]
+      "addressed_friction_types": [
+        "close-button-did-nothing"
+      ]
     },
     {
-      "title": "Check the site works before previewing",
-      "action": "Before showing a preview, run quick checks: click all buttons, test search, and verify images load correctly.",
-      "rationale": "Both image and button issues reached the user.\n- Quick checks catch obvious failures early\n- Prevents wasted review rounds",
+      "title": "Run a Full Check Before the First Preview",
+      "action": "Before the first preview, walk through the site once: click every button, type in the search box, and confirm every picture loads.",
+      "rationale": "Both picture and button issues slipped through to the user.\n- One check catches problems without another review round\n- A working preview is less tiring than fixing pieces later",
       "confidence": 0.78,
-      "addressed_friction_types": ["close-button-didnt-work", "used-wrong-images"]
+      "addressed_friction_types": [
+        "close-button-did-nothing",
+        "used-wrong-pictures"
+      ]
     }
   ],
   "friction_types": [
     {
-      "type_name": "used-wrong-images",
-      "description": "You wanted food images for each recipe but the agent used a random image service that showed landscapes and objects instead.",
+      "type_name": "used-wrong-pictures",
+      "description": "You wanted pictures of food for each recipe, but the agent used a random picture service that returned landscapes and unrelated objects instead.",
       "severity": 4,
       "example_refs": [
         {
           "session_id": "example-claude-01",
-          "start_step_id": "7f5f17c9-61d5-4c9f-8034-29ce79d5ab9b",
-          "end_step_id": "572883c9-2f87-461b-9e77-26c30dbc5b4a"
+          "start_step_id": "9c35e5af-1d3c-4642-a127-13e0f5c25005",
+          "end_step_id": "msg_01U79taSKbpQQsiEUxtcPmgP"
         }
       ],
       "friction_cost": {
@@ -43,14 +50,14 @@
       }
     },
     {
-      "type_name": "close-button-didnt-work",
-      "description": "The recipe detail popup had a close button that did nothing, leaving you stuck in the popup with no way to go back.",
+      "type_name": "close-button-did-nothing",
+      "description": "The recipe pop-up had a close-mark that did nothing when clicked, so you were stuck on one recipe with no way back to the list.",
       "severity": 4,
       "example_refs": [
         {
           "session_id": "example-claude-01",
           "start_step_id": "91b0eb4e-958f-4ff4-b590-0123a2ffd97d",
-          "end_step_id": "0ac22a63-368a-4d88-8f27-0afc54e97503"
+          "end_step_id": "msg_01Cwsvtz8zeqo7ReJduShcLc"
         }
       ],
       "friction_cost": {
@@ -61,12 +68,12 @@
     },
     {
       "type_name": "spent-too-long-planning",
-      "description": "You wanted to start building right away but the agent spent a long time exploring and planning before you interrupted it.",
+      "description": "You wanted to start building right away, but the agent spent a long time checking the folder and writing out every step before you cut it short.",
       "severity": 2,
       "example_refs": [
         {
           "session_id": "example-claude-01",
-          "start_step_id": "4eb17004-87a4-4e76-82ad-e67b6091502e",
+          "start_step_id": "2851ce15-2b3a-4a23-8756-7fdd13932434",
           "end_step_id": "9bf36d6e-b52a-476a-b493-61101010c494"
         }
       ],

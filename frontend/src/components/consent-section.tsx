@@ -1,38 +1,48 @@
-import { Coins, HardDrive, Send, Shield } from "lucide-react";
+import { Coins, HardDrive, Send } from "lucide-react";
+import { CLI_BACKENDS } from "./llm/llm-config-constants";
 
-const ANALYSIS_CONSENT_ITEMS: { icon: React.ReactNode; text: string }[] = [
-  {
-    icon: <Send className="w-4 h-4 text-violet-600 dark:text-violet-400 shrink-0 mt-0.5" />,
-    text: "Session data will be sent to a third-party AI provider.",
-  },
-  {
-    icon: <Coins className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />,
-    text: "Costs will be charged to your configured API key.",
-  },
-  {
-    icon: <Shield className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />,
-    text: "Data is processed for the API call but not stored remotely.",
-  },
-  {
-    icon: <HardDrive className="w-4 h-4 text-cyan-600 dark:text-cyan-400 shrink-0 mt-0.5" />,
-    text: "Results are saved locally and can be deleted anytime.",
-  },
-];
+const SEND_ITEM = {
+  icon: <Send className="w-4 h-4 text-violet-600 dark:text-violet-400 shrink-0 mt-0.5" />,
+  text: "Session data will be sent to your selected AI provider.",
+};
+
+const COST_ITEM_LITELLM = {
+  icon: <Coins className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />,
+  text: "Costs will be charged to your configured API key.",
+};
+
+const COST_ITEM_CLI = {
+  icon: <Coins className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />,
+  text: "Usage will count against your agent subscription or quota.",
+};
+
+const LOCAL_ITEM = {
+  icon: <HardDrive className="w-4 h-4 text-cyan-600 dark:text-cyan-400 shrink-0 mt-0.5" />,
+  text: "Results are saved locally and can be deleted anytime.",
+};
+
+function getConsentItems(backendId: string | null | undefined) {
+  const costItem = backendId && CLI_BACKENDS.has(backendId) ? COST_ITEM_CLI : COST_ITEM_LITELLM;
+  return [SEND_ITEM, costItem, LOCAL_ITEM];
+}
 
 export function ConsentSection({
   agreed,
   onAgreeChange,
+  backendId,
 }: {
   agreed: boolean;
   onAgreeChange: (checked: boolean) => void;
+  backendId?: string | null;
 }) {
+  const items = getConsentItems(backendId);
   return (
     <div className="space-y-3">
       <p className="text-sm font-semibold text-primary">
         By proceeding, you acknowledge that:
       </p>
       <div className="space-y-2">
-        {ANALYSIS_CONSENT_ITEMS.map((item, i) => (
+        {items.map((item, i) => (
           <div
             key={i}
             className="flex items-start gap-3 rounded-md bg-control/40 border border-card px-3.5 py-2.5"
