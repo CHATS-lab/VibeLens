@@ -13,6 +13,10 @@
 # After install, the user can start VibeLens any time with:
 #   vibelens serve
 #
+# On the uv path we also run `uv tool update-shell`, which adds uv's tool bin
+# directory (e.g. ~/.local/bin) to the user's shell rc so `vibelens` is on PATH
+# in future terminals.
+#
 # Safety:
 #   - Never installs dependencies (Python, uv) for you.
 #   - Always asks for confirmation before running pip/uv.
@@ -144,15 +148,48 @@ install_with_uv() {
   if ! uv tool install vibelens; then
     fail "uv could not install VibeLens."
   fi
+
+  # Figure out where the `vibelens` shim actually lives, so the diagnostics we
+  # print below are accurate on this machine (not a guess).
+  UV_BIN_DIR=$(uv tool dir --bin 2>/dev/null || true)
+  if [ -z "$UV_BIN_DIR" ]; then
+    UV_BIN_DIR="$HOME/.local/bin"
+  fi
+
+  # Try to edit the user's shell rc so the plain `vibelens` command works in
+  # future terminals. `update-shell` is a no-op if the entry is already present.
+  # Capture stderr so we can surface anything uv complains about.
+  shell_update_err=$(uv tool update-shell 2>&1 >/dev/null) || shell_update_rc=$?
+  shell_update_rc=${shell_update_rc:-0}
+
+  if [ "$shell_update_rc" -ne 0 ]; then
+    warn ""
+    warn "uv could not update your shell PATH automatically:"
+    if [ -n "$shell_update_err" ]; then
+      warn "  $shell_update_err"
+    fi
+    warn ""
+    warn "To use 'vibelens serve', add uv's tool bin to PATH. Pick one:"
+    warn "  export PATH=\"$UV_BIN_DIR:\$PATH\"                          # this shell only"
+    warn "  echo 'export PATH=\"$UV_BIN_DIR:\$PATH\"' >> ~/.zshrc     # persist for zsh"
+    warn "  echo 'export PATH=\"$UV_BIN_DIR:\$PATH\"' >> ~/.bashrc    # persist for bash"
+    warn ""
+    warn "Or skip the shim and always launch with: uvx vibelens serve"
+  else
+    info ""
+    info "Added $UV_BIN_DIR to your shell PATH (takes effect in NEW terminals)."
+  fi
 }
 
 # Step 1: prefer uv.
+INSTALLED_VIA=""
 info "[1/3] Looking for uv..."
 if command -v uv >/dev/null 2>&1; then
   info "      uv found."
   info ""
   info "[2/3] Installing VibeLens via uv..."
   install_with_uv
+  INSTALLED_VIA="uv"
 else
   info "      uv not found."
   # Step 2: fall back to Python.
@@ -162,6 +199,7 @@ else
     info "      Python found."
     info ""
     install_with_pip "$PY"
+    INSTALLED_VIA="pip"
   else
     warn "      No suitable Python on PATH either."
     warn ""
@@ -178,6 +216,27 @@ fi
 info ""
 info "[3/3] VibeLens installed."
 info "      To start it any time later, run:  vibelens serve"
-info "      Starting it now..."
-info ""
-exec vibelens serve
+# The `vibelens` shim may not be on PATH in *this* shell yet if uv just added
+# its tool bin via update-shell. In that case, launch via `uvx` for this run;
+# the user's next terminal will have `vibelens` on PATH directly.
+if command -v vibelens >/dev/null 2>&1; then
+  info "      Starting it now..."
+  info ""
+  exec vibelens serve
+elif [ "$INSTALLED_VIA" = "uv" ] && command -v uv >/dev/null 2>&1; then
+  info "      (PATH will pick up 'vibelens' in new terminals. Launching via uvx for this run.)"
+  info "      Starting it now..."
+  info ""
+  exec uvx vibelens serve
+else
+  warn ""
+  warn "VibeLens installed, but the 'vibelens' command is not on PATH in this shell."
+  warn "This usually means pip installed it to a user-local bin directory (e.g."
+  warn "~/.local/bin on Linux, or the Python framework bin on macOS) that isn't on PATH."
+  warn ""
+  warn "Open a new terminal and try:  vibelens serve"
+  warn "If that still fails, find the install location with:"
+  warn "  python3 -m site --user-base"
+  warn "and add its 'bin' subdirectory to PATH."
+  exit 1
+fi

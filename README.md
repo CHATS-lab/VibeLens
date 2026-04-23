@@ -46,63 +46,10 @@ See [Quick Start](#quick-start) to install in one command. Works with **Claude C
 |---------|-------------|
 | **Session visualization** | Step-by-step timeline with tool calls, thinking, and sub-agents |
 | **Dashboard analytics** | Usage heatmaps, cost breakdowns, and per-project stats |
-| **Productivity tips** _(needs LLM key or Agent)_ | Detects recurring frustration patterns and suggests concrete fixes |
-| **Personalization** _(needs LLM key or Agent)_ | Retrieve, customize, and evolve reusable skills from your real sessions |
+| **Productivity tips** _(needs Agent)_ | Detects recurring frustration patterns and suggests concrete fixes |
+| **Personalization** _(needs Agent)_ | Retrieve, customize, and evolve reusable skills from your real sessions |
 | **Session sharing** | Share sessions via one-click links |
 | **Multi-agent support** | Claude Code, Codex CLI, Gemini CLI, OpenClaw with auto-detection |
-
-## Supported Agents
-
-| Agent | Format | Data Location |
-|-------|--------|---------------|
-| **Claude Code** | JSONL | `~/.claude/projects/` |
-| **Codex CLI** | JSONL | `~/.codex/sessions/` |
-| **Gemini CLI** | JSON | `~/.gemini/tmp/` |
-| **OpenClaw** | JSONL | `~/.openclaw/agents/` |
-
-VibeLens auto-detects the agent format. Just point it at your session directory and it works.
-
-## Screenshots
-
-### Session Visualization & Dashboard Analytics
-
-<table>
-  <tr>
-    <td width="50%">
-      <kbd><img src="figures/01-conversation.png" alt="Session Visualization" width="100%" /></kbd>
-      <p align="center"><b>Session Visualization</b><br>Step-by-step timeline with messages, tool calls, thinking blocks, and sub-agent spawns.</p>
-    </td>
-    <td width="50%">
-      <kbd><img src="figures/02-dashboard.png" alt="Dashboard Analytics" width="100%" /></kbd>
-      <p align="center"><b>Dashboard Analytics</b><br>Usage heatmaps, cost breakdowns by model, and per-project drill-downs.</p>
-    </td>
-  </tr>
-</table>
-
-### Productivity Tips & Personalization
-
-<table>
-  <tr>
-    <td width="50%">
-      <kbd><img src="figures/03-productivity-tips.png" alt="Productivity Tips" width="100%" /></kbd>
-      <p align="center"><b>Productivity Tips</b><br>Detect friction patterns and get concrete suggestions to improve your workflow.</p>
-    </td>
-    <td width="50%">
-      <kbd><img src="figures/04-skill-retrieval.png" alt="Skill Recommendation" width="100%" /></kbd>
-      <p align="center"><b>Skill Recommendation</b><br>Match workflow patterns to pre-built skills from the catalog.</p>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <kbd><img src="figures/05-skill-creation.png" alt="Skill Customization" width="100%" /></kbd>
-      <p align="center"><b>Skill Customization</b><br>Generate new SKILL.md files tailored to your session patterns.</p>
-    </td>
-    <td width="50%">
-      <kbd><img src="figures/06-skill-evolution.png" alt="Skill Evolution" width="100%" /></kbd>
-      <p align="center"><b>Skill Evolution</b><br>Evolve installed skills with targeted edits based on your real sessions.</p>
-    </td>
-  </tr>
-</table>
 
 ## Quick Start
 
@@ -128,6 +75,28 @@ vibelens serve
 VibeLens opens on **http://localhost:12001** and your browser launches automatically.
 
 Change it with `--port` (for example, `vibelens serve --port 8080`). Press `Ctrl+C` to stop.
+
+<details>
+<summary><b><code>vibelens: command not found</code> after a uv install?</b></summary>
+
+This happens when uv's tool bin directory isn't on your shell's `PATH`. The installer tries to fix this automatically, but the change only takes effect in **new terminals**. Try one of:
+
+1. **Open a new terminal** and run `vibelens serve` again.
+2. **Run the PATH fix manually**, then reopen your terminal:
+   ```bash
+   uv tool update-shell
+   ```
+3. **Add it to PATH yourself** (replace the path with what `uv tool dir --bin` prints):
+   ```bash
+   echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc   # or ~/.bashrc
+   source ~/.zshrc
+   ```
+4. **Skip the shim entirely** and always use:
+   ```bash
+   uvx vibelens serve
+   ```
+
+</details>
 
 <details>
 <summary><b>Don't have uv or Python yet?</b></summary>
@@ -185,6 +154,60 @@ The npm wrapper requires Python 3.10+ and an installed `vibelens` package — it
 
 </details>
 
+## Supported Agents
+
+| Agent | Format | Data Location |
+|-------|--------|---------------|
+| **Claude Code** | JSONL | `~/.claude/projects/` |
+| **Codex CLI** | JSONL | `~/.codex/sessions/` |
+| **Gemini CLI** | JSON | `~/.gemini/tmp/` |
+| **OpenClaw** | JSONL | `~/.openclaw/agents/` |
+
+VibeLens auto-detects the agent format. Just point it at your session directory and it works.
+
+## Screenshots
+
+### Session Visualization & Dashboard Analytics
+
+<table>
+  <tr>
+    <td width="50%">
+      <kbd><img src="figures/01-conversation.png" alt="Session Visualization" width="100%" /></kbd>
+      <p align="center"><b>Session Visualization</b><br>Step-by-step timeline with messages, tool calls, thinking blocks, and sub-agent spawns.</p>
+    </td>
+    <td width="50%">
+      <kbd><img src="figures/02-dashboard.png" alt="Dashboard Analytics" width="100%" /></kbd>
+      <p align="center"><b>Dashboard Analytics</b><br>Usage heatmaps, cost breakdowns by model, and per-project drill-downs.</p>
+    </td>
+  </tr>
+</table>
+
+### Productivity Tips & Personalization
+
+<table>
+  <tr>
+    <td width="50%">
+      <kbd><img src="figures/03-productivity-tips.png" alt="Productivity Tips" width="100%" /></kbd>
+      <p align="center"><b>Productivity Tips</b><br>Detect friction patterns and get concrete suggestions to improve your workflow.</p>
+    </td>
+    <td width="50%">
+      <kbd><img src="figures/04-skill-retrieval.png" alt="Skill Recommendation" width="100%" /></kbd>
+      <p align="center"><b>Skill Recommendation</b><br>Match workflow patterns to pre-built skills from the catalog.</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <kbd><img src="figures/05-skill-creation.png" alt="Skill Customization" width="100%" /></kbd>
+      <p align="center"><b>Skill Customization</b><br>Generate new SKILL.md files tailored to your session patterns.</p>
+    </td>
+    <td width="50%">
+      <kbd><img src="figures/06-skill-evolution.png" alt="Skill Evolution" width="100%" /></kbd>
+      <p align="center"><b>Skill Evolution</b><br>Evolve installed skills with targeted edits based on your real sessions.</p>
+    </td>
+  </tr>
+</table>
+
+
 ### Developer setup
 
 ```bash
@@ -193,20 +216,6 @@ cd VibeLens
 uv sync --extra dev
 uv run vibelens serve
 ```
-
-### Configuration
-
-YAML configuration with environment variable overrides (`VIBELENS_*`). See [`config/vibelens.example.yaml`](config/vibelens.example.yaml) for all options.
-
-```bash
-# Use a config file
-vibelens serve --config config/self-use.yaml
-
-# Override host/port
-vibelens serve --host 0.0.0.0 --port 8080
-```
-
-VibeLens checks PyPI once an hour for new versions when you open Settings. Disable with `VIBELENS_DISABLE_UPDATE_CHECK=1`.
 
 ### Uninstall
 
