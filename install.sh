@@ -3,26 +3,40 @@
 # VibeLens installer for macOS and Linux.
 #
 # What it does:
-#   1. Checks whether `uv` is already on PATH.
-#   2. If not, installs uv from https://astral.sh/uv/install.sh into ~/.local/bin.
-#   3. Sources uv's env file so `uv` is usable in this same shell.
-#   4. Runs `uvx vibelens serve`, which fetches VibeLens on first run and starts it.
+#   1. Looks for `uv` on PATH. If found, asks to install VibeLens with
+#      `uv tool install vibelens`.
+#   2. Otherwise, looks for Python 3.10+. If found, asks to install VibeLens
+#      with `pip install vibelens`.
+#   3. If neither is available, prints platform-specific install guidance
+#      for uv (preferred) and Python, then exits.
+#
+# After install, the user can start VibeLens any time with:
+#   vibelens serve
 #
 # Safety:
-#   - No sudo. uv installs to the user's home directory.
-#   - Idempotent. Re-running skips the uv install step when uv is already present.
-#   - Fails loudly with a pointer to manual install instructions if any step errors.
+#   - Never installs dependencies (Python, uv) for you.
+#   - Always asks for confirmation before running pip/uv.
+#   - Idempotent: re-running with VibeLens already installed re-installs
+#     the latest version (with your consent) and starts the app.
 #
 # Usage:
 #   curl -LsSf https://raw.githubusercontent.com/CHATS-lab/VibeLens/main/install.sh | sh
 
 set -eu
 
-UV_INSTALL_URL="https://astral.sh/uv/install.sh"
+MIN_PY_MAJOR=3
+MIN_PY_MINOR=10
+
 INSTALL_DOC_URL="https://github.com/CHATS-lab/VibeLens/blob/main/docs/INSTALL.md"
+PYTHON_DOC_URL="https://www.python.org/downloads/"
+UV_DOC_URL="https://docs.astral.sh/uv/getting-started/installation/"
 
 info() {
   printf '%s\n' "$1"
+}
+
+warn() {
+  printf '%s\n' "$1" >&2
 }
 
 fail() {
@@ -31,60 +45,139 @@ fail() {
   exit 1
 }
 
-# Try to expose uv installed to ~/.local/bin (or ~/.cargo/bin on older uv versions)
-# without requiring the user to open a new shell.
-source_uv_env() {
-  for candidate in \
-    "${HOME}/.local/bin/env" \
-    "${HOME}/.cargo/env"
-  do
-    if [ -f "$candidate" ]; then
-      # shellcheck disable=SC1090
-      . "$candidate"
-      return 0
+# Read a yes/no answer from the user. When the script is piped through
+# `curl ... | sh`, stdin is the script itself, so we read from /dev/tty.
+confirm() {
+  prompt="$1"
+  if [ ! -r /dev/tty ]; then
+    warn "No interactive terminal detected (cannot prompt for confirmation)."
+    warn "Re-run this command in an interactive shell, or install VibeLens manually."
+    return 1
+  fi
+  printf '%s [y/N]: ' "$prompt" > /dev/tty
+  IFS= read -r answer < /dev/tty || return 1
+  case "$answer" in
+    y|Y|yes|YES|Yes) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Prints the first `pythonX.Y` or `python3` on PATH whose version is >= 3.10.
+# Prints nothing if none qualify.
+find_python() {
+  for candidate in python3.13 python3.12 python3.11 python3.10 python3 python; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+      version_line=$("$candidate" -c 'import sys; print(sys.version_info[0], sys.version_info[1])' 2>/dev/null || true)
+      if [ -z "$version_line" ]; then
+        continue
+      fi
+      major=$(echo "$version_line" | awk '{print $1}')
+      minor=$(echo "$version_line" | awk '{print $2}')
+      if [ "$major" -gt "$MIN_PY_MAJOR" ] || { [ "$major" -eq "$MIN_PY_MAJOR" ] && [ "$minor" -ge "$MIN_PY_MINOR" ]; }; then
+        echo "$candidate"
+        return 0
+      fi
     fi
   done
-  # Fall back to prepending the typical install dir to PATH for this session.
-  if [ -d "${HOME}/.local/bin" ]; then
-    PATH="${HOME}/.local/bin:${PATH}"
-    export PATH
+  return 1
+}
+
+print_python_install_help() {
+  os=$(uname -s 2>/dev/null || echo unknown)
+  warn ""
+  warn "Or install or upgrade Python to 3.10+, then re-run this script:"
+  case "$os" in
+    Darwin)
+      warn "  Homebrew:        brew install python@3.12"
+      warn "  Official build:  $PYTHON_DOC_URL"
+      ;;
+    Linux)
+      warn "  Debian/Ubuntu:   sudo apt update && sudo apt install -y python3 python3-pip"
+      warn "  Fedora/RHEL:     sudo dnf install -y python3 python3-pip"
+      warn "  Arch:            sudo pacman -S python python-pip"
+      warn "  Official build:  $PYTHON_DOC_URL"
+      ;;
+    *)
+      warn "  Official build:  $PYTHON_DOC_URL"
+      ;;
+  esac
+}
+
+print_uv_install_help() {
+  warn ""
+  warn "Install uv (a single binary, no Python required):"
+  warn "  curl -LsSf https://astral.sh/uv/install.sh | sh"
+  warn "  Homebrew:  brew install uv"
+  warn "  Docs:      $UV_DOC_URL"
+}
+
+install_with_pip() {
+  py="$1"
+  info "Found Python at $(command -v "$py") ($("$py" --version 2>&1))."
+  info ""
+  info "VibeLens will be installed with:"
+  info "  $py -m pip install --upgrade vibelens"
+  info ""
+  if ! confirm "Proceed?"; then
+    fail "Install cancelled by user."
+  fi
+  if ! "$py" -m pip install --upgrade vibelens; then
+    warn ""
+    warn "pip install failed. This can happen on systems with an 'externally-managed' Python."
+    warn "Workarounds:"
+    warn "  1. Retry with --user:  $py -m pip install --user --upgrade vibelens"
+    warn "  2. Use a virtualenv:   $py -m venv ~/.vibelens && ~/.vibelens/bin/pip install vibelens"
+    warn "  3. Install uv and re-run this script (the uv path avoids system Python entirely)."
+    fail "pip could not install VibeLens."
   fi
 }
 
-# Step 1: detect existing uv.
-info "[1/3] Checking for uv..."
+install_with_uv() {
+  info "Found uv at $(command -v uv)."
+  info ""
+  info "VibeLens will be installed with:"
+  info "  uv tool install vibelens"
+  info ""
+  if ! confirm "Proceed?"; then
+    fail "Install cancelled by user."
+  fi
+  if ! uv tool install vibelens; then
+    fail "uv could not install VibeLens."
+  fi
+}
+
+# Step 1: prefer uv.
+info "[1/3] Looking for uv..."
 if command -v uv >/dev/null 2>&1; then
-  info "      uv is already installed at $(command -v uv)."
-  INSTALL_UV=0
+  info "      uv found."
+  info ""
+  info "[2/3] Installing VibeLens via uv..."
+  install_with_uv
 else
-  info "      uv not found. Will install."
-  INSTALL_UV=1
+  info "      uv not found."
+  # Step 2: fall back to Python.
+  info ""
+  info "[2/3] Looking for Python >= ${MIN_PY_MAJOR}.${MIN_PY_MINOR}..."
+  if PY=$(find_python); then
+    info "      Python found."
+    info ""
+    install_with_pip "$PY"
+  else
+    warn "      No suitable Python on PATH either."
+    warn ""
+    warn "VibeLens needs one of:"
+    warn "  - uv (preferred)"
+    warn "  - Python >= ${MIN_PY_MAJOR}.${MIN_PY_MINOR}"
+    print_uv_install_help
+    print_python_install_help
+    exit 1
+  fi
 fi
 
-# Step 2: install uv if needed.
-if [ "$INSTALL_UV" -eq 1 ]; then
-  info "[2/3] Installing uv from ${UV_INSTALL_URL}..."
-  if ! command -v curl >/dev/null 2>&1; then
-    fail "curl is required but not installed. Install curl, or install uv manually from https://docs.astral.sh/uv/."
-  fi
-  tmp_installer="$(mktemp)"
-  if ! curl -LsSf "$UV_INSTALL_URL" -o "$tmp_installer"; then
-    rm -f "$tmp_installer"
-    fail "Could not download uv installer from ${UV_INSTALL_URL}. Check your network, or install uv manually."
-  fi
-  if ! sh "$tmp_installer"; then
-    rm -f "$tmp_installer"
-    fail "uv installer exited with an error."
-  fi
-  rm -f "$tmp_installer"
-  source_uv_env
-  if ! command -v uv >/dev/null 2>&1; then
-    fail "uv installed but is not on PATH. Open a new terminal and re-run this command, or add ~/.local/bin to PATH."
-  fi
-else
-  info "[2/3] Skipping uv install."
-fi
-
-# Step 3: run VibeLens.
-info "[3/3] Starting VibeLens (first run downloads the package; this can take ~30s)..."
-exec uvx vibelens serve
+# Step 3: launch.
+info ""
+info "[3/3] VibeLens installed."
+info "      To start it any time later, run:  vibelens serve"
+info "      Starting it now..."
+info ""
+exec vibelens serve
