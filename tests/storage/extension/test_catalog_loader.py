@@ -33,7 +33,10 @@ def test_load_catalog_from_dir_returns_snapshot(built_catalog: Path):
     snap = load_catalog_from_dir(built_catalog)
     assert snap is not None
     assert isinstance(snap, CatalogSnapshot)
-    assert snap.manifest.total == len(snap.items) == 7
+    # Fixture contains 7 items; mcp_server is excluded from the loaded catalog.
+    assert snap.manifest.total == len(snap.items) == 6
+    assert "mcp_server" not in snap.manifest.item_counts
+    assert all(it.extension_type.value != "mcp_server" for it in snap.items)
     assert snap.data_dir == built_catalog
     print(f"loaded snapshot: total={snap.manifest.total}")
 

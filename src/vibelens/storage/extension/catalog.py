@@ -19,6 +19,11 @@ logger = get_logger(__name__)
 
 USER_CATALOG_DIR = Path.home() / ".vibelens" / "catalog"
 
+# Extension types excluded from the loaded catalog. The bundled mcp_server
+# file in data/catalog is polluted with misclassified skill entries, so we
+# drop it entirely until the source pipeline is fixed.
+_EXCLUDED_TYPES: frozenset[str] = frozenset({"mcp_server"})
+
 _cached_catalog: "CatalogSnapshot | None" = None
 _cache_checked: bool = False
 
@@ -140,6 +145,7 @@ def load_catalog_from_dir(dir_path: Path) -> CatalogSnapshot | None:
         return None
 
     manifest = CatalogManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
+    manifest = _drop_excluded_types_from_manifest(manifest)
 
     for type_value in manifest.item_counts:
         expected = dir_path / f"agent-{type_value}.json"
@@ -147,11 +153,18 @@ def load_catalog_from_dir(dir_path: Path) -> CatalogSnapshot | None:
             raise FileNotFoundError(f"catalog missing {expected.name}")
 
     summary_payload = json.loads(summary_path.read_text(encoding="utf-8"))
-    items = [AgentExtensionItem.model_validate(raw) for raw in summary_payload.get("items", [])]
+    items = [
+        item
+        for item in (
+            AgentExtensionItem.model_validate(raw) for raw in summary_payload.get("items", [])
+        )
+        if item.extension_type.value not in _EXCLUDED_TYPES
+    ]
 
     offsets: dict[str, tuple[str, int, int]] = {}
     if offsets_path.is_file():
         loaded = _load_offsets(offsets_path)
+        loaded = {k: v for k, v in loaded.items() if v[0] not in _EXCLUDED_TYPES}
         if _sanity_check_offsets(loaded, dir_path):
             offsets = loaded
         else:
@@ -166,6 +179,25 @@ def load_catalog_from_dir(dir_path: Path) -> CatalogSnapshot | None:
         manifest.hub_source,
     )
     return snap
+
+
+def _drop_excluded_types_from_manifest(manifest: CatalogManifest) -> CatalogManifest:
+    """Return a manifest with ``_EXCLUDED_TYPES`` removed from counts and sizes."""
+    if not _EXCLUDED_TYPES.intersection(manifest.item_counts):
+        return manifest
+    kept_counts = {k: v for k, v in manifest.item_counts.items() if k not in _EXCLUDED_TYPES}
+    kept_sizes = {
+        k: v
+        for k, v in manifest.file_sizes.items()
+        if k.removeprefix("agent-").removesuffix(".json") not in _EXCLUDED_TYPES
+    }
+    return manifest.model_copy(
+        update={
+            "item_counts": kept_counts,
+            "file_sizes": kept_sizes,
+            "total": sum(kept_counts.values()),
+        }
+    )
 
 
 def _load_offsets(path: Path) -> dict[str, tuple[str, int, int]]:
