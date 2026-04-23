@@ -28,11 +28,13 @@ function formatDuration(seconds: number): string {
 function HistoryCard({
   meta,
   isLoading,
+  isActive,
   onSelect,
   onDelete,
 }: {
   meta: PersonalizationMeta;
   isLoading: boolean;
+  isActive: boolean;
   onSelect: () => void;
   onDelete: () => void;
 }) {
@@ -71,7 +73,9 @@ function HistoryCard({
         className={`group relative w-full text-left px-3 py-2.5 border-b border-card cursor-pointer transition ${
           isLoading
             ? "bg-accent-teal-subtle/50"
-            : "hover:bg-control"
+            : isActive
+              ? "bg-control"
+              : "hover:bg-control"
         }`}
       >
         <div className="flex items-start justify-between gap-2">
@@ -153,12 +157,14 @@ export function PersonalizationHistory({
   refreshTrigger,
   filterMode,
   activeJobId,
+  activeResultId,
   onStop,
 }: {
   onSelect: (result: PersonalizationResult) => void;
   refreshTrigger: number;
   filterMode: PersonalizationMode | null;
   activeJobId?: string | null;
+  activeResultId?: string | null;
   onStop?: () => void;
 }) {
   const { fetchWithToken } = useAppContext();
@@ -263,6 +269,7 @@ export function PersonalizationHistory({
           key={meta.id}
           meta={meta}
           isLoading={loadingId === meta.id}
+          isActive={activeResultId === meta.id}
           onSelect={() => handleSelect(meta)}
           onDelete={() => handleDelete(meta.id, meta.mode)}
         />

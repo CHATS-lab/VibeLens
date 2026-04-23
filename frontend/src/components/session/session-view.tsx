@@ -1,4 +1,4 @@
-import { BarChart3 } from "lucide-react";
+import { ArrowDown, ArrowUp, BarChart3 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSessionData } from "../../hooks/use-session-data";
 import { useShareSession } from "./session-share-dialog";
@@ -201,6 +201,17 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
     return () => observer.disconnect();
   }, [userStepIds]);
 
+  const scrollToTop = useCallback(() => {
+    const el = stepsRef.current;
+    if (!el) return;
+    el.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
+  const scrollToBottom = useCallback(() => {
+    const el = stepsRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, []);
+
   const handlePromptNavigate = useCallback((stepId: string) => {
     const el = document.getElementById(`step-${stepId}`);
     if (!el) return;
@@ -308,7 +319,8 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
       {/* Two-column body: Steps + Prompt Nav */}
       <div className="flex-1 flex min-h-0">
         {/* Steps / Flow */}
-        <div ref={stepsRef} className="flex-1 overflow-y-auto">
+        <div className="flex-1 relative min-w-0">
+        <div ref={stepsRef} className="absolute inset-0 overflow-y-auto">
           {viewMode === "detail" || viewMode === "concise" ? (
             <div className="max-w-5xl mx-auto px-4 py-6 space-y-3">
               {steps.length === 0 ? (
@@ -378,6 +390,25 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
               <p className="text-sm text-dimmed">Flow data unavailable</p>
             </div>
           )}
+        </div>
+          <div className="absolute bottom-6 right-6 z-30 flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={scrollToTop}
+              aria-label="Scroll to top"
+              className="p-2.5 bg-panel hover:bg-control-hover border border-card rounded-full shadow-md text-muted hover:text-primary transition"
+            >
+              <ArrowUp className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={scrollToBottom}
+              aria-label="Scroll to bottom"
+              className="p-2.5 bg-panel hover:bg-control-hover border border-card rounded-full shadow-md text-muted hover:text-primary transition"
+            >
+              <ArrowDown className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Prompt Navigation Sidebar */}

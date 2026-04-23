@@ -14,9 +14,10 @@ interface FrictionHistoryProps {
   onSelect: (result: FrictionAnalysisResult) => void;
   refreshTrigger: number;
   activeJobId?: string | null;
+  activeResultId?: string | null;
 }
 
-export function FrictionHistory({ onSelect, refreshTrigger, activeJobId }: FrictionHistoryProps) {
+export function FrictionHistory({ onSelect, refreshTrigger, activeJobId, activeResultId }: FrictionHistoryProps) {
   const { fetchWithToken } = useAppContext();
   const api = useMemo(
     () => analysisClient(fetchWithToken, FRICTION_API_BASE),
@@ -93,6 +94,7 @@ export function FrictionHistory({ onSelect, refreshTrigger, activeJobId }: Frict
           key={item.id}
           item={item}
           deleting={deletingId === item.id}
+          isActive={activeResultId === item.id}
           onSelect={() => handleSelect(item.id)}
           onDelete={() => handleDelete(item.id)}
         />
@@ -104,11 +106,13 @@ export function FrictionHistory({ onSelect, refreshTrigger, activeJobId }: Frict
 function HistoryCard({
   item,
   deleting,
+  isActive,
   onSelect,
   onDelete,
 }: {
   item: FrictionMeta;
   deleting: boolean;
+  isActive: boolean;
   onSelect: () => void;
   onDelete: () => void;
 }) {
@@ -125,7 +129,9 @@ function HistoryCard({
   return (
     <div
       onClick={onSelect}
-      className="group relative px-3 py-2.5 border-b border-card hover:bg-control cursor-pointer transition"
+      className={`group relative px-3 py-2.5 border-b border-card cursor-pointer transition ${
+        isActive ? "bg-control" : "hover:bg-control"
+      }`}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0 space-y-1">

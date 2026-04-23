@@ -124,7 +124,6 @@ export function App() {
   });
 
   const [frictionJobId, setFrictionJobId] = useState<string | null>(null);
-  const [skillJobId, setSkillJobId] = useState<string | null>(null);
 
   // Detect ?share={token} in URL for shared session viewing
   const [shareToken] = useState<string | null>(() => {
@@ -488,8 +487,8 @@ export function App() {
                   onClick={() => setMainView("browse")}
                   className={`min-w-[100px] text-center px-4 py-1.5 text-sm font-semibold rounded-md transition ${
                     mainView === "browse"
-                      ? "bg-control/70 text-primary"
-                      : "text-muted hover:text-secondary hover:bg-control/40"
+                      ? "bg-control text-primary"
+                      : "text-muted hover:text-secondary hover:bg-control"
                   }`}
                 >
                   Conversation
@@ -501,8 +500,8 @@ export function App() {
                   onClick={() => setMainView("analyze")}
                   className={`min-w-[100px] text-center px-4 py-1.5 text-sm font-semibold rounded-md transition ${
                     mainView === "analyze"
-                      ? "bg-control/70 text-primary"
-                      : "text-muted hover:text-secondary hover:bg-control/40"
+                      ? "bg-control text-primary"
+                      : "text-muted hover:text-secondary hover:bg-control"
                   }`}
                 >
                   Dashboard
@@ -520,8 +519,8 @@ export function App() {
                   }}
                   className={`min-w-[100px] text-center px-4 py-1.5 text-sm font-semibold rounded-md transition ${
                     mainView === "skills"
-                      ? "bg-control/70 text-primary"
-                      : "text-muted hover:text-secondary hover:bg-control/40"
+                      ? "bg-control text-primary"
+                      : "text-muted hover:text-secondary hover:bg-control"
                   }`}
                 >
                   Personalization
@@ -533,8 +532,8 @@ export function App() {
                   onClick={() => setMainView("friction")}
                   className={`min-w-[100px] text-center px-4 py-1.5 text-sm font-semibold rounded-md transition ${
                     mainView === "friction"
-                      ? "bg-control/70 text-primary"
-                      : "text-muted hover:text-secondary hover:bg-control/40"
+                      ? "bg-control text-primary"
+                      : "text-muted hover:text-secondary hover:bg-control"
                   }`}
                 >
                   Productivity Tips
@@ -574,7 +573,7 @@ export function App() {
           <div className="flex-1 min-h-0 relative">
             <Suspense fallback={<LoadingSpinner />}>
             {mainView === "skills" ? (
-              <PersonalizationPanel checkedIds={checkedIds} activeJobId={skillJobId} onJobIdChange={setSkillJobId} resetKey={skillsResetKey} />
+              <PersonalizationPanel checkedIds={checkedIds} resetKey={skillsResetKey} />
             ) : mainView === "friction" ? (
               <FrictionPanel checkedIds={checkedIds} activeJobId={frictionJobId} onJobIdChange={setFrictionJobId} />
             ) : mainView === "analyze" ? (
@@ -636,7 +635,7 @@ export function App() {
           <SpotlightTour appMode={appMode} onComplete={() => setShowOnboarding(false)} />
         )}
 
-        {showRecWelcome && (
+        {showRecWelcome && !showOnboarding && (
           <RecommendationWelcomeDialog
             onTryNow={() => {
               setShowRecWelcome(false);

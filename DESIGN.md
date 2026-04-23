@@ -263,8 +263,8 @@ All right-side panels must use these shared values. Never hardcode panel widths 
 |-------|-------|------|-----|
 | Flat | `bg-canvas` | `bg-canvas` | Page background |
 | Surface | `bg-panel` | `bg-panel` | Cards, modals, sidebar |
-| Control | `bg-control` | `bg-control` | Inputs, toggles, inactive tabs |
-| Hover | `bg-control-hover` | `bg-control-hover` | Hover states, active tabs |
+| Control | `bg-control` | `bg-control` | Inputs, inactive tab bodies, **active tab/row/history background, hover background** |
+| Hover | `bg-control-hover` | `bg-control-hover` | Stronger hover inside controls (e.g. dropdown option hover, icon-button hover) |
 | Card shadow | `0 1px 3px rgba(0,0,0,0.06), 0 2px 8px rgba(0,0,0,0.04)` | `none` | Light mode card elevation |
 
 **Shadow philosophy:** Light mode uses Apple-inspired soft diffused shadows for subtle elevation. Dark mode uses no shadows; elevation is communicated through background luminance steps (`#09090b` < `#18181b` < `#27272a` < `#3f3f46`). Borders on dark mode are semi-transparent white (`rgba(255,255,255,0.04-0.06)`) to provide structure without visual noise.
@@ -472,8 +472,18 @@ History cards in right sidebar panels (skills history, friction history) use a f
 
 - Row dividers: `border-b border-card`
 - Project group headers: `border-b border-card`
-- Active session: `bg-accent-cyan-subtle` highlight
-- Hover: `hover:bg-control/60`
+- Active session: `bg-control` with `border-l-2 border-l-accent-cyan` (cyan marker carries the "current context" accent; body matches the universal active-row gray)
+- Hover: `hover:bg-control`
+
+### Active Selection Convention (universal)
+
+Top-level tabs, sub-tabs, history rows, session rows, and nav-panel entries share one rule: **hover and active use the same `bg-control` background**. The active marker is never a background color shift — it's either a left-border accent (session row, nav entries) or bold text (tabs).
+
+- Active tab: `bg-control text-primary`
+- Inactive tab: `text-muted hover:text-secondary hover:bg-control`
+- Active history card: `bg-control` (no hover class; already matches)
+- Inactive history card: `hover:bg-control`
+- Reference implementation: the user prompt nav in `prompt-nav-panel.tsx` — copy that pattern when adding new list/tab surfaces.
 
 ## 13. API and Hook Layers
 

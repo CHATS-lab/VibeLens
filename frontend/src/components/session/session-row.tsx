@@ -25,7 +25,7 @@ export function SessionRow({
     <div
       className={`flex items-center border-b border-card transition-all duration-200 ${
         selectedId === session.session_id
-          ? "bg-accent-cyan-subtle border-l-2 border-l-accent-cyan"
+          ? "bg-control border-l-2 border-l-accent-cyan"
           : "hover:bg-control border-l-2 border-l-transparent"
       }`}
     >

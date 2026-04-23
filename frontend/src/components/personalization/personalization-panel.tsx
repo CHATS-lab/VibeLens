@@ -30,8 +30,8 @@ const TAB_CONFIG: { id: PersonalizationTab; label: string; tooltip: string }[] =
   { id: "evolve", label: "Evolve", tooltip: "Improve existing skills from usage" },
 ];
 
-const ACTIVE_TAB_STYLE = "bg-control/70 text-primary";
-const INACTIVE_TAB_STYLE = "text-muted hover:text-secondary hover:bg-control/40";
+const ACTIVE_TAB_STYLE = "bg-control text-primary";
+const INACTIVE_TAB_STYLE = "text-muted hover:text-secondary hover:bg-control";
 
 const MODE_MAP: Record<string, PersonalizationMode> = {
   retrieve: "recommendation",
@@ -88,12 +88,42 @@ const MODE_LOADING_TITLES: Record<PersonalizationMode, string> = {
 
 interface PersonalizationPanelProps {
   checkedIds: Set<string>;
-  activeJobId: string | null;
-  onJobIdChange: (id: string | null) => void;
   resetKey?: number;
 }
 
-export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange, resetKey = 0 }: PersonalizationPanelProps) {
+const PERSONALIZATION_MODES: PersonalizationMode[] = ["recommendation", "creation", "evolution"];
+const JOB_STORAGE_KEY = "vibelens-personalization-jobs";
+
+type ModeMap<T> = Record<PersonalizationMode, T>;
+
+function emptyModeMap<T>(value: T): ModeMap<T> {
+  return { recommendation: value, creation: value, evolution: value };
+}
+
+function loadStoredJobIds(): ModeMap<string | null> {
+  try {
+    const raw = localStorage.getItem(JOB_STORAGE_KEY);
+    if (!raw) return emptyModeMap<string | null>(null);
+    const parsed = JSON.parse(raw) as Partial<ModeMap<string | null>>;
+    return {
+      recommendation: parsed.recommendation ?? null,
+      creation: parsed.creation ?? null,
+      evolution: parsed.evolution ?? null,
+    };
+  } catch {
+    return emptyModeMap<string | null>(null);
+  }
+}
+
+function persistJobIds(jobs: ModeMap<string | null>): void {
+  try {
+    localStorage.setItem(JOB_STORAGE_KEY, JSON.stringify(jobs));
+  } catch {
+    /* best-effort */
+  }
+}
+
+export function PersonalizationPanel({ checkedIds, resetKey = 0 }: PersonalizationPanelProps) {
   const { fetchWithToken, appMode, maxSessions } = useAppContext();
   const llmApi = useMemo(() => llmClient(fetchWithToken), [fetchWithToken]);
   const sessionsApi = useMemo(() => sessionsClient(fetchWithToken), [fetchWithToken]);
@@ -102,9 +132,15 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange, r
     if (stored && TAB_CONFIG.some((t) => t.id === stored)) return stored as PersonalizationTab;
     return "local";
   });
-  const [analysisResult, setAnalysisResult] = useState<PersonalizationResult | null>(null);
-  const [analysisLoading, setAnalysisLoading] = useState(false);
-  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [resultsByMode, setResultsByMode] = useState<ModeMap<PersonalizationResult | null>>(
+    () => emptyModeMap<PersonalizationResult | null>(null),
+  );
+  const [loadingByMode, setLoadingByMode] = useState<ModeMap<boolean>>(() => emptyModeMap(false));
+  const [errorByMode, setErrorByMode] = useState<ModeMap<string | null>>(
+    () => emptyModeMap<string | null>(null),
+  );
+  const [jobIdsByMode, setJobIdsByMode] = useState<ModeMap<string | null>>(() => loadStoredJobIds());
+  const [sessionCountsByMode, setSessionCountsByMode] = useState<ModeMap<number>>(() => emptyModeMap(0));
   const [showHistory, setShowHistory] = useState(true);
   const [analysisDetailItem, setAnalysisDetailItem] = useState<ExtensionItemSummary | null>(null);
   const [localDetailOpen, setLocalDetailOpen] = useState(false);
@@ -114,9 +150,41 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange, r
   const [exploreResetKey, setExploreResetKey] = useState(0);
   const [localResetKey, setLocalResetKey] = useState(0);
   const [llmStatus, setLlmStatus] = useState<LLMStatus | null>(null);
+
+  const setModeField = useCallback(
+    <K extends "result" | "loading" | "error" | "jobId" | "sessionCount">(
+      mode: PersonalizationMode,
+      field: K,
+      value: K extends "result" ? PersonalizationResult | null :
+             K extends "loading" ? boolean :
+             K extends "error" ? string | null :
+             K extends "jobId" ? string | null :
+             number,
+    ) => {
+      if (field === "result") setResultsByMode((p) => ({ ...p, [mode]: value as PersonalizationResult | null }));
+      else if (field === "loading") setLoadingByMode((p) => ({ ...p, [mode]: value as boolean }));
+      else if (field === "error") setErrorByMode((p) => ({ ...p, [mode]: value as string | null }));
+      else if (field === "jobId") {
+        setJobIdsByMode((p) => {
+          const next = { ...p, [mode]: value as string | null };
+          persistJobIds(next);
+          return next;
+        });
+      } else if (field === "sessionCount") {
+        setSessionCountsByMode((p) => ({ ...p, [mode]: value as number }));
+      }
+    },
+    [],
+  );
+
+  const pendingModeRef = useRef<PersonalizationMode>("recommendation");
+  const setErrorForPending = useCallback(
+    (msg: string | null) => setModeField(pendingModeRef.current, "error", msg),
+    [setModeField],
+  );
   const { estimate, estimating, requestEstimate, clearEstimate } = useCostEstimate(
     fetchWithToken,
-    setAnalysisError,
+    setErrorForPending,
   );
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
   const draggingRef = useRef(false);
@@ -169,9 +237,8 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange, r
     refreshLlmStatus();
   }, [refreshLlmStatus]);
 
-  const pendingModeRef = useRef<PersonalizationMode>("recommendation");
   const selectedSkillNamesRef = useRef<string[] | undefined>(undefined);
-  const resolvedSessionIdsRef = useRef<string[]>([]);
+  const resolvedSessionIdsByModeRef = useRef<ModeMap<string[]>>(emptyModeMap<string[]>([]));
   const [showSkillSelector, setShowSkillSelector] = useState(false);
 
   const fetchAllSessionIds = useCallback(
@@ -179,52 +246,53 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange, r
     [sessionsApi],
   );
 
+  const apiBaseForMode = useCallback((mode: PersonalizationMode) => {
+    const tabKey = Object.entries(MODE_MAP).find(([, v]) => v === mode)?.[0] ?? "retrieve";
+    return API_BASE_MAP[tabKey];
+  }, []);
+
   const proceedToEstimate = useCallback(
     (mode: PersonalizationMode, overrideSessionIds?: string[]) => {
-      setAnalysisError(null);
+      setModeField(mode, "error", null);
       const sessionIds = overrideSessionIds ?? [...checkedIds];
+      resolvedSessionIdsByModeRef.current[mode] = sessionIds;
+      setModeField(mode, "sessionCount", sessionIds.length);
       const body: Record<string, unknown> = { session_ids: sessionIds };
       if (selectedSkillNamesRef.current) body.skill_names = selectedSkillNamesRef.current;
-      const tabKey = Object.entries(MODE_MAP).find(([, v]) => v === mode)?.[0] ?? "retrieve";
-      requestEstimate(`${API_BASE_MAP[tabKey]}/estimate`, body);
+      requestEstimate(`${apiBaseForMode(mode)}/estimate`, body);
     },
-    [checkedIds, requestEstimate],
+    [checkedIds, requestEstimate, apiBaseForMode, setModeField],
   );
 
   const handleConfirmAnalysis = useCallback(async () => {
     const mode = pendingModeRef.current;
-    const tabKey = Object.entries(MODE_MAP).find(([, v]) => v === mode)?.[0] ?? "retrieve";
-    const api = analysisClient(fetchWithToken, API_BASE_MAP[tabKey]);
-    const isRecommend = mode === "recommendation";
+    const api = analysisClient(fetchWithToken, apiBaseForMode(mode));
     clearEstimate();
-    setAnalysisLoading(true);
-    setAnalysisError(null);
+    setModeField(mode, "loading", true);
+    setModeField(mode, "error", null);
     try {
-      const sessionIds = isRecommend ? resolvedSessionIdsRef.current : [...checkedIds];
+      const sessionIds = resolvedSessionIdsByModeRef.current[mode] ?? [...checkedIds];
       const body: Record<string, unknown> = { session_ids: sessionIds };
       if (selectedSkillNamesRef.current) body.skill_names = selectedSkillNamesRef.current;
       const data = await api.submit(body);
       if (data.status === "completed" && data.analysis_id) {
-        setAnalysisResult(await api.load<PersonalizationResult>(data.analysis_id));
+        setModeField(mode, "result", await api.load<PersonalizationResult>(data.analysis_id));
         setHistoryRefresh((n) => n + 1);
-        setAnalysisLoading(false);
+        setModeField(mode, "loading", false);
       } else {
-        onJobIdChange(data.job_id);
+        setModeField(mode, "jobId", data.job_id);
       }
     } catch (err) {
-      setAnalysisError(err instanceof Error ? err.message : String(err));
-      setAnalysisLoading(false);
+      setModeField(mode, "error", err instanceof Error ? err.message : String(err));
+      setModeField(mode, "loading", false);
     }
-  }, [checkedIds, clearEstimate, fetchWithToken, onJobIdChange]);
+  }, [checkedIds, clearEstimate, fetchWithToken, apiBaseForMode, setModeField]);
 
   const handleRequestEstimate = useCallback(
     async (mode: PersonalizationMode) => {
       if (checkedIds.size === 0) return;
       pendingModeRef.current = mode;
       selectedSkillNamesRef.current = undefined;
-      if (mode === "recommendation") {
-        resolvedSessionIdsRef.current = [...checkedIds];
-      }
       if (mode === "evolution") {
         setShowSkillSelector(true);
         return;
@@ -237,19 +305,18 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange, r
   const handleRunAll = useCallback(async () => {
     pendingModeRef.current = "recommendation";
     selectedSkillNamesRef.current = undefined;
-    setAnalysisError(null);
+    setModeField("recommendation", "error", null);
     try {
       const allIds = await fetchAllSessionIds();
       if (allIds.length === 0) {
-        setAnalysisError("No sessions available for analysis.");
+        setModeField("recommendation", "error", "No sessions available for analysis.");
         return;
       }
-      resolvedSessionIdsRef.current = allIds;
       proceedToEstimate("recommendation", allIds);
     } catch (err) {
-      setAnalysisError(err instanceof Error ? err.message : String(err));
+      setModeField("recommendation", "error", err instanceof Error ? err.message : String(err));
     }
-  }, [fetchAllSessionIds, proceedToEstimate]);
+  }, [fetchAllSessionIds, proceedToEstimate, setModeField]);
 
   const handleSkillSelectionConfirm = useCallback(
     (skillNames: string[]) => {
@@ -268,50 +335,49 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange, r
     };
     const tab = tabMap[loaded.mode] || "retrieve";
     setAnalysisDetailItem(null);
-    setAnalysisResult(loaded);
+    setModeField(loaded.mode, "result", loaded);
     setActiveTab(tab);
     localStorage.setItem("vibelens-personalization-tab", tab);
-  }, []);
+  }, [setModeField]);
 
-  // In demo mode, auto-load the most recent analysis for a given mode
-  const demoHistoryRef = useRef<{ id: string; mode: PersonalizationMode }[] | null>(null);
+  // Per-mode history cache so each mode's "auto-load most recent" doesn't clobber others.
+  const historyCacheByModeRef = useRef<ModeMap<{ id: string; mode: PersonalizationMode }[] | null>>(
+    emptyModeMap<{ id: string; mode: PersonalizationMode }[] | null>(null),
+  );
 
-  const loadDemoAnalysis = useCallback(
+  const loadMostRecentAnalysis = useCallback(
     async (mode: PersonalizationMode) => {
-      if (appMode !== "demo") return;
-      const tabKey = Object.entries(MODE_MAP).find(([, v]) => v === mode)?.[0] ?? "retrieve";
-      const api = analysisClient(fetchWithToken, API_BASE_MAP[tabKey]);
+      const api = analysisClient(fetchWithToken, apiBaseForMode(mode));
       try {
-        if (!demoHistoryRef.current) {
-          demoHistoryRef.current = await api.history<{ id: string; mode: PersonalizationMode }>();
+        if (!historyCacheByModeRef.current[mode]) {
+          historyCacheByModeRef.current[mode] = await api.history<{ id: string; mode: PersonalizationMode }>();
         }
-        const match = demoHistoryRef.current?.find((h) => h.mode === mode);
+        const cache = historyCacheByModeRef.current[mode];
+        const match = cache?.find((h) => h.mode === mode);
         if (!match) return;
-        setAnalysisResult(await api.load<PersonalizationResult>(match.id));
+        setModeField(mode, "result", await api.load<PersonalizationResult>(match.id));
       } catch {
         /* best-effort — fall back to welcome page */
       }
     },
-    [appMode, fetchWithToken],
+    [fetchWithToken, apiBaseForMode, setModeField],
   );
 
-  // Auto-load on initial mount in demo mode, respecting stored tab preference
-  const demoLoadedRef = useRef(false);
+  // Auto-load most recent on initial mount, respecting stored tab preference.
+  const autoLoadedRef = useRef(false);
   useEffect(() => {
-    if (appMode !== "demo" || demoLoadedRef.current) return;
-    demoLoadedRef.current = true;
+    if (autoLoadedRef.current) return;
+    autoLoadedRef.current = true;
 
-    // Only auto-load for analysis tabs (not local/explore)
     const storedTab = localStorage.getItem("vibelens-personalization-tab");
     const targetMode = storedTab && MODE_MAP[storedTab] ? MODE_MAP[storedTab] : null;
     if (!targetMode) return;
 
-    const api = analysisClient(fetchWithToken, API_BASE_MAP[storedTab!]);
-
+    const api = analysisClient(fetchWithToken, apiBaseForMode(targetMode));
     (async () => {
       try {
         const history = await api.history<{ id: string; mode: PersonalizationMode }>();
-        demoHistoryRef.current = history;
+        historyCacheByModeRef.current[targetMode] = history;
         if (history.length === 0) return;
         const match = history.find((h) => h.mode === targetMode) ?? history[0];
         handleHistorySelect(await api.load<PersonalizationResult>(match.id));
@@ -319,13 +385,50 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange, r
         /* best-effort */
       }
     })();
-  }, [appMode, fetchWithToken, handleHistorySelect]);
+  }, [fetchWithToken, handleHistorySelect, apiBaseForMode]);
+
+  // Restore persisted running jobs on mount: verify each is still running on the
+  // backend; if terminal, clear the persisted ID and surface result/error.
+  const jobsRestoredRef = useRef(false);
+  useEffect(() => {
+    if (jobsRestoredRef.current) return;
+    jobsRestoredRef.current = true;
+    for (const mode of PERSONALIZATION_MODES) {
+      const jobId = jobIdsByMode[mode];
+      if (!jobId) continue;
+      const api = analysisClient(fetchWithToken, apiBaseForMode(mode));
+      (async () => {
+        try {
+          const status = await api.jobStatus(jobId);
+          if (status.status === "running") {
+            setModeField(mode, "loading", true);
+          } else {
+            setModeField(mode, "jobId", null);
+            setModeField(mode, "loading", false);
+            if (status.status === "completed" && status.analysis_id) {
+              setModeField(mode, "result", await api.load<PersonalizationResult>(status.analysis_id));
+              setHistoryRefresh((n) => n + 1);
+            } else if (status.status === "failed") {
+              setModeField(mode, "error", status.error_message || "Analysis failed");
+            }
+          }
+        } catch {
+          // Job unknown to the backend (server restarted): drop the stale ID.
+          setModeField(mode, "jobId", null);
+        }
+      })();
+    }
+    // Run once on mount against the initial persisted snapshot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleNewAnalysis = useCallback(() => {
-    setAnalysisResult(null);
-    setAnalysisError(null);
+    const mode = MODE_MAP[activeTab];
+    if (!mode) return;
+    setModeField(mode, "result", null);
+    setModeField(mode, "error", null);
     setAnalysisDetailItem(null);
-  }, []);
+  }, [activeTab, setModeField]);
 
   // Bump both counters after install/update so LocalExtensionsTab and PersonalizationHistory refresh.
   const handleSkillInstalled = useCallback(() => {
@@ -333,58 +436,83 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange, r
     setHistoryRefresh((n) => n + 1);
   }, []);
 
-  const pollApiBase = API_BASE_MAP[activeTab] ?? "/api/recommendation";
-  useEffect(() => {
-    if (activeJobId) setAnalysisLoading(true);
-  }, [activeJobId]);
-
-  const handleJobCompleted = useCallback(
-    async (analysisId: string) => {
-      onJobIdChange(null);
-      setAnalysisLoading(false);
+  // One polling hook per mode so each mode's job completes independently.
+  const makeOnCompleted = useCallback(
+    (mode: PersonalizationMode) => async (analysisId: string) => {
+      setModeField(mode, "jobId", null);
+      setModeField(mode, "loading", false);
       try {
-        const api = analysisClient(fetchWithToken, pollApiBase);
-        setAnalysisResult(await api.load<PersonalizationResult>(analysisId));
+        const api = analysisClient(fetchWithToken, apiBaseForMode(mode));
+        setModeField(mode, "result", await api.load<PersonalizationResult>(analysisId));
       } catch {
         /* best-effort */
       }
       setHistoryRefresh((n) => n + 1);
     },
-    [fetchWithToken, onJobIdChange, pollApiBase],
+    [fetchWithToken, apiBaseForMode, setModeField],
   );
-  const handleJobFailed = useCallback(
-    (message: string) => {
-      onJobIdChange(null);
-      setAnalysisLoading(false);
-      setAnalysisError(message);
+  const makeOnFailed = useCallback(
+    (mode: PersonalizationMode) => (message: string) => {
+      setModeField(mode, "jobId", null);
+      setModeField(mode, "loading", false);
+      setModeField(mode, "error", message);
     },
-    [onJobIdChange],
+    [setModeField],
   );
-  const handleJobCancelled = useCallback(() => {
-    onJobIdChange(null);
-    setAnalysisLoading(false);
-  }, [onJobIdChange]);
+  const makeOnCancelled = useCallback(
+    (mode: PersonalizationMode) => () => {
+      setModeField(mode, "jobId", null);
+      setModeField(mode, "loading", false);
+    },
+    [setModeField],
+  );
 
-  useJobPolling(activeJobId, pollApiBase, fetchWithToken, {
-    onCompleted: handleJobCompleted,
-    onFailed: handleJobFailed,
-    onCancelled: handleJobCancelled,
-  });
+  const recCallbacks = useMemo(() => ({
+    onCompleted: makeOnCompleted("recommendation"),
+    onFailed: makeOnFailed("recommendation"),
+    onCancelled: makeOnCancelled("recommendation"),
+  }), [makeOnCompleted, makeOnFailed, makeOnCancelled]);
+  const creCallbacks = useMemo(() => ({
+    onCompleted: makeOnCompleted("creation"),
+    onFailed: makeOnFailed("creation"),
+    onCancelled: makeOnCancelled("creation"),
+  }), [makeOnCompleted, makeOnFailed, makeOnCancelled]);
+  const evoCallbacks = useMemo(() => ({
+    onCompleted: makeOnCompleted("evolution"),
+    onFailed: makeOnFailed("evolution"),
+    onCancelled: makeOnCancelled("evolution"),
+  }), [makeOnCompleted, makeOnFailed, makeOnCancelled]);
 
-  const handleStopAnalysis = useCallback(async () => {
-    if (!activeJobId) return;
-    const api = analysisClient(fetchWithToken, API_BASE_MAP[activeTab] ?? "/api/recommendation");
+  useJobPolling(jobIdsByMode.recommendation, "/api/recommendation", fetchWithToken, recCallbacks);
+  useJobPolling(jobIdsByMode.creation, "/api/creation", fetchWithToken, creCallbacks);
+  useJobPolling(jobIdsByMode.evolution, "/api/evolution", fetchWithToken, evoCallbacks);
+
+  const handleStopAnalysis = useCallback(async (mode: PersonalizationMode) => {
+    const jobId = jobIdsByMode[mode];
+    if (!jobId) return;
+    const api = analysisClient(fetchWithToken, apiBaseForMode(mode));
     try {
-      await api.cancelJob(activeJobId);
+      await api.cancelJob(jobId);
     } catch {
       /* best-effort */
     }
-    onJobIdChange(null);
-    setAnalysisLoading(false);
-  }, [activeJobId, activeTab, fetchWithToken, onJobIdChange]);
+    setModeField(mode, "jobId", null);
+    setModeField(mode, "loading", false);
+  }, [jobIdsByMode, fetchWithToken, apiBaseForMode, setModeField]);
 
   const isAnalysisTab = activeTab !== "local" && activeTab !== "explore";
   const currentMode = MODE_MAP[activeTab];
+  const currentResult = currentMode ? resultsByMode[currentMode] : null;
+  const currentLoading = currentMode ? loadingByMode[currentMode] : false;
+  const currentError = currentMode ? errorByMode[currentMode] : null;
+  const currentJobId = currentMode ? jobIdsByMode[currentMode] : null;
+  const currentSessionCount = currentMode && sessionCountsByMode[currentMode]
+    ? sessionCountsByMode[currentMode]
+    : checkedIds.size;
+  // Only show "Estimating…" on the tab that requested the estimate.
+  const estimatingForCurrentTab = estimating && pendingModeRef.current === currentMode;
+  // Dialog is open and belongs to this tab: keep welcome/loading as background.
+  const estimateDialogForCurrentTab = estimate !== null && pendingModeRef.current === currentMode;
   const anyDetailOpen = localDetailOpen || exploreDetailOpen || analysisDetailItem !== null;
 
   return (
@@ -399,12 +527,13 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange, r
                 if (tab.id === "explore" && activeTab === "explore") {
                   setExploreResetKey((k) => k + 1);
                 }
-                if (tab.id !== activeTab && MODE_MAP[tab.id] && MODE_MAP[activeTab]) {
-                  setAnalysisResult(null);
-                  setAnalysisError(null);
+                const targetMode = MODE_MAP[tab.id];
+                if (tab.id !== activeTab && targetMode) {
                   setAnalysisDetailItem(null);
-                  if (appMode === "demo" && MODE_MAP[tab.id]) {
-                    loadDemoAnalysis(MODE_MAP[tab.id]);
+                  // Only auto-load most recent if the target mode has no cached result
+                  // and no running job — otherwise preserve the running/complete view.
+                  if (!resultsByMode[targetMode] && !jobIdsByMode[targetMode] && !loadingByMode[targetMode]) {
+                    loadMostRecentAnalysis(targetMode);
                   }
                 }
                 setActiveTab(tab.id);
@@ -443,23 +572,23 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange, r
               onSwitchToRecommend={() => {
                 setActiveTab("retrieve");
                 localStorage.setItem("vibelens-personalization-tab", "retrieve");
-                setAnalysisResult(null);
-                setAnalysisError(null);
                 setAnalysisDetailItem(null);
-                if (appMode === "demo") loadDemoAnalysis("recommendation");
+                if (!resultsByMode.recommendation && !jobIdsByMode.recommendation && !loadingByMode.recommendation) {
+                  loadMostRecentAnalysis("recommendation");
+                }
               }}
             />
           )}
-          {isAnalysisTab && (analysisLoading || estimating) && !analysisResult && (
+          {isAnalysisTab && currentMode && (currentLoading || estimatingForCurrentTab) && (
             <AnalysisLoadingScreen
               accent="teal"
               title={MODE_LOADING_TITLES[currentMode]}
-              sublabel={estimating ? "Estimating cost..." : "Usually takes 2-5 minutes"}
-              sessionCount={activeTab === "retrieve" ? resolvedSessionIdsRef.current.length : checkedIds.size}
-              onStop={activeJobId ? handleStopAnalysis : undefined}
+              sublabel={estimatingForCurrentTab ? "Estimating cost..." : "Usually takes 2-5 minutes"}
+              sessionCount={currentSessionCount}
+              onStop={currentJobId ? () => handleStopAnalysis(currentMode) : undefined}
             />
           )}
-          {isAnalysisTab && !analysisLoading && !estimating && !analysisResult && (
+          {isAnalysisTab && currentMode && !currentLoading && !estimatingForCurrentTab && (!currentResult || estimateDialogForCurrentTab) && (
             <AnalysisWelcomePage
               icon={MODE_DESCRIPTIONS[currentMode].icon}
               title={MODE_DESCRIPTIONS[currentMode].title}
@@ -470,15 +599,15 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange, r
               onLlmConfigured={refreshLlmStatus}
               checkedCount={checkedIds.size}
               maxSessions={maxSessions}
-              error={analysisError}
+              error={currentError}
               onRun={() => handleRequestEstimate(currentMode)}
               isDemo={appMode === "demo"}
               {...(activeTab === "retrieve" ? { onRunAll: handleRunAll } : {})}
             />
           )}
-          {isAnalysisTab && analysisResult && (
+          {isAnalysisTab && currentResult && !currentLoading && !estimatingForCurrentTab && !estimateDialogForCurrentTab && (
             <AnalysisResultView
-              result={analysisResult}
+              result={currentResult}
               activeTab={activeTab}
               onNew={handleNewAnalysis}
               onInstalled={handleSkillInstalled}
@@ -487,8 +616,6 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange, r
               onSwitchTab={(tab) => {
                 setActiveTab(tab);
                 localStorage.setItem("vibelens-personalization-tab", tab);
-                setAnalysisResult(null);
-                setAnalysisError(null);
                 setAnalysisDetailItem(null);
               }}
             />
@@ -520,7 +647,14 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange, r
                 </Tooltip>
               </div>
               <div className="flex-1 min-h-0 overflow-y-auto p-3 pt-1">
-                <PersonalizationHistory onSelect={handleHistorySelect} refreshTrigger={historyRefresh} filterMode={currentMode} activeJobId={activeJobId} onStop={handleStopAnalysis} />
+                <PersonalizationHistory
+                  onSelect={handleHistorySelect}
+                  refreshTrigger={historyRefresh}
+                  filterMode={currentMode}
+                  activeJobId={currentJobId}
+                  activeResultId={currentResult?.id ?? null}
+                  onStop={currentMode ? () => handleStopAnalysis(currentMode) : undefined}
+                />
               </div>
             </div>
           </>
@@ -541,9 +675,12 @@ export function PersonalizationPanel({ checkedIds, activeJobId, onJobIdChange, r
       {estimate && (
         <CostEstimateDialog
           estimate={estimate}
-          sessionCount={activeTab === "retrieve" ? resolvedSessionIdsRef.current.length : checkedIds.size}
+          sessionCount={
+            resolvedSessionIdsByModeRef.current[pendingModeRef.current]?.length ?? checkedIds.size
+          }
           onConfirm={handleConfirmAnalysis}
           onCancel={clearEstimate}
+          backendId={llmStatus?.backend_id}
         />
       )}
       {showSkillSelector && (

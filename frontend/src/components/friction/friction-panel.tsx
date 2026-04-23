@@ -133,11 +133,11 @@ export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: Fricti
     setResult(loaded);
   }, []);
 
-  // In demo mode, auto-load the most recent analysis so users see results immediately
-  const demoLoadedRef = useRef(false);
+  // Auto-load the most recent analysis on mount so users see results immediately
+  const autoLoadedRef = useRef(false);
   useEffect(() => {
-    if (appMode !== "demo" || demoLoadedRef.current) return;
-    demoLoadedRef.current = true;
+    if (autoLoadedRef.current) return;
+    autoLoadedRef.current = true;
     (async () => {
       try {
         const history = await api.history<FrictionMeta>();
@@ -147,7 +147,7 @@ export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: Fricti
         /* best-effort — fall back to welcome page */
       }
     })();
-  }, [api, appMode, handleHistorySelect]);
+  }, [api, handleHistorySelect]);
 
   const handleNewAnalysis = useCallback(() => {
     setResult(null);
@@ -229,7 +229,7 @@ export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: Fricti
               </Tooltip>
             </div>
             <div className="flex-1 overflow-y-auto p-3 pt-1">
-              <FrictionHistory onSelect={handleHistorySelect} refreshTrigger={historyRefresh} activeJobId={activeJobId} />
+              <FrictionHistory onSelect={handleHistorySelect} refreshTrigger={historyRefresh} activeJobId={activeJobId} activeResultId={result?.id ?? null} />
             </div>
           </div>
         </>
@@ -247,7 +247,7 @@ export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: Fricti
         </div>
       )}
     </>
-  ), [showSidebar, sidebarWidth, handleDragStart, handleHistorySelect, historyRefresh, activeJobId]);
+  ), [showSidebar, sidebarWidth, handleDragStart, handleHistorySelect, historyRefresh, activeJobId, result?.id]);
 
   const estimateDialog = estimate && (
     <CostEstimateDialog
@@ -255,6 +255,7 @@ export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: Fricti
       sessionCount={checkedIds.size}
       onConfirm={handleConfirmAnalysis}
       onCancel={clearEstimate}
+      backendId={llmStatus?.backend_id}
     />
   );
 

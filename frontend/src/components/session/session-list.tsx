@@ -152,7 +152,12 @@ export function SessionList({
       list.push(session);
       groups.set(key, list);
     }
-    return groups;
+    const entries = Array.from(groups.entries()).sort(
+      ([a], [b]) =>
+        Number(baseProjectName(a).startsWith(".")) -
+        Number(baseProjectName(b).startsWith(".")),
+    );
+    return new Map(entries);
   }, [filtered]);
 
   // Auto-expand first project on initial load
