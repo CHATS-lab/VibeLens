@@ -31,7 +31,7 @@
       "severity": 4,
       "example_refs": [
         {
-          "session_id": "09f6e57d-e9cb-4d80-83b5-644b06ba5050",
+          "session_id": "example-claude-01",
           "start_step_id": "7f5f17c9-61d5-4c9f-8034-29ce79d5ab9b",
           "end_step_id": "572883c9-2f87-461b-9e77-26c30dbc5b4a"
         }
@@ -48,7 +48,7 @@
       "severity": 4,
       "example_refs": [
         {
-          "session_id": "09f6e57d-e9cb-4d80-83b5-644b06ba5050",
+          "session_id": "example-claude-01",
           "start_step_id": "91b0eb4e-958f-4ff4-b590-0123a2ffd97d",
           "end_step_id": "0ac22a63-368a-4d88-8f27-0afc54e97503"
         }
@@ -65,7 +65,7 @@
       "severity": 2,
       "example_refs": [
         {
-          "session_id": "09f6e57d-e9cb-4d80-83b5-644b06ba5050",
+          "session_id": "example-claude-01",
           "start_step_id": "4eb17004-87a4-4e76-82ad-e67b6091502e",
           "end_step_id": "9bf36d6e-b52a-476a-b493-61101010c494"
         }
@@ -78,7 +78,7 @@
     }
   ],
   "session_ids": [
-    "09f6e57d-e9cb-4d80-83b5-644b06ba5050"
+    "example-claude-01"
   ],
   "skipped_session_ids": [],
   "warnings": [],

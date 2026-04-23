@@ -48,9 +48,17 @@ class DemoConfig(BaseModel):
 
     @property
     def session_paths(self) -> list[Path]:
-        """Parse comma-separated example session paths into a list."""
+        """Parse comma-separated example session paths into a list.
+
+        When ``example_sessions`` is empty, falls back to the bundled
+        ``vibelens/data/examples/recipe-book`` directory shipped with the
+        package so pip/uv users get sample sessions out of the box.
+        """
         if not self.example_sessions:
-            return []
+            from vibelens.config.loader import bundled_examples_dir
+
+            bundled = bundled_examples_dir()
+            return [bundled] if bundled is not None else []
         return [Path(p.strip()).expanduser() for p in self.example_sessions.split(",") if p.strip()]
 
 

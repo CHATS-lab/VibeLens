@@ -3,7 +3,7 @@
   "mode": "recommendation",
   "title": "Five Extensions That Match Your Frontend Workflow",
   "session_ids": [
-    "09f6e57d-e9cb-4d80-83b5-644b06ba5050"
+    "example-claude-01"
   ],
   "skipped_session_ids": [],
   "workflow_patterns": [
@@ -12,12 +12,12 @@
       "description": "You launch the site, screenshot it, spot issues, fix them, and re-check. This repeats multiple times per session.",
       "example_refs": [
         {
-          "session_id": "09f6e57d-e9cb-4d80-83b5-644b06ba5050",
+          "session_id": "example-claude-01",
           "start_step_id": "655decd2-4c91-4e71-b91b-536255dc7c34",
           "end_step_id": "ab0818ab-7762-4517-8a1f-1676b071b04d"
         },
         {
-          "session_id": "09f6e57d-e9cb-4d80-83b5-644b06ba5050",
+          "session_id": "example-claude-01",
           "start_step_id": "91b0eb4e-958f-4ff4-b590-0123a2ffd97d",
           "end_step_id": "0ac22a63-368a-4d88-8f27-0afc54e97503"
         }
@@ -29,7 +29,7 @@
       "description": "The agent creates multiple CSS and component files at once following a detailed plan laid out earlier.",
       "example_refs": [
         {
-          "session_id": "09f6e57d-e9cb-4d80-83b5-644b06ba5050",
+          "session_id": "example-claude-01",
           "start_step_id": "0d743274-1776-4b7d-9062-bf7320b59a19",
           "end_step_id": "df2befc0-ffcf-488a-9b61-57bbb80bdabe"
         }

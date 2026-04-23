@@ -9,7 +9,9 @@
 mode: demo
 
 demo:
-  example_sessions: "examples/recipe-book"
+  # Leave empty to use the bundled recipe-book examples. Set a comma-
+  # separated list of paths to override.
+  example_sessions: ""
 
 donation:
   dir: ~/.vibelens/donations

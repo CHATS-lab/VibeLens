@@ -1,0 +1,21 @@
+# VibeLens — Default (self-use) configuration.
+# Loaded automatically when no vibelens.yaml is found in the working
+# directory. Bundled in the PyPI package so `vibelens serve` works
+# anywhere.
+
+mode: self
+
+server:
+  host: 127.0.0.1
+  port: 12001
+
+# example_sessions is resolved at runtime to the bundled
+# vibelens/data/examples/recipe-book/ directory.
+demo:
+  example_sessions: ""
+
+upload:
+  dir: ~/.vibelens/uploads
+  max_zip_bytes: 209715200        # 200 MB
+  max_extracted_bytes: 524288000  # 500 MB
+  max_file_count: 10000

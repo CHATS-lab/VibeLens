@@ -1,0 +1,24 @@
+# VibeLens — Demo configuration.
+# Public-facing mode: pre-loaded examples + user uploads. No local source scanning.
+# Load with: vibelens serve --config <path to this file>
+# or: VIBELENS_CONFIG=... vibelens serve
+
+mode: demo
+
+# example_sessions is resolved at runtime to the bundled
+# vibelens/data/examples/recipe-book/ directory.
+demo:
+  example_sessions: ""
+
+donation:
+  dir: ~/.vibelens/donations
+
+server:
+  host: 0.0.0.0                      # Bind to all interfaces for public access
+  port: 12001
+
+upload:
+  dir: ~/.vibelens/uploads
+  max_zip_bytes: 10737418240         # 10 GB
+  max_extracted_bytes: 21474836480   # 20 GB
+  max_file_count: 10000
