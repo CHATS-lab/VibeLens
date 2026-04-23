@@ -206,28 +206,23 @@ def _load_offsets(path: Path) -> dict[str, tuple[str, int, int]]:
 
 
 def _sanity_check_offsets(offsets: dict[str, tuple[str, int, int]], dir_path: Path) -> bool:
-    """Seek + parse first and last id per type. Return False on any failure."""
-    by_type: dict[str, list[str]] = {}
-    for eid, (type_value, _, _) in offsets.items():
-        by_type.setdefault(type_value, []).append(eid)
-
-    for type_value, ids in by_type.items():
-        if not ids:
-            continue
-        path = dir_path / f"agent-{type_value}.json"
-        if not path.is_file():
-            return False
-        try:
+    """Parse one entry per type. Return False on any failure."""
+    seen_types: set[str] = set()
+    try:
+        for eid, (type_value, offset, length) in offsets.items():
+            if type_value in seen_types:
+                continue
+            seen_types.add(type_value)
+            path = dir_path / f"agent-{type_value}.json"
+            if not path.is_file():
+                return False
             with path.open("rb") as f:
-                for eid in (ids[0], ids[-1]):
-                    _, offset, length = offsets[eid]
-                    f.seek(offset)
-                    buf = f.read(length)
-                    parsed = json.loads(buf)
-                    if parsed.get("item_id") != eid:
-                        return False
-        except (OSError, ValueError):
-            return False
+                f.seek(offset)
+                parsed = json.loads(f.read(length))
+            if parsed.get("item_id") != eid:
+                return False
+    except (OSError, ValueError):
+        return False
     return True
 
 
@@ -236,6 +231,3 @@ def _clear_user_catalog() -> None:
     if USER_CATALOG_DIR.exists():
         logger.info("cleared legacy user catalog at %s", USER_CATALOG_DIR)
         shutil.rmtree(USER_CATALOG_DIR, ignore_errors=True)
-
-
-load_catalog_from_path = load_catalog_from_dir
