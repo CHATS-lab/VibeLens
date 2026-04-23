@@ -752,3 +752,85 @@ class TestCrossDayBucketing:
         assert day_map[session_key].total_cost_usd == pytest.approx(
             result.total_cost_usd, rel=1e-9
         )
+
+
+class TestFastPathDailyBreakdown:
+    """Fast path must honour ``final_metrics.daily_breakdown`` so a session
+    created yesterday with steps today shows today's activity on today's bar.
+    """
+
+    def _metadata_with_breakdown(
+        self, session_id: str, timestamp: str, breakdown: dict[str, dict]
+    ) -> dict:
+        return {
+            "session_id": session_id,
+            "project_path": "/p",
+            "timestamp": timestamp,
+            "agent": {"name": "claude-code", "model_name": "claude-opus-4-7"},
+            "final_metrics": {
+                "total_prompt_tokens": sum(b["tokens"] for b in breakdown.values()),
+                "total_completion_tokens": 0,
+                "total_cache_read": 0,
+                "total_cache_write": 0,
+                "tool_call_count": 0,
+                "total_steps": sum(b["messages"] for b in breakdown.values()),
+                "duration": 3600,
+                "total_cost_usd": sum(b["cost_usd"] for b in breakdown.values()),
+                "daily_breakdown": breakdown,
+            },
+        }
+
+    def test_cross_day_session_splits_across_local_days(self):
+        """A session created yesterday but active today shows up on both bars."""
+        from vibelens.services.dashboard.stats import compute_dashboard_stats_from_metadata
+
+        meta = self._metadata_with_breakdown(
+            session_id="s1",
+            timestamp="2026-04-22T23:00:00+00:00",
+            breakdown={
+                "2026-04-22": {"messages": 3, "tokens": 1000, "cost_usd": 5.0},
+                "2026-04-23": {"messages": 2, "tokens": 500, "cost_usd": 2.0},
+            },
+        )
+        result = compute_dashboard_stats_from_metadata([meta])
+
+        day_map = {d.date: d for d in result.daily_stats}
+        print(f"daily_stats keys: {list(day_map.keys())}")
+        assert "2026-04-22" in day_map
+        assert "2026-04-23" in day_map
+        assert day_map["2026-04-22"].total_cost_usd == pytest.approx(5.0, rel=1e-9)
+        assert day_map["2026-04-23"].total_cost_usd == pytest.approx(2.0, rel=1e-9)
+        assert day_map["2026-04-22"].total_tokens == 1000
+        assert day_map["2026-04-23"].total_tokens == 500
+        # session_count still anchored to creation day only.
+        assert day_map["2026-04-22"].session_count == 1
+        assert day_map["2026-04-23"].session_count == 0
+
+    def test_missing_breakdown_falls_back_to_creation_day(self):
+        """Legacy metadata (no daily_breakdown) → credit creation day."""
+        from vibelens.services.dashboard.stats import compute_dashboard_stats_from_metadata
+
+        meta = {
+            "session_id": "s2",
+            "project_path": "/p",
+            "timestamp": "2026-04-22T23:00:00+00:00",
+            "agent": {"name": "claude-code", "model_name": "claude-opus-4-7"},
+            "final_metrics": {
+                "total_prompt_tokens": 1500,
+                "total_completion_tokens": 0,
+                "total_cache_read": 0,
+                "total_cache_write": 0,
+                "tool_call_count": 0,
+                "total_steps": 5,
+                "duration": 3600,
+                "total_cost_usd": 7.0,
+            },
+        }
+        result = compute_dashboard_stats_from_metadata([meta])
+
+        day_map = {d.date: d for d in result.daily_stats}
+        print(f"fallback keys: {list(day_map.keys())}")
+        assert len(day_map) == 1
+        (only_day,) = day_map.values()
+        assert only_day.total_cost_usd == pytest.approx(7.0, rel=1e-9)
+        assert only_day.total_tokens == 1500

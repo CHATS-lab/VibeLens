@@ -15,9 +15,11 @@ from vibelens.utils.log import get_logger
 logger = get_logger(__name__)
 
 # Bump to invalidate all existing caches after schema changes.
+# v6: final_metrics.daily_breakdown populated at ingest so the dashboard
+# fast path can split cross-day sessions by local-day step timestamps.
 # v5: final_metrics.total_cost_usd is now populated during ingest (was
 # None for every Claude/Hermes/Codex session prior to this version).
-CACHE_VERSION = 5
+CACHE_VERSION = 6
 # User-home path for the persistent session index cache
 DEFAULT_CACHE_PATH = Path.home() / ".vibelens" / "session_index.json"
 

@@ -16,6 +16,7 @@ from vibelens.ingest.diagnostics import DiagnosticsCollector
 from vibelens.models.enums import AgentType, StepSource
 from vibelens.models.trajectories import (
     Agent,
+    DailyBucket,
     FinalMetrics,
     Step,
     Trajectory,
@@ -24,6 +25,7 @@ from vibelens.models.trajectories import (
 from vibelens.models.trajectories.trajectory import DEFAULT_ATIF_VERSION
 from vibelens.utils import log_duration
 from vibelens.utils.log import get_logger
+from vibelens.utils.timestamps import local_date_key, local_tz
 
 logger = get_logger(__name__)
 
@@ -438,24 +440,40 @@ def _compute_final_metrics(steps: list[Step], session_model: str | None) -> Fina
     total_cache_write = 0
     total_cache_read = 0
     tool_call_count = 0
+    breakdown: dict[str, DailyBucket] = {}
+    tz = local_tz()
 
     for step in steps:
         tool_call_count += len(step.tool_calls)
-        if not step.metrics:
-            continue
-        total_prompt += step.metrics.prompt_tokens
-        total_completion += step.metrics.completion_tokens
-        total_cache_read += step.metrics.cached_tokens
-        total_cache_write += step.metrics.cache_creation_tokens
 
-        # Populate per-step cost when the parser didn't (e.g. Claude JSONL
-        # has no cost field; openclaw does, and ``compute_step_cost`` will
-        # re-derive a consistent value either way).
-        if step.metrics.cost_usd is None:
-            step.metrics.cost_usd = compute_step_cost(step, session_model)
+        is_message = step.source != StepSource.SYSTEM
+        tokens_this_step = 0
+        cost_this_step = 0.0
 
-        if step.metrics.cost_usd is not None:
-            total_cost = (total_cost or 0.0) + step.metrics.cost_usd
+        if step.metrics:
+            total_prompt += step.metrics.prompt_tokens
+            total_completion += step.metrics.completion_tokens
+            total_cache_read += step.metrics.cached_tokens
+            total_cache_write += step.metrics.cache_creation_tokens
+            tokens_this_step = step.metrics.prompt_tokens + step.metrics.completion_tokens
+
+            # Populate per-step cost when the parser didn't (e.g. Claude JSONL
+            # has no cost field; openclaw does, and ``compute_step_cost`` will
+            # re-derive a consistent value either way).
+            if step.metrics.cost_usd is None:
+                step.metrics.cost_usd = compute_step_cost(step, session_model)
+
+            if step.metrics.cost_usd is not None:
+                cost_this_step = step.metrics.cost_usd
+                total_cost = (total_cost or 0.0) + cost_this_step
+
+        if step.timestamp and (is_message or tokens_this_step or cost_this_step):
+            day = local_date_key(step.timestamp.astimezone(tz))
+            bucket = breakdown.setdefault(day, DailyBucket())
+            if is_message:
+                bucket.messages += 1
+            bucket.tokens += tokens_this_step
+            bucket.cost_usd += cost_this_step
 
     # Compute wall-clock duration from step timestamps
     timestamps = [s.timestamp for s in steps if s.timestamp]
@@ -472,4 +490,5 @@ def _compute_final_metrics(steps: list[Step], session_model: str | None) -> Fina
         duration=duration,
         total_cache_write=total_cache_write,
         total_cache_read=total_cache_read,
+        daily_breakdown=breakdown or None,
     )

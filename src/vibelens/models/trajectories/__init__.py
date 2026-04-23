@@ -6,7 +6,7 @@ Each model lives in its own module for clarity and minimal coupling.
 
 from vibelens.models.trajectories.agent import Agent
 from vibelens.models.trajectories.content import Base64Source, ContentPart, ImageSource
-from vibelens.models.trajectories.final_metrics import FinalMetrics
+from vibelens.models.trajectories.final_metrics import DailyBucket, FinalMetrics
 from vibelens.models.trajectories.metrics import Metrics
 from vibelens.models.trajectories.observation import Observation
 from vibelens.models.trajectories.observation_result import ObservationResult
@@ -19,6 +19,7 @@ __all__ = [
     "Agent",
     "Base64Source",
     "ContentPart",
+    "DailyBucket",
     "FinalMetrics",
     "ImageSource",
     "Metrics",

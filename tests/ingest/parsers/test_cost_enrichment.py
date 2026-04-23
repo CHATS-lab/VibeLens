@@ -125,3 +125,80 @@ def test_user_and_system_steps_never_get_cost():
     assert user.metrics is None, "user step should have no metrics block"
     assert agent.metrics.cost_usd is not None
     assert fm.total_cost_usd is not None
+
+
+def _agent_step_at(step_id: str, ts: datetime, prompt: int, completion: int) -> Step:
+    return Step(
+        step_id=step_id,
+        timestamp=ts,
+        source=StepSource.AGENT,
+        model_name="claude-opus-4-7",
+        message="ok",
+        metrics=Metrics(
+            prompt_tokens=prompt,
+            completion_tokens=completion,
+            cached_tokens=0,
+            cache_creation_tokens=0,
+            cost_usd=None,
+        ),
+    )
+
+
+def test_daily_breakdown_single_day():
+    """All steps on the same local day → one breakdown bucket."""
+    base = datetime(2026, 4, 22, 10, 0, tzinfo=timezone.utc)
+    steps = [
+        _agent_step_at("s1", base, prompt=1000, completion=200),
+        _agent_step_at("s2", base, prompt=500, completion=100),
+    ]
+    fm = _compute_final_metrics(steps, session_model="claude-opus-4-7")
+
+    print(f"daily_breakdown: {fm.daily_breakdown}")
+    assert fm.daily_breakdown is not None
+    assert len(fm.daily_breakdown) == 1
+    bucket = next(iter(fm.daily_breakdown.values()))
+    assert bucket.messages == 2
+    assert bucket.tokens == 1800
+    assert abs(bucket.cost_usd - fm.total_cost_usd) < 1e-9
+
+
+def test_daily_breakdown_cross_day_splits_by_step_timestamp():
+    """Steps on two local days → two buckets whose sums match session totals."""
+    # Pick two timestamps 24h apart at noon UTC — guaranteed to fall on
+    # different local days in any timezone.
+    day_a = datetime(2026, 4, 22, 12, 0, tzinfo=timezone.utc)
+    day_b = datetime(2026, 4, 23, 12, 0, tzinfo=timezone.utc)
+    steps = [
+        _agent_step_at("s1", day_a, prompt=1000, completion=200),
+        _agent_step_at("s2", day_b, prompt=2000, completion=400),
+    ]
+    fm = _compute_final_metrics(steps, session_model="claude-opus-4-7")
+
+    breakdown = fm.daily_breakdown
+    print(f"cross-day breakdown keys: {sorted(breakdown)}")
+    assert breakdown is not None
+    assert len(breakdown) == 2
+
+    total_messages = sum(b.messages for b in breakdown.values())
+    total_tokens = sum(b.tokens for b in breakdown.values())
+    total_cost = sum(b.cost_usd for b in breakdown.values())
+    assert total_messages == 2
+    assert total_tokens == 3600
+    assert abs(total_cost - fm.total_cost_usd) < 1e-9
+
+
+def test_daily_breakdown_none_when_no_step_timestamps():
+    """No usable timestamps → ``daily_breakdown`` is omitted (None)."""
+    step = Step(
+        step_id="s1",
+        timestamp=None,
+        source=StepSource.AGENT,
+        model_name="claude-opus-4-7",
+        message="ok",
+        metrics=Metrics(
+            prompt_tokens=1000, completion_tokens=200, cached_tokens=0, cache_creation_tokens=0,
+        ),
+    )
+    fm = _compute_final_metrics([step], session_model="claude-opus-4-7")
+    print(f"daily_breakdown when no ts: {fm.daily_breakdown}")
+    assert fm.daily_breakdown is None

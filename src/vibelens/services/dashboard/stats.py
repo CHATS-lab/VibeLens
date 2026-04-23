@@ -414,14 +414,14 @@ def _aggregate_metadata(meta: dict) -> SessionAggregate:
     path has no step-level granularity), but the output still matches
     the full-trajectory shape so ``add_session`` has one code path.
     """
+    agent = meta.get("agent") or {}
     agg = SessionAggregate()
     agg.project = meta.get("project_path") or NO_PROJECT
-    agg.agent_name = (meta.get("agent") or {}).get("name") or "unknown"
+    agg.agent_name = agent.get("name") or "unknown"
     agg.timestamp = parse_metadata_timestamp(meta)
 
-    model = (meta.get("agent") or {}).get("model_name")
-    if _is_real_model(model):
-        agg.model = model
+    if _is_real_model(agent.get("model_name")):
+        agg.model = agent["model_name"]
 
     final_metrics = meta.get("final_metrics") or {}
     agg.input_tokens = final_metrics.get("total_prompt_tokens") or 0
@@ -432,7 +432,10 @@ def _aggregate_metadata(meta: dict) -> SessionAggregate:
     agg.messages = final_metrics.get("total_steps") or 0
     agg.duration = final_metrics.get("duration") or 0
 
-    if agg.model != UNKNOWN_MODEL:
+    prebuilt_cost = final_metrics.get("total_cost_usd")
+    if prebuilt_cost is not None:
+        agg.cost_usd = prebuilt_cost
+    elif agg.model != UNKNOWN_MODEL:
         cost = compute_cost_from_tokens(
             agg.model,
             agg.input_tokens,
@@ -443,14 +446,42 @@ def _aggregate_metadata(meta: dict) -> SessionAggregate:
         if cost is not None:
             agg.cost_usd = cost
 
-    day = _to_local_date_key(agg.timestamp)
-    if day:
-        bucket = _StepBucket()
-        bucket.messages = agg.messages
-        bucket.tokens = agg.input_tokens + agg.output_tokens
-        bucket.cost_usd = agg.cost_usd
-        agg.daily_breakdown = {day: bucket}
+    agg.daily_breakdown = _breakdown_from_metadata(final_metrics, agg)
     return agg
+
+
+def _breakdown_from_metadata(
+    final_metrics: dict, agg: SessionAggregate
+) -> dict[str, _StepBucket] | None:
+    """Build the per-local-day breakdown for the fast path.
+
+    Prefers ``final_metrics.daily_breakdown`` (populated at ingest from
+    step timestamps) so cross-day sessions split messages/tokens/cost
+    correctly. Falls back to crediting everything to the creation day
+    for sessions indexed before the field existed (old cache entries).
+    """
+    raw_breakdown = final_metrics.get("daily_breakdown")
+    if isinstance(raw_breakdown, dict) and raw_breakdown:
+        out: dict[str, _StepBucket] = {}
+        for day, entry in raw_breakdown.items():
+            if not isinstance(entry, dict):
+                continue
+            bucket = _StepBucket()
+            bucket.messages = int(entry.get("messages") or 0)
+            bucket.tokens = int(entry.get("tokens") or 0)
+            bucket.cost_usd = float(entry.get("cost_usd") or 0.0)
+            out[day] = bucket
+        if out:
+            return out
+
+    day = _to_local_date_key(agg.timestamp)
+    if not day:
+        return None
+    bucket = _StepBucket()
+    bucket.messages = agg.messages
+    bucket.tokens = agg.input_tokens + agg.output_tokens
+    bucket.cost_usd = agg.cost_usd
+    return {day: bucket}
 
 
 def _is_real_model(name: str | None) -> bool:
