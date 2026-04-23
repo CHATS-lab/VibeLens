@@ -167,21 +167,30 @@ function RecommendationCard({
         )}
       </div>
 
-      {/* Why this helps */}
-      <div className="px-5 py-3 border-t border-default">
-        <button
-          onClick={(e) => {
+      {/* Why this helps — clicking anywhere in this block toggles expand/collapse */}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={(e) => {
+          e.stopPropagation();
+          setRationaleExpanded(!rationaleExpanded);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
             e.stopPropagation();
             setRationaleExpanded(!rationaleExpanded);
-          }}
-          className="flex items-center gap-1.5 text-xs hover:bg-control/40 rounded transition"
-        >
+          }
+        }}
+        className="px-5 py-3 border-t border-default cursor-pointer hover:bg-control/40 transition"
+      >
+        <div className="flex items-center gap-1.5 text-xs">
           {rationaleExpanded
             ? <ChevronDown className="w-3.5 h-3.5 text-accent-teal" />
             : <ChevronRight className="w-3.5 h-3.5 text-accent-teal" />}
           <Lightbulb className="w-3.5 h-3.5 text-accent-teal" />
           <span className="text-sm font-semibold text-accent-teal">Why this helps</span>
-        </button>
+        </div>
         {rationaleExpanded && (
           <BulletText text={rec.rationale} className="text-sm text-secondary leading-relaxed mt-1.5" />
         )}

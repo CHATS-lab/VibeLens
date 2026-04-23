@@ -52,14 +52,14 @@ class PersonalizationResult(BaseModel):
     skipped_session_ids: list[str] = Field(
         default_factory=list, description="Session IDs that could not be loaded."
     )
+    user_profile: UserProfile | None = Field(
+        default=None, description="User profile from L2 generation (recommendation mode)."
+    )
     workflow_patterns: list[WorkflowPattern] = Field(
         default_factory=list, description="Detected workflow patterns from trajectory analysis."
     )
     recommendations: list[RankedRecommendationItem] = Field(
         default_factory=list, description="Ranked catalog recommendations."
-    )
-    user_profile: UserProfile | None = Field(
-        default=None, description="User profile from L2 generation (recommendation mode)."
     )
     creations: list[PersonalizationCreation] = Field(
         default_factory=list, description="Generated skills (creation mode)."
