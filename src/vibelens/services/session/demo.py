@@ -2,6 +2,7 @@
 
 import contextlib
 import json
+import shutil
 from pathlib import Path
 
 from vibelens.config.settings import Settings
@@ -20,6 +21,9 @@ from vibelens.storage.trajectory.disk import INDEX_FILENAME, DiskTrajectoryStore
 from vibelens.utils import get_logger
 
 logger = get_logger(__name__)
+
+# File marker for example skills
+_EXAMPLE_SKILL_SIDECAR = ".is_example"
 
 _ALL_PARSERS: list[type[BaseParser]] = [*LOCAL_PARSER_CLASSES, DataclawParser]
 
@@ -295,12 +299,16 @@ def _copy_example_json_files(src_dir: Path, dst_dir: Path) -> int:
     """
     copied = 0
     for src_file in src_dir.iterdir():
-        if src_file.suffix != ".json" or (dst_dir / src_file.name).exists():
+        if src_file.suffix != ".json":
             continue
+        dst_file = dst_dir / src_file.name
         with contextlib.suppress(json.JSONDecodeError, OSError):
             data = json.loads(src_file.read_text(encoding="utf-8"))
             data["is_example"] = True
-            (dst_dir / src_file.name).write_text(json.dumps(data, indent=2), encoding="utf-8")
+            new_content = json.dumps(data, indent=2)
+            if dst_file.exists() and dst_file.read_text(encoding="utf-8") == new_content:
+                continue
+            dst_file.write_text(new_content, encoding="utf-8")
             copied += 1
     return copied
 
@@ -328,26 +336,108 @@ def _read_existing_analysis_ids(index_path: Path) -> set[str]:
 
 
 def _append_example_index_entries(src_index: Path, dst_index: Path, existing_ids: set[str]) -> None:
-    """Append new example entries to the destination index, skipping duplicates.
+    """Merge bundled example entries into the destination index.
+
+    Non-example entries are preserved in place. Existing example entries with
+    the same id are replaced with the bundled version so content updates
+    (titles, metrics, refs) propagate on upgrade. New example entries are
+    appended.
 
     Args:
         src_index: Source example index.jsonl.
         dst_index: Destination user index.jsonl.
-        existing_ids: Analysis IDs already in the destination.
+        existing_ids: Analysis IDs already in the destination (unused — kept for
+            signature stability; replacement is keyed off ``is_example``).
     """
-    new_lines: list[str] = []
+    del existing_ids
+
+    bundled_by_id: dict[str, str] = {}
     for line in src_index.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line:
             continue
         with contextlib.suppress(json.JSONDecodeError, ValueError):
             entry = json.loads(line)
+            entry["is_example"] = True
             entry_id = entry.get("id") or entry.get("analysis_id", "")
-            if entry_id not in existing_ids:
-                entry["is_example"] = True
-                new_lines.append(json.dumps(entry))
+            if entry_id:
+                bundled_by_id[entry_id] = json.dumps(entry)
 
-    if new_lines:
-        with dst_index.open("a", encoding="utf-8") as f:
-            for line in new_lines:
-                f.write(line + "\n")
+    merged: list[str] = []
+    seen_bundled_ids: set[str] = set()
+    if dst_index.exists():
+        for line in dst_index.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            with contextlib.suppress(json.JSONDecodeError, ValueError):
+                entry = json.loads(stripped)
+                entry_id = entry.get("id") or entry.get("analysis_id", "")
+                if entry.get("is_example") and entry_id in bundled_by_id:
+                    merged.append(bundled_by_id[entry_id])
+                    seen_bundled_ids.add(entry_id)
+                    continue
+            merged.append(stripped)
+
+    for entry_id, entry_json in bundled_by_id.items():
+        if entry_id not in seen_bundled_ids:
+            merged.append(entry_json)
+
+    dst_index.write_text("\n".join(merged) + ("\n" if merged else ""), encoding="utf-8")
+
+
+def seed_example_skills() -> None:
+    """Copy bundled example skills into the user's central skill store.
+
+    Must run before any SkillService caches are populated — the service
+    picks up seeded skills on its first list/get call without needing
+    invalidation. Typically invoked from the FastAPI lifespan right
+    after ``seed_example_analyses()``.
+
+    Per-skill rule:
+
+    - Destination missing → copy tree, write ``.is_example`` sidecar.
+    - Destination has ``.is_example`` → overwrite tree, rewrite sidecar.
+    - Destination without sidecar → skip (user-owned).
+    """
+    settings = get_settings()
+    seeded: list[str] = []
+    for example_path in settings.demo.session_paths:
+        if not example_path.is_dir():
+            continue
+        src_dir = example_path / "skills"
+        if not src_dir.is_dir():
+            continue
+        settings.storage.managed_skills_dir.mkdir(parents=True, exist_ok=True)
+        for src_skill in src_dir.iterdir():
+            if not src_skill.is_dir():
+                continue
+            if not (src_skill / "SKILL.md").is_file():
+                continue
+            if _seed_one_skill(src_skill, settings.storage.managed_skills_dir / src_skill.name):
+                seeded.append(src_skill.name)
+
+    if seeded:
+        logger.info("Seeded %d example skills: %s", len(seeded), ", ".join(seeded))
+
+
+def _seed_one_skill(src_dir: Path, dst_dir: Path) -> bool:
+    """Copy one bundled skill directory into the central store.
+
+    Args:
+        src_dir: Bundled skill directory containing SKILL.md.
+        dst_dir: Destination directory under managed_skills_dir.
+
+    Returns:
+        True if the skill was copied (fresh or overwrite), False if skipped
+        because the destination is user-owned.
+    """
+    if dst_dir.exists() and not (dst_dir / _EXAMPLE_SKILL_SIDECAR).exists():
+        logger.debug("Skipping user-owned skill %r", dst_dir.name)
+        return False
+    if dst_dir.exists():
+        shutil.rmtree(dst_dir)
+    shutil.copytree(src_dir, dst_dir)
+    (dst_dir / _EXAMPLE_SKILL_SIDECAR).touch()
+    logger.debug("Seeded example skill %r", dst_dir.name)
+    return True

@@ -24,9 +24,15 @@ from vibelens.deps import (
 )
 from vibelens.models.enums import AppMode
 from vibelens.services.dashboard.loader import warm_cache
-from vibelens.services.extensions.search import warm_index as warm_extension_search_index
+from vibelens.services.extensions.search import (
+    warm_index as warm_extension_search_index,
+)
 from vibelens.services.job_tracker import cleanup_stale as cleanup_stale_jobs
-from vibelens.services.session.demo import load_demo_examples, seed_example_analyses
+from vibelens.services.session.demo import (
+    load_demo_examples,
+    seed_example_analyses,
+    seed_example_skills,
+)
 from vibelens.services.session.search import (
     build_full_search_index,
     build_search_index,
@@ -168,6 +174,7 @@ def _run_background_startup() -> None:
     get_skill_service().import_all_agents()
     get_plugin_service().import_all_agents()
     seed_example_analyses()
+    seed_example_skills()
 
 
 def _log_startup_summary(settings, store) -> None:
