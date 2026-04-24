@@ -6,13 +6,13 @@ for lazy-loading full results.
 """
 
 import json
-import secrets
 from collections.abc import Callable
 from pathlib import Path
 from typing import Generic, TypeVar
 
 from pydantic import BaseModel
 
+from vibelens.utils.identifiers import generate_timestamped_id
 from vibelens.utils.json import locked_jsonl_append, locked_jsonl_remove
 from vibelens.utils.log import get_logger
 
@@ -21,19 +21,8 @@ logger = get_logger(__name__)
 ResultT = TypeVar("ResultT", bound=BaseModel)
 MetaT = TypeVar("MetaT", bound=BaseModel)
 
-# Bytes of randomness for URL-safe analysis IDs (12 bytes → 16 chars)
-TOKEN_BYTES = 12
 # Append-only JSONL file listing all analyses in a store directory
 INDEX_FILENAME = "index.jsonl"
-
-
-def generate_analysis_id() -> str:
-    """Generate a URL-safe analysis ID token.
-
-    Call this at the start of an analysis run so the ID can be used
-    for log correlation before the result is persisted.
-    """
-    return secrets.token_urlsafe(TOKEN_BYTES)
 
 
 class AnalysisStore(Generic[ResultT, MetaT]):
@@ -74,7 +63,7 @@ class AnalysisStore(Generic[ResultT, MetaT]):
             analysis_id: Pre-generated ID for log correlation. Generated if None.
         """
         if analysis_id is None:
-            analysis_id = generate_analysis_id()
+            analysis_id = generate_timestamped_id()
         result.analysis_id = analysis_id  # type: ignore[attr-defined]
 
         self._data_path(analysis_id).write_text(result.model_dump_json(indent=2), encoding="utf-8")
