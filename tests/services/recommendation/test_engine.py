@@ -8,8 +8,6 @@ from vibelens.services.recommendation.engine import (
     RATIONALE_MAX_RESULTS,
     RATIONALE_MAX_RESULTS_LIMIT,
     RATIONALE_MIN_RELEVANCE,
-    RECOMMENDATION_OUTPUT_TOKENS,
-    RECOMMENDATION_TIMEOUT_SECONDS,
     SCORING_TOP_K,
     _build_rationale_candidates,
 )
@@ -38,8 +36,6 @@ def test_engine_constants():
     assert RATIONALE_MAX_RESULTS == 15
     assert RATIONALE_MAX_RESULTS_LIMIT == 50
     assert RATIONALE_MIN_RELEVANCE == 0.6
-    assert RECOMMENDATION_OUTPUT_TOKENS > 0
-    assert RECOMMENDATION_TIMEOUT_SECONDS > 0
 
 
 def test_engine_importable():

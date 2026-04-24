@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from vibelens.config.settings import InferenceConfig
 from vibelens.llm.backend import InferenceError
 from vibelens.llm.backends.aider_cli import AiderCliBackend
 from vibelens.llm.backends.amp_cli import AmpCliBackend
@@ -24,6 +25,11 @@ from vibelens.llm.backends.opencode_cli import OpenCodeCliBackend
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
+def _cfg(model: str = "") -> InferenceConfig:
+    """Minimal config for parser tests — only model matters."""
+    return InferenceConfig(model=model)
+
+
 def _load(name: str) -> str:
     """Read a fixture file as utf-8 text."""
     return (FIXTURES_DIR / name).read_text(encoding="utf-8")
@@ -31,7 +37,7 @@ def _load(name: str) -> str:
 
 def test_claude_parses_envelope():
     """Claude emits a single JSON with result/usage/modelUsage/total_cost_usd."""
-    backend = ClaudeCliBackend()
+    backend = ClaudeCliBackend(config=_cfg())
     result = backend._parse_output(_load("claude_sample.json"), duration_ms=1000)
     assert result.text == "ok"
     assert result.metrics.prompt_tokens == 5
@@ -46,14 +52,14 @@ def test_claude_parses_envelope():
 
 def test_claude_raises_on_non_json():
     """A bad envelope surfaces as InferenceError, not a silent fallback."""
-    backend = ClaudeCliBackend()
+    backend = ClaudeCliBackend(config=_cfg())
     with pytest.raises(InferenceError):
         backend._parse_output("not-json", duration_ms=10)
 
 
 def test_codex_parses_ndjson_stream():
     """Codex concats agent_message item.text and picks usage from turn.completed."""
-    backend = CodexCliBackend(model="gpt-5.4-mini")
+    backend = CodexCliBackend(config=_cfg("gpt-5.4-mini"))
     result = backend._parse_output(_load("codex_sample.ndjson"), duration_ms=1000)
     assert result.text == "ok"
     assert result.metrics.prompt_tokens == 10590
@@ -67,7 +73,7 @@ def test_codex_parses_ndjson_stream():
 
 def test_codex_skips_non_json_lines():
     """Codex prefixes NDJSON with stderr warnings — these must be skipped, not fatal."""
-    backend = CodexCliBackend(model="gpt-5.4-mini")
+    backend = CodexCliBackend(config=_cfg("gpt-5.4-mini"))
     noisy = (
         "2026-04-16T14:51:19 ERROR something happened\n"
         '{"type":"item.completed","item":{"type":"agent_message","text":"ok"}}\n'
@@ -80,7 +86,7 @@ def test_codex_skips_non_json_lines():
 
 def test_gemini_parses_main_role_model():
     """Gemini's envelope may list several models; we pick the 'main' role."""
-    backend = GeminiCliBackend()
+    backend = GeminiCliBackend(config=_cfg())
     result = backend._parse_output(_load("gemini_sample.json"), duration_ms=1000)
     assert result.text == "ok"
     # 'main' role is gemini-3-flash-preview (9324 input tokens), not the
@@ -97,7 +103,7 @@ def test_gemini_parses_main_role_model():
 
 def test_cursor_parses_envelope():
     """Cursor's envelope exposes only `result`; usage stays at defaults."""
-    backend = CursorCliBackend(model="claude-sonnet-4-6")
+    backend = CursorCliBackend(config=_cfg("claude-sonnet-4-6"))
     result = backend._parse_output(_load("cursor_sample.json"), duration_ms=1420)
     assert result.text == "ok"
     assert result.metrics.prompt_tokens == 0
@@ -110,7 +116,7 @@ def test_cursor_parses_envelope():
 
 def test_amp_parses_ndjson_stream():
     """Amp pulls text and usage from the last assistant event."""
-    backend = AmpCliBackend()
+    backend = AmpCliBackend(config=_cfg())
     result = backend._parse_output(_load("amp_sample.ndjson"), duration_ms=1000)
     assert result.text == "ok"
     assert result.metrics.prompt_tokens == 12
@@ -122,7 +128,7 @@ def test_amp_parses_ndjson_stream():
 
 def test_amp_falls_back_to_result_event():
     """If no assistant event appears, amp uses the trailing result event."""
-    backend = AmpCliBackend()
+    backend = AmpCliBackend(config=_cfg())
     result = backend._parse_output(
         '{"type":"initial"}\n{"type":"result","result":"fallback"}\n', duration_ms=5
     )
@@ -133,14 +139,14 @@ def test_amp_falls_back_to_result_event():
 
 def test_amp_raises_when_stream_has_no_text():
     """All-malformed or text-free streams must fail loudly, not silently."""
-    backend = AmpCliBackend()
+    backend = AmpCliBackend(config=_cfg())
     with pytest.raises(InferenceError):
         backend._parse_output("not-json-at-all\nalso-not-json\n", duration_ms=5)
 
 
 def test_codex_raises_when_stream_has_no_agent_message():
     """Codex with no agent_message items must fail loudly, not silently."""
-    backend = CodexCliBackend(model="gpt-5.4-mini")
+    backend = CodexCliBackend(config=_cfg("gpt-5.4-mini"))
     with pytest.raises(InferenceError):
         backend._parse_output(
             '{"type":"thread.started","thread_id":"T-1"}\n'
@@ -150,19 +156,20 @@ def test_codex_raises_when_stream_has_no_agent_message():
         )
 
 
-def test_opencode_parses_envelope():
-    """OpenCode's envelope uses `result`; usage is absent in the minimal fixture."""
-    backend = OpenCodeCliBackend(model="gemini-2.5-flash")
-    result = backend._parse_output(_load("opencode_sample.json"), duration_ms=1000)
+def test_opencode_parses_ndjson_stream():
+    """OpenCode run --format json emits NDJSON events; we aggregate text + tokens."""
+    backend = OpenCodeCliBackend(config=_cfg("gemini-2.5-flash"))
+    result = backend._parse_output(_load("opencode_sample.ndjson"), duration_ms=1000)
     assert result.text == "ok"
-    assert result.metrics.prompt_tokens == 0
-    assert result.metrics.completion_tokens == 0
+    assert result.metrics.prompt_tokens == 11743
+    assert result.metrics.completion_tokens == 26
+    assert result.metrics.cached_tokens == 1840
     assert result.model == "gemini-2.5-flash"
 
 
 def test_aider_strips_ansi_escapes():
     """Aider may emit ANSI color codes; we strip them before returning text."""
-    backend = AiderCliBackend(model="deepseek-v3")
+    backend = AiderCliBackend(config=_cfg("deepseek-v3"))
     result = backend._parse_output("\x1b[32mok\x1b[0m", duration_ms=5)
     assert result.text == "ok"
     assert result.metrics.prompt_tokens == 0
@@ -170,19 +177,20 @@ def test_aider_strips_ansi_escapes():
     assert result.model == "deepseek-v3"
 
 
-def test_openclaw_plain_text():
-    """OpenClaw emits raw text — no parsing required."""
-    backend = OpenClawCliBackend(model="deepseek-v3")
-    result = backend._parse_output(_load("openclaw_sample.txt").strip(), duration_ms=5)
+def test_openclaw_parses_json_envelope():
+    """OpenClaw agent --json emits payloads[].text + meta.agentMeta.lastCallUsage."""
+    backend = OpenClawCliBackend(config=_cfg("deepseek-v3"))
+    result = backend._parse_output(_load("openclaw_sample.json"), duration_ms=5)
     assert result.text == "ok"
-    assert result.metrics.prompt_tokens == 0
+    assert result.metrics.prompt_tokens == 10
+    assert result.metrics.completion_tokens == 1
     assert result.metrics.duration_ms == 5
-    assert result.model == "deepseek-v3"
+    assert result.model == "claude-haiku-4-5"
 
 
 def test_kimi_plain_text():
     """Kimi --final-message-only emits plain text."""
-    backend = KimiCliBackend()
+    backend = KimiCliBackend(config=_cfg())
     result = backend._parse_output(_load("kimi_sample.txt").strip(), duration_ms=5)
     assert result.text == "ok"
     assert result.metrics.prompt_tokens == 0

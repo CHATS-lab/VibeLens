@@ -15,12 +15,16 @@ from abc import abstractmethod
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
+from vibelens.config.settings import InferenceConfig
 from vibelens.llm.backend import InferenceBackend, InferenceError, InferenceTimeoutError
 from vibelens.llm.model_catalog import available_models, default_model
+from vibelens.llm.pricing import compute_cost_from_tokens
 from vibelens.models.llm.inference import BackendType, InferenceRequest, InferenceResult
 from vibelens.models.trajectories.metrics import Metrics
 from vibelens.utils.log import get_logger
 from vibelens.utils.timestamps import monotonic_ms
+
+logger = get_logger(__name__)
 
 # Dedicated cwds for analysis subprocesses. Keeps CLI-derived session files
 # (claude/codex/gemini/openclaw write logs relative to cwd) segregated per
@@ -32,21 +36,13 @@ CREATION_CWD: Path = _PERSONALIZATION_ROOT / "creation"
 EVOLUTION_CWD: Path = _PERSONALIZATION_ROOT / "evolution"
 FRICTION_CWD: Path = _VIBELENS_HOME / "friction"
 
+# Seconds to wait after SIGTERM before escalating to SIGKILL
+SIGTERM_GRACE_SECONDS = 5
+
 # Signature for per-backend extractors passed to ``_parse_single_json``.
 # Returns (text, metrics, model) — metrics may be None when the backend
 # reports no usage; cost lives inside ``Metrics.cost_usd``.
 JsonExtractor = Callable[[dict], tuple[str, "Metrics | None", str]]
-
-logger = get_logger(__name__)
-
-# Seconds to wait after SIGTERM before escalating to SIGKILL
-SIGTERM_GRACE_SECONDS = 5
-# Appended to user prompts to enforce JSON output when the CLI has no native schema flag
-SCHEMA_INSTRUCTION_TEMPLATE = (
-    "\n\n---\nYou MUST respond with a single JSON object conforming to the following schema. "
-    "Do NOT wrap the JSON in markdown code fences or add any text before/after it.\n\n"
-    "```json\n{schema}\n```"
-)
 
 
 class CliBackend(InferenceBackend):
@@ -57,17 +53,17 @@ class CliBackend(InferenceBackend):
     augmentation, and output parsing.
     """
 
-    def __init__(self, model: str | None = None, timeout: int = 120):
+    def __init__(self, config: InferenceConfig):
         """Initialize CLI backend.
 
         Args:
-            model: Optional model override passed to the CLI.
-            timeout: Request timeout in seconds.
+            config: Inference configuration with model, timeout, thinking, etc.
         """
-        self._model = model
-        self._timeout = timeout
+        self._config = config
+        self._model = config.model or None
         self._cli_path = shutil.which(self.cli_executable)
         self._tempfiles: list[Path] = []
+        self._thinking_warned: bool = False
 
     @property
     @abstractmethod
@@ -108,16 +104,9 @@ class CliBackend(InferenceBackend):
         """Whether the CLI natively supports JSON output mode."""
         return False
 
-    @abstractmethod
-    def _build_command(self, request: InferenceRequest) -> list[str]:
-        """Build the CLI command arguments.
-
-        Args:
-            request: Inference request (used for model/token settings).
-
-        Returns:
-            Command as a list of strings.
-        """
+    async def is_available(self) -> bool:
+        """Check if the CLI executable exists in PATH."""
+        return shutil.which(self.cli_executable) is not None
 
     async def generate(self, request: InferenceRequest) -> InferenceResult:
         """Run inference via subprocess.
@@ -137,21 +126,25 @@ class CliBackend(InferenceBackend):
         """
         if not self._cli_path:
             raise InferenceError(f"{self.cli_executable} CLI not found in PATH")
+        if request.workspace_dir is None:
+            raise InferenceError("InferenceRequest.workspace_dir is required for CLI backends")
+
+        self._warn_thinking_unsupported()
 
         # Isolate temp files per generate() call so concurrent coroutines
         # don't interfere with each other's cleanup.
         saved_tempfiles = self._tempfiles
         self._tempfiles = []
         try:
-            cmd = self._build_command(request)
+            cmd = self._build_command(request) + self._thinking_args()
             prompt_text = self._build_prompt(request)
             prompt_bytes = prompt_text.encode("utf-8")
             env = self._build_env()
-            if request.analysis_cwd is None:
-                raise InferenceError("InferenceRequest.analysis_cwd is required for CLI backends")
-            cwd = request.analysis_cwd
+            cwd = request.workspace_dir
             cwd.mkdir(parents=True, exist_ok=True)
+            logger.debug("CLI invocation: cmd=%s thinking=%s", cmd, self._config.thinking)
 
+            timeout = self._config.timeout
             start_ms = monotonic_ms()
             try:
                 proc = await asyncio.create_subprocess_exec(
@@ -162,7 +155,6 @@ class CliBackend(InferenceBackend):
                     env=env,
                     cwd=str(cwd),
                 )
-                timeout = request.timeout or self._timeout
                 stdout, stderr = await asyncio.wait_for(
                     proc.communicate(input=prompt_bytes), timeout=timeout
                 )
@@ -182,8 +174,9 @@ class CliBackend(InferenceBackend):
                     f"{self.cli_executable} exited with code {proc.returncode}: {stderr_text}"
                 )
 
-            output = stdout.decode("utf-8", errors="replace").strip()
+            output = self._select_output(stdout, stderr)
             result = self._parse_output(output, duration_ms)
+            _backfill_cost(result)
             logger.info(
                 "CLI inference complete: backend=%s duration_ms=%d output_len=%d",
                 self.backend_id,
@@ -195,9 +188,71 @@ class CliBackend(InferenceBackend):
             _cleanup_tempfiles(self._tempfiles)
             self._tempfiles = saved_tempfiles
 
-    async def is_available(self) -> bool:
-        """Check if the CLI executable exists in PATH."""
-        return shutil.which(self.cli_executable) is not None
+    @abstractmethod
+    def _build_command(self, request: InferenceRequest) -> list[str]:
+        """Build the CLI command arguments.
+
+        Args:
+            request: Inference request (used for model/token settings).
+
+        Returns:
+            Command as a list of strings.
+        """
+
+    @abstractmethod
+    def _parse_output(self, output: str, duration_ms: int) -> InferenceResult:
+        """Parse CLI output into an InferenceResult.
+
+        Each backend knows its own envelope shape; implementations should
+        delegate to one of the helpers below (``_parse_plain_text``,
+        ``_parse_single_json``, ``_iter_ndjson_events``).
+
+        Args:
+            output: Raw output selected by ``_select_output`` (stdout by default).
+            duration_ms: Elapsed time in milliseconds.
+
+        Returns:
+            Parsed InferenceResult.
+
+        Raises:
+            InferenceError: If the output cannot be parsed per the backend's envelope.
+        """
+
+    def _select_output(self, stdout: bytes, stderr: bytes) -> str:
+        """Choose which stream carries the CLI's result payload.
+
+        Defaults to stdout. Override when a CLI writes its JSON envelope to
+        stderr (openclaw's ``agent --json`` is one such case).
+        """
+        return stdout.decode("utf-8", errors="replace").strip()
+
+    def _thinking_args(self) -> list[str]:
+        """Extra CLI args for the configured thinking state.
+
+        Subclasses override this to return backend-specific flags when
+        ``self._config.thinking`` is True. Empty list = no-op.
+        """
+        return []
+
+    def _thinking_prompt_prefix(self) -> str:
+        """Text to prepend to the user prompt for thinking mode.
+
+        Used by backends (e.g. openclaw) that control thinking via inline
+        directives rather than CLI flags. Empty string = no-op.
+        """
+        return ""
+
+    def _warn_thinking_unsupported(self) -> None:
+        """Log a one-time warning if thinking is enabled but this backend cannot honor it."""
+        if not self._config.thinking or self._thinking_warned:
+            return
+        if not self._thinking_args() and not self._thinking_prompt_prefix():
+            logger.warning(
+                "%s backend does not support thinking control via CLI flags; "
+                "thinking=True will be ignored",
+                self.cli_executable,
+            )
+            self._thinking_warned = True
 
     def _build_env(self) -> dict[str, str]:
         """Build a clean environment for the subprocess.
@@ -212,7 +267,11 @@ class CliBackend(InferenceBackend):
         return env
 
     def _build_prompt(self, request: InferenceRequest) -> str:
-        """Combine system and user prompts, optionally augmenting with schema.
+        """Combine system and user prompts.
+
+        The system prompt (rendered from ``prompts/``) already embeds any
+        JSON schema via the ``_output_envelope.j2`` partial — backends do
+        not append a second copy here.
 
         Args:
             request: Inference request with system and user prompts.
@@ -220,26 +279,9 @@ class CliBackend(InferenceBackend):
         Returns:
             Combined prompt text.
         """
-        prompt = f"{request.system}\n\n{request.user}"
-        if request.json_schema and not self.supports_native_json:
-            prompt = self._augment_prompt_with_schema(prompt, request.json_schema)
-        return prompt
-
-    def _augment_prompt_with_schema(self, prompt: str, json_schema: dict) -> str:
-        """Append JSON schema instruction to the prompt.
-
-        Used when the CLI lacks native JSON output support, so the LLM
-        must be instructed via the prompt itself.
-
-        Args:
-            prompt: Original combined prompt text.
-            json_schema: JSON schema dict for structured output.
-
-        Returns:
-            Prompt with appended schema instruction.
-        """
-        schema_str = json.dumps(json_schema, indent=2)
-        return prompt + SCHEMA_INSTRUCTION_TEMPLATE.format(schema=schema_str)
+        thinking_prefix = self._thinking_prompt_prefix()
+        user = f"{thinking_prefix}{request.user}" if thinking_prefix else request.user
+        return f"{request.system}\n\n{user}"
 
     def _create_tempfile(
         self, content: str, suffix: str = ".txt", prefix: str = "vibelens_"
@@ -266,25 +308,6 @@ class CliBackend(InferenceBackend):
         temp_path = Path(path)
         self._tempfiles.append(temp_path)
         return temp_path
-
-    @abstractmethod
-    def _parse_output(self, output: str, duration_ms: int) -> InferenceResult:
-        """Parse CLI stdout into an InferenceResult.
-
-        Each backend knows its own envelope shape; implementations should
-        delegate to one of the helpers below (``_parse_plain_text``,
-        ``_parse_single_json``, ``_iter_ndjson_events``).
-
-        Args:
-            output: Raw stdout from the CLI process.
-            duration_ms: Elapsed time in milliseconds.
-
-        Returns:
-            Parsed InferenceResult.
-
-        Raises:
-            InferenceError: If the output cannot be parsed per the backend's envelope.
-        """
 
     def _parse_plain_text(self, output: str, duration_ms: int) -> InferenceResult:
         """Wrap raw stdout as an InferenceResult with no usage or cost.
@@ -345,26 +368,6 @@ class CliBackend(InferenceBackend):
         metrics.duration_ms = duration_ms
         return InferenceResult(text=text, model=model, metrics=metrics)
 
-    def _metrics_from_anthropic(self, usage_data: dict) -> Metrics:
-        """Build a Metrics from an Anthropic-style usage dict.
-
-        Shared by Claude Code and Amp, which both emit the same four
-        ``*_input_tokens`` / ``*_tokens`` key names.
-
-        Args:
-            usage_data: Dict with ``input_tokens``, ``output_tokens``,
-                ``cache_creation_input_tokens``, ``cache_read_input_tokens``.
-
-        Returns:
-            Populated Metrics (missing keys default to 0).
-        """
-        return Metrics(
-            prompt_tokens=usage_data.get("input_tokens", 0),
-            completion_tokens=usage_data.get("output_tokens", 0),
-            cached_tokens=usage_data.get("cache_read_input_tokens", 0),
-            cache_creation_tokens=usage_data.get("cache_creation_input_tokens", 0),
-        )
-
     def _iter_ndjson_events(self, output: str) -> Iterator[dict]:
         """Yield each JSON object from an NDJSON stdout stream.
 
@@ -407,6 +410,27 @@ async def _kill_process(proc: asyncio.subprocess.Process) -> None:
             await proc.wait()
     except ProcessLookupError:
         pass
+
+
+def _backfill_cost(result: InferenceResult) -> None:
+    """Fill ``metrics.cost_usd`` from the pricing table when the CLI omits it.
+
+    Only the Claude Code envelope reports ``total_cost_usd`` natively.
+    Codex, Gemini, OpenClaw, and OpenCode leave it blank — we estimate
+    from tokens so the service layer can aggregate real cost.
+    """
+    metrics = result.metrics
+    if metrics is None or metrics.cost_usd is not None:
+        return
+    if not metrics.prompt_tokens and not metrics.completion_tokens:
+        return
+    metrics.cost_usd = compute_cost_from_tokens(
+        model=result.model,
+        input_tokens=metrics.prompt_tokens or 0,
+        output_tokens=metrics.completion_tokens or 0,
+        cache_read_tokens=metrics.cached_tokens or 0,
+        cache_creation_tokens=metrics.cache_creation_tokens or 0,
+    )
 
 
 def _cleanup_tempfiles(paths: list[Path]) -> None:

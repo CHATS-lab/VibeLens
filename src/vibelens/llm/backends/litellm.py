@@ -16,7 +16,7 @@ from vibelens.llm.backend import (
     InferenceRateLimitError,
     InferenceTimeoutError,
 )
-from vibelens.llm.providers import resolve_base_url
+from vibelens.llm.providers import detect_provider, resolve_base_url
 from vibelens.models.llm.inference import BackendType, InferenceRequest, InferenceResult
 from vibelens.models.trajectories.metrics import Metrics
 from vibelens.utils.log import get_logger
@@ -45,11 +45,21 @@ class LiteLLMBackend(InferenceBackend):
         self._config = config
         self._model = model_override or config.model
         self._base_url = resolve_base_url(config)
+        self._provider = detect_provider(self._model)
 
     @property
     def model(self) -> str:
         """Return configured LiteLLM model name."""
         return self._model or "unknown"
+
+    @property
+    def backend_id(self) -> BackendType:
+        """Return the backend type identifier."""
+        return BackendType.LITELLM
+
+    async def is_available(self) -> bool:
+        """Check if the API key is configured."""
+        return bool(self._config.api_key)
 
     async def generate(self, request: InferenceRequest) -> InferenceResult:
         """Send a non-streaming completion request via litellm.
@@ -93,7 +103,6 @@ class LiteLLMBackend(InferenceBackend):
             metrics.prompt_tokens,
             metrics.completion_tokens,
         )
-
         return InferenceResult(text=text, model=response.model or self._model, metrics=metrics)
 
     async def generate_stream(self, request: InferenceRequest) -> AsyncIterator[str]:
@@ -123,29 +132,32 @@ class LiteLLMBackend(InferenceBackend):
         except litellm.exceptions.APIError as exc:
             raise InferenceError(f"LiteLLM stream error: {exc}") from exc
 
-    async def is_available(self) -> bool:
-        """Check if the API key is configured."""
-        return bool(self._config.api_key)
-
-    @property
-    def backend_id(self) -> BackendType:
-        """Return the backend type identifier."""
-        return BackendType.LITELLM
-
     def _build_kwargs(self, request: InferenceRequest) -> dict:
         """Build keyword arguments for litellm.acompletion."""
         cfg = self._config
         kwargs: dict = {
             "model": self._model,
             "api_key": cfg.api_key,
-            "max_tokens": request.max_tokens or cfg.max_output_tokens,
-            "temperature": request.temperature,
-            "timeout": request.timeout or cfg.timeout,
+            "max_tokens": cfg.max_output_tokens,
+            "temperature": cfg.temperature,
+            "timeout": cfg.timeout,
         }
         if self._base_url:
             kwargs["api_base"] = self._base_url
         if request.json_schema:
             kwargs["response_format"] = {"type": "json_object"}
+        if cfg.thinking:
+            if self._provider == "anthropic":
+                kwargs["thinking"] = {"type": "adaptive"}
+            elif self._provider == "openai":
+                kwargs["reasoning_effort"] = "medium"
+            else:
+                logger.warning(
+                    "LiteLLM provider %r for model %r has no known thinking translation; "
+                    "thinking=True will be ignored",
+                    self._provider,
+                    self._model,
+                )
         return kwargs
 
 

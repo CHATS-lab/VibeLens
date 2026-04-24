@@ -46,6 +46,12 @@ class KimiCliBackend(CliBackend):
             cmd.extend(["--model", self._model])
         return cmd
 
+    def _thinking_args(self) -> list[str]:
+        """Kimi thinking: explicit boolean toggle."""
+        if self._config.thinking:
+            return ["--thinking"]
+        return ["--no-thinking"]
+
     def _parse_output(self, output: str, duration_ms: int) -> InferenceResult:
         """Return raw stdout as plain text (``--final-message-only`` yields plain text)."""
         return self._parse_plain_text(output, duration_ms)

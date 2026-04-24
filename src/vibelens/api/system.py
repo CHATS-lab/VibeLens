@@ -85,6 +85,7 @@ async def llm_status() -> dict:
             "base_url": config.base_url,
             "timeout": config.timeout,
             "max_output_tokens": config.max_output_tokens,
+            "thinking": config.thinking,
             "pricing": None,
         }
 
@@ -98,6 +99,7 @@ async def llm_status() -> dict:
         "base_url": config.base_url,
         "timeout": config.timeout,
         "max_output_tokens": config.max_output_tokens,
+        "thinking": config.thinking,
         "pricing": pricing,
     }
 
@@ -124,6 +126,7 @@ async def configure_llm(body: LLMConfigureRequest) -> dict:
         base_url=body.base_url,
         timeout=body.timeout,
         max_output_tokens=body.max_output_tokens,
+        thinking=body.thinking,
     )
 
     try:
@@ -143,6 +146,7 @@ async def configure_llm(body: LLMConfigureRequest) -> dict:
         "base_url": config.base_url,
         "timeout": config.timeout,
         "max_output_tokens": config.max_output_tokens,
+        "thinking": config.thinking,
         "pricing": pricing,
     }
 

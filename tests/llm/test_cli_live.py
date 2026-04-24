@@ -13,11 +13,12 @@ from pathlib import Path
 
 import pytest
 
+from vibelens.config.settings import InferenceConfig
 from vibelens.llm.backends.claude_cli import ClaudeCliBackend
 from vibelens.llm.backends.codex_cli import CodexCliBackend
 from vibelens.llm.backends.gemini_cli import GeminiCliBackend
 from vibelens.llm.backends.openclaw_cli import OpenClawCliBackend
-from vibelens.models.llm.inference import InferenceRequest
+from vibelens.models.llm.inference import BackendType, InferenceRequest
 
 pytestmark = pytest.mark.skipif(
     os.getenv("VIBELENS_LIVE_CLI") != "1",
@@ -27,9 +28,13 @@ pytestmark = pytest.mark.skipif(
 _REQUEST = InferenceRequest(
     system="Reply 'ok' and nothing else.",
     user="hi",
-    timeout=60,
-    analysis_cwd=Path.home() / ".vibelens" / "test-cli-live",
+    workspace_dir=Path.home() / ".vibelens" / "test-cli-live",
 )
+
+
+def _config(backend: BackendType, timeout: int = 60) -> InferenceConfig:
+    """Create a minimal InferenceConfig for live CLI tests."""
+    return InferenceConfig(backend=backend, timeout=timeout)
 
 
 def _run(backend) -> object:
@@ -42,7 +47,7 @@ def test_claude_live():
     """Claude surfaces text, usage, cost, and duration end-to-end."""
     # Strip CLAUDECODE so nested sessions are allowed.
     os.environ.pop("CLAUDECODE", None)
-    result = _run(ClaudeCliBackend())
+    result = _run(ClaudeCliBackend(config=_config(BackendType.CLAUDE_CODE)))
     print(f"claude live: text={result.text!r} model={result.model} metrics={result.metrics}")
     assert result.text.strip()
     assert result.metrics.prompt_tokens > 0
@@ -52,7 +57,7 @@ def test_claude_live():
 @pytest.mark.skipif(shutil.which("codex") is None, reason="codex CLI not installed")
 def test_codex_live():
     """Codex surfaces text and usage end-to-end."""
-    result = _run(CodexCliBackend(model=None))
+    result = _run(CodexCliBackend(config=_config(BackendType.CODEX)))
     print(f"codex live: text={result.text!r} model={result.model} metrics={result.metrics}")
     assert result.text.strip()
     assert result.metrics.prompt_tokens > 0
@@ -70,7 +75,7 @@ def test_codex_live():
 )
 def test_gemini_live():
     """Gemini surfaces text and usage end-to-end."""
-    result = _run(GeminiCliBackend())
+    result = _run(GeminiCliBackend(config=_config(BackendType.GEMINI)))
     print(f"gemini live: text={result.text!r} model={result.model} metrics={result.metrics}")
     assert result.text.strip()
     assert result.metrics.prompt_tokens > 0
@@ -88,6 +93,6 @@ def test_gemini_live():
 )
 def test_openclaw_live():
     """OpenClaw surfaces text end-to-end; usage is not reported."""
-    result = _run(OpenClawCliBackend())
+    result = _run(OpenClawCliBackend(config=_config(BackendType.OPENCLAW)))
     print(f"openclaw live: text={result.text!r} model={result.model}")
     assert result.text.strip()

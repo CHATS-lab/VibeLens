@@ -7,7 +7,6 @@ and a capturing log writer, then asserting both observe the same id.
 """
 
 import asyncio
-from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from vibelens.models.personalization.evolution import (
@@ -44,10 +43,6 @@ def _empty_proposal_result() -> EvolutionProposalResult:
 def test_evolution_log_dir_name_matches_stored_id() -> None:
     """The id used to save the result is the final segment of the log dir path."""
     stub_store = _StubStore()
-    captured_log_dirs: list[Path] = []
-
-    def _capture_log(log_dir: Path, filename: str, content: str) -> None:
-        captured_log_dirs.append(log_dir)
 
     with (
         patch(
@@ -61,10 +56,6 @@ def test_evolution_log_dir_name_matches_stored_id() -> None:
         patch(
             "vibelens.services.evolution.evolution.gather_installed_skills",
             return_value=[{"name": "example-skill", "description": "demo"}],
-        ),
-        patch(
-            "vibelens.services.evolution.evolution.save_inference_log",
-            side_effect=_capture_log,
         ),
     ):
         asyncio.run(analyze_skill_evolution(session_ids=["sess-1"], session_token=None))

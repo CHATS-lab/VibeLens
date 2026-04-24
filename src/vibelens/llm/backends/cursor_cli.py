@@ -55,6 +55,12 @@ class CursorCliBackend(CliBackend):
             cmd.extend(["--model", self._model])
         return cmd
 
+    def _thinking_args(self) -> list[str]:
+        """Cursor reasoning effort: medium when thinking, omit when not."""
+        if self._config.thinking:
+            return ["--reasoning-effort", "medium"]
+        return []
+
     def _parse_output(self, output: str, duration_ms: int) -> InferenceResult:
         """Parse Cursor's single-JSON envelope (text only, no usage)."""
         return self._parse_single_json(output, duration_ms, self._extract)

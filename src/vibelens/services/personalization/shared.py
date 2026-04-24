@@ -1,27 +1,28 @@
 """Shared utilities for personalization services.
 
-Constants, caching, skill gathering, pattern validation, and generic LLM
-output parsing used by creation and evolvement modules.
+Caching, skill gathering, pattern validation, and batch reduction shared
+by creation and evolution modules.
 """
 
 import hashlib
-import json
-import re
 from collections.abc import Awaitable, Callable
 from enum import Enum
 from typing import TypeVar
 
 from cachetools import TTLCache
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
 from vibelens.deps import get_skill_service
-from vibelens.llm.backend import InferenceError
 from vibelens.models.context import SessionContextBatch
 from vibelens.models.personalization.enums import PersonalizationMode
 from vibelens.models.session.patterns import WorkflowPattern
 from vibelens.models.trajectories.metrics import Metrics
-from vibelens.services.inference_shared import CACHE_MAXSIZE, CACHE_TTL_SECONDS
-from vibelens.utils.json import extract_json_from_llm_output
+from vibelens.services.inference_shared import (
+    CACHE_MAXSIZE,
+    CACHE_TTL_SECONDS,
+    MAX_EXAMPLE_REFS_PER_ENTRY,
+)
+from vibelens.utils.collections import truncate_to_cap
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -31,34 +32,6 @@ ModelT = TypeVar("ModelT", bound=BaseModel)
 # Shared TTL cache for personalization analysis results (keyed by session IDs + mode).
 # Consumed by creation and evolution services to avoid re-running identical analyses.
 _cache: TTLCache = TTLCache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL_SECONDS)
-
-_VALID_JSON_ESCAPES = set('"\\/bfnrtu')
-_INVALID_ESCAPE_RE = re.compile(r"\\(.)")
-
-
-def _repair_json_escapes(json_str: str) -> str:
-    """Escape stray backslashes that LLMs sometimes emit inside JSON strings.
-
-    LLMs (especially when generating SKILL.md content containing code, LaTeX,
-    or regex patterns) often produce invalid escapes like ``\\_`` or ``\\&``
-    that make ``json.loads`` fail. This helper scans for ``\\X`` sequences
-    where X is not a recognised JSON escape character and doubles the
-    backslash to ``\\\\X``, letting the parser accept the text.
-
-    Args:
-        json_str: JSON text that failed strict parsing.
-
-    Returns:
-        JSON text with invalid escapes repaired to literal backslashes.
-    """
-
-    def _fix(match: re.Match) -> str:
-        char = match.group(1)
-        if char in _VALID_JSON_ESCAPES:
-            return match.group(0)
-        return "\\\\" + char
-
-    return _INVALID_ESCAPE_RE.sub(_fix, json_str)
 
 
 class SkillDetailLevel(Enum):
@@ -173,6 +146,8 @@ def validate_patterns(
         ]
         pattern.example_refs = resolved_refs
         validated.append(pattern)
+    for pattern in validated:
+        truncate_to_cap(pattern.example_refs, MAX_EXAMPLE_REFS_PER_ENTRY)
     return validated
 
 
@@ -252,58 +227,7 @@ def merge_batch_refs(
             len(synthesis_patterns),
         )
 
-
-def parse_llm_output(
-    text: str,
-    model_class: type[ModelT],
-    label: str,
-    field_fallbacks: dict[str, object] | None = None,
-) -> ModelT:
-    """Parse raw LLM text into a Pydantic model.
-
-    Extracts JSON from the text, validates against the model schema,
-    and raises InferenceError with a descriptive message on failure.
-
-    Args:
-        text: Raw LLM output text.
-        model_class: Pydantic model class to validate against.
-        label: Human-readable label for error messages (e.g. "retrieval").
-        field_fallbacks: Optional mapping of field names to fallback values
-            applied only when that key is missing from the parsed JSON.
-            Used to recover from LLMs that occasionally drop required fields.
-
-    Returns:
-        Validated model instance.
-
-    Raises:
-        InferenceError: If text is empty, not valid JSON, or fails validation.
-    """
-    if not text or not text.strip():
-        raise InferenceError(f"LLM returned empty response for {label}.")
-
-    json_str = extract_json_from_llm_output(text)
-    try:
-        data = json.loads(json_str)
-    except json.JSONDecodeError as exc:
-        logger.warning("JSON parse failed for %s at %s; retrying with escape repair", label, exc)
-        try:
-            data = json.loads(_repair_json_escapes(json_str))
-        except json.JSONDecodeError as retry_exc:
-            preview = json_str[:500] if len(json_str) > 500 else json_str
-            raise InferenceError(
-                f"{label} output is not valid JSON (even after escape repair). "
-                f"Preview: {preview!r}. Error: {retry_exc}"
-            ) from retry_exc
-
-    if field_fallbacks and isinstance(data, dict):
-        for key, fallback in field_fallbacks.items():
-            if key not in data:
-                logger.warning("LLM omitted %s in %s output; filling with fallback", key, label)
-                data[key] = fallback
-
-    try:
-        return model_class.model_validate(data)
-    except ValidationError as exc:
-        raise InferenceError(
-            f"{label} JSON does not match {model_class.__name__} schema: {exc}"
-        ) from exc
+    # Re-cap after merging: two batches each capped at MAX_EXAMPLE_REFS_PER_ENTRY can
+    # union to 2 * MAX_EXAMPLE_REFS_PER_ENTRY refs for the same pattern title.
+    for pattern in synthesis_patterns:
+        truncate_to_cap(pattern.example_refs, MAX_EXAMPLE_REFS_PER_ENTRY)

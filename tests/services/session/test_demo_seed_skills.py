@@ -38,7 +38,6 @@ def test_seed_example_skills_empty_destination(tmp_path, monkeypatch):
     )
 
     seed_example_skills()
-
     dst = managed / "frontend-design"
     print(f"seeded files: {sorted(p.name for p in dst.iterdir())}")
     assert (dst / "SKILL.md").is_file()
@@ -65,7 +64,6 @@ def test_seed_example_skills_overwrites_seeded_copy(tmp_path, monkeypatch):
     print(f"after user edit: {(dst / 'SKILL.md').read_text(encoding='utf-8')!r}")
 
     seed_example_skills()
-
     reloaded = (dst / "SKILL.md").read_text(encoding="utf-8")
     print(f"after reseed: {reloaded!r}")
     assert "# Bundled" in reloaded
@@ -88,7 +86,6 @@ def test_seed_example_skills_preserves_user_customization(tmp_path, monkeypatch)
         "vibelens.services.session.demo.get_settings",
         lambda: _make_settings([example_root], managed),
     )
-
     seed_example_skills()
 
     reloaded = (user_skill / "SKILL.md").read_text(encoding="utf-8")
@@ -109,6 +106,5 @@ def test_seed_example_skills_missing_source_dir(tmp_path, monkeypatch):
     )
 
     seed_example_skills()
-
     print(f"managed exists: {managed.exists()}")
     assert not managed.exists() or not any(managed.iterdir())

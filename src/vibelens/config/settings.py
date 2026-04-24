@@ -152,6 +152,11 @@ class InferenceConfig(BaseModel):
     max_input_tokens: int = Field(default=80000, description="Max input tokens per request.")
     max_output_tokens: int = Field(default=10000, description="Max output tokens per request.")
     max_sessions: int = Field(default=30, description="Maximum sessions per analysis request.")
+    temperature: float = Field(default=1.0, description="Sampling temperature.")
+    thinking: bool = Field(
+        default=False,
+        description="Enable extended thinking / reasoning mode for supported backends.",
+    )
 
     @field_validator("backend", mode="before")
     @classmethod
@@ -338,6 +343,10 @@ def save_inference_config(config: InferenceConfig) -> None:
         section["max_input_tokens"] = config.max_input_tokens
     if config.max_sessions != defaults.max_sessions:
         section["max_sessions"] = config.max_sessions
+    if config.temperature != defaults.temperature:
+        section["temperature"] = config.temperature
+    if config.thinking != defaults.thinking:
+        section["thinking"] = config.thinking
     existing["inference"] = section
     # Remove legacy "llm" key if present
     existing.pop("llm", None)

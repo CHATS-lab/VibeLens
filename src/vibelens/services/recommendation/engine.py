@@ -10,12 +10,16 @@ Pipeline:
 import hashlib
 import time
 from datetime import datetime, timezone
-from pathlib import Path
 
 from cachetools import TTLCache
 
-from vibelens.context import MetadataExtractor, sample_contexts
-from vibelens.deps import get_recommendation_store
+from vibelens.context import (
+    MetadataExtractor,
+    format_context_batch,
+    sample_contexts,
+    truncate_digest_to_fit,
+)
+from vibelens.deps import get_recommendation_store, get_settings
 from vibelens.llm.backend import InferenceBackend
 from vibelens.llm.backends.cli_base import RECOMMENDATION_CWD
 from vibelens.llm.cost_estimator import CostEstimate, estimate_analysis_cost
@@ -36,20 +40,21 @@ from vibelens.prompts.recommendation import (
     RECOMMENDATION_RATIONALE_PROMPT,
 )
 from vibelens.services.extensions.search import ExtensionQuery, SortMode, rank_catalog
+from vibelens.services.inference_log import (
+    InferenceCallContext,
+    InferenceLogWriter,
+    analysis_log_dir,
+    run_inference,
+)
 from vibelens.services.inference_shared import (
     CACHE_MAXSIZE,
     CACHE_TTL_SECONDS,
     aggregate_final_metrics,
-    analysis_log_dir,
     extract_all_contexts,
-    format_context_batch,
-    metrics_from_result,
+    parse_llm_output,
     render_system_for,
     require_backend,
-    save_inference_log,
-    truncate_digest_to_fit,
 )
-from vibelens.services.personalization.shared import parse_llm_output
 from vibelens.services.session.store_resolver import list_all_metadata
 from vibelens.storage.extension.catalog import CatalogSnapshot, load_catalog
 from vibelens.utils.content import truncate
@@ -68,11 +73,6 @@ RATIONALE_MAX_RESULTS_LIMIT = 50
 RATIONALE_MIN_RELEVANCE = 0.6
 # Max chars for candidate descriptions sent to L4
 DESCRIPTION_MAX_CHARS = 150
-# Max output tokens for each LLM call (profile + rationale)
-RECOMMENDATION_OUTPUT_TOKENS = 4096
-# Timeout per LLM call (seconds)
-RECOMMENDATION_TIMEOUT_SECONDS = 120
-
 _cache: TTLCache = TTLCache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL_SECONDS)
 
 
@@ -118,15 +118,16 @@ def estimate_recommendation(
         min_relevance=RATIONALE_MIN_RELEVANCE,
     )
     rationale_input_estimate = count_tokens(rationale_system) + 2000  # profile + candidates
+    max_output = get_settings().inference.max_output_tokens
 
     return estimate_analysis_cost(
         batch_token_counts=[digest_tokens],
         system_prompt=profile_system,
         model=backend.model,
-        max_output_tokens=RECOMMENDATION_OUTPUT_TOKENS,
+        max_output_tokens=max_output,
         synthesis_output_tokens=0,
         synthesis_threshold=999,
-        extra_calls=[(rationale_input_estimate, RECOMMENDATION_OUTPUT_TOKENS)],
+        extra_calls=[(rationale_input_estimate, max_output)],
     )
 
 
@@ -226,6 +227,9 @@ async def _run_pipeline(
         )
 
     log_dir = analysis_log_dir("recommendation") / analysis_id
+    writer = InferenceLogWriter(
+        log_dir, analysis_id, mode="recommendation", config=get_settings().inference
+    )
 
     logger.info(
         "Recommendation pipeline: %d sessions, %d catalog items",
@@ -234,7 +238,7 @@ async def _run_pipeline(
     )
 
     # L2: Profile generation (1 LLM call)
-    profile, profile_metrics = await _generate_profile(backend, digest, loaded_session_ids, log_dir)
+    profile, profile_metrics = await _generate_profile(backend, digest, loaded_session_ids, writer)
 
     # L3: Retrieval + scoring (no LLM)
     scored_candidates = _retrieve_and_score(catalog, profile)
@@ -249,7 +253,7 @@ async def _run_pipeline(
 
     # L4: Rationale generation (1 LLM call)
     rationale_output, rationale_metrics = await _generate_rationales(
-        backend, profile, scored_candidates, log_dir, top_n=top_n
+        backend, profile, scored_candidates, writer, top_n=top_n
     )
 
     ranked_items = _merge_and_rank(scored_candidates, rationale_output)
@@ -279,7 +283,10 @@ async def _run_pipeline(
 
 
 async def _generate_profile(
-    backend: InferenceBackend, digest: str, session_ids: list[str], log_dir: Path
+    backend: InferenceBackend,
+    digest: str,
+    session_ids: list[str],
+    writer: InferenceLogWriter,
 ) -> tuple[UserProfile, Metrics]:
     """L2: Generate user profile from session digest.
 
@@ -287,7 +294,7 @@ async def _generate_profile(
         backend: Configured inference backend.
         digest: Concatenated session context text.
         session_ids: IDs of loaded sessions (for template).
-        log_dir: Timestamped directory for saving prompts and outputs.
+        writer: Log writer for this analysis run.
 
     Returns:
         Tuple of (parsed UserProfile, step metrics).
@@ -303,23 +310,24 @@ async def _generate_profile(
         session_count=len(session_ids), session_digest=digest
     )
 
+    system_file = "profile_system.txt"
+    user_file = "profile_user.txt"
+    writer.log_prompt_file(system_file, system_prompt)
+    writer.log_prompt_file(user_file, user_prompt)
+
     request = InferenceRequest(
         system=system_prompt,
         user=user_prompt,
-        max_tokens=RECOMMENDATION_OUTPUT_TOKENS,
-        timeout=RECOMMENDATION_TIMEOUT_SECONDS,
         json_schema=RECOMMENDATION_PROFILE_PROMPT.output_json_schema(),
-        analysis_cwd=RECOMMENDATION_CWD,
+        workspace_dir=RECOMMENDATION_CWD,
     )
-
-    save_inference_log(log_dir, "profile_system.txt", system_prompt)
-    save_inference_log(log_dir, "profile_user.txt", user_prompt)
-
-    result = await backend.generate(request)
-    save_inference_log(log_dir, "profile_output.txt", result.text)
+    context = InferenceCallContext(
+        task_id="recommendation_profile", system_file=system_file, user_file=user_file
+    )
+    result = await run_inference(backend, request, writer, context)
 
     profile = parse_llm_output(result.text, UserProfile, "recommendation profile")
-    metrics = metrics_from_result(result)
+    metrics = result.metrics
     logger.info(
         "L2 profile: %d domains, %d languages, %d keywords",
         len(profile.domains),
@@ -382,7 +390,7 @@ async def _generate_rationales(
     backend: InferenceBackend,
     profile: UserProfile,
     scored_candidates: list[tuple[AgentExtensionItem, float]],
-    log_dir: Path,
+    writer: InferenceLogWriter,
     top_n: int = RATIONALE_MAX_RESULTS,
 ) -> tuple[RationaleOutput, Metrics]:
     """L4: Generate personalized rationales for top candidates.
@@ -391,7 +399,7 @@ async def _generate_rationales(
         backend: Configured inference backend.
         profile: User profile from L2.
         scored_candidates: Scored (ExtensionItem, score) pairs from L3.
-        log_dir: Timestamped directory for saving prompts and outputs.
+        writer: Log writer for this analysis run.
         top_n: Maximum recommendations for L4 to return.
 
     Returns:
@@ -409,23 +417,24 @@ async def _generate_rationales(
         user_profile=profile.model_dump(), candidates=candidates_for_template
     )
 
+    system_file = "rationale_system.txt"
+    user_file = "rationale_user.txt"
+    writer.log_prompt_file(system_file, system_prompt)
+    writer.log_prompt_file(user_file, user_prompt)
+
     request = InferenceRequest(
         system=system_prompt,
         user=user_prompt,
-        max_tokens=RECOMMENDATION_OUTPUT_TOKENS,
-        timeout=RECOMMENDATION_TIMEOUT_SECONDS,
         json_schema=RECOMMENDATION_RATIONALE_PROMPT.output_json_schema(),
-        analysis_cwd=RECOMMENDATION_CWD,
+        workspace_dir=RECOMMENDATION_CWD,
     )
-
-    save_inference_log(log_dir, "rationale_system.txt", system_prompt)
-    save_inference_log(log_dir, "rationale_user.txt", user_prompt)
-
-    result = await backend.generate(request)
-    save_inference_log(log_dir, "rationale_output.txt", result.text)
+    context = InferenceCallContext(
+        task_id="recommendation_rationale", system_file=system_file, user_file=user_file
+    )
+    result = await run_inference(backend, request, writer, context)
 
     rationale_output = parse_llm_output(result.text, RationaleOutput, "recommendation rationale")
-    metrics = metrics_from_result(result)
+    metrics = result.metrics
     logger.info("L4 rationale: %d rationales generated", len(rationale_output.rationales))
     return rationale_output, metrics
 
