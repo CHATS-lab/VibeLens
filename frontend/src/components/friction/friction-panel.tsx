@@ -1,5 +1,6 @@
 import {
   Activity,
+  ClipboardList,
   History,
   PanelRightClose,
   PanelRightOpen,
@@ -28,6 +29,7 @@ import { Tooltip } from "../ui/tooltip";
 import { FrictionHistory } from "./friction-history";
 import { WarningsBanner } from "../warnings-banner";
 import { FRICTION_TUTORIAL } from "./friction-constants";
+import { CopyAllDialog } from "./friction-copy-all-dialog";
 import { MitigationsSection } from "./friction-mitigations";
 import { FrictionTypesSection } from "./friction-types";
 
@@ -339,6 +341,7 @@ function ResultHeader({
 }) {
   const tipCount = result.mitigations.length;
   const sessionCount = result.session_ids.length;
+  const [copyAllOpen, setCopyAllOpen] = useState(false);
 
   return (
     <div className="flex items-center justify-between">
@@ -365,15 +368,34 @@ function ResultHeader({
           </p>
         </div>
       </div>
-      <Tooltip text="Analyze your own sessions">
-        <button
-          onClick={onNew}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-accent-amber hover:text-amber-800 dark:hover:text-white bg-accent-amber-subtle hover:bg-amber-100 dark:hover:bg-amber-600/40 border border-accent-amber rounded-lg transition"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          New
-        </button>
-      </Tooltip>
+      <div className="flex items-center gap-2">
+        {tipCount > 0 && (
+          <Tooltip text="Copy all tips as a bullet list">
+            <button
+              onClick={() => setCopyAllOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold whitespace-nowrap text-accent-amber hover:text-amber-800 dark:hover:text-white bg-accent-amber-subtle hover:bg-amber-100 dark:hover:bg-amber-600/40 border border-accent-amber rounded-lg transition"
+            >
+              <ClipboardList className="w-3.5 h-3.5 shrink-0" />
+              Copy All
+            </button>
+          </Tooltip>
+        )}
+        <Tooltip text="Analyze your own sessions">
+          <button
+            onClick={onNew}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold whitespace-nowrap text-accent-amber hover:text-amber-800 dark:hover:text-white bg-accent-amber-subtle hover:bg-amber-100 dark:hover:bg-amber-600/40 border border-accent-amber rounded-lg transition"
+          >
+            <Plus className="w-3.5 h-3.5 shrink-0" />
+            New
+          </button>
+        </Tooltip>
+      </div>
+      {copyAllOpen && (
+        <CopyAllDialog
+          mitigations={result.mitigations}
+          onClose={() => setCopyAllOpen(false)}
+        />
+      )}
     </div>
   );
 }

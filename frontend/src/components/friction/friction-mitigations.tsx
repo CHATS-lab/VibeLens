@@ -61,14 +61,14 @@ export function MitigationCard({ mitigation, frictionTypes }: { mitigation: Miti
 
   return (
     <div className="border border-default rounded-xl bg-subtle overflow-hidden">
-      {/* Header: Title + Confidence */}
+      {/* Header: Title + Confidence (left) | Copy (right) */}
       <div className="px-5 pt-4 pb-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
+        <div className="flex items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2.5 min-w-0">
             <span className="text-base font-bold text-primary">{mitigation.title}</span>
             {mitigation.confidence > 0 && <ConfidenceBar confidence={mitigation.confidence} />}
-            <CopyButton text={mitigation.action} />
           </div>
+          <CopyButton text={mitigation.action} />
         </div>
         <BulletText text={mitigation.action} className="text-sm text-secondary leading-relaxed mt-1.5" />
       </div>
