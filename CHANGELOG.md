@@ -2,10 +2,39 @@
 
 ## [Unreleased]
 
+## [1.0.6] - 2026-04-24
+
+### Added
+- **Thinking off by default across every LLM backend.** `InferenceConfig.thinking` gates reasoning on all backends; the default is `false` and each backend translates this to its native disable mechanism: Claude Code (`CLAUDE_CODE_DISABLE_THINKING=1`), Codex (`-c web_search=disabled -c model_reasoning_effort=none`), OpenClaw (`--thinking off`), OpenCode (`--variant minimal`), Gemini (project-scoped `<cwd>/.gemini/settings.json` alias `vibelens-nothink` with `thinkingBudget: 0` and `includeThoughts: false` — there is no upstream env var, see [google-gemini/gemini-cli#25122](https://github.com/google-gemini/gemini-cli/issues/25122)), LiteLLM/Aider/Cursor/Kimi via their per-CLI flag.
+- **Structured `inference.json` log per analysis run** at `~/.vibelens/logs/personalization/{mode}/{id}/inference.json` and `~/.vibelens/logs/friction/{id}/inference.json`. Captures the config snapshot (backend, model, thinking, timeout, max_output_tokens, temperature) plus per-call metrics (prompt/completion/reasoning/thinking tokens, cost, duration) for every LLM call in the pipeline.
+- **Post-parse cost backfill** via `pricing.compute_cost_from_tokens`. Every CLI backend now reports `metrics.cost_usd`; previously only Claude Code surfaced cost natively.
+- **`scripts/inference/verify.py`** — inspects `inference.json` to confirm runtime matched intent. Flags `thinking=False` yet reasoning > 0, missing cost, and config-vs-runtime drift.
+- **`scripts/inference/run_all_backends.py`** — fans one analysis mode across N backends in parallel, resolving each backend's own catalog-default model (prevents a single `--model` from breaking the fan-out). Defaults to 5 backends, `--no-thinking`, 15 sampled sessions. Produces a comparison table and per-backend stderr tails on failure.
+- **`scripts/inference/CLAUDE.md`** — documents the Test → Verify → Report loop, the thinking-disable matrix per backend, raw CLI session-log locations, the config-propagation pitfall, and per-backend quirks (Gemini schema-type drift without reasoning, OpenCode provider auth, Codex `--ephemeral`, OpenClaw stderr envelope).
+- **`--version` flag** on the `vibelens` CLI.
+- **Agent logo icons** (Claude, Codex, Gemini, Aider, OpenClaw, OpenCode, Cursor, Kimi, Amp) across the docs site and the frontend agent filter.
+- **Copy All tips dialog** in the friction panel for quick exporting of every actionable fix.
+- **Dedicated analysis cwd per mode**: `~/.vibelens/personalization/{creation,evolution,recommendation}/` and `~/.vibelens/friction/`. Keeps CLI session files (claude/codex/gemini/openclaw) segregated from the user's working directories.
+- **Bundled default config and example sessions in the wheel.** `vibelens/data/config/default.yaml`, `vibelens/data/config/demo.yaml`, and `vibelens/data/examples/recipe-book/` ship inside the package. `discover_config_path()` falls back to the bundled default when CWD search finds nothing, and `DemoConfig.session_paths` resolves to the bundled `recipe-book` when `example_sessions` is empty. PyPI users running `vibelens serve` from any directory see the example sessions and inherit sane defaults.
+- **Demo mode seeds bundled example skills** into the central extension store so recommendations and evolution have populated starting state.
+- **Session scroll controls** (jump-to-top and jump-to-bottom buttons) in the session viewer.
+
 ### Changed
-- **Bundled default config and example sessions into the package.** `vibelens/data/config/default.yaml`, `vibelens/data/config/demo.yaml`, and `vibelens/data/examples/recipe-book/` now ship inside the wheel. `discover_config_path()` falls back to the bundled `default.yaml` when CWD search finds nothing, and `DemoConfig.session_paths` resolves to the bundled `recipe-book` directory when `example_sessions` is empty. PyPI users running `vibelens serve` from any directory now see the example sessions and inherit sane defaults. Top-level `examples/recipe-book/` moved to `src/vibelens/data/examples/recipe-book/`.
-- **Log home moved to `~/.vibelens/logs/`.** The default `logging.dir` is now `~/.vibelens/logs/` instead of `<repo>/logs/`. Per-run analysis prompt artifacts live at `~/.vibelens/logs/personalization/{creation,evolution,recommendation}/{analysis_id}/` and `~/.vibelens/logs/friction/{analysis_id}/`. Users who override `logging.dir` in YAML are unaffected.
+- **Log home moved to `~/.vibelens/logs/`.** The default `logging.dir` is now `~/.vibelens/logs/` instead of `<repo>/logs/`. Users who override `logging.dir` in YAML are unaffected.
 - **Analysis IDs are now time-sortable.** `generate_analysis_id()` returns `{YYYYMMDDTHHMMSS}-{8char}` (e.g. `20260423T171405-sJtL_vC1`) instead of an opaque 16-char token. Old IDs on disk keep working — the format is not validated on read. Each per-run log directory is named by the analysis ID, so `personalization/creation/{id}.json` and `logs/personalization/creation/{id}/` share the same `{id}`.
+- **Removed backend-side JSON schema augmentation.** `cli_base.SCHEMA_INSTRUCTION_TEMPLATE` and `_augment_prompt_with_schema` are gone; the schema is rendered exclusively by `prompts/_output_envelope.j2`. Small models (gpt-5-nano in particular) no longer see a duplicate schema block and no longer echo the schema verbatim as their response.
+- **`services/inference_shared.py` restructured** into focused helpers (`extract_all_contexts`, `run_batches_concurrent`, `run_synthesis`, `aggregate_final_metrics`) with output-cap guards to keep per-call prompts under model limits.
+- **Prompts consolidated**: unified example-reference markup, parameterized output caps (max proposals / workflow patterns), and restructured output rules for consistency across creation, evolution, recommendation, and friction modes.
+- **Sidebar session-group sort** now places analysis-internal cwds (`~/.vibelens/personalization/*`, `~/.vibelens/friction/*`) at the bottom of the left bar. Real user projects surface first, dot-prefixed projects next, analysis runs last.
+- **Install scripts** rewritten with confirmation prompts and a `uv tool update-shell` step so `vibelens serve` works immediately after `uv install`.
+- **README** rewritten with clearer install section, bundled-examples documentation, and an updated feature summary.
+
+### Fixed
+- **Dashboard daily stats now bucket by step timestamp** (not session creation). Cross-day sessions contribute to each day they touched; `messages`, `tokens`, and `cost` align with `daily_breakdown`.
+- **DST-aware `local_date_key`** so day boundaries fall on the user's wall-clock date instead of UTC.
+- **"Why this helps" card** is now fully clickable and the SearchBar styling is aligned with the rest of the controls.
+- **`mcp_server` excluded from the bundled catalog** (was slipping in and confusing the extension browser).
+- **Publish workflow** (`.github/workflows/publish.yml`) is idempotent when a release tag already exists on GitHub.
 
 ## [1.0.5] - 2026-04-22
 
