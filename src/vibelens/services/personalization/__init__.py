@@ -4,7 +4,6 @@ from vibelens.services.personalization.shared import (
     SkillDetailLevel,
     gather_installed_skills,
     merge_batch_refs,
-    parse_llm_output,
     personalization_cache_key,
     validate_patterns,
 )
@@ -15,7 +14,6 @@ __all__ = [
     "SkillDetailLevel",
     "gather_installed_skills",
     "merge_batch_refs",
-    "parse_llm_output",
     "personalization_cache_key",
     "validate_patterns",
 ]

@@ -10,9 +10,14 @@ Two-step pipeline (mirrors creation):
 import asyncio
 import time
 from datetime import datetime, timezone
-from pathlib import Path
 
-from vibelens.context import DetailExtractor, SummaryExtractor, build_batches
+from vibelens.context import (
+    DetailExtractor,
+    SummaryExtractor,
+    build_batches,
+    format_context_batch,
+    truncate_digest_to_fit,
+)
 from vibelens.deps import get_evolution_store, get_settings
 from vibelens.llm.backend import InferenceBackend
 from vibelens.llm.backends.cli_base import EVOLUTION_CWD
@@ -34,42 +39,39 @@ from vibelens.prompts.evolution import (
     EVOLUTION_PROPOSAL_PROMPT,
     EVOLUTION_PROPOSAL_SYNTHESIS_PROMPT,
 )
-from vibelens.services.inference_shared import (
-    aggregate_final_metrics,
+from vibelens.services.inference_log import (
+    InferenceCallContext,
+    InferenceLogWriter,
     analysis_log_dir,
-    extract_all_contexts,
-    format_context_batch,
     log_inference_summary,
-    metrics_from_result,
+    run_inference,
+)
+from vibelens.services.inference_shared import (
+    MAX_PROPOSALS,
+    MAX_WORKFLOW_PATTERNS,
+    aggregate_final_metrics,
+    extract_all_contexts,
+    parse_llm_output,
     render_system_for,
     require_backend,
     run_batches_concurrent,
     run_synthesis,
-    save_inference_log,
-    truncate_digest_to_fit,
 )
 from vibelens.services.personalization.shared import (
     SkillDetailLevel,
     _cache,
     gather_installed_skills,
-    parse_llm_output,
     personalization_cache_key,
     reduce_batch_results,
     resolve_proposal_session_ids,
     validate_patterns,
 )
+from vibelens.utils.collections import truncate_to_cap
 from vibelens.utils.identifiers import generate_timestamped_id
 from vibelens.utils.log import clear_analysis_id, get_logger, set_analysis_id
 
 logger = get_logger(__name__)
 
-# LLM inference limits for each step of the skill evolution pipeline
-EVOLUTION_PROPOSAL_OUTPUT_TOKENS = 4096
-EVOLUTION_PROPOSAL_TIMEOUT_SECONDS = 300
-EVOLUTION_SYNTHESIS_OUTPUT_TOKENS = 8192
-EVOLUTION_SYNTHESIS_TIMEOUT_SECONDS = 300
-EVOLUTION_OUTPUT_TOKENS = 8192
-EVOLUTION_TIMEOUT_SECONDS = 300
 # Number of sequential LLM calls in the full pipeline (proposal → synthesis → evolution)
 EXPECTED_EVOLUTION_CALLS = 3
 # Canonical title when no evolution proposals survive filtering.
@@ -124,7 +126,9 @@ def estimate_skill_evolution(
     if not installed_skills:
         raise ValueError("No installed skills found for evolution analysis.")
 
-    max_input = get_settings().inference.max_input_tokens
+    inference_cfg = get_settings().inference
+    max_input = inference_cfg.max_input_tokens
+    max_output = inference_cfg.max_output_tokens
     batches = build_batches(context_set.contexts, max_batch_tokens=max_input)
 
     # Proposal phase tokens
@@ -136,15 +140,15 @@ def estimate_skill_evolution(
     digest = format_context_batch(context_set)
     deep_input_tokens = count_tokens(evolution_system) + count_tokens(digest)
     extra_calls = [
-        (deep_input_tokens, EVOLUTION_OUTPUT_TOKENS) for _ in range(EXPECTED_EVOLUTION_CALLS)
+        (deep_input_tokens, max_output) for _ in range(EXPECTED_EVOLUTION_CALLS)
     ]
 
     return estimate_analysis_cost(
         batch_token_counts=batch_token_counts,
         system_prompt=proposal_system,
         model=backend.model,
-        max_output_tokens=EVOLUTION_PROPOSAL_OUTPUT_TOKENS,
-        synthesis_output_tokens=EVOLUTION_SYNTHESIS_OUTPUT_TOKENS,
+        max_output_tokens=max_output,
+        synthesis_output_tokens=max_output,
         synthesis_threshold=1,
         extra_calls=extra_calls,
     )
@@ -176,10 +180,13 @@ async def analyze_skill_evolution(
 
     start_time = time.monotonic()
     log_dir = analysis_log_dir("evolution") / analysis_id
+    writer = InferenceLogWriter(
+        log_dir, analysis_id, mode="evolution", config=get_settings().inference
+    )
 
     # Step 1: Generate proposals (filtered to user-selected skills)
     proposal_result = await _infer_evolution_proposals(
-        session_ids, session_token, log_dir, skill_names
+        session_ids, session_token, writer, skill_names
     )
 
     # Drop hallucinated proposals whose name is not in the installed-skill list.
@@ -223,7 +230,7 @@ async def analyze_skill_evolution(
                 session_ids=relevant_ids,
                 session_token=session_token,
                 proposal_confidence=p.confidence,
-                log_dir=log_dir,
+                writer=writer,
                 proposal_index=idx,
             )
         )
@@ -275,7 +282,7 @@ async def analyze_skill_evolution(
 async def _infer_evolution_proposals(
     session_ids: list[str],
     session_token: str | None,
-    log_dir: Path,
+    writer: InferenceLogWriter,
     skill_names: list[str] | None = None,
 ) -> EvolutionProposalResult:
     """Execute the proposal step: load sessions, batch, infer, validate.
@@ -283,7 +290,7 @@ async def _infer_evolution_proposals(
     Args:
         session_ids: Sessions to analyze.
         session_token: Browser tab token for upload scoping.
-        log_dir: Shared log directory for saving prompts and outputs.
+        writer: Log writer for this analysis run.
         skill_names: Skill names to target. None means all installed skills.
 
     Returns:
@@ -315,7 +322,7 @@ async def _infer_evolution_proposals(
     log_inference_summary(context_set, batches, backend)
 
     tasks = [
-        _infer_evolution_proposal_batch(backend, batch, installed_skills, log_dir, idx)
+        _infer_evolution_proposal_batch(backend, batch, installed_skills, writer, idx)
         for idx, batch in enumerate(batches)
     ]
     batch_results, batch_warnings = await run_batches_concurrent(tasks, "evolution_proposal")
@@ -326,7 +333,7 @@ async def _infer_evolution_proposals(
         results: list[tuple[EvolutionProposalBatch, Metrics]],
     ) -> tuple[EvolutionProposalBatch, Metrics]:
         return await _synthesize_evolution_proposals(
-            backend, results, session_count, installed_skills, log_dir
+            backend, results, session_count, installed_skills, writer
         )
 
     proposal_output, all_metrics = await reduce_batch_results(
@@ -334,6 +341,18 @@ async def _infer_evolution_proposals(
     )
 
     validated_patterns = validate_patterns(proposal_output.workflow_patterns, context_set)
+
+    # Enforce count caps deterministically — LLMs regularly exceed
+    # prompt-stated "at most N" instructions.
+    pre_patterns = len(validated_patterns)
+    truncate_to_cap(validated_patterns, MAX_WORKFLOW_PATTERNS)
+    if pre_patterns > len(validated_patterns):
+        logger.info("Capped workflow_patterns: %d -> %d", pre_patterns, len(validated_patterns))
+
+    pre_proposals = len(proposal_output.proposals)
+    truncate_to_cap(proposal_output.proposals, MAX_PROPOSALS)
+    if pre_proposals > len(proposal_output.proposals):
+        logger.info("Capped proposals: %d -> %d", pre_proposals, len(proposal_output.proposals))
 
     final_output = EvolutionProposalBatch(
         title=proposal_output.title,
@@ -360,7 +379,7 @@ async def _infer_evolution(
     rationale: str,
     addressed_patterns: list[str],
     session_ids: list[str],
-    log_dir: Path,
+    writer: InferenceLogWriter,
     session_token: str | None = None,
     proposal_confidence: float = 0.0,
     proposal_index: int | None = None,
@@ -372,7 +391,7 @@ async def _infer_evolution(
         rationale: Why this skill should be evolved and what to change.
         addressed_patterns: Pattern titles this evolution addresses.
         session_ids: Sessions to use as evidence.
-        log_dir: Shared per-run log directory.
+        writer: Log writer for this analysis run.
         session_token: Browser tab token for upload scoping.
         proposal_confidence: Confidence from proposal step (0.0-1.0).
         proposal_index: Index for log file naming.
@@ -417,18 +436,20 @@ async def _infer_evolution(
     request = InferenceRequest(
         system=system_prompt,
         user=user_prompt,
-        max_tokens=EVOLUTION_OUTPUT_TOKENS,
-        timeout=EVOLUTION_TIMEOUT_SECONDS,
         json_schema=EVOLUTION_PROMPT.output_json_schema(),
-        analysis_cwd=EVOLUTION_CWD,
+        workspace_dir=EVOLUTION_CWD,
     )
 
     suffix = f"_{proposal_index}" if proposal_index is not None else ""
-    save_inference_log(log_dir, f"skill_evolution{suffix}_system.txt", system_prompt)
-    save_inference_log(log_dir, f"skill_evolution{suffix}_user.txt", user_prompt)
+    system_file = f"skill_evolution{suffix}_system.txt"
+    user_file = f"skill_evolution{suffix}_user.txt"
+    writer.log_prompt_file(system_file, system_prompt)
+    writer.log_prompt_file(user_file, user_prompt)
 
-    result = await backend.generate(request)
-    save_inference_log(log_dir, f"skill_evolution{suffix}_output.txt", result.text)
+    context = InferenceCallContext(
+        task_id=f"skill_evolution{suffix}", system_file=system_file, user_file=user_file
+    )
+    result = await run_inference(backend, request, writer, context)
 
     evolution = parse_llm_output(
         result.text,
@@ -439,14 +460,14 @@ async def _infer_evolution(
     evolution.element_type = AgentExtensionType.SKILL
     evolution.confidence = proposal_confidence
     evolution.addressed_patterns = addressed_patterns
-    return evolution, metrics_from_result(result)
+    return evolution, result.metrics
 
 
 async def _infer_evolution_proposal_batch(
     backend: InferenceBackend,
     batch: SessionContextBatch,
     installed_skills: list[dict],
-    log_dir: Path,
+    writer: InferenceLogWriter,
     batch_index: int,
 ) -> tuple[EvolutionProposalBatch, Metrics]:
     """Run LLM inference for one evolution proposal batch.
@@ -455,7 +476,7 @@ async def _infer_evolution_proposal_batch(
         backend: Configured inference backend.
         batch: Session batch with pre-extracted contexts.
         installed_skills: Installed skill metadata (name + description).
-        log_dir: Timestamped directory for saving prompts and outputs.
+        writer: Log writer for this analysis run.
         batch_index: Zero-based batch index for file naming.
 
     Returns:
@@ -484,21 +505,25 @@ async def _infer_evolution_proposal_batch(
     request = InferenceRequest(
         system=system_prompt,
         user=user_prompt,
-        max_tokens=EVOLUTION_PROPOSAL_OUTPUT_TOKENS,
-        timeout=EVOLUTION_PROPOSAL_TIMEOUT_SECONDS,
         json_schema=prompt.output_json_schema(),
-        analysis_cwd=EVOLUTION_CWD,
+        workspace_dir=EVOLUTION_CWD,
     )
 
+    system_file = "skill_evolution_proposal_system.txt"
+    user_file = f"skill_evolution_proposal_user_{batch_index}.txt"
     if batch_index == 0:
-        save_inference_log(log_dir, "skill_evolution_proposal_system.txt", system_prompt)
-    save_inference_log(log_dir, f"skill_evolution_proposal_user_{batch_index}.txt", user_prompt)
+        writer.log_prompt_file(system_file, system_prompt)
+    writer.log_prompt_file(user_file, user_prompt)
 
-    result = await backend.generate(request)
-    save_inference_log(log_dir, f"skill_evolution_proposal_output_{batch_index}.txt", result.text)
+    context = InferenceCallContext(
+        task_id=f"skill_evolution_proposal_{batch_index}",
+        system_file=system_file,
+        user_file=user_file,
+    )
+    result = await run_inference(backend, request, writer, context)
 
     proposal_output = parse_llm_output(result.text, EvolutionProposalBatch, "evolution proposal")
-    return proposal_output, metrics_from_result(result)
+    return proposal_output, result.metrics
 
 
 async def _synthesize_evolution_proposals(
@@ -506,7 +531,7 @@ async def _synthesize_evolution_proposals(
     batch_results: list[tuple[EvolutionProposalBatch, Metrics]],
     session_count: int,
     installed_skills: list[dict],
-    log_dir: Path,
+    writer: InferenceLogWriter,
 ) -> tuple[EvolutionProposalBatch, Metrics]:
     """Merge evolution proposals from multiple batches via LLM synthesis.
 
@@ -515,7 +540,7 @@ async def _synthesize_evolution_proposals(
         batch_results: Per-batch proposal outputs and metrics.
         session_count: Total number of sessions analyzed.
         installed_skills: Installed skills the synthesis is allowed to propose.
-        log_dir: Timestamped directory for saving prompts and outputs.
+        writer: Log writer for this analysis run.
 
     Returns:
         Tuple of (merged EvolutionProposalBatch, synthesis call metrics).
@@ -551,9 +576,7 @@ async def _synthesize_evolution_proposals(
         output_model=EvolutionProposalBatch,
         batch_data=batch_data,
         session_count=session_count,
-        log_dir=log_dir,
-        max_output_tokens=EVOLUTION_SYNTHESIS_OUTPUT_TOKENS,
-        timeout_seconds=EVOLUTION_SYNTHESIS_TIMEOUT_SECONDS,
-        analysis_cwd=EVOLUTION_CWD,
+        writer=writer,
+        workspace_dir=EVOLUTION_CWD,
         extra_user_kwargs={"installed_skills": installed_skills},
     )

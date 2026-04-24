@@ -1,24 +1,26 @@
 """OpenCode CLI backend.
 
-Invokes ``opencode -p - -q -f json --system <prompt>`` as a subprocess.
-The user prompt is piped via stdin. ``-q`` suppresses the interactive spinner
-for scripted usage, and ``-f json`` returns structured JSON output.
+Invokes ``opencode run --format json <message>`` as a subprocess. The new
+OpenCode CLI (>= 1.14) uses a subcommand + positional message and emits
+NDJSON event records: ``step_start``, ``text``, ``step_finish``, etc.
 
-The system prompt is passed via ``--system`` to properly separate system
-and user prompts, avoiding duplication in stdin.
+System prompt: OpenCode does not expose a ``--system`` flag in the ``run``
+subcommand. The combined system + user prompt is passed as the message.
 
-Envelope shape (per OpenCode CLI docs): a single JSON object whose
-assistant text lives under ``result`` (or ``text`` in older versions).
-Token usage may appear under ``usage`` when supplied by the upstream
-provider; otherwise None.
+Thinking: OpenCode has a native ``--thinking`` boolean (show thinking
+blocks) and ``--variant`` for reasoning effort.
 
 References:
-    - CLI docs: https://opencode.ai/docs/cli/
+    - ``opencode run --help``
 """
 
+from vibelens.llm.backend import InferenceError
 from vibelens.llm.backends.cli_base import CliBackend
 from vibelens.models.llm.inference import BackendType, InferenceRequest, InferenceResult
 from vibelens.models.trajectories.metrics import Metrics
+
+_EVENT_TEXT = "text"
+_EVENT_STEP_FINISH = "step_finish"
 
 
 class OpenCodeCliBackend(CliBackend):
@@ -41,62 +43,80 @@ class OpenCodeCliBackend(CliBackend):
         return True
 
     def _build_command(self, request: InferenceRequest) -> list[str]:
-        """Build opencode CLI command.
-
-        Passes the system prompt via ``--system`` for clean
-        system/user separation. Stdin carries only the user prompt.
-
-        Args:
-            request: Inference request for prompt settings.
-
-        Returns:
-            Command as a list of strings.
-        """
+        """Build opencode run command with the combined prompt as the message arg."""
+        message = self._build_prompt(request)
         cmd = [
             self._cli_path or self.cli_executable,
-            "-p",
-            "-",
-            "-q",
-            "-f",
+            "run",
+            "--format",
             "json",
-            "--system",
-            request.system,
+            "--dangerously-skip-permissions",
         ]
         if self._model:
             cmd.extend(["--model", self._model])
+        cmd.append(message)
         return cmd
 
     def _build_prompt(self, request: InferenceRequest) -> str:
-        """Return only the user prompt.
+        """Combine system + user into a single message.
 
-        The system prompt is passed via ``--system`` in
-        ``_build_command``, so stdin carries only the user content.
-
-        Args:
-            request: Inference request with system and user prompts.
-
-        Returns:
-            User prompt text only.
+        The system prompt (rendered via ``_output_envelope.j2``) already
+        embeds the JSON schema, so we skip the backend-side schema
+        augmentation that the base class would apply. Appending a second
+        copy confuses small models — gpt-5-nano echoed the schema back
+        verbatim instead of producing an instance.
         """
-        return request.user
+        return f"{request.system}\n\n{request.user}"
+
+    def _thinking_args(self) -> list[str]:
+        """OpenCode has native ``--thinking`` (show blocks) + ``--variant`` (reasoning effort).
+
+        ``--variant minimal`` is the lowest reasoning level OpenCode core
+        currently supports via CLI; a ``none`` variant is requested upstream
+        but not yet shipped (https://github.com/sst/opencode/issues/4316).
+        For non-reasoning models ``minimal`` is effectively off; for reasoning
+        models a reduced reasoning pass still runs.
+
+        The ``--thinking`` boolean only controls visibility of thinking
+        blocks in the output, not whether the model thinks.
+        """
+        if self._config.thinking:
+            return ["--thinking", "--variant", "high"]
+        return ["--variant", "minimal"]
 
     def _parse_output(self, output: str, duration_ms: int) -> InferenceResult:
-        """Parse OpenCode's single-JSON envelope."""
-        return self._parse_single_json(output, duration_ms, self._extract)
+        """Parse OpenCode's NDJSON event stream.
 
-    def _extract(self, data: dict) -> tuple[str, Metrics | None, str]:
-        """Pull text and optional usage from OpenCode's envelope.
-
-        The exact key for the assistant text has varied across OpenCode
-        versions; we try ``result``, ``text``, and ``response`` in order.
+        Text comes from every ``text`` event's ``part.text``. Token usage
+        lives on the final ``step_finish`` event's ``part.tokens``.
         """
-        text = data.get("result") or data.get("text") or data.get("response") or ""
+        text_parts: list[str] = []
         metrics: Metrics | None = None
-        usage_data = data.get("usage")
-        if isinstance(usage_data, dict):
-            metrics = Metrics(
-                prompt_tokens=usage_data.get("input_tokens", 0),
-                completion_tokens=usage_data.get("output_tokens", 0),
-            )
-        model = data.get("model") or self.model
-        return str(text), metrics, model
+        for event in self._iter_ndjson_events(output):
+            event_type = event.get("type")
+            part = event.get("part")
+            if not isinstance(part, dict):
+                continue
+            if event_type == _EVENT_TEXT:
+                text = part.get("text")
+                if isinstance(text, str):
+                    text_parts.append(text)
+            elif event_type == _EVENT_STEP_FINISH:
+                tokens = part.get("tokens")
+                if isinstance(tokens, dict):
+                    cache = tokens.get("cache", {}) if isinstance(tokens.get("cache"), dict) else {}
+                    metrics = Metrics(
+                        prompt_tokens=tokens.get("input", 0),
+                        completion_tokens=tokens.get("output", 0),
+                        cached_tokens=cache.get("read", 0),
+                        cache_creation_tokens=cache.get("write", 0),
+                    )
+
+        if not text_parts:
+            raise InferenceError("opencode NDJSON stream contained no text events")
+        if metrics is None:
+            metrics = Metrics()
+        metrics.duration_ms = duration_ms
+        return InferenceResult(
+            text="".join(text_parts).strip(), model=self.model, metrics=metrics
+        )

@@ -1,0 +1,23 @@
+{
+  "payloads": [
+    {
+      "text": "ok",
+      "mediaUrl": null
+    }
+  ],
+  "meta": {
+    "durationMs": 754,
+    "agentMeta": {
+      "sessionId": "test-session",
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5",
+      "lastCallUsage": {
+        "input": 10,
+        "output": 1,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "total": 11
+      }
+    }
+  }
+}

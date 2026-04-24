@@ -19,5 +19,9 @@ class LLMConfigureRequest(BaseModel):
     base_url: str | None = Field(
         default=None, description="Custom base URL (auto-resolved from provider if None)."
     )
-    timeout: int = Field(default=120, description="Timeout in seconds.")
-    max_output_tokens: int = Field(default=4096, description="Max output tokens.")
+    timeout: int = Field(default=300, description="Timeout in seconds.")
+    max_output_tokens: int = Field(default=10000, description="Max output tokens.")
+    thinking: bool = Field(
+        default=False,
+        description="Enable extended thinking / reasoning mode for supported backends.",
+    )

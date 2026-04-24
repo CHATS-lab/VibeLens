@@ -87,13 +87,26 @@ class CodexCliBackend(CliBackend):
         if self._model:
             cmd.extend(["--model", self._model])
         if request.json_schema:
+            # Codex validates against OpenAI's strict structured-output rules,
+            # which require ``additionalProperties: false`` on every object.
+            strict_schema = _enforce_strict_schema(request.json_schema)
             schema_path = self._create_tempfile(
-                json.dumps(request.json_schema, indent=2),
-                suffix=".json",
-                prefix="vibelens_schema_",
+                json.dumps(strict_schema, indent=2), suffix=".json", prefix="vibelens_schema_"
             )
             cmd.extend(["--output-schema", str(schema_path)])
         return cmd
+
+    def _thinking_args(self) -> list[str]:
+        """Codex reasoning effort: ``high`` on, ``none`` off.
+
+        ``none`` fully disables reasoning but conflicts with the default
+        ``web_search`` tool, which requires a non-``none`` reasoning level.
+        We pair it with ``-c web_search=disabled`` to resolve the conflict.
+        The five supported effort levels are: none, low, medium, high, xhigh.
+        """
+        if self._config.thinking:
+            return ["-c", "model_reasoning_effort=high"]
+        return ["-c", "web_search=disabled", "-c", "model_reasoning_effort=none"]
 
     def _parse_output(self, output: str, duration_ms: int) -> InferenceResult:
         """Parse Codex's NDJSON event stream.
@@ -133,3 +146,52 @@ class CodexCliBackend(CliBackend):
             metrics = Metrics()
         metrics.duration_ms = duration_ms
         return InferenceResult(text="\n".join(text_parts), model=self.model, metrics=metrics)
+
+
+def _enforce_strict_schema(schema: dict) -> dict:
+    """Prepare a Pydantic JSON schema for OpenAI strict structured outputs.
+
+    OpenAI (used by codex) requires strict structured-output schemas to:
+      - Set ``additionalProperties: false`` on every object
+      - List **every** property name in ``required`` (not just non-default fields)
+      - Keep ``$ref`` nodes as sole-key dicts (no sibling ``description`` etc.)
+
+    Pydantic's ``model_json_schema()`` violates all three. We deep-copy,
+    then fix each in turn.
+    """
+    import copy
+
+    result = copy.deepcopy(schema)
+    _strip_ref_siblings(result)
+    _enforce_strict_object(result)
+    return result
+
+
+def _strip_ref_siblings(node: object) -> None:
+    """Remove all keys other than ``$ref`` from any dict containing ``$ref``."""
+    if isinstance(node, dict):
+        if "$ref" in node:
+            ref = node["$ref"]
+            node.clear()
+            node["$ref"] = ref
+            return
+        for value in node.values():
+            _strip_ref_siblings(value)
+    elif isinstance(node, list):
+        for item in node:
+            _strip_ref_siblings(item)
+
+
+def _enforce_strict_object(node: object) -> None:
+    """Recursively enforce strict-schema rules on every object node."""
+    if isinstance(node, dict):
+        if node.get("type") == "object":
+            node.setdefault("additionalProperties", False)
+            properties = node.get("properties")
+            if isinstance(properties, dict):
+                node["required"] = list(properties.keys())
+        for value in node.values():
+            _enforce_strict_object(value)
+    elif isinstance(node, list):
+        for item in node:
+            _enforce_strict_object(item)

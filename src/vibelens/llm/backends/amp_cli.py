@@ -31,6 +31,7 @@ References:
 
 from vibelens.llm.backend import InferenceError
 from vibelens.llm.backends.cli_base import CliBackend
+from vibelens.llm.usage import metrics_from_anthropic_usage
 from vibelens.models.llm.inference import BackendType, InferenceRequest, InferenceResult
 from vibelens.models.trajectories.metrics import Metrics
 
@@ -94,7 +95,7 @@ class AmpCliBackend(CliBackend):
                 text = _join_content_text(message.get("content", []))
                 usage_data = message.get("usage")
                 if isinstance(usage_data, dict):
-                    metrics = self._metrics_from_anthropic(usage_data)
+                    metrics = metrics_from_anthropic_usage(usage_data)
         if not text and last_result_text is not None:
             text = last_result_text
 

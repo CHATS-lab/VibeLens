@@ -103,10 +103,9 @@ def _create_cli_backend(backend_id: BackendType, config: InferenceConfig) -> Inf
     module_path, class_name = _CLI_BACKEND_REGISTRY[backend_id]
     module = importlib.import_module(module_path)
     backend_cls = getattr(module, class_name)
-    backend = backend_cls(timeout=config.timeout)
-    resolved_model = _resolve_cli_model(config.model, backend)
-    backend._model = resolved_model
-    return backend
+    resolved_model = _resolve_cli_model_for_backend(config.model, backend_id)
+    cli_config = config.model_copy(update={"model": resolved_model or ""})
+    return backend_cls(config=cli_config)
 
 
 def _strip_provider_prefix(model: str) -> str:
@@ -127,21 +126,32 @@ def _strip_provider_prefix(model: str) -> str:
     return model
 
 
-def _resolve_cli_model(config_model: str, backend: InferenceBackend) -> str | None:
-    """Pick the right model for a CLI backend.
+def _resolve_cli_model_for_backend(config_model: str, backend_id: BackendType) -> str | None:
+    """Pick the right model for a CLI backend by backend_id.
 
-    If the user left the model at the litellm default or empty, use the
-    backend's own default. Otherwise strip any provider prefix and pass
-    the user's choice through.
+    Backends that accept free-form ``provider/model`` strings (aider,
+    opencode, openclaw) get the user's choice verbatim; the others get the
+    provider prefix stripped so they receive bare model names.
 
     Args:
         config_model: Model string from InferenceConfig.
-        backend: Instantiated CLI backend with model metadata.
+        backend_id: Backend type to resolve defaults for.
 
     Returns:
         Resolved model name, or None for backends without model support.
     """
+    from vibelens.llm.model_catalog import default_model
+
     is_default = not config_model or config_model == LITELLM_DEFAULT_MODEL
     if is_default:
-        return backend.default_model
+        return default_model(backend_id)
+    if backend_id in _FREEFORM_MODEL_BACKENDS:
+        return config_model
     return _strip_provider_prefix(config_model)
+
+
+# Backends whose CLI accepts free-form ``provider/model`` strings verbatim.
+# Keep in sync with the ``supports_freeform_model`` property on each subclass.
+_FREEFORM_MODEL_BACKENDS: frozenset[BackendType] = frozenset(
+    {BackendType.AIDER, BackendType.OPENCODE, BackendType.OPENCLAW}
+)

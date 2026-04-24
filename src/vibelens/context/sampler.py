@@ -73,11 +73,7 @@ def sample_contexts(
     skipped_ids = list(batch.skipped_session_ids) + step_filtered_ids
 
     if not eligible:
-        return SessionContextBatch(
-            contexts=[],
-            session_ids=[],
-            skipped_session_ids=skipped_ids,
-        )
+        return SessionContextBatch(contexts=[], session_ids=[], skipped_session_ids=skipped_ids)
 
     estimated_total = sum(len(ctx.context_text) for ctx in eligible) // CHARS_PER_TOKEN
     if estimated_total <= token_budget:

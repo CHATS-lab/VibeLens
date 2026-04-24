@@ -8,11 +8,15 @@ compute friction_cost per type → persist → cache.
 import hashlib
 import time
 from datetime import datetime, timezone
-from pathlib import Path
 
 from cachetools import TTLCache
 
-from vibelens.context import DetailExtractor, build_batches
+from vibelens.context import (
+    DetailExtractor,
+    build_batches,
+    format_context_batch,
+    truncate_digest_to_fit,
+)
 from vibelens.deps import get_friction_store, get_settings
 from vibelens.llm.backend import InferenceBackend
 from vibelens.llm.backends.cli_base import FRICTION_CWD
@@ -24,42 +28,39 @@ from vibelens.models.friction import (
     FrictionAnalysisResult,
     FrictionCost,
     FrictionType,
+    Mitigation,
 )
 from vibelens.models.llm.inference import InferenceRequest
 from vibelens.models.step_ref import StepRef
 from vibelens.models.trajectories import Trajectory
 from vibelens.models.trajectories.metrics import Metrics
 from vibelens.prompts.friction import FRICTION_PROMPT, FRICTION_SYNTHESIS_PROMPT
+from vibelens.services.inference_log import (
+    InferenceCallContext,
+    InferenceLogWriter,
+    analysis_log_dir,
+    log_inference_summary,
+    run_inference,
+)
 from vibelens.services.inference_shared import (
     CACHE_MAXSIZE,
     CACHE_TTL_SECONDS,
+    MAX_EXAMPLE_REFS_PER_ENTRY,
+    MAX_FRICTION_TYPES,
+    MAX_MITIGATIONS,
     aggregate_final_metrics,
-    analysis_log_dir,
     extract_all_contexts,
-    format_context_batch,
-    log_inference_summary,
-    metrics_from_result,
+    parse_llm_output,
     render_system_for,
     require_backend,
     run_batches_concurrent,
     run_synthesis,
-    save_inference_log,
-    truncate_digest_to_fit,
 )
-from vibelens.services.personalization.shared import parse_llm_output
+from vibelens.utils.collections import truncate_to_cap
 from vibelens.utils.identifiers import generate_timestamped_id
 from vibelens.utils.log import clear_analysis_id, get_logger, set_analysis_id
 
 logger = get_logger(__name__)
-
-# Max output tokens for a single friction analysis batch call
-FRICTION_OUTPUT_TOKENS = 8192
-# Timeout per friction batch LLM call (seconds)
-FRICTION_TIMEOUT_SECONDS = 300
-# Synthesis needs more tokens because it merges multiple batch outputs
-SYNTHESIS_OUTPUT_TOKENS = 8192
-# Timeout for the synthesis LLM call (seconds)
-SYNTHESIS_TIMEOUT_SECONDS = 120
 
 _cache: TTLCache = TTLCache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL_SECONDS)
 
@@ -91,12 +92,13 @@ def estimate_friction(session_ids: list[str], session_token: str | None = None) 
 
     batch_token_counts = [count_tokens(format_context_batch(batch)) for batch in batches]
 
+    inference_config = get_settings().inference
     return estimate_analysis_cost(
         batch_token_counts=batch_token_counts,
         system_prompt=system_prompt,
         model=backend.model,
-        max_output_tokens=FRICTION_OUTPUT_TOKENS,
-        synthesis_output_tokens=SYNTHESIS_OUTPUT_TOKENS,
+        max_output_tokens=inference_config.max_output_tokens,
+        synthesis_output_tokens=inference_config.max_output_tokens,
         synthesis_threshold=0,
     )
 
@@ -140,10 +142,13 @@ async def analyze_friction(
 
     log_dir = analysis_log_dir("friction") / analysis_id
     log_inference_summary(context_set, batches, backend)
+    writer = InferenceLogWriter(
+        log_dir, analysis_id, mode="friction", config=get_settings().inference
+    )
 
     # Step 1: Concurrent LLM inference per batch
     tasks = [
-        _infer_friction_analysis_batch(backend, batch, log_dir, idx)
+        _infer_friction_analysis_batch(backend, batch, writer, idx)
         for idx, batch in enumerate(batches)
     ]
     batch_results, batch_warnings = await run_batches_concurrent(tasks, "friction")
@@ -155,7 +160,7 @@ async def analyze_friction(
         analysis_output = batch_results[0][0]
     else:
         analysis_output, syn_metrics = await _synthesize_friction_analysis(
-            backend, batch_results, len(context_set.session_ids), log_dir
+            backend, batch_results, len(context_set.session_ids), writer
         )
         all_metrics.append(syn_metrics)
         # Synthesis LLM may drop example_refs; recover from batch outputs
@@ -165,6 +170,31 @@ async def analyze_friction(
 
     # Step 3: Validate example_refs and compute friction_cost per type
     validated_types = _validate_and_enrich(analysis_output.friction_types, context_set)
+
+    # Step 4: Enforce count caps (LLMs often exceed prompt-stated limits).
+    # Cap friction_types first, then drop mitigations that reference only
+    # dropped types, then cap mitigations.
+    pre_type_count = len(validated_types)
+    truncate_to_cap(validated_types, MAX_FRICTION_TYPES)
+    if pre_type_count > len(validated_types):
+        logger.info(
+            "Capped friction_types: %d -> %d", pre_type_count, len(validated_types)
+        )
+
+    retained_type_names = {ft.type_name for ft in validated_types}
+    dropped_orphans = _drop_orphaned_mitigations(analysis_output.mitigations, retained_type_names)
+    if dropped_orphans:
+        logger.info(
+            "Dropped %d mitigation(s) referencing only removed friction types",
+            dropped_orphans,
+        )
+
+    pre_mit_count = len(analysis_output.mitigations)
+    truncate_to_cap(analysis_output.mitigations, MAX_MITIGATIONS)
+    if pre_mit_count > len(analysis_output.mitigations):
+        logger.info(
+            "Capped mitigations: %d -> %d", pre_mit_count, len(analysis_output.mitigations)
+        )
 
     duration = round(time.monotonic() - start_time)
     friction_result = FrictionAnalysisResult(
@@ -189,14 +219,17 @@ async def analyze_friction(
 
 
 async def _infer_friction_analysis_batch(
-    backend: InferenceBackend, batch: SessionContextBatch, log_dir: Path, batch_index: int
+    backend: InferenceBackend,
+    batch: SessionContextBatch,
+    writer: InferenceLogWriter,
+    batch_index: int,
 ) -> tuple[FrictionAnalysisOutput, Metrics]:
     """Run LLM inference for one batch.
 
     Args:
         backend: Configured inference backend.
         batch: Session batch with pre-extracted contexts.
-        log_dir: Timestamped directory for saving prompts and outputs.
+        writer: Log writer for this analysis run.
         batch_index: Zero-based batch index for file naming.
 
     Returns:
@@ -212,37 +245,31 @@ async def _infer_friction_analysis_batch(
 
     user_prompt = FRICTION_PROMPT.render_user(session_count=session_count, batch_digest=digest)
 
+    system_file = "friction_analysis_system.txt"
+    user_file = f"friction_analysis_user_{batch_index}.txt"
+    writer.log_prompt_file(system_file, system_prompt)
+    writer.log_prompt_file(user_file, user_prompt)
+
     request = InferenceRequest(
         system=system_prompt,
         user=user_prompt,
-        max_tokens=FRICTION_OUTPUT_TOKENS,
-        timeout=FRICTION_TIMEOUT_SECONDS,
         json_schema=FRICTION_PROMPT.output_json_schema(),
-        analysis_cwd=FRICTION_CWD,
+        workspace_dir=FRICTION_CWD,
     )
-
-    if batch_index == 0:
-        save_inference_log(log_dir, "friction_analysis_system.txt", system_prompt)
-    save_inference_log(log_dir, f"friction_analysis_user_{batch_index}.txt", user_prompt)
-
-    try:
-        result = await backend.generate(request)
-    except Exception:
-        error_file = f"friction_analysis_error_{batch_index}.txt"
-        save_inference_log(log_dir, error_file, "LLM inference failed.")
-        raise
-
-    save_inference_log(log_dir, f"friction_analysis_output_{batch_index}.txt", result.text)
+    context = InferenceCallContext(
+        task_id="friction_analysis", system_file=system_file, user_file=user_file
+    )
+    result = await run_inference(backend, request, writer, context)
 
     batch_output = parse_llm_output(result.text, FrictionAnalysisOutput, "friction analysis")
-    return batch_output, metrics_from_result(result)
+    return batch_output, result.metrics
 
 
 async def _synthesize_friction_analysis(
     backend: InferenceBackend,
     batch_results: list[tuple[FrictionAnalysisOutput, Metrics]],
     session_count: int,
-    log_dir: Path,
+    writer: InferenceLogWriter,
 ) -> tuple[FrictionAnalysisOutput, Metrics]:
     """Merge results from multiple batches via LLM synthesis.
 
@@ -250,7 +277,7 @@ async def _synthesize_friction_analysis(
         backend: Configured inference backend.
         batch_results: Per-batch analysis outputs and metrics.
         session_count: Total number of sessions analyzed.
-        log_dir: Timestamped directory for saving prompts and outputs.
+        writer: Log writer for this analysis run.
 
     Returns:
         Tuple of (merged FrictionAnalysisOutput, synthesis metrics).
@@ -293,13 +320,45 @@ async def _synthesize_friction_analysis(
         output_model=FrictionAnalysisOutput,
         batch_data=batch_data,
         session_count=session_count,
-        log_dir=log_dir,
-        max_output_tokens=SYNTHESIS_OUTPUT_TOKENS,
-        timeout_seconds=SYNTHESIS_TIMEOUT_SECONDS,
-        analysis_cwd=FRICTION_CWD,
+        writer=writer,
+        workspace_dir=FRICTION_CWD,
     )
     logger.info("Synthesis complete: title=%r", synthesis.title)
     return synthesis, synth_metrics
+
+
+def _drop_orphaned_mitigations(
+    mitigations: list[Mitigation], retained_type_names: set[str]
+) -> int:
+    """Drop mitigations whose addressed_friction_types are all gone.
+
+    After friction_types are capped/merged, some mitigations may reference
+    only dropped type_names. Those become orphans. This function removes
+    them in place and returns the drop count for logging.
+
+    A mitigation is kept if ANY of its addressed_friction_types is in
+    ``retained_type_names``. The mitigation's addressed_friction_types
+    list is also filtered to only retained names so the UI does not show
+    broken references.
+
+    Args:
+        mitigations: Mitigation list (mutated in place).
+        retained_type_names: The type_name values still present after capping.
+
+    Returns:
+        Number of mitigations dropped.
+    """
+    kept: list[Mitigation] = []
+    dropped = 0
+    for mit in mitigations:
+        filtered = [n for n in mit.addressed_friction_types if n in retained_type_names]
+        if not filtered:
+            dropped += 1
+            continue
+        mit.addressed_friction_types = filtered
+        kept.append(mit)
+    mitigations[:] = kept
+    return dropped
 
 
 def _merge_friction_refs(
@@ -341,6 +400,11 @@ def _merge_friction_refs(
             len(synthesis_types),
         )
 
+    # Re-cap after merging: two batches each capped at MAX_EXAMPLE_REFS_PER_ENTRY can
+    # union to 2 * MAX_EXAMPLE_REFS_PER_ENTRY refs for the same type_name.
+    for ft in synthesis_types:
+        truncate_to_cap(ft.example_refs, MAX_EXAMPLE_REFS_PER_ENTRY)
+
 
 def _validate_and_enrich(
     friction_types: list[FrictionType], context_set: SessionContextBatch
@@ -380,6 +444,10 @@ def _validate_and_enrich(
             )
             ft.severity = clamped
 
+        # Cap refs BEFORE cost computation so friction_cost reflects the
+        # retained spans, keeping the displayed cost internally consistent
+        # with the displayed example_refs.
+        truncate_to_cap(ft.example_refs, MAX_EXAMPLE_REFS_PER_ENTRY)
         ft.friction_cost = _compute_type_cost(ft.example_refs, context_set.all_trajectories)
         validated.append(ft)
 

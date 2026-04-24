@@ -63,6 +63,12 @@ class AiderCliBackend(CliBackend):
             cmd.extend(["--model", self._model])
         return cmd
 
+    def _thinking_args(self) -> list[str]:
+        """Aider thinking: both flags when on, disable tokens when off."""
+        if self._config.thinking:
+            return ["--reasoning-effort", "medium", "--thinking-tokens", "4k"]
+        return ["--thinking-tokens", "0"]
+
     def _parse_output(self, output: str, duration_ms: int) -> InferenceResult:
         """Strip ANSI escapes and return stdout as plain text."""
         clean = _ANSI_ESCAPE_RE.sub("", output)

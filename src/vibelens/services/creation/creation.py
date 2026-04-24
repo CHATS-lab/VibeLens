@@ -10,11 +10,16 @@ Pipeline:
 import asyncio
 import time
 from datetime import datetime, timezone
-from pathlib import Path
 
 from cachetools import TTLCache
 
-from vibelens.context import DetailExtractor, SummaryExtractor, build_batches
+from vibelens.context import (
+    DetailExtractor,
+    SummaryExtractor,
+    build_batches,
+    format_context_batch,
+    truncate_digest_to_fit,
+)
 from vibelens.deps import get_creation_store, get_settings
 from vibelens.llm.backend import InferenceBackend
 from vibelens.llm.backends.cli_base import CREATION_CWD
@@ -35,42 +40,39 @@ from vibelens.prompts.creation import (
     CREATION_PROPOSAL_PROMPT,
     CREATION_PROPOSAL_SYNTHESIS_PROMPT,
 )
+from vibelens.services.inference_log import (
+    InferenceCallContext,
+    InferenceLogWriter,
+    analysis_log_dir,
+    log_inference_summary,
+    run_inference,
+)
 from vibelens.services.inference_shared import (
     CACHE_TTL_SECONDS,
+    MAX_PROPOSALS,
+    MAX_WORKFLOW_PATTERNS,
     aggregate_final_metrics,
-    analysis_log_dir,
     extract_all_contexts,
-    format_context_batch,
-    log_inference_summary,
-    metrics_from_result,
+    parse_llm_output,
     render_system_for,
     require_backend,
     run_batches_concurrent,
     run_synthesis,
-    save_inference_log,
-    truncate_digest_to_fit,
 )
 from vibelens.services.personalization.shared import (
     _cache,
     gather_installed_skills,
-    parse_llm_output,
     personalization_cache_key,
     reduce_batch_results,
     resolve_proposal_session_ids,
     validate_patterns,
 )
+from vibelens.utils.collections import truncate_to_cap
 from vibelens.utils.identifiers import generate_timestamped_id
 from vibelens.utils.log import clear_analysis_id, get_logger, set_analysis_id
 
 logger = get_logger(__name__)
 
-# LLM inference limits for each step of the skill creation pipeline
-SKILL_CREATION_PROPOSAL_OUTPUT_TOKENS = 4096
-SKILL_CREATION_PROPOSAL_TIMEOUT_SECONDS = 300
-SKILL_CREATION_SYNTHESIS_OUTPUT_TOKENS = 8192
-SKILL_CREATION_SYNTHESIS_TIMEOUT_SECONDS = 300
-SKILL_CREATION_GENERATE_OUTPUT_TOKENS = 4096
-SKILL_CREATION_GENERATE_TIMEOUT_SECONDS = 300
 # Number of sequential LLM calls in the full pipeline (proposal → synthesis → generate)
 EXPECTED_DEEP_CALLS = 3
 
@@ -110,20 +112,20 @@ def estimate_skill_creation(
     batch_token_counts = [count_tokens(format_context_batch(batch)) for batch in batches]
 
     # Deep generation phase tokens (estimated per-call)
+    max_output = get_settings().inference.max_output_tokens
     generate_system = render_system_for(CREATION_PROMPT, backend)
     digest = format_context_batch(context_set)
     deep_input_tokens = count_tokens(generate_system) + count_tokens(digest)
     extra_calls = [
-        (deep_input_tokens, SKILL_CREATION_GENERATE_OUTPUT_TOKENS)
-        for _ in range(EXPECTED_DEEP_CALLS)
+        (deep_input_tokens, max_output) for _ in range(EXPECTED_DEEP_CALLS)
     ]
 
     return estimate_analysis_cost(
         batch_token_counts=batch_token_counts,
         system_prompt=proposal_system,
         model=backend.model,
-        max_output_tokens=SKILL_CREATION_PROPOSAL_OUTPUT_TOKENS,
-        synthesis_output_tokens=SKILL_CREATION_SYNTHESIS_OUTPUT_TOKENS,
+        max_output_tokens=max_output,
+        synthesis_output_tokens=max_output,
         synthesis_threshold=1,
         extra_calls=extra_calls,
     )
@@ -152,10 +154,12 @@ async def analyze_skill_creation(
 
     start_time = time.monotonic()
     log_dir = analysis_log_dir("creation") / analysis_id
+    inference_config = get_settings().inference
+    writer = InferenceLogWriter(log_dir, analysis_id, mode="creation", config=inference_config)
 
     # Step 1: Generate proposals
     proposal_result = await _infer_creation_proposals(
-        session_ids, log_dir=log_dir, session_token=session_token
+        session_ids, writer=writer, session_token=session_token
     )
 
     proposal_names = [p.element_name for p in proposal_result.proposal_batch.proposals]
@@ -176,7 +180,7 @@ async def analyze_skill_creation(
                 session_ids=relevant_ids,
                 session_token=session_token,
                 proposal_confidence=p.confidence,
-                log_dir=log_dir,
+                writer=writer,
                 proposal_index=idx,
             )
         )
@@ -221,13 +225,13 @@ async def analyze_skill_creation(
 
 
 async def _infer_creation_proposals(
-    session_ids: list[str], log_dir: Path, session_token: str | None = None
+    session_ids: list[str], writer: InferenceLogWriter, session_token: str | None = None
 ) -> CreationProposalResult:
     """Run the proposal step: detect patterns and generate lightweight proposals.
 
     Args:
         session_ids: Sessions to analyze.
-        log_dir: Per-run log directory under ``logs/personalization/creation/``.
+        writer: Log writer for this analysis run.
         session_token: Browser tab token for upload scoping.
 
     Returns:
@@ -259,7 +263,7 @@ async def _infer_creation_proposals(
     installed_skills = gather_installed_skills()
 
     tasks = [
-        _infer_skill_creation_proposal_batch(backend, batch, installed_skills, log_dir, idx)
+        _infer_skill_creation_proposal_batch(backend, batch, installed_skills, writer, idx)
         for idx, batch in enumerate(batches)
     ]
     batch_results, batch_warnings = await run_batches_concurrent(tasks, "proposal")
@@ -269,11 +273,23 @@ async def _infer_creation_proposals(
     async def _synthesize(
         results: list[tuple[CreationProposalBatch, Metrics]],
     ) -> tuple[CreationProposalBatch, Metrics]:
-        return await _synthesize_creation_proposals(backend, results, session_count, log_dir)
+        return await _synthesize_creation_proposals(backend, results, session_count, writer)
 
     proposal_output, all_metrics = await reduce_batch_results(batch_results, synthesize=_synthesize)
 
     validated_patterns = validate_patterns(proposal_output.workflow_patterns, context_set)
+
+    # Enforce count caps deterministically — LLMs regularly exceed
+    # prompt-stated "at most N" instructions.
+    pre_patterns = len(validated_patterns)
+    truncate_to_cap(validated_patterns, MAX_WORKFLOW_PATTERNS)
+    if pre_patterns > len(validated_patterns):
+        logger.info("Capped workflow_patterns: %d -> %d", pre_patterns, len(validated_patterns))
+
+    pre_proposals = len(proposal_output.proposals)
+    truncate_to_cap(proposal_output.proposals, MAX_PROPOSALS)
+    if pre_proposals > len(proposal_output.proposals):
+        logger.info("Capped proposals: %d -> %d", pre_proposals, len(proposal_output.proposals))
 
     final_output = CreationProposalBatch(
         title=proposal_output.title,
@@ -304,7 +320,7 @@ async def _infer_skill_creation(
     proposal_rationale: str,
     addressed_patterns: list[str],
     session_ids: list[str],
-    log_dir: Path,
+    writer: InferenceLogWriter,
     session_token: str | None = None,
     proposal_confidence: float = 0.0,
     proposal_index: int | None = None,
@@ -317,7 +333,7 @@ async def _infer_skill_creation(
         proposal_rationale: Why this skill would improve workflow.
         addressed_patterns: Pattern titles this proposal addresses.
         session_ids: Sessions to use as evidence.
-        log_dir: Shared per-run log directory.
+        writer: Log writer for this analysis run.
         session_token: Browser tab token for upload scoping.
         proposal_confidence: Confidence from proposal step (0.0-1.0).
         proposal_index: Index for log file naming when called from analyze_skill_creation.
@@ -366,18 +382,20 @@ async def _infer_skill_creation(
     request = InferenceRequest(
         system=system_prompt,
         user=user_prompt,
-        max_tokens=SKILL_CREATION_GENERATE_OUTPUT_TOKENS,
-        timeout=SKILL_CREATION_GENERATE_TIMEOUT_SECONDS,
         json_schema=CREATION_PROMPT.output_json_schema(),
-        analysis_cwd=CREATION_CWD,
+        workspace_dir=CREATION_CWD,
     )
 
     suffix = f"_{proposal_index}" if proposal_index is not None else ""
-    save_inference_log(log_dir, f"skill_creation{suffix}_system.txt", system_prompt)
-    save_inference_log(log_dir, f"skill_creation{suffix}_user.txt", user_prompt)
+    system_file = f"skill_creation{suffix}_system.txt"
+    user_file = f"skill_creation{suffix}_user.txt"
+    writer.log_prompt_file(system_file, system_prompt)
+    writer.log_prompt_file(user_file, user_prompt)
 
-    result = await backend.generate(request)
-    save_inference_log(log_dir, f"skill_creation{suffix}_output.txt", result.text)
+    context = InferenceCallContext(
+        task_id=f"skill_creation{suffix}", system_file=system_file, user_file=user_file
+    )
+    result = await run_inference(backend, request, writer, context)
 
     creation = parse_llm_output(
         result.text,
@@ -387,14 +405,14 @@ async def _infer_skill_creation(
     )
     creation.confidence = proposal_confidence
     creation.addressed_patterns = addressed_patterns
-    return creation, metrics_from_result(result)
+    return creation, result.metrics
 
 
 async def _infer_skill_creation_proposal_batch(
     backend: InferenceBackend,
     batch: SessionContextBatch,
     installed_skills: list[dict],
-    log_dir: Path,
+    writer: InferenceLogWriter,
     batch_index: int,
 ) -> tuple[CreationProposalBatch, Metrics]:
     """Run LLM inference for one proposal batch.
@@ -403,7 +421,7 @@ async def _infer_skill_creation_proposal_batch(
         backend: Configured inference backend.
         batch: Session batch with pre-extracted contexts.
         installed_skills: Already-installed skills to avoid duplicates.
-        log_dir: Timestamped directory for saving prompts and outputs.
+        writer: Log writer for this analysis run.
         batch_index: Zero-based batch index for file naming.
 
     Returns:
@@ -431,28 +449,32 @@ async def _infer_skill_creation_proposal_batch(
     request = InferenceRequest(
         system=system_prompt,
         user=user_prompt,
-        max_tokens=SKILL_CREATION_PROPOSAL_OUTPUT_TOKENS,
-        timeout=SKILL_CREATION_PROPOSAL_TIMEOUT_SECONDS,
         json_schema=CREATION_PROPOSAL_PROMPT.output_json_schema(),
-        analysis_cwd=CREATION_CWD,
+        workspace_dir=CREATION_CWD,
     )
 
+    system_file = "skill_creation_proposal_system.txt"
+    user_file = f"skill_creation_proposal_user_{batch_index}.txt"
     if batch_index == 0:
-        save_inference_log(log_dir, "skill_creation_proposal_system.txt", system_prompt)
-    save_inference_log(log_dir, f"skill_creation_proposal_user_{batch_index}.txt", user_prompt)
+        writer.log_prompt_file(system_file, system_prompt)
+    writer.log_prompt_file(user_file, user_prompt)
 
-    result = await backend.generate(request)
-    save_inference_log(log_dir, f"skill_creation_proposal_output_{batch_index}.txt", result.text)
+    context = InferenceCallContext(
+        task_id=f"skill_creation_proposal_{batch_index}",
+        system_file=system_file,
+        user_file=user_file,
+    )
+    result = await run_inference(backend, request, writer, context)
 
     proposal_output = parse_llm_output(result.text, CreationProposalBatch, "proposal")
-    return proposal_output, metrics_from_result(result)
+    return proposal_output, result.metrics
 
 
 async def _synthesize_creation_proposals(
     backend: InferenceBackend,
     batch_results: list[tuple[CreationProposalBatch, Metrics]],
     session_count: int,
-    log_dir: Path,
+    writer: InferenceLogWriter,
 ) -> tuple[CreationProposalBatch, Metrics]:
     """Merge proposals from multiple batches via LLM synthesis.
 
@@ -460,7 +482,7 @@ async def _synthesize_creation_proposals(
         backend: Configured inference backend.
         batch_results: Per-batch proposal outputs and metrics.
         session_count: Total number of sessions analyzed.
-        log_dir: Timestamped directory for saving prompts and outputs.
+        writer: Log writer for this analysis run.
 
     Returns:
         Tuple of (merged CreationProposalBatch, synthesis call metrics).
@@ -496,8 +518,6 @@ async def _synthesize_creation_proposals(
         output_model=CreationProposalBatch,
         batch_data=batch_data,
         session_count=session_count,
-        log_dir=log_dir,
-        max_output_tokens=SKILL_CREATION_SYNTHESIS_OUTPUT_TOKENS,
-        timeout_seconds=SKILL_CREATION_SYNTHESIS_TIMEOUT_SECONDS,
-        analysis_cwd=CREATION_CWD,
+        writer=writer,
+        workspace_dir=CREATION_CWD,
     )

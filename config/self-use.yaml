@@ -21,3 +21,7 @@ upload:
   max_zip_bytes: 209715200        # 200 MB
   max_extracted_bytes: 524288000  # 500 MB
   max_file_count: 10000
+
+logging:
+  per_domain:
+    llm: DEBUG
