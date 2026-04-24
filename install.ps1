@@ -26,6 +26,13 @@
 
 $ErrorActionPreference = 'Stop'
 
+# On PowerShell 7.4+ the default flipped so that a non-zero exit from a native
+# command throws under 'Stop'. That would short-circuit our explicit
+# `$LASTEXITCODE` checks below (e.g. after `uv tool install`, `pip install`,
+# `uv tool update-shell`). Keep the legacy behavior so we can show our own
+# tailored diagnostics instead of a raw PS exception.
+$PSNativeCommandUseErrorActionPreference = $false
+
 $MinPyMajor = 3
 $MinPyMinor = 10
 
@@ -81,7 +88,7 @@ function Write-PythonInstallHelp {
   Write-Warn "Or install or upgrade Python to $MinPyMajor.$MinPyMinor+, then re-run this script:"
   Write-Warn '  winget:         winget install --id Python.Python.3.12 -e'
   Write-Warn '  Chocolatey:     choco install python'
-  Write-Warn '  Official build: ' + $PythonDocUrl
+  Write-Warn "  Official build: $PythonDocUrl"
   Write-Warn 'Tip: during install, check "Add Python to PATH".'
 }
 
@@ -131,14 +138,15 @@ function Install-WithUv {
   }
 
   # Look up the real bin directory so any diagnostics we print match this
-  # machine, instead of guessing %USERPROFILE%\.local\bin.
-  $uvBinDir = $null
-  try {
-    $uvBinDir = (& uv tool dir --bin 2>$null | Select-Object -First 1).Trim()
-  } catch { }
-  if (-not $uvBinDir) {
+  # machine, instead of guessing %USERPROFILE%\.local\bin. Store it at script
+  # scope so the launch step can prepend it to $env:Path.
+  $uvBinDirRaw = & uv tool dir --bin 2>$null | Select-Object -First 1
+  if ($uvBinDirRaw) {
+    $uvBinDir = $uvBinDirRaw.Trim()
+  } else {
     $uvBinDir = Join-Path $HOME '.local\bin'
   }
+  $script:UvBinDir = $uvBinDir
 
   # Ask uv to edit the user's PATH so the plain `vibelens` command works in
   # future shells. Capture stderr so we can surface the real error if it fails.
@@ -151,8 +159,10 @@ function Install-WithUv {
     }
     Write-Warn ''
     Write-Warn "To use 'vibelens serve', add uv's tool bin to PATH. Pick one:"
-    Write-Warn "  `$env:Path = `"$uvBinDir;`$env:Path`"                                    # this session only"
-    Write-Warn "  setx PATH `"$uvBinDir;%PATH%`"                                           # persist (new shells)"
+    Write-Warn '  # this session only'
+    Write-Warn "  `$env:Path = `"$uvBinDir;`$env:Path`""
+    Write-Warn '  # persist for your user account (takes effect in new shells)'
+    Write-Warn "  setx PATH `"$uvBinDir;%PATH%`""
     Write-Warn ''
     Write-Warn 'Or skip the shim and always launch with: uvx vibelens serve'
   } else {
@@ -193,33 +203,40 @@ if (Get-Command uv -ErrorAction SilentlyContinue) {
 }
 
 # Step 3: launch.
+# On the uv path, the shim exists on disk but $env:Path in this process doesn't
+# reflect the `uv tool update-shell` edit yet (Windows only picks up the change
+# in NEW shells). Prepend the bin dir for this process so `& vibelens` resolves.
+if ($InstalledVia -eq 'uv' -and $script:UvBinDir) {
+  $pathEntries = $env:Path -split ';'
+  if ($pathEntries -notcontains $script:UvBinDir) {
+    $env:Path = "$script:UvBinDir;$env:Path"
+  }
+}
+
 Write-Info ''
 Write-Info '[3/3] VibeLens installed.'
-Write-Info '      To start it any time later, run:  vibelens serve'
 
-# The `vibelens` shim may not be on PATH in *this* session yet if uv just
-# registered its tool bin via update-shell (Windows only picks up PATH changes
-# in NEW shells). Fall back to `uvx` for this one launch when that happens.
-if (Get-Command vibelens -ErrorAction SilentlyContinue) {
-  Write-Info '      Starting it now...'
-  Write-Info ''
-  & vibelens serve
-  exit $LASTEXITCODE
-} elseif ($InstalledVia -eq 'uv' -and (Get-Command uv -ErrorAction SilentlyContinue)) {
-  Write-Info "      (PATH will pick up 'vibelens' in new shells. Launching via uvx for this run.)"
-  Write-Info '      Starting it now...'
-  Write-Info ''
-  & uvx vibelens serve
-  exit $LASTEXITCODE
-} else {
-  Write-Warn ''
-  Write-Warn "VibeLens installed, but the 'vibelens' command is not on PATH in this session."
-  Write-Warn 'This usually means pip installed it to a user-local Scripts directory that'
-  Write-Warn "isn't on PATH (e.g. %APPDATA%\Python\PythonXY\Scripts)."
-  Write-Warn ''
-  Write-Warn 'Open a new PowerShell window and try:  vibelens serve'
-  Write-Warn 'If that still fails, find the install location with:'
-  Write-Warn '  python -m site --user-base'
-  Write-Warn "and add its 'Scripts' subdirectory to PATH."
+if (-not (Get-Command vibelens -ErrorAction SilentlyContinue)) {
+  Write-Warn "But the 'vibelens' command is not on PATH in this session."
+  if ($InstalledVia -eq 'uv') {
+    $expected = if ($script:UvBinDir) { "$script:UvBinDir\vibelens.exe" } else { "$HOME\.local\bin\vibelens.exe" }
+    Write-Warn "Expected location: $expected"
+    Write-Warn 'Open a new PowerShell window and try: vibelens serve'
+    Write-Warn 'Or as a one-off fallback: uvx vibelens serve'
+  } else {
+    Write-Warn "pip installed it to a user-local Scripts directory that isn't on PATH"
+    Write-Warn '(e.g. %APPDATA%\Python\PythonXY\Scripts).'
+    Write-Warn ''
+    Write-Warn 'Open a new PowerShell window and try:  vibelens serve'
+    Write-Warn 'If that still fails, find the install location with:'
+    Write-Warn '  python -m site --user-base'
+    Write-Warn "and add its 'Scripts' subdirectory to PATH."
+  }
   exit 1
 }
+
+Write-Info '      To start it any time later, run:  vibelens serve'
+Write-Info '      Starting it now...'
+Write-Info ''
+& vibelens serve
+exit $LASTEXITCODE

@@ -27,33 +27,73 @@
 ---
 
 <p align="center">
-  <img src="figures/comic-blurb.jpg" alt="VibeLens Comic — Understand your agent. Teach it. Master it.">
+  <img src="figures/comic-blurb.jpg" alt="VibeLens Comic: Understand your agent. Teach it. Master it.">
 </p>
 
 <p align="center"><em>Let your agent know you better!</em></p>
 
 ---
 
-Your AI coding agents run hundreds of tool calls, burn thousands of tokens, and you have no idea what happened. VibeLens changes that.
+**Sound familiar**?
 
-See [Quick Start](#quick-start) to install in one command. Works with **Claude Code**, **Codex**, **OpenClaw**, **Hermes** and more out of the box.
+- Your agent is powerful, but it doesn't know you.
+- So many agent skills out there. Which ones actually fit your workflow?
+- Your agent keeps repeating the same mistakes.
+- Running an agent team but no idea what they're doing.
+
+**Why VibeLens**:
+
+- **Personalization**: Turns your real sessions into reusable skills your agent can load.
+- **Productivity tips**: Spots where the agent got stuck or went off track, and tells you how to fix it.
+- **Session visualization**: Replays what actually happened, step by step.
+- **Multi-agent support**: Claude Code, Codex CLI, Gemini CLI, OpenClaw, Hermes with auto-detection
+- **Dashboard analytics**: Show usage heatmaps, cost breakdowns, and per-project stats
 
 > **Just want a look?** Try the [live demo](https://vibelens.chats-lab.org/). Nothing to install.
-
-## Features
-
-| Feature | Description |
-|---------|-------------|
-| **Session visualization** | Step-by-step timeline with tool calls, thinking, and sub-agents |
-| **Dashboard analytics** | Usage heatmaps, cost breakdowns, and per-project stats |
-| **Productivity tips** _(needs Agent)_ | Detects recurring frustration patterns and suggests concrete fixes |
-| **Personalization** _(needs Agent)_ | Retrieve, customize, and evolve reusable skills from your real sessions |
-| **Session sharing** | Share sessions via one-click links |
-| **Multi-agent support** | Claude Code, Codex CLI, Gemini CLI, OpenClaw with auto-detection |
 
 ## Quick Start
 
 **Requirement:** either [uv](https://docs.astral.sh/uv/) (preferred) or Python 3.10+.
+
+<details>
+<summary><b>Don't have uv or Python yet?</b></summary>
+
+**Install uv** (recommended, single binary, no Python needed):
+
+```bash
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+# or: brew install uv
+```
+```powershell
+# Windows
+irm https://astral.sh/uv/install.ps1 | iex
+# or: winget install --id=astral-sh.uv -e
+```
+
+**Install or upgrade Python 3.10+** (alternative):
+
+```bash
+# macOS
+brew install python@3.12
+
+# Debian / Ubuntu
+sudo apt update && sudo apt install -y python3 python3-pip
+
+# Fedora / RHEL
+sudo dnf install -y python3 python3-pip
+
+# Arch
+sudo pacman -S python python-pip
+```
+```powershell
+# Windows
+winget install --id Python.Python.3.12 -e
+# or: choco install python
+```
+
+Official downloads: [python.org](https://www.python.org/downloads/) · [uv docs](https://docs.astral.sh/uv/getting-started/installation/)
+</details>
 
 Run the one-liner:
 
@@ -99,58 +139,19 @@ This happens when uv's tool bin directory isn't on your shell's `PATH`. The inst
 </details>
 
 <details>
-<summary><b>Don't have uv or Python yet?</b></summary>
-
-**Install uv** (recommended — single binary, no Python needed):
-
-```bash
-# macOS / Linux
-curl -LsSf https://astral.sh/uv/install.sh | sh
-# or: brew install uv
-```
-```powershell
-# Windows
-irm https://astral.sh/uv/install.ps1 | iex
-# or: winget install --id=astral-sh.uv -e
-```
-
-**Install or upgrade Python 3.10+** (alternative):
-
-```bash
-# macOS
-brew install python@3.12
-
-# Debian / Ubuntu
-sudo apt update && sudo apt install -y python3 python3-pip
-
-# Fedora / RHEL
-sudo dnf install -y python3 python3-pip
-
-# Arch
-sudo pacman -S python python-pip
-```
-```powershell
-# Windows
-winget install --id Python.Python.3.12 -e
-# or: choco install python
-```
-
-Official downloads: [python.org](https://www.python.org/downloads/) · [uv docs](https://docs.astral.sh/uv/getting-started/installation/)
-
-</details>
-
-<details>
 <summary><b>Prefer a manual install?</b></summary>
 
 | Your situation | Command |
 |----------------|---------|
-| Have `uv` | `uv tool install vibelens && vibelens serve` |
+| Have `uv` | `uv tool install vibelens && uv tool update-shell` (then open a new terminal and run `vibelens serve`) |
 | Have Python 3.10+ | `pip install vibelens && vibelens serve` |
 | Want to run without installing | `uvx vibelens serve` |
 | Prefer the npm workflow (Python also required) | `npx @chats-lab/vibelens serve` |
 | Want to hack on VibeLens | [developer setup](#developer-setup) |
 
-The npm wrapper requires Python 3.10+ and an installed `vibelens` package — it's a convenience layer, not a replacement. Install globally with `npm install -g @chats-lab/vibelens` if you prefer.
+The npm wrapper requires Python 3.10+ and an installed `vibelens` package. It's a convenience layer, not a replacement. Install globally with `npm install -g @chats-lab/vibelens` if you prefer.
+
+Full install guide and troubleshooting: [docs/INSTALL.md](docs/INSTALL.md).
 
 </details>
 
@@ -162,6 +163,7 @@ The npm wrapper requires Python 3.10+ and an installed `vibelens` package — it
 | **Codex CLI** | JSONL | `~/.codex/sessions/` |
 | **Gemini CLI** | JSON | `~/.gemini/tmp/` |
 | **OpenClaw** | JSONL | `~/.openclaw/agents/` |
+| **Hermes** | JSONL | `~/.hermes/sessions/` |
 
 VibeLens auto-detects the agent format. Just point it at your session directory and it works.
 
@@ -237,10 +239,6 @@ VibeLens stores logs and cached data under `~/.vibelens/` and `logs/` in the wor
 ```bash
 rm -rf ~/.vibelens
 ```
-
-### Troubleshooting
-
-Top issues. For the full list, see [docs/INSTALL.md](docs/INSTALL.md#troubleshooting).
 
 ## Data Donation
 

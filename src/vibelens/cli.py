@@ -23,6 +23,26 @@ POLL_TIMEOUT_SECONDS = 30
 app = typer.Typer(name="vibelens", help="Agent Trajectory analysis and visualization platform.")
 
 
+def _version_callback(value: bool) -> None:
+    if value:
+        typer.echo(f"vibelens {__version__}")
+        raise typer.Exit()
+
+
+@app.callback()
+def main(
+    version: bool = typer.Option(
+        False,
+        "--version",
+        "-V",
+        callback=_version_callback,
+        is_eager=True,
+        help="Print version and exit.",
+    ),
+) -> None:
+    """Agent Trajectory analysis and visualization platform."""
+
+
 def _open_browser_when_ready(host: str, port: int, url: str) -> None:
     """Poll the server until it accepts connections, then open the browser.
 
@@ -54,9 +74,13 @@ def serve(
 
     settings = load_settings(config_path=config)
     configure_logging(settings.logging)
-    set_settings(settings)
     bind_host = host or settings.server.host
     bind_port = port or settings.server.port
+    # Reflect CLI overrides in the shared settings so anything downstream
+    # (startup log, public-URL construction, etc.) sees the real bind.
+    settings.server.host = bind_host
+    settings.server.port = bind_port
+    set_settings(settings)
 
     typer.echo(f"VibeLens v{__version__}")
     typer.echo(f"VibeLens running at http://{bind_host}:{bind_port}")
