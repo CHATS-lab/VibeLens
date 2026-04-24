@@ -2,13 +2,30 @@
 
 Agent session visualization and personalization platform.
 
+## Backend Layering
+
+The `src/vibelens/` tree has a strict dependency direction. Each layer may import from layers above it in this list, never below:
+
+1. `utils/` — base layer. **No intra-project deps.** Pure Python helpers only.
+2. `models/` — Pydantic schemas. Depends on `utils/`.
+3. `llm/`, `context/` — depend on `models/`, `utils/`. `context/` may depend on `llm/` (tokenizer).
+4. `storage/` — depends on `models/`, `utils/`.
+5. `services/` — depends on `llm/`, `context/`, `models/`, `storage/`, `utils/`.
+6. `api/`, `deps/` — depend on `services/`, `schemas/`.
+
+Rules of thumb:
+- Shared helpers between `llm/` and `services/` live in `utils/`.
+- Never move code into `utils/` if it requires a project import — extract the pure part, leave the rest at its layer.
+- If a helper exists in `services/` but has no service-layer dep, it belongs in `utils/` or `context/`.
+- `services/inference_shared.py` is the inference-orchestration hub.
+
 ## Frontend Conventions (React + Vite + Tailwind)
 
 Refer to `DESIGN.md` for visual/layout conventions.
 
 Code conventions:
 - **I/O lives in `frontend/src/api/<domain>.ts`**. Components never call `fetchWithToken` directly — they take a client from the matching `<domain>Client(fetchWithToken)` factory. One factory per API domain (analysis, llm, sessions, dashboard, upload, donation, extensions). Memoize with `useMemo` so references are stable.
-- **Cross-cutting state lives in `frontend/src/hooks/`**. Existing patterns to reuse: `useJobPolling`, `useCostEstimate`, `useCopyFeedback`, `useResetOnKey`, `useSessionData`, `useDemoGuard`. If a `useEffect` pattern appears in 2+ files, extract a hook.
+- **Cross-cutting state lives in `frontend/src/hooks/`**. Always reuse existing patterns.
 - **Don't notify a parent via `useEffect`** (`useEffect(() => onChange?.(x), [x])`). Wrap the setter and call the callback at the state-change site.
 - **Shared timing constants live in `frontend/src/constants.ts`** (`COPY_FEEDBACK_MS`, `JOB_POLL_INTERVAL_MS`, `SEARCH_DEBOUNCE_MS`). Don't redeclare per file.
 
