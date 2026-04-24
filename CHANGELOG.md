@@ -4,6 +4,8 @@
 
 ### Changed
 - **Bundled default config and example sessions into the package.** `vibelens/data/config/default.yaml`, `vibelens/data/config/demo.yaml`, and `vibelens/data/examples/recipe-book/` now ship inside the wheel. `discover_config_path()` falls back to the bundled `default.yaml` when CWD search finds nothing, and `DemoConfig.session_paths` resolves to the bundled `recipe-book` directory when `example_sessions` is empty. PyPI users running `vibelens serve` from any directory now see the example sessions and inherit sane defaults. Top-level `examples/recipe-book/` moved to `src/vibelens/data/examples/recipe-book/`.
+- **Log home moved to `~/.vibelens/logs/`.** The default `logging.dir` is now `~/.vibelens/logs/` instead of `<repo>/logs/`. Per-run analysis prompt artifacts live at `~/.vibelens/logs/personalization/{creation,evolution,recommendation}/{analysis_id}/` and `~/.vibelens/logs/friction/{analysis_id}/`. Users who override `logging.dir` in YAML are unaffected.
+- **Analysis IDs are now time-sortable.** `generate_analysis_id()` returns `{YYYYMMDDTHHMMSS}-{8char}` (e.g. `20260423T171405-sJtL_vC1`) instead of an opaque 16-char token. Old IDs on disk keep working — the format is not validated on read. Each per-run log directory is named by the analysis ID, so `personalization/creation/{id}.json` and `logs/personalization/creation/{id}/` share the same `{id}`.
 
 ## [1.0.5] - 2026-04-22
 

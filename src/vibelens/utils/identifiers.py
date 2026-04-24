@@ -1,34 +1,27 @@
 """Unique identifier generation utilities.
 
-Provides timestamped ID generation (upload/donation pipelines) and
-deterministic content-addressed IDs (parser step/tool-call dedup).
+Provides timestamped ID generation (analysis/upload/donation pipelines)
+and deterministic content-addressed IDs (parser step/tool-call dedup).
 """
 
 import hashlib
+import secrets
 from datetime import datetime, timezone
-from uuid import uuid4
 
-# strftime format for the time-prefix portion of timestamped IDs
-TIMESTAMPED_ID_FORMAT = "%Y%m%d%H%M%S"
-# Hex chars from uuid4 appended after the timestamp for uniqueness
-SHORT_UUID_LENGTH = 4
+# Bytes of CSPRNG randomness for the suffix. 6 bytes -> 8 url-safe base64 chars.
+SUFFIX_BYTES = 6
 
 
-def generate_timestamped_id(uuid_length: int = SHORT_UUID_LENGTH) -> str:
-    """Create a unique time-prefixed identifier.
+def generate_timestamped_id() -> str:
+    """Create a sortable, URL-safe identifier.
 
-    Format: ``{YYYYMMDDHHMMSS}_{short_uuid}`` — sortable by creation time
-    with a random suffix to avoid collisions.
-
-    Args:
-        uuid_length: Number of hex characters for the random suffix.
-
-    Returns:
-        Identifier string, e.g. ``20260408143012_a1b2``.
+    Format: ``{YYYYMMDDTHHMMSS}-{8url-safe}``, e.g. ``20260423T171405-sJtL_vC1``.
+    Lexicographic sort equals chronological sort, so directory listings
+    sort by creation time. Safe as a filesystem path segment and inside URLs.
     """
-    timestamp = datetime.now(timezone.utc).strftime(TIMESTAMPED_ID_FORMAT)
-    short_uuid = uuid4().hex[:uuid_length]
-    return f"{timestamp}_{short_uuid}"
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+    suffix = secrets.token_urlsafe(SUFFIX_BYTES)
+    return f"{timestamp}-{suffix}"
 
 
 def deterministic_id(namespace: str, *components: str) -> str:
