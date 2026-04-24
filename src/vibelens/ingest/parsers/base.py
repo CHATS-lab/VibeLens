@@ -25,7 +25,7 @@ from vibelens.models.trajectories import (
 from vibelens.models.trajectories.trajectory import DEFAULT_ATIF_VERSION
 from vibelens.utils import log_duration
 from vibelens.utils.log import get_logger
-from vibelens.utils.timestamps import local_date_key, local_tz
+from vibelens.utils.timestamps import local_date_key
 
 logger = get_logger(__name__)
 
@@ -441,7 +441,6 @@ def _compute_final_metrics(steps: list[Step], session_model: str | None) -> Fina
     total_cache_read = 0
     tool_call_count = 0
     breakdown: dict[str, DailyBucket] = {}
-    tz = local_tz()
 
     for step in steps:
         tool_call_count += len(step.tool_calls)
@@ -468,7 +467,11 @@ def _compute_final_metrics(steps: list[Step], session_model: str | None) -> Fina
                 total_cost = (total_cost or 0.0) + cost_this_step
 
         if step.timestamp and (is_message or tokens_this_step or cost_this_step):
-            day = local_date_key(step.timestamp.astimezone(tz))
+            # ``local_date_key`` uses ``.astimezone()`` (no args) so the
+            # offset is resolved per-timestamp, honouring DST. Passing a
+            # cached fixed-offset tz here would mis-attribute winter/summer
+            # sessions to the wrong day at the midnight boundary.
+            day = local_date_key(step.timestamp)
             bucket = breakdown.setdefault(day, DailyBucket())
             if is_message:
                 bucket.messages += 1
