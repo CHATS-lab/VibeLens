@@ -50,6 +50,11 @@ def _exclusive_lock(fh: IO) -> Iterator[None]:
 # triple backticks (e.g. markdown code blocks inside a skill_md_content string).
 _CODE_FENCE_RE = re.compile(r"```(?:json)?\s*\n(.*)\n```", re.DOTALL)
 
+# Valid JSON escape characters per RFC 8259 (the character after a backslash).
+_VALID_JSON_ESCAPES = set('"\\/bfnrtu')
+# Captures every backslash-escape in the JSON text so we can inspect the next char.
+_INVALID_ESCAPE_RE = re.compile(r"\\(.)")
+
 
 def atomic_write_json(path: Path, data: Any, *, indent: int | None = None) -> None:
     """Write JSON to ``path`` atomically via a sibling ``.tmp`` file.
@@ -176,6 +181,29 @@ def locked_jsonl_remove(path: Path, match_key: str, match_value: str) -> int:
         fh.write(new_content.encode("utf-8"))
         fh.flush()
     return removed
+
+
+def repair_json_escapes(json_str: str) -> str:
+    """Escape stray backslashes that LLMs sometimes emit inside JSON strings.
+
+    LLMs occasionally emit ``\\n`` inside strings where they mean a literal
+    newline-backslash-n, which is not a valid JSON escape. This replaces
+    every invalid ``\\X`` with ``\\\\X`` so the string parses.
+
+    Args:
+        json_str: JSON text that failed strict parsing.
+
+    Returns:
+        JSON text with invalid escapes repaired to literal backslashes.
+    """
+
+    def _fix(match: re.Match) -> str:
+        char = match.group(1)
+        if char in _VALID_JSON_ESCAPES:
+            return match.group(0)
+        return "\\\\" + char
+
+    return _INVALID_ESCAPE_RE.sub(_fix, json_str)
 
 
 def extract_json_from_llm_output(text: str) -> str:
