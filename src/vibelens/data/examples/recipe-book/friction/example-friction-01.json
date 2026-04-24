@@ -65,23 +65,6 @@
         "affected_tokens": 12000,
         "affected_time_seconds": 90
       }
-    },
-    {
-      "type_name": "spent-too-long-planning",
-      "description": "You wanted to start building right away, but the agent spent a long time checking the folder and writing out every step before you cut it short.",
-      "severity": 2,
-      "example_refs": [
-        {
-          "session_id": "example-session-claude-01",
-          "start_step_id": "2851ce15-2b3a-4a23-8756-7fdd13932434",
-          "end_step_id": "9bf36d6e-b52a-476a-b493-61101010c494"
-        }
-      ],
-      "friction_cost": {
-        "affected_steps": 8,
-        "affected_tokens": 24000,
-        "affected_time_seconds": 180
-      }
     }
   ],
   "session_ids": [
