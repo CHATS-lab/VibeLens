@@ -15,8 +15,9 @@ from pathlib import Path
 from cachetools import TTLCache
 
 from vibelens.context import MetadataExtractor, sample_contexts
-from vibelens.deps import get_personalization_store
+from vibelens.deps import get_recommendation_store
 from vibelens.llm.backend import InferenceBackend
+from vibelens.llm.backends.cli_base import RECOMMENDATION_CWD
 from vibelens.llm.cost_estimator import CostEstimate, estimate_analysis_cost
 from vibelens.llm.tokenizer import count_tokens
 from vibelens.models.extension import AgentExtensionItem
@@ -34,12 +35,12 @@ from vibelens.prompts.recommendation import (
     RECOMMENDATION_PROFILE_PROMPT,
     RECOMMENDATION_RATIONALE_PROMPT,
 )
-from vibelens.services.analysis_store import generate_analysis_id
 from vibelens.services.extensions.search import ExtensionQuery, SortMode, rank_catalog
 from vibelens.services.inference_shared import (
     CACHE_MAXSIZE,
     CACHE_TTL_SECONDS,
     aggregate_final_metrics,
+    analysis_log_dir,
     extract_all_contexts,
     format_context_batch,
     metrics_from_result,
@@ -52,6 +53,7 @@ from vibelens.services.personalization.shared import parse_llm_output
 from vibelens.services.session.store_resolver import list_all_metadata
 from vibelens.storage.extension.catalog import CatalogSnapshot, load_catalog
 from vibelens.utils.content import truncate
+from vibelens.utils.identifiers import generate_timestamped_id
 from vibelens.utils.log import clear_analysis_id, get_logger, set_analysis_id
 
 logger = get_logger(__name__)
@@ -70,8 +72,6 @@ DESCRIPTION_MAX_CHARS = 150
 RECOMMENDATION_OUTPUT_TOKENS = 4096
 # Timeout per LLM call (seconds)
 RECOMMENDATION_TIMEOUT_SECONDS = 120
-# Directory for detailed request/response analysis logs
-RECOMMENDATION_LOG_DIR = Path("logs/recommendation")
 
 _cache: TTLCache = TTLCache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL_SECONDS)
 
@@ -160,7 +160,7 @@ async def analyze_recommendation(
     if cache_key in _cache:
         return _cache[cache_key]
 
-    analysis_id = generate_analysis_id()
+    analysis_id = generate_timestamped_id()
     set_analysis_id(analysis_id)
 
     try:
@@ -168,7 +168,7 @@ async def analyze_recommendation(
     finally:
         clear_analysis_id()
 
-    get_personalization_store().save(result, analysis_id)
+    get_recommendation_store().save(result, analysis_id)
     _cache[cache_key] = result
     return result
 
@@ -225,8 +225,7 @@ async def _run_pipeline(
             reason="No catalog available",
         )
 
-    run_timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    log_dir = RECOMMENDATION_LOG_DIR / run_timestamp
+    log_dir = analysis_log_dir("recommendation") / analysis_id
 
     logger.info(
         "Recommendation pipeline: %d sessions, %d catalog items",
@@ -310,6 +309,7 @@ async def _generate_profile(
         max_tokens=RECOMMENDATION_OUTPUT_TOKENS,
         timeout=RECOMMENDATION_TIMEOUT_SECONDS,
         json_schema=RECOMMENDATION_PROFILE_PROMPT.output_json_schema(),
+        analysis_cwd=RECOMMENDATION_CWD,
     )
 
     save_inference_log(log_dir, "profile_system.txt", system_prompt)
@@ -415,6 +415,7 @@ async def _generate_rationales(
         max_tokens=RECOMMENDATION_OUTPUT_TOKENS,
         timeout=RECOMMENDATION_TIMEOUT_SECONDS,
         json_schema=RECOMMENDATION_RATIONALE_PROMPT.output_json_schema(),
+        analysis_cwd=RECOMMENDATION_CWD,
     )
 
     save_inference_log(log_dir, "rationale_system.txt", system_prompt)

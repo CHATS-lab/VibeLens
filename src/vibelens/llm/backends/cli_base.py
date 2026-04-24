@@ -22,10 +22,15 @@ from vibelens.models.trajectories.metrics import Metrics
 from vibelens.utils.log import get_logger
 from vibelens.utils.timestamps import monotonic_ms
 
-# Dedicated cwd for analysis subprocesses. Keeps CLI-derived session files
-# (claude/codex/gemini/openclaw write logs relative to cwd) in one place
-# instead of polluting whichever directory VibeLens was launched from.
-ANALYSIS_CWD: Path = Path.home() / ".vibelens" / "analysis-cwd"
+# Dedicated cwds for analysis subprocesses. Keeps CLI-derived session files
+# (claude/codex/gemini/openclaw write logs relative to cwd) segregated per
+# analysis module instead of sharing one directory.
+_VIBELENS_HOME: Path = Path.home() / ".vibelens"
+_PERSONALIZATION_ROOT: Path = _VIBELENS_HOME / "personalization"
+RECOMMENDATION_CWD: Path = _PERSONALIZATION_ROOT / "recommendation"
+CREATION_CWD: Path = _PERSONALIZATION_ROOT / "creation"
+EVOLUTION_CWD: Path = _PERSONALIZATION_ROOT / "evolution"
+FRICTION_CWD: Path = _VIBELENS_HOME / "friction"
 
 # Signature for per-backend extractors passed to ``_parse_single_json``.
 # Returns (text, metrics, model) — metrics may be None when the backend
@@ -142,7 +147,10 @@ class CliBackend(InferenceBackend):
             prompt_text = self._build_prompt(request)
             prompt_bytes = prompt_text.encode("utf-8")
             env = self._build_env()
-            ANALYSIS_CWD.mkdir(parents=True, exist_ok=True)
+            if request.analysis_cwd is None:
+                raise InferenceError("InferenceRequest.analysis_cwd is required for CLI backends")
+            cwd = request.analysis_cwd
+            cwd.mkdir(parents=True, exist_ok=True)
 
             start_ms = monotonic_ms()
             try:
@@ -152,7 +160,7 @@ class CliBackend(InferenceBackend):
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                     env=env,
-                    cwd=str(ANALYSIS_CWD),
+                    cwd=str(cwd),
                 )
                 timeout = request.timeout or self._timeout
                 stdout, stderr = await asyncio.wait_for(
@@ -293,9 +301,7 @@ class CliBackend(InferenceBackend):
             Metrics that records only the wall-clock duration.
         """
         return InferenceResult(
-            text=output,
-            model=self.model,
-            metrics=Metrics(duration_ms=duration_ms),
+            text=output, model=self.model, metrics=Metrics(duration_ms=duration_ms)
         )
 
     def _parse_single_json(

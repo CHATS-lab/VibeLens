@@ -13,8 +13,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from vibelens.context import DetailExtractor, SummaryExtractor, build_batches
-from vibelens.deps import get_personalization_store, get_settings
+from vibelens.deps import get_evolution_store, get_settings
 from vibelens.llm.backend import InferenceBackend
+from vibelens.llm.backends.cli_base import EVOLUTION_CWD
 from vibelens.llm.cost_estimator import CostEstimate, estimate_analysis_cost
 from vibelens.llm.tokenizer import count_tokens
 from vibelens.models.context import SessionContextBatch
@@ -33,9 +34,9 @@ from vibelens.prompts.evolution import (
     EVOLUTION_PROPOSAL_PROMPT,
     EVOLUTION_PROPOSAL_SYNTHESIS_PROMPT,
 )
-from vibelens.services.analysis_store import generate_analysis_id
 from vibelens.services.inference_shared import (
     aggregate_final_metrics,
+    analysis_log_dir,
     extract_all_contexts,
     format_context_batch,
     log_inference_summary,
@@ -57,11 +58,10 @@ from vibelens.services.personalization.shared import (
     resolve_proposal_session_ids,
     validate_patterns,
 )
+from vibelens.utils.identifiers import generate_timestamped_id
 from vibelens.utils.log import clear_analysis_id, get_logger, set_analysis_id
 
 logger = get_logger(__name__)
-
-EVOLUTION_LOG_DIR = Path(__file__).resolve().parents[3] / "logs" / "evolution"
 
 # LLM inference limits for each step of the skill evolution pipeline
 EVOLUTION_PROPOSAL_OUTPUT_TOKENS = 4096
@@ -171,12 +171,11 @@ async def analyze_skill_evolution(
     if cache_key in _cache:
         return _cache[cache_key]
 
-    analysis_id = generate_analysis_id()
+    analysis_id = generate_timestamped_id()
     set_analysis_id(analysis_id)
 
     start_time = time.monotonic()
-    run_timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    log_dir = EVOLUTION_LOG_DIR / run_timestamp
+    log_dir = analysis_log_dir("evolution") / analysis_id
 
     # Step 1: Generate proposals (filtered to user-selected skills)
     proposal_result = await _infer_evolution_proposals(
@@ -266,7 +265,7 @@ async def analyze_skill_evolution(
         batch_count=proposal_result.batch_count,
         created_at=datetime.now(timezone.utc).isoformat(),
     )
-    get_personalization_store().save(skill_result, analysis_id)
+    get_evolution_store().save(skill_result, analysis_id)
     clear_analysis_id()
 
     _cache[cache_key] = skill_result
@@ -361,9 +360,9 @@ async def _infer_evolution(
     rationale: str,
     addressed_patterns: list[str],
     session_ids: list[str],
+    log_dir: Path,
     session_token: str | None = None,
     proposal_confidence: float = 0.0,
-    log_dir: Path | None = None,
     proposal_index: int | None = None,
 ) -> tuple[PersonalizationEvolution, Metrics]:
     """Generate granular evolutions for one existing skill.
@@ -373,9 +372,9 @@ async def _infer_evolution(
         rationale: Why this skill should be evolved and what to change.
         addressed_patterns: Pattern titles this evolution addresses.
         session_ids: Sessions to use as evidence.
+        log_dir: Shared per-run log directory.
         session_token: Browser tab token for upload scoping.
         proposal_confidence: Confidence from proposal step (0.0-1.0).
-        log_dir: Shared log directory. Created if None.
         proposal_index: Index for log file naming.
 
     Returns:
@@ -421,11 +420,8 @@ async def _infer_evolution(
         max_tokens=EVOLUTION_OUTPUT_TOKENS,
         timeout=EVOLUTION_TIMEOUT_SECONDS,
         json_schema=EVOLUTION_PROMPT.output_json_schema(),
+        analysis_cwd=EVOLUTION_CWD,
     )
-
-    if log_dir is None:
-        run_timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        log_dir = EVOLUTION_LOG_DIR / run_timestamp
 
     suffix = f"_{proposal_index}" if proposal_index is not None else ""
     save_inference_log(log_dir, f"skill_evolution{suffix}_system.txt", system_prompt)
@@ -491,6 +487,7 @@ async def _infer_evolution_proposal_batch(
         max_tokens=EVOLUTION_PROPOSAL_OUTPUT_TOKENS,
         timeout=EVOLUTION_PROPOSAL_TIMEOUT_SECONDS,
         json_schema=prompt.output_json_schema(),
+        analysis_cwd=EVOLUTION_CWD,
     )
 
     if batch_index == 0:
@@ -557,5 +554,6 @@ async def _synthesize_evolution_proposals(
         log_dir=log_dir,
         max_output_tokens=EVOLUTION_SYNTHESIS_OUTPUT_TOKENS,
         timeout_seconds=EVOLUTION_SYNTHESIS_TIMEOUT_SECONDS,
+        analysis_cwd=EVOLUTION_CWD,
         extra_user_kwargs={"installed_skills": installed_skills},
     )

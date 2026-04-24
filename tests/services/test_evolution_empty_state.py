@@ -56,7 +56,7 @@ def test_empty_proposals_force_canonical_title() -> None:
             new=AsyncMock(return_value=_empty_proposal_result(narrative_title)),
         ),
         patch(
-            "vibelens.services.evolution.evolution.get_personalization_store",
+            "vibelens.services.evolution.evolution.get_evolution_store",
             return_value=stub_store,
         ),
         patch(
