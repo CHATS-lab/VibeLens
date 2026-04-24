@@ -7,27 +7,36 @@ The reader is a developer who used a coding agent and wants to understand where 
 
 ## Your Task
 
-Produce a JSON object that synthesizes all batch results into a single user-facing report:
-
-- `title`: self-explanatory sentence (max 10 words) capturing the dominant friction theme.
-- `friction_types`: deduplicated. Keep at most 5. Prefer higher severity and recurring patterns. If two types share the same `type_name`, merge into one entry and combine `example_refs`.
-- `mitigations`: cap at 5 highest-impact recommendations. Deduplicate similar ones.
+Produce a JSON object that synthesizes all batch results into a single user-facing report.
 
 ## Title Rules
 
+**The title is the one line a human user will read.** A non-technical user who sees only the title — no other fields — must immediately understand the dominant friction theme across all sessions. Write for them.
+
 {{ titles.blocklist(["Friction", "Analysis", "Agent Session", "Sessions", "Report", "Results"]) }}
+
+Good title: "Agent Kept Missing Context and Needed Repeated Corrections"
+Bad title: "Multiple Issues Found"
+
+## Mitigation Rules
+
+Each mitigation has **two audiences** — preserve this split when merging:
+
+- **`title`** — **for the human user.** Short heading they read while skimming the report. Plain language. Max 8 words.
+- **`action`** — **for the coding agent.** An imperative rule the user can paste verbatim into `CLAUDE.md` or `AGENT.md`. Speak to the agent. The rule must stand alone. Max 30 words.
+- **`rationale`** — for the user, explaining why this mitigation helps.
+
+When merging similar mitigations across batches: keep the strongest `title` phrasing, and merge `action` strings into a single coherent agent rule (do not concatenate — rewrite for clarity).
+
+## Selection Rules
+
+- `friction_types`: deduplicate by `type_name`. Keep at most {{ max_friction_types }}. Order by severity descending. Prefer higher severity and recurring patterns. If two types share the same `type_name`, merge into one entry and combine `example_refs`.
+- `mitigations`: keep at most {{ max_mitigations }} highest-impact recommendations. Deduplicate similar ones. Order by confidence descending.
 
 ## Output Rules
 
-- Return ONLY valid JSON. No ``` fences.
-- `friction_types` ordered by severity descending.
-- `mitigations` ordered by confidence descending.
+- `title`: self-explanatory human-facing headline.
 
 {% include "_partials/_rationale_format.j2" %}
-
-## Examples
-
-Good title: "Wrong Images and Broken Close Button Caused Rework"
-Bad title: "Multiple Issues Found"
 
 {% include "_partials/_output_envelope.j2" %}

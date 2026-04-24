@@ -1,0 +1,20 @@
+## Example References
+
+Two fields carry evidence. Follow these rules strictly.
+
+### `example_refs` (step spans)
+
+- Each ref must cite a real step ID. Each session's valid indices are listed on its `STEPS_AVAILABLE: [...]` line. Cite ONLY indices from that list. Never fabricate.
+- **Cap: at most {{ max_example_refs }} `example_refs` per entry.** If more than {{ max_example_refs }} spans support the same pattern, emit the {{ max_example_refs }} most representative first (clearest instance, widest span) — later refs will be dropped. The cap keeps reports scannable.
+- Group occurrences with the same root cause into ONE entry with multiple refs — do not emit a separate entry per occurrence.
+
+### `session_ids` (session UUIDs)
+
+- Cite the full UUID. The `(index=N)` suffix is for step refs, not session citation. Never put an integer into `session_ids`.
+- Long sessions may appear split across multiple headers as `uuid__part1`, `uuid__part2`, ... Cite just the base UUID once; the service deduplicates.
+- If an entry has no supporting sessions, drop the entry entirely. Empty `session_ids` is not acceptable when the pattern was observed anywhere.
+- Every session cited in `example_refs` must also appear in `session_ids`.
+
+### Text fields (`description`, `rationale`, etc.)
+
+- NEVER reference sessions by UUID, index, or internal ID in text fields. Describe patterns in general terms.

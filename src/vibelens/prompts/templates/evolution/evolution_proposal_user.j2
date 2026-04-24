@@ -10,10 +10,4 @@ The list below is the COMPLETE set of skills eligible for evolution. No other sk
 - [id={{ loop.index0 }}] **{{ skill.name }}**: {{ skill.description }}
 {% endfor %}
 
-### Hard rules for `element_name`
-
-1. `element_name` in every proposal MUST be copied verbatim from the list above (case-sensitive, exact spelling).
-2. Names that appear inside the session transcripts — e.g. tool names like `Read`, `Edit`, `Bash`, `Grep`, `Glob`, `Write`; compaction or sub-agent labels like `brainstorming`, `refactor-guide`, `design-iteration`; or skills referenced from prior sessions like `friction-analysis`, `error-recovery`, `dashboard-loader` — are NOT installed skills. They MUST NOT appear in `proposals`, even if they look like natural improvement targets.
-3. If the detected workflow patterns are not covered by any installed skill above, return `proposals: []`. An empty list is correct and expected.
-
 Provide `title`, workflow patterns with real `example_refs`, and (only when justified) evolution proposals targeting installed skills.

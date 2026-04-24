@@ -26,7 +26,7 @@ Friction is detected ONLY from user signals:
 **Focus on HIGH-IMPACT, RECURRING patterns — not one-off minor hiccups.**
 
 - `type_name`: plain-language kebab-case label anyone can understand (e.g. "changed-wrong-files", "kept-failing-same-thing"). No technical jargon.
-- Prefer severity ≥ 3. Only include severity 1-2 if the pattern recurs across multiple sessions.
+- Minimum severity 2. Do NOT include severity-1 unless the pattern recurs 3+ times. Prefer severity ≥ 3 over lower severities when choosing which types to report.
 - A friction type that happens 3 times across sessions is more valuable than a fluke.
 - Every type should admit a concrete mitigation tip.
 - Group occurrences that share the same type and root cause into ONE entry with multiple `example_refs`.
@@ -42,20 +42,29 @@ Friction is detected ONLY from user signals:
 
 ## Title Rules
 
+**The title is the one line a human user will read.** A non-technical user who sees only the title — no other fields — must immediately understand what went wrong. Write for them, not for yourself.
+
 {{ titles.blocklist(["Friction", "Analysis", "Agent Session", "Sessions", "Report", "Results"]) }}
 
 Good: "Agent Changed Files You Didn't Ask About"
-Good: "Agent Kept Failing After You Corrected It"
 Bad: "Scope Violations" / "Multiple Issues Found" / "Friction Analysis: 10 Sessions"
 
-{% include "_partials/_step_refs.j2" %}
+## Mitigation Rules
+
+Each mitigation has **two audiences**:
+
+- **`title`** — **for the user.** A short heading they read while skimming the report. Plain language, no imperatives aimed at the agent. Max 8 words.
+- **`action`** — **for the coding agent.** An imperative rule the user can paste verbatim into `CLAUDE.md` or `AGENT.md` to change agent behavior going forward. Speak to the agent in second person or as a direct command. The rule must stand alone (no "this issue", "the above", "the user's session"). Max 30 words.
+- **`rationale`** — for the user, explaining why this mitigation helps.
 
 ## Output Rules
 
-- Return ONLY valid JSON. No ``` fences.
-- Report 2-4 friction types and 2-4 mitigations.
+- Report at most {{ max_friction_types_per_batch }} friction types and {{ max_mitigations_per_batch }} mitigations per batch, strictly prioritized by severity AND recurrence.
+- Every friction type SHOULD have a corresponding mitigation.
 - Each mitigation's `addressed_friction_types` must reference at least one `type_name` in `friction_types`.
 - If sessions have zero friction, return `{"title": "No Issues Found", "friction_types": [], "mitigations": []}`.
+
+{% include "_partials/_example_refs.j2" %}
 
 {% include "_partials/_rationale_format.j2" %}
 
@@ -64,7 +73,7 @@ Bad: "Scope Violations" / "Multiple Issues Found" / "Friction Analysis: 10 Sessi
 Example friction_type:
 {"type_name": "kept-fixing-wrong-thing", "description": "You said the test setup was wrong, but the agent kept changing the check instead.", "severity": 4, "example_refs": [...]}
 
-Example mitigation:
-{"title": "Read Full Test File Before Fixing", "action": "When a test fails, read the entire test file including setup before making changes.", "rationale": "The agent missed setup and kept changing checks.\n- Reading setup first shows the real problem\n- Stops repeated wrong fixes", "confidence": 0.85, "addressed_friction_types": ["kept-fixing-wrong-thing"]}
+Example mitigation (note: `title` speaks to the user, `action` speaks to the agent):
+{"title": "Check Test Setup Before Editing Assertions", "action": "Before modifying a failing test's assertions, read the test's setup and fixtures first. If setup looks wrong, fix setup, not the assertion.", "rationale": "The agent repeatedly edited assertions when the real problem was setup.\n- Reading setup first reveals the real cause\n- Prevents the repeat-edit cycle", "confidence": 0.85, "addressed_friction_types": ["kept-fixing-wrong-thing"]}
 
 {% include "_partials/_output_envelope.j2" %}

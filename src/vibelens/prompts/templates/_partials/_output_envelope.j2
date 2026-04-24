@@ -3,4 +3,12 @@
 You MUST respond with a single JSON object conforming to this schema:
 
 {{ output_schema }}
+
+## Output Rules
+
+1. Output ONLY a single JSON object. No markdown fences, no prose, no explanation.
+2. Start your response with `{` and end with `}`.
+3. Do NOT ask clarifying questions. Work with the data provided.
+4. Emit syntactically clean JSON with no typos. JSON string delimiters must be `"` (double quote), never `'` (single quote). Watch for unescaped backslashes, trailing commas, and mismatched brackets.
+
 {{ backend_rules }}
