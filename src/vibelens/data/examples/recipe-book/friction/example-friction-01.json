@@ -38,7 +38,7 @@
       "severity": 4,
       "example_refs": [
         {
-          "session_id": "example-claude-01",
+          "session_id": "example-session-claude-01",
           "start_step_id": "9c35e5af-1d3c-4642-a127-13e0f5c25005",
           "end_step_id": "msg_01U79taSKbpQQsiEUxtcPmgP"
         }
@@ -55,7 +55,7 @@
       "severity": 4,
       "example_refs": [
         {
-          "session_id": "example-claude-01",
+          "session_id": "example-session-claude-01",
           "start_step_id": "91b0eb4e-958f-4ff4-b590-0123a2ffd97d",
           "end_step_id": "msg_01Cwsvtz8zeqo7ReJduShcLc"
         }
@@ -72,7 +72,7 @@
       "severity": 2,
       "example_refs": [
         {
-          "session_id": "example-claude-01",
+          "session_id": "example-session-claude-01",
           "start_step_id": "2851ce15-2b3a-4a23-8756-7fdd13932434",
           "end_step_id": "9bf36d6e-b52a-476a-b493-61101010c494"
         }
@@ -85,7 +85,7 @@
     }
   ],
   "session_ids": [
-    "example-claude-01"
+    "example-session-claude-01"
   ],
   "skipped_session_ids": [],
   "warnings": [],

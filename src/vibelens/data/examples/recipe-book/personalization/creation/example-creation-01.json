@@ -1,0 +1,103 @@
+{
+  "id": "example-creation-01",
+  "mode": "creation",
+  "session_ids": [
+    "example-session-claude-01"
+  ],
+  "skipped_session_ids": [],
+  "title": "Your Website Builds Repeat a Four-Step Pattern",
+  "workflow_patterns": [
+    {
+      "title": "Planning Every Step Before Starting",
+      "description": "You ask for a website and the agent writes out a full plan before touching any files. It checks the folder, lists every piece it will make, and waits for your go-ahead.",
+      "example_refs": [
+        {
+          "session_id": "example-session-claude-01",
+          "start_step_id": "2851ce15-2b3a-4a23-8756-7fdd13932434",
+          "end_step_id": "msg_01LfXUXkG2AGegU6eX6qJZyd"
+        }
+      ],
+      "frequency": 1
+    },
+    {
+      "title": "Preview, Feedback, and Fix Rounds",
+      "description": "The agent opens the site on your computer and shows a picture. You point out what looks wrong. It fixes the spots and shows a new picture. This repeats until the site looks right.",
+      "example_refs": [
+        {
+          "session_id": "example-session-claude-01",
+          "start_step_id": "655decd2-4c91-4e71-b91b-536255dc7c34",
+          "end_step_id": "msg_01QP44jtagCVyNwCRkLKLerC"
+        },
+        {
+          "session_id": "example-session-claude-01",
+          "start_step_id": "9c35e5af-1d3c-4642-a127-13e0f5c25005",
+          "end_step_id": "msg_01U79taSKbpQQsiEUxtcPmgP"
+        }
+      ],
+      "frequency": 2
+    },
+    {
+      "title": "Finding Pictures That Match the Topic",
+      "description": "The agent looks online for pictures that fit your subject, then drops them into the site so each card shows the right image.",
+      "example_refs": [
+        {
+          "session_id": "example-session-claude-01",
+          "start_step_id": "msg_01Fis8Ew7F7f4hVAadhLvoDC",
+          "end_step_id": "msg_01LqsEbE1pzMu5Wifyq8Y65w"
+        }
+      ],
+      "frequency": 1
+    },
+    {
+      "title": "Fixing the Broken Bits You Report",
+      "description": "You tell the agent a button does not work. It reads the code, spots the missing link, patches it, and confirms the button works now.",
+      "example_refs": [
+        {
+          "session_id": "example-session-claude-01",
+          "start_step_id": "91b0eb4e-958f-4ff4-b590-0123a2ffd97d",
+          "end_step_id": "msg_01Cwsvtz8zeqo7ReJduShcLc"
+        }
+      ],
+      "frequency": 1
+    }
+  ],
+  "recommendations": [],
+  "creations": [
+    {
+      "element_type": "skill",
+      "element_name": "website-generator",
+      "description": "Builds a small website from a one-line brief, then polishes it through screenshot rounds until it looks right.",
+      "skill_md_content": "---\nname: website-generator\ndescription: Builds a small website from a one-line brief, then polishes it through screenshot rounds until it looks right. Use when the user asks to build a website, create a landing page, or put together a simple site.\n---\n\n# Website Generator\n\n## Overview\n\nTurn a short brief (\"a recipe book\", \"a travel log\") into a working website. Plan the pieces, write them in one pass, show a screenshot, collect feedback, and fix the rough spots. Engage when the user asks for a website, landing page, or simple static site — not for editing an existing site or for server-backed apps.\n\n## Quick Start\n\n1. Read the brief and pick a subject (food, travel, books, etc.).\n2. Lay out the files you will create.\n3. Write them all.\n4. Open the site on the user's computer.\n5. Share a screenshot.\n6. Fix what the user flags, then show a new screenshot.\n\n## Step 1: Plan the Pieces\n\nList what you will make before writing anything:\n\n- one main page\n- a small set of style files (one for shared values, one for the layout, one for the card look, one for the pop-up, one for motion)\n- a small data file with 6 to 10 sample items\n- a script that shows the items, handles search, and opens a pop-up\n- a tiny icon for the browser tab\n\nShow the plan to the user and wait for go-ahead only if the brief is unclear. Otherwise continue.\n\n## Step 2: Build in One Pass\n\nWrite all files in a single pass. Keep every colour, spacing value, and font name in the shared values file — never in the other files. Each card should include:\n\n- a picture\n- a short title\n- a one-line summary\n- a tag (category)\n- a pop-up view with more detail\n\n## Step 3: Pick Pictures That Match\n\nFor each item, pick one picture that fits the subject. Use a steady source that gives the same picture every time (not a random placeholder service). A recipe card should show food, a travel card should show a place. If a picture turns out wrong, swap it — do not leave a mismatched image in place.\n\n## Step 4: Open the Site\n\nStart a small local server so the user can view the site in a browser. Share the web address.\n\n## Step 5: Screenshot, Fix, Repeat\n\nTake a full-page screenshot and show it to the user. Ask what looks off. For each note:\n\n- read the file that controls that piece\n- make a targeted edit\n- take a new screenshot\n\nStop when the user is happy.\n\n## Pre-Screenshot Checklist\n\nBefore sharing the first screenshot, click through the site yourself:\n\n- every button and close-mark works\n- every picture loads and matches its card\n- the search box filters the cards\n- the page still looks right on a phone-width window\n\nCatching these here saves a feedback round.\n\n## Troubleshooting\n\n- **Wrong pictures appear**: the picture source is returning random images. Switch to a steady source and pick one picture per card by hand.\n- **A button does nothing**: the button exists in the markup but no code listens to it. Add a click handler in the script file.\n- **The pop-up will not close**: the close-mark is inside the pop-up but the close code is attached to the background. Move the handler to the close-mark, or close on any click outside the pop-up body.\n- **Layout breaks on narrow screens**: one of the style rules has a fixed width. Switch it to a flexible width that shrinks.\n",
+      "rationale": "The same build-preview-fix shape repeats across the session.\n- One skill covers plan, build, screenshot, and fix\n- Replaces four ad-hoc passes with one steady flow",
+      "tools_used": [
+        "Write",
+        "Bash",
+        "Read",
+        "Edit"
+      ],
+      "addressed_patterns": [
+        "Planning Every Step Before Starting",
+        "Preview, Feedback, and Fix Rounds",
+        "Finding Pictures That Match the Topic",
+        "Fixing the Broken Bits You Report"
+      ],
+      "confidence": 0.88
+    }
+  ],
+  "evolutions": [],
+  "warnings": [],
+  "backend": "claude-cli",
+  "model": "claude-haiku-4-5",
+  "batch_count": 1,
+  "final_metrics": {
+    "duration": 152,
+    "total_prompt_tokens": 0,
+    "total_completion_tokens": 0,
+    "total_cost_usd": 0.1342875,
+    "tool_call_count": 0,
+    "total_cache_read": 0,
+    "total_cache_write": 0
+  },
+  "created_at": "2026-04-06T14:15:22.147803+00:00",
+  "is_example": true
+}

@@ -1,0 +1,215 @@
+{
+  "id": "example-recommendation-01",
+  "mode": "recommendation",
+  "title": "Five Extensions That Fit Your Website-Building Rhythm",
+  "session_ids": [
+    "example-session-claude-01"
+  ],
+  "skipped_session_ids": [],
+  "workflow_patterns": [
+    {
+      "title": "Preview, Feedback, and Fix Rounds",
+      "description": "You open the site, share a picture, and the agent fixes what you flag. This repeats across each session until the site looks right.",
+      "example_refs": [
+        {
+          "session_id": "example-session-claude-01",
+          "start_step_id": "655decd2-4c91-4e71-b91b-536255dc7c34",
+          "end_step_id": "msg_01QP44jtagCVyNwCRkLKLerC"
+        },
+        {
+          "session_id": "example-session-claude-01",
+          "start_step_id": "91b0eb4e-958f-4ff4-b590-0123a2ffd97d",
+          "end_step_id": "msg_01Cwsvtz8zeqo7ReJduShcLc"
+        }
+      ],
+      "frequency": 2
+    },
+    {
+      "title": "Building the Whole Site in One Pass",
+      "description": "The agent writes every file the site needs in a single pass after planning, then opens it in a browser for review.",
+      "example_refs": [
+        {
+          "session_id": "example-session-claude-01",
+          "start_step_id": "msg_013zAeuSbE4dZQocmJBqPjN9",
+          "end_step_id": "msg_01REznSsFpLXhyVGVpT84LgP"
+        }
+      ],
+      "frequency": 1
+    }
+  ],
+  "recommendations": [
+    {
+      "item": {
+        "extension_id": "tree:affaan-m/everything-claude-code:.agents/skills/frontend-design",
+        "extension_type": "skill",
+        "name": "frontend-design",
+        "repo_name": "affaan-m/everything-claude-code",
+        "source_url": "https://github.com/affaan-m/everything-claude-code/tree/main/.agents/skills/frontend-design",
+        "updated_at": "2026-04-16T06:29:28Z",
+        "description": "Create distinctive, production-grade frontend interfaces with high design quality.",
+        "tags": [],
+        "stars": 157788,
+        "forks": 24521,
+        "license": "MIT",
+        "language": "JavaScript",
+        "install_command": null
+      },
+      "rationale": "Matches your website-building flow end to end.\n- Shapes the first draft closer to what you want\n- Fewer rounds of picture and layout fixes",
+      "scores": {
+        "relevance": 0.95,
+        "quality": 0.9,
+        "popularity": 0.99
+      }
+    },
+    {
+      "item": {
+        "extension_id": "tree:sickn33/antigravity-awesome-skills:plugins/antigravity-awesome-skills-claude/skills/baseline-ui",
+        "extension_type": "skill",
+        "name": "baseline-ui",
+        "repo_name": "sickn33/antigravity-awesome-skills",
+        "source_url": "https://github.com/sickn33/antigravity-awesome-skills/tree/main/plugins/antigravity-awesome-skills-claude/skills/baseline-ui",
+        "updated_at": "2026-04-17T20:23:03Z",
+        "description": "Validates animation durations, enforces typography scale, and prevents layout anti-patterns in Tailwind CSS projects.",
+        "tags": [],
+        "stars": 33658,
+        "forks": 5584,
+        "license": "MIT",
+        "language": "Python",
+        "install_command": null
+      },
+      "rationale": "Catches the small style slips you keep flagging.\n- Keeps headings and spacing consistent across cards\n- Flags layout that breaks on narrow screens",
+      "scores": {
+        "relevance": 0.88,
+        "quality": 0.89,
+        "popularity": 0.82
+      }
+    },
+    {
+      "item": {
+        "extension_id": "tree:github/awesome-copilot:agents/accessibility-runtime-tester.agent.md",
+        "extension_type": "subagent",
+        "name": "Accessibility Runtime Tester",
+        "repo_name": "github/awesome-copilot",
+        "source_url": "https://github.com/github/awesome-copilot/tree/main/agents/accessibility-runtime-tester.agent.md",
+        "updated_at": "2026-04-17T20:41:46Z",
+        "description": "Runtime accessibility specialist for keyboard flows, focus management, dialog behavior, and evidence-backed WCAG validation.",
+        "tags": [],
+        "stars": 30236,
+        "forks": 3582,
+        "license": "MIT",
+        "language": "Python",
+        "install_command": null
+      },
+      "rationale": "Would have caught the close-mark that did nothing.\n- Checks pop-up close paths and keyboard flow\n- Flags dead buttons before you see them",
+      "scores": {
+        "relevance": 0.82,
+        "quality": 0.75,
+        "popularity": 0.45
+      }
+    },
+    {
+      "item": {
+        "extension_id": "tree:affaan-m/everything-claude-code:.kiro/agents/code-reviewer.md",
+        "extension_type": "subagent",
+        "name": "code-reviewer",
+        "repo_name": "affaan-m/everything-claude-code",
+        "source_url": "https://github.com/affaan-m/everything-claude-code/tree/main/.kiro/agents/code-reviewer.md",
+        "updated_at": "2026-04-16T06:29:28Z",
+        "description": "Expert code review specialist. Proactively reviews code for quality, security, and maintainability.",
+        "tags": [],
+        "stars": 157788,
+        "forks": 24521,
+        "license": "MIT",
+        "language": "JavaScript",
+        "install_command": null
+      },
+      "rationale": "Reviews the whole set of files you write in one pass.\n- Spots mixed styles across files you just made\n- Gives a second pair of eyes before the first preview",
+      "scores": {
+        "relevance": 0.78,
+        "quality": 0.73,
+        "popularity": 0.72
+      }
+    },
+    {
+      "item": {
+        "extension_id": "tree:sickn33/antigravity-awesome-skills:plugins/antigravity-awesome-skills-claude/skills/github-automation",
+        "extension_type": "skill",
+        "name": "github-automation",
+        "repo_name": "sickn33/antigravity-awesome-skills",
+        "source_url": "https://github.com/sickn33/antigravity-awesome-skills/tree/main/plugins/antigravity-awesome-skills-claude/skills/github-automation",
+        "updated_at": "2026-04-17T20:23:03Z",
+        "description": "Automate GitHub repositories, issues, pull requests, branches, and CI/CD.",
+        "tags": [],
+        "stars": 33658,
+        "forks": 5584,
+        "license": "MIT",
+        "language": "Python",
+        "install_command": null
+      },
+      "rationale": "Handles the busy-work after each fix round.\n- Opens a pull request from your changes\n- Keeps branches tidy between preview rounds",
+      "scores": {
+        "relevance": 0.7,
+        "quality": 0.75,
+        "popularity": 0.45
+      }
+    }
+  ],
+  "user_profile": {
+    "domains": [
+      "web-dev",
+      "frontend"
+    ],
+    "languages": [
+      "html",
+      "css",
+      "javascript"
+    ],
+    "frameworks": [
+      "static-site"
+    ],
+    "agent_platforms": [
+      "claude-code"
+    ],
+    "bottlenecks": [
+      "repeated screenshot-fix rounds on visual bugs",
+      "placeholder pictures that do not match the subject",
+      "dead buttons slipping into the first preview"
+    ],
+    "workflow_style": "plan first, write the whole site in one pass, then polish through screenshot rounds",
+    "search_keywords": [
+      "frontend",
+      "website",
+      "static-site",
+      "layout",
+      "responsive",
+      "screenshot",
+      "preview",
+      "accessibility",
+      "pop-up",
+      "image",
+      "picture",
+      "review",
+      "code-review"
+    ]
+  },
+  "creations": [],
+  "evolutions": [],
+  "backend": "claude_code",
+  "model": "claude-sonnet-4-5-20250514",
+  "created_at": "2026-04-15T10:30:00.000000+00:00",
+  "batch_count": 1,
+  "batch_metrics": [],
+  "final_metrics": {
+    "duration": 45,
+    "total_steps": null,
+    "tool_call_count": 0,
+    "total_prompt_tokens": 0,
+    "total_completion_tokens": 0,
+    "total_cache_read": 0,
+    "total_cache_write": 0,
+    "total_cost_usd": 0.0,
+    "extra": null
+  },
+  "warnings": [],
+  "is_example": true
+}
