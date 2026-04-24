@@ -48,16 +48,33 @@ class FrictionType(BaseModel):
 
 
 class Mitigation(BaseModel):
-    """A concrete, actionable recommendation to reduce friction."""
+    """A concrete, actionable recommendation to reduce friction.
 
-    title: str = Field(description="Short heading for the mitigation (max 8 words).")
+    Two-audience design: ``title`` is human-facing (what the user sees when
+    skimming the report); ``action`` is agent-directed (a rule the user can
+    paste verbatim into CLAUDE.md or AGENT.md to change agent behavior).
+    """
+
+    title: str = Field(
+        description=(
+            "Short human-facing heading naming the fix. Non-technical users "
+            "must grasp what this mitigation does from the title alone. Max 8 words."
+        )
+    )
     addressed_friction_types: list[str] = Field(
         default_factory=list,
         description=(
             "Friction type_name values this mitigation addresses (e.g. 'changed-wrong-files')."
         ),
     )
-    action: str = Field(description="How to address the friction (max 30 words).")
+    action: str = Field(
+        description=(
+            "Agent-directed instruction written as an imperative rule, ready for the "
+            "user to paste into CLAUDE.md or AGENT.md. Speak to the agent ('Do X', "
+            "'Before Y, check Z'), not to the user. Self-contained: the rule must "
+            "make sense without the surrounding report context. Max 30 words."
+        )
+    )
     rationale: str = Field(
         description=(
             "One sentence (max 15 words), then 1-2 bullets "
@@ -72,15 +89,15 @@ class FrictionAnalysisOutput(BaseModel):
 
     title: str = Field(
         description=(
-            "Self-explanatory title describing the main finding. "
-            "Understandable without reading the rest. Max 10 words."
+            "Human-facing headline naming the dominant friction theme. A non-technical "
+            "user skimming only this title must grasp the main finding. Max 10 words."
         )
     )
     friction_types: list[FrictionType] = Field(
-        default_factory=list, description="0-5 friction type categories."
+        default_factory=list, description="Friction type categories."
     )
     mitigations: list[Mitigation] = Field(
-        default_factory=list, description="0-5 actionable recommendations."
+        default_factory=list, description="Actionable recommendations."
     )
 
 
@@ -97,8 +114,8 @@ class FrictionAnalysisResult(BaseModel):
     title: str | None = Field(
         default=None,
         description=(
-            "Self-explanatory title describing the main finding. "
-            "Understandable without reading the rest. Max 10 words."
+            "Human-facing headline naming the dominant friction theme. A non-technical "
+            "user skimming only this title must grasp the main finding. Max 10 words."
         ),
     )
     mitigations: list[Mitigation] = Field(
