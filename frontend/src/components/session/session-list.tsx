@@ -152,10 +152,16 @@ export function SessionList({
       list.push(session);
       groups.set(key, list);
     }
+    // Sort tier: 0 = regular projects, 1 = dot-prefixed, 2 = VibeLens-internal
+    // analysis cwds (~/.vibelens/personalization/*, ~/.vibelens/friction/*).
+    // Tiering keeps synthetic analysis sessions at the bottom of the sidebar.
+    const tier = (path: string): number => {
+      if (/\.vibelens\/(personalization|friction)\b/.test(path)) return 2;
+      if (baseProjectName(path).startsWith(".")) return 1;
+      return 0;
+    };
     const entries = Array.from(groups.entries()).sort(
-      ([a], [b]) =>
-        Number(baseProjectName(a).startsWith(".")) -
-        Number(baseProjectName(b).startsWith(".")),
+      ([a], [b]) => tier(a) - tier(b),
     );
     return new Map(entries);
   }, [filtered]);
