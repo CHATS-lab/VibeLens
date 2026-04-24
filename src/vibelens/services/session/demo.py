@@ -28,9 +28,9 @@ _EXAMPLE_SKILL_SIDECAR = ".is_example"
 _ALL_PARSERS: list[type[BaseParser]] = [*LOCAL_PARSER_CLASSES, DataclawParser]
 
 # Bump this when the parser changes in ways that affect cached data
-# (e.g. timestamp extraction, duration computation). Forces re-parse
-# of demo examples on next startup.
-_CACHE_VERSION = 1
+# (e.g. timestamp extraction, duration computation) or when the bundled
+# example session_id changes. Forces re-parse of demo examples on next startup.
+_CACHE_VERSION = 2
 _CACHE_VERSION_FILE = ".cache_version"
 
 
@@ -251,11 +251,13 @@ def seed_example_analyses() -> None:
             dst_dir=settings.storage.friction_dir,
             label="friction",
         )
-        _copy_example_store(
-            src_dir=example_path / "personalization",
-            dst_dir=settings.storage.personalization_dir,
-            label="personalization",
-        )
+        personalization_root = example_path / "personalization"
+        for mode_dir in ("creation", "evolution", "recommendation"):
+            _copy_example_store(
+                src_dir=personalization_root / mode_dir,
+                dst_dir=settings.storage.personalization_dir / mode_dir,
+                label=f"personalization/{mode_dir}",
+            )
 
 
 def _copy_example_store(src_dir: Path, dst_dir: Path, label: str) -> None:

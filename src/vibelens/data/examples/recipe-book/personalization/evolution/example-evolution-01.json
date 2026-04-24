@@ -1,0 +1,106 @@
+{
+  "id": "example-evolution-01",
+  "mode": "evolution",
+  "session_ids": [
+    "example-session-claude-01"
+  ],
+  "skipped_session_ids": [],
+  "title": "Two Skills Miss Steps You Keep Doing by Hand",
+  "workflow_patterns": [
+    {
+      "title": "Planning Every Step Before Starting",
+      "description": "You ask for a website and the agent writes out a full plan before touching any files. It lists every piece it will make and waits for your go-ahead.",
+      "example_refs": [
+        {
+          "session_id": "example-session-claude-01",
+          "start_step_id": "2851ce15-2b3a-4a23-8756-7fdd13932434",
+          "end_step_id": "msg_01LfXUXkG2AGegU6eX6qJZyd"
+        }
+      ],
+      "frequency": 1
+    },
+    {
+      "title": "Preview, Feedback, and Fix Rounds",
+      "description": "The agent opens the site, shares a picture, and waits for notes. You flag wrong pictures or a button that will not close. The agent fixes each spot and shares a new picture.",
+      "example_refs": [
+        {
+          "session_id": "example-session-claude-01",
+          "start_step_id": "655decd2-4c91-4e71-b91b-536255dc7c34",
+          "end_step_id": "msg_01QP44jtagCVyNwCRkLKLerC"
+        },
+        {
+          "session_id": "example-session-claude-01",
+          "start_step_id": "91b0eb4e-958f-4ff4-b590-0123a2ffd97d",
+          "end_step_id": "msg_01Cwsvtz8zeqo7ReJduShcLc"
+        }
+      ],
+      "frequency": 2
+    },
+    {
+      "title": "Finding Pictures That Match the Topic",
+      "description": "The agent looks online for pictures that fit your subject and drops them into the site so each card shows the right image.",
+      "example_refs": [
+        {
+          "session_id": "example-session-claude-01",
+          "start_step_id": "msg_01Fis8Ew7F7f4hVAadhLvoDC",
+          "end_step_id": "msg_01LqsEbE1pzMu5Wifyq8Y65w"
+        }
+      ],
+      "frequency": 1
+    }
+  ],
+  "recommendations": [],
+  "creations": [],
+  "evolutions": [
+    {
+      "element_type": "skill",
+      "element_name": "example-skill-frontend-design",
+      "description": "Adds a picture-picking rule and a before-screenshot check to the example-skill-frontend-design skill.",
+      "edits": [
+        {
+          "old_string": "## Fix Round\n\nAfter the first preview, wait for user notes. For each note, change the smallest piece that fixes it. Share a new picture. Repeat until the user is happy.",
+          "new_string": "## Picking Pictures That Fit the Subject\n\nNever plug in random placeholder images. For every card, pick a picture that matches the subject (food for a recipe, a place for a travel item). Use a steady source so the same picture shows up every time the page loads, and give each image a short text label so the page still makes sense if the picture is missing.\n\n## Before-Screenshot Check\n\nBefore sharing a screenshot with the user, click through the site yourself:\n\n- every button and close-mark does something\n- pop-ups close by the close-mark, by clicking outside, and by pressing escape\n- the search box filters the cards\n- the page still looks right on a phone-width window\n\nCatching these here saves a feedback round.\n\n## Fix Round\n\nAfter the first preview, wait for user notes. For each note, change the smallest piece that fixes it. Share a new picture. Repeat until the user is happy.",
+          "replace_all": false
+        }
+      ],
+      "rationale": "The skill does not stop random pictures from landing on the site.\n- A picture rule prevents mismatched images\n- A pre-check would catch stuck buttons before review",
+      "addressed_patterns": [
+        "Preview, Feedback, and Fix Rounds",
+        "Finding Pictures That Match the Topic"
+      ],
+      "confidence": 0.85
+    },
+    {
+      "element_type": "skill",
+      "element_name": "example-skill-webapp-testing",
+      "description": "Adds a click-through script and screen-size screenshots to the example-skill-webapp-testing skill.",
+      "edits": [
+        {
+          "old_string": "## After Feedback\n\n- Wait for the user's notes before changing anything.\n- Take a fresh picture after the fix and share it again.",
+          "new_string": "## Click-Through Before the Screenshot\n\nBefore the first screenshot, run a short script that opens each pop-up and closes it three ways: by the close-mark, by clicking outside, and by pressing escape. Flag any case that did not work. This catches buttons that look fine in a picture but do nothing when clicked.\n\n## Screenshots at Three Screen Sizes\n\nAlways capture the site at three widths: phone (about 375 pixels), tablet (about 768 pixels), and desktop (about 1440 pixels). Show all three to the user at once so layout problems on small screens cannot hide behind a desktop-only view.\n\n## After Feedback\n\n- Wait for the user's notes before changing anything.\n- Take a fresh picture after the fix and share it again.",
+          "replace_all": false
+        }
+      ],
+      "rationale": "The skill checks only what a single screenshot shows.\n- A click-through catches dead buttons a picture cannot\n- Three screen sizes expose layout issues on phones",
+      "addressed_patterns": [
+        "Preview, Feedback, and Fix Rounds"
+      ],
+      "confidence": 0.8
+    }
+  ],
+  "warnings": [],
+  "backend": "claude-cli",
+  "model": "claude-haiku-4-5",
+  "batch_count": 1,
+  "final_metrics": {
+    "duration": 98,
+    "total_prompt_tokens": 0,
+    "total_completion_tokens": 0,
+    "total_cost_usd": 0.0891475,
+    "tool_call_count": 0,
+    "total_cache_read": 0,
+    "total_cache_write": 0
+  },
+  "created_at": "2026-04-06T14:18:47.331562+00:00",
+  "is_example": true
+}
