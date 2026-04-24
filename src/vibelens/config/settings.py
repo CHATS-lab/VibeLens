@@ -27,8 +27,8 @@ def _vibelens_home(*parts: str) -> Path:
 
 
 def _default_log_dir() -> Path:
-    """Default log dir: <project_root>/logs. parents[3] is the project root."""
-    return Path(__file__).resolve().parents[3] / "logs"
+    """Default log dir: ~/.vibelens/logs."""
+    return _vibelens_home("logs")
 
 
 class ServerConfig(BaseModel):
@@ -95,11 +95,11 @@ class StorageConfig(BaseModel):
     )
     personalization_dir: Path = Field(
         default_factory=lambda: _vibelens_home("personalization"),
-        description="Directory for persisted personalization results.",
-    )
-    recommendation_dir: Path = Field(
-        default_factory=lambda: _vibelens_home("recommendations"),
-        description="Directory for persisted recommendation results.",
+        description=(
+            "Root directory for persisted personalization results. Each mode "
+            "(creation, evolution, recommendation) keeps its own store under "
+            "a subdirectory of this path."
+        ),
     )
     examples_dir: Path = Field(
         default_factory=lambda: _vibelens_home("examples"),
@@ -174,7 +174,7 @@ class LoggingConfig(BaseModel):
     level: LogLevelName = Field(default="INFO", description="Global log level.")
     dir: Path = Field(
         default_factory=_default_log_dir,
-        description="Directory for log files. Defaults to <project_root>/logs.",
+        description="Directory for log files. Defaults to ~/.vibelens/logs.",
     )
     max_bytes: int = Field(
         default=10 * 1024 * 1024,
@@ -262,10 +262,10 @@ class Settings(BaseSettings):
         self.storage.managed_plugins_dir = self.storage.managed_plugins_dir.expanduser()
         self.storage.friction_dir = self.storage.friction_dir.expanduser()
         self.storage.personalization_dir = self.storage.personalization_dir.expanduser()
-        self.storage.recommendation_dir = self.storage.recommendation_dir.expanduser()
         self.storage.examples_dir = self._resolve_examples_dir()
         self.upload.dir = self.upload.dir.expanduser()
         self.donation.dir = self.donation.dir.expanduser()
+        self.logging.dir = self.logging.dir.expanduser()
         return self
 
     def _resolve_examples_dir(self) -> Path:

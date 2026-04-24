@@ -15,8 +15,9 @@ from pathlib import Path
 from cachetools import TTLCache
 
 from vibelens.context import DetailExtractor, SummaryExtractor, build_batches
-from vibelens.deps import get_personalization_store, get_settings
+from vibelens.deps import get_creation_store, get_settings
 from vibelens.llm.backend import InferenceBackend
+from vibelens.llm.backends.cli_base import CREATION_CWD
 from vibelens.llm.cost_estimator import CostEstimate, estimate_analysis_cost
 from vibelens.llm.tokenizer import count_tokens
 from vibelens.models.context import SessionContextBatch
@@ -34,10 +35,10 @@ from vibelens.prompts.creation import (
     CREATION_PROPOSAL_PROMPT,
     CREATION_PROPOSAL_SYNTHESIS_PROMPT,
 )
-from vibelens.services.analysis_store import generate_analysis_id
 from vibelens.services.inference_shared import (
     CACHE_TTL_SECONDS,
     aggregate_final_metrics,
+    analysis_log_dir,
     extract_all_contexts,
     format_context_batch,
     log_inference_summary,
@@ -58,11 +59,10 @@ from vibelens.services.personalization.shared import (
     resolve_proposal_session_ids,
     validate_patterns,
 )
+from vibelens.utils.identifiers import generate_timestamped_id
 from vibelens.utils.log import clear_analysis_id, get_logger, set_analysis_id
 
 logger = get_logger(__name__)
-
-CREATION_LOG_DIR = Path(__file__).resolve().parents[3] / "logs" / "creation"
 
 # LLM inference limits for each step of the skill creation pipeline
 SKILL_CREATION_PROPOSAL_OUTPUT_TOKENS = 4096
@@ -147,15 +147,16 @@ async def analyze_skill_creation(
     if cache_key in _cache:
         return _cache[cache_key]
 
-    analysis_id = generate_analysis_id()
+    analysis_id = generate_timestamped_id()
     set_analysis_id(analysis_id)
 
     start_time = time.monotonic()
-    run_timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    log_dir = CREATION_LOG_DIR / run_timestamp
+    log_dir = analysis_log_dir("creation") / analysis_id
 
     # Step 1: Generate proposals
-    proposal_result = await _infer_creation_proposals(session_ids, session_token, log_dir=log_dir)
+    proposal_result = await _infer_creation_proposals(
+        session_ids, log_dir=log_dir, session_token=session_token
+    )
 
     proposal_names = [p.element_name for p in proposal_result.proposal_batch.proposals]
     logger.info("Creation proposals: %s", proposal_names)
@@ -212,7 +213,7 @@ async def analyze_skill_creation(
         final_metrics=aggregate_final_metrics(all_metrics, duration_seconds=duration),
         created_at=datetime.now(timezone.utc).isoformat(),
     )
-    get_personalization_store().save(skill_result, analysis_id)
+    get_creation_store().save(skill_result, analysis_id)
     clear_analysis_id()
 
     _cache[cache_key] = skill_result
@@ -220,14 +221,14 @@ async def analyze_skill_creation(
 
 
 async def _infer_creation_proposals(
-    session_ids: list[str], session_token: str | None = None, log_dir: Path | None = None
+    session_ids: list[str], log_dir: Path, session_token: str | None = None
 ) -> CreationProposalResult:
     """Run the proposal step: detect patterns and generate lightweight proposals.
 
     Args:
         session_ids: Sessions to analyze.
+        log_dir: Per-run log directory under ``logs/personalization/creation/``.
         session_token: Browser tab token for upload scoping.
-        log_dir: Shared log directory. Created if None.
 
     Returns:
         CreationProposalResult with nested proposal_output and metadata.
@@ -254,10 +255,6 @@ async def _infer_creation_proposals(
         len(batches),
     )
     log_inference_summary(context_set, batches, backend)
-
-    if log_dir is None:
-        run_timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        log_dir = CREATION_LOG_DIR / run_timestamp
 
     installed_skills = gather_installed_skills()
 
@@ -307,9 +304,9 @@ async def _infer_skill_creation(
     proposal_rationale: str,
     addressed_patterns: list[str],
     session_ids: list[str],
+    log_dir: Path,
     session_token: str | None = None,
     proposal_confidence: float = 0.0,
-    log_dir: Path | None = None,
     proposal_index: int | None = None,
 ) -> tuple[PersonalizationCreation, Metrics]:
     """Generate full SKILL.md content for one approved proposal.
@@ -320,9 +317,9 @@ async def _infer_skill_creation(
         proposal_rationale: Why this skill would improve workflow.
         addressed_patterns: Pattern titles this proposal addresses.
         session_ids: Sessions to use as evidence.
+        log_dir: Shared per-run log directory.
         session_token: Browser tab token for upload scoping.
         proposal_confidence: Confidence from proposal step (0.0-1.0).
-        log_dir: Shared log directory. Created if None.
         proposal_index: Index for log file naming when called from analyze_skill_creation.
 
     Returns:
@@ -372,11 +369,8 @@ async def _infer_skill_creation(
         max_tokens=SKILL_CREATION_GENERATE_OUTPUT_TOKENS,
         timeout=SKILL_CREATION_GENERATE_TIMEOUT_SECONDS,
         json_schema=CREATION_PROMPT.output_json_schema(),
+        analysis_cwd=CREATION_CWD,
     )
-
-    if log_dir is None:
-        run_timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        log_dir = CREATION_LOG_DIR / run_timestamp
 
     suffix = f"_{proposal_index}" if proposal_index is not None else ""
     save_inference_log(log_dir, f"skill_creation{suffix}_system.txt", system_prompt)
@@ -440,6 +434,7 @@ async def _infer_skill_creation_proposal_batch(
         max_tokens=SKILL_CREATION_PROPOSAL_OUTPUT_TOKENS,
         timeout=SKILL_CREATION_PROPOSAL_TIMEOUT_SECONDS,
         json_schema=CREATION_PROPOSAL_PROMPT.output_json_schema(),
+        analysis_cwd=CREATION_CWD,
     )
 
     if batch_index == 0:
@@ -504,4 +499,5 @@ async def _synthesize_creation_proposals(
         log_dir=log_dir,
         max_output_tokens=SKILL_CREATION_SYNTHESIS_OUTPUT_TOKENS,
         timeout_seconds=SKILL_CREATION_SYNTHESIS_TIMEOUT_SECONDS,
+        analysis_cwd=CREATION_CWD,
     )

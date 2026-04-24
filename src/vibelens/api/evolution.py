@@ -5,7 +5,7 @@ import secrets
 
 from fastapi import APIRouter, Header, HTTPException
 
-from vibelens.deps import get_personalization_store
+from vibelens.deps import get_evolution_store
 from vibelens.models.personalization.results import (
     PersonalizationMeta,
     PersonalizationResult,
@@ -160,7 +160,7 @@ async def evolution_job_cancel(job_id: str) -> AnalysisJobStatus:
 @router.get("/history")
 async def evolution_analysis_history() -> list[PersonalizationMeta]:
     """List all persisted evolution analyses, newest first."""
-    return get_personalization_store().list_analyses()
+    return get_evolution_store().list_analyses()
 
 
 @router.get("/{analysis_id}")
@@ -173,7 +173,7 @@ async def evolution_analysis_load(analysis_id: str) -> PersonalizationResult:
     Returns:
         Full PersonalizationResult.
     """
-    result = get_personalization_store().load(analysis_id)
+    result = get_evolution_store().load(analysis_id)
     if not result:
         raise HTTPException(status_code=404, detail=f"Analysis {analysis_id} not found")
     return result
@@ -189,7 +189,7 @@ async def evolution_analysis_delete(analysis_id: str) -> dict[str, bool]:
     Returns:
         Success status.
     """
-    deleted = get_personalization_store().delete(analysis_id)
+    deleted = get_evolution_store().delete(analysis_id)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Analysis {analysis_id} not found")
     return {"deleted": True}

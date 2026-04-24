@@ -358,6 +358,7 @@ async def run_synthesis(
     log_dir: Path,
     max_output_tokens: int,
     timeout_seconds: int,
+    analysis_cwd: Path,
     extra_user_kwargs: dict[str, object] | None = None,
 ) -> tuple[BaseModel, Metrics]:
     """Run a synthesis LLM call that merges multi-batch outputs.
@@ -405,6 +406,7 @@ async def run_synthesis(
         max_tokens=max_output_tokens,
         timeout=timeout_seconds,
         json_schema=prompt.output_json_schema(),
+        analysis_cwd=analysis_cwd,
     )
 
     save_inference_log(log_dir, f"{prompt.task_id}_system.txt", system_prompt)
@@ -491,11 +493,28 @@ def truncate_digest_to_fit(
     return f"{head}\n\n[... {truncated_count} tokens truncated ...]\n\n{tail}"
 
 
+def analysis_log_dir(mode: str) -> Path:
+    """Return the base directory for per-run prompt artifacts of a mode.
+
+    Friction lives at ``{log_root}/friction/``; the three personalization
+    modes live under ``{log_root}/personalization/{mode}/``. The returned
+    path has no trailing analysis_id segment — callers append that.
+    Resolved at call time so tests that reconfigure settings see the
+    current log root.
+    """
+    from vibelens.deps import get_settings
+
+    base = get_settings().logging.dir
+    if mode == "friction":
+        return base / "friction"
+    return base / "personalization" / mode
+
+
 def save_inference_log(log_dir: Path, filename: str, content: str) -> None:
-    """Save inference log to a timestamped directory.
+    """Save inference log to a per-run directory under ``analysis_log_dir``.
 
     Args:
-        log_dir: Target directory (e.g. logs/friction/20260326153000).
+        log_dir: Target directory (e.g. ``{log_root}/friction/{analysis_id}``).
         filename: File name within the directory.
         content: Text content to write.
     """

@@ -244,15 +244,31 @@ def _build_agent_hook_config_paths() -> dict[str, Path]:
     return paths
 
 
-def get_personalization_store():
-    """Return cached PersonalizationStore singleton."""
+def _personalization_store_for(subdir: str, registry_key: str):
+    """Return a cached PersonalizationStore scoped to one mode subdirectory."""
 
     def _create():
         from vibelens.services.personalization.store import PersonalizationStore
 
-        return PersonalizationStore(get_settings().storage.personalization_dir)
+        base = get_settings().storage.personalization_dir
+        return PersonalizationStore(base / subdir)
 
-    return _get_or_create("personalization_store", _create)
+    return _get_or_create(registry_key, _create)
+
+
+def get_creation_store():
+    """Return cached PersonalizationStore for creation results."""
+    return _personalization_store_for("creation", "creation_store")
+
+
+def get_evolution_store():
+    """Return cached PersonalizationStore for evolution results."""
+    return _personalization_store_for("evolution", "evolution_store")
+
+
+def get_recommendation_store():
+    """Return cached PersonalizationStore for recommendation results."""
+    return _personalization_store_for("recommendation", "recommendation_store")
 
 
 def get_inference_config() -> InferenceConfig:

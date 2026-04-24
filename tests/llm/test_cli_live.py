@@ -9,6 +9,7 @@ consume API quota, and take seconds each. Run with::
 import asyncio
 import os
 import shutil
+from pathlib import Path
 
 import pytest
 
@@ -23,7 +24,12 @@ pytestmark = pytest.mark.skipif(
     reason="live CLI tests require VIBELENS_LIVE_CLI=1",
 )
 
-_REQUEST = InferenceRequest(system="Reply 'ok' and nothing else.", user="hi", timeout=60)
+_REQUEST = InferenceRequest(
+    system="Reply 'ok' and nothing else.",
+    user="hi",
+    timeout=60,
+    analysis_cwd=Path.home() / ".vibelens" / "test-cli-live",
+)
 
 
 def _run(backend) -> object:

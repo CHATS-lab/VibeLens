@@ -15,6 +15,7 @@ from cachetools import TTLCache
 from vibelens.context import DetailExtractor, build_batches
 from vibelens.deps import get_friction_store, get_settings
 from vibelens.llm.backend import InferenceBackend
+from vibelens.llm.backends.cli_base import FRICTION_CWD
 from vibelens.llm.cost_estimator import CostEstimate, estimate_analysis_cost
 from vibelens.llm.tokenizer import count_tokens
 from vibelens.models.context import SessionContextBatch
@@ -29,11 +30,11 @@ from vibelens.models.step_ref import StepRef
 from vibelens.models.trajectories import Trajectory
 from vibelens.models.trajectories.metrics import Metrics
 from vibelens.prompts.friction import FRICTION_PROMPT, FRICTION_SYNTHESIS_PROMPT
-from vibelens.services.analysis_store import generate_analysis_id
 from vibelens.services.inference_shared import (
     CACHE_MAXSIZE,
     CACHE_TTL_SECONDS,
     aggregate_final_metrics,
+    analysis_log_dir,
     extract_all_contexts,
     format_context_batch,
     log_inference_summary,
@@ -46,6 +47,7 @@ from vibelens.services.inference_shared import (
     truncate_digest_to_fit,
 )
 from vibelens.services.personalization.shared import parse_llm_output
+from vibelens.utils.identifiers import generate_timestamped_id
 from vibelens.utils.log import clear_analysis_id, get_logger, set_analysis_id
 
 logger = get_logger(__name__)
@@ -58,8 +60,6 @@ FRICTION_TIMEOUT_SECONDS = 300
 SYNTHESIS_OUTPUT_TOKENS = 8192
 # Timeout for the synthesis LLM call (seconds)
 SYNTHESIS_TIMEOUT_SECONDS = 120
-# Directory for detailed request/response analysis logs
-FRICTION_LOG_DIR = Path("logs/friction")
 
 _cache: TTLCache = TTLCache(maxsize=CACHE_MAXSIZE, ttl=CACHE_TTL_SECONDS)
 
@@ -122,7 +122,7 @@ async def analyze_friction(
         return _cache[cache_key]
 
     start_time = time.monotonic()
-    analysis_id = generate_analysis_id()
+    analysis_id = generate_timestamped_id()
     set_analysis_id(analysis_id)
 
     backend = require_backend()
@@ -138,8 +138,7 @@ async def analyze_friction(
         "Friction analysis: %d sessions → %d batch(es)", len(context_set.session_ids), len(batches)
     )
 
-    run_timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    log_dir = FRICTION_LOG_DIR / run_timestamp
+    log_dir = analysis_log_dir("friction") / analysis_id
     log_inference_summary(context_set, batches, backend)
 
     # Step 1: Concurrent LLM inference per batch
@@ -219,6 +218,7 @@ async def _infer_friction_analysis_batch(
         max_tokens=FRICTION_OUTPUT_TOKENS,
         timeout=FRICTION_TIMEOUT_SECONDS,
         json_schema=FRICTION_PROMPT.output_json_schema(),
+        analysis_cwd=FRICTION_CWD,
     )
 
     if batch_index == 0:
@@ -296,6 +296,7 @@ async def _synthesize_friction_analysis(
         log_dir=log_dir,
         max_output_tokens=SYNTHESIS_OUTPUT_TOKENS,
         timeout_seconds=SYNTHESIS_TIMEOUT_SECONDS,
+        analysis_cwd=FRICTION_CWD,
     )
     logger.info("Synthesis complete: title=%r", synthesis.title)
     return synthesis, synth_metrics

@@ -10,7 +10,8 @@ from vibelens.models.personalization.results import (
     PersonalizationMeta,
     PersonalizationResult,
 )
-from vibelens.services.analysis_store import AnalysisStore, generate_analysis_id
+from vibelens.services.analysis_store import AnalysisStore
+from vibelens.utils.identifiers import generate_timestamped_id
 from vibelens.utils.json import locked_jsonl_append, locked_jsonl_remove
 from vibelens.utils.log import get_logger
 
@@ -58,7 +59,7 @@ class PersonalizationStore(AnalysisStore[PersonalizationResult, PersonalizationM
     ) -> PersonalizationMeta:
         """Persist a result and append metadata to the JSONL index."""
         if analysis_id is None:
-            analysis_id = generate_analysis_id()
+            analysis_id = generate_timestamped_id()
 
         self._data_path(analysis_id).write_text(result.model_dump_json(indent=2), encoding="utf-8")
 

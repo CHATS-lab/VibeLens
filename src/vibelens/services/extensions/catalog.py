@@ -4,7 +4,7 @@ from pathlib import Path
 
 from cachetools import TTLCache
 
-from vibelens.deps import get_personalization_store
+from vibelens.deps import get_recommendation_store
 from vibelens.models.enums import AgentExtensionType
 from vibelens.models.extension import AgentExtensionItem
 from vibelens.models.personalization.recommendation import UserProfile
@@ -291,7 +291,7 @@ def _get_catalog() -> CatalogSnapshot:
 
 def _load_latest_profile() -> UserProfile | None:
     """Load user profile from the most recent recommendation analysis."""
-    store = get_personalization_store()
+    store = get_recommendation_store()
     analyses = store.list_analyses()
     if not analyses:
         return None

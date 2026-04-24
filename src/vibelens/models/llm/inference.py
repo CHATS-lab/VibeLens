@@ -1,5 +1,7 @@
 """Inference request and result models for LLM backends."""
 
+from pathlib import Path
+
 from pydantic import BaseModel, Field
 
 from vibelens.models.trajectories.metrics import Metrics
@@ -59,7 +61,7 @@ class InferenceRequest(BaseModel):
     user: str = Field(description="User prompt content to generate a response for.")
     max_tokens: int = Field(default=4096, description="Maximum number of output tokens.")
     temperature: float = Field(
-        default=0.0, description="Sampling temperature (0.0 = deterministic)."
+        default=1.0, description="Sampling temperature (1.0 = deterministic)."
     )
     timeout: int | None = Field(
         default=None, description="Request timeout in seconds. None uses the backend default."
@@ -67,6 +69,14 @@ class InferenceRequest(BaseModel):
     json_schema: dict | None = Field(
         default=None,
         description="JSON schema for structured output constraint. None for free-form text.",
+    )
+    analysis_cwd: Path | None = Field(
+        default=None,
+        description=(
+            "Working directory for CLI subprocess backends. When set, the backend "
+            "spawns its child process with this cwd so per-call side files land in "
+            "a caller-controlled location. None uses the backend default."
+        ),
     )
 
 
