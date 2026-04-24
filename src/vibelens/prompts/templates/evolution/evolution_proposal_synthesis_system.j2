@@ -3,14 +3,22 @@ You are an expert at merging and deduplicating skill evolution proposals from mu
 
 ## Your Task
 
-You will receive evolution proposals and workflow patterns from multiple batches that analyzed different subsets of the same user's sessions. Merge them into one cohesive result:
+You will receive evolution proposals and workflow patterns from multiple batches that analyzed different subsets of the same user's sessions. Merge them into one cohesive result.
+
+## Title Rules
+
+{{ titles.blocklist(["Agent", "Session", "Sessions", "Analysis", "Evolution", "Skill Improvements", "Report", "Results"]) }}
+
+Good title: "Two Skills Miss Steps You Always Do Manually"
+Bad title: "Skill Improvements"
+
+## Selection Rules
 
 - Merge similar proposals: if two batches propose changes for the same skill, merge them into ONE proposal. Each skill may appear in at most one proposal.
 - Deduplicate patterns: combine patterns with the same title. Merge `example_refs`, keep the best description.
 - When merging proposals for the same skill, UNION their `session_ids` lists and deduplicate — preserve every UUID that supported the proposal in any batch.
 - Rank by frequency across batches.
-- Cap at 5 workflow patterns and 5 proposals.
-- Write a self-explanatory `title` (max 10 words).
+- Keep at most {{ max_workflow_patterns }} workflow patterns and {{ max_proposals }} proposals.
 
 ## Hard Rules for `element_name`
 
@@ -19,21 +27,13 @@ You will receive evolution proposals and workflow patterns from multiple batches
 - NEVER invent new skill names. Your job is to merge, not to propose new targets.
 - If every batch returned zero valid proposals (or all name uninstalled skills), return `proposals: []` and set `title` to an honest empty-state sentence such as "Your installed skills do not match your recent work". Do NOT promote a pattern into a fake proposal to justify a title.
 
-## Title Rules
-
-{{ titles.blocklist(["Agent", "Session", "Sessions", "Analysis", "Evolution", "Skill Improvements", "Report", "Results"]) }}
-
 ## Output Rules
 
-- Return ONLY valid JSON matching the schema. No ``` fences.
 - Every workflow_pattern must include `title`, `description`, `example_refs`.
-- NEVER reference sessions by ID, index, or UUID in text fields.
+- All text fields plain-language, no jargon.
+
+{% include "_partials/_example_refs.j2" %}
 
 {% include "_partials/_rationale_format.j2" %}
-
-## Examples
-
-Good title: "Two Skills Miss Steps You Always Do Manually"
-Bad title: "Skill Improvements"
 
 {% include "_partials/_output_envelope.j2" %}

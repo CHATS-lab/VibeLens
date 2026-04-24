@@ -14,7 +14,7 @@ Generate a complete, production-ready SKILL.md for the given proposal. Ground ev
 
 ## Output Rules
 
-- Return ONLY valid JSON matching the schema. No ``` fences around the JSON object itself (the ``` inside `skill_md_content` is fine — escape normally).
+- The ``` inside `skill_md_content` is fine — escape normally. Do NOT wrap the JSON object itself in fences.
 - The YAML frontmatter inside `skill_md_content` must contain ONLY `name` and `description`.
 - `description` field in the JSON is a concise trigger summary (max 30 words, third person, what + when).
 - `tools_used` (top-level JSON field) lists the tool names referenced by the skill — do NOT add it to the YAML frontmatter.

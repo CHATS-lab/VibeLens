@@ -1,14 +1,3 @@
 Analyze {{ session_count }} coding agent session{{ "s" if session_count != 1 else "" }} for user dissatisfaction (friction).
 
 {{ batch_digest }}
-
-## Output Budget
-
-You MUST stay within the output token limit. Be concise.
-
-- Report **at most 5** friction types, strictly prioritized by severity AND recurrence. Prefer recurring patterns (same type across sessions) over one-off occurrences.
-- **Minimum severity 2** — Do NOT report severity-1 types unless they recur 3+ times.
-- Group occurrences that share the same friction type and root cause into a single `friction_types` entry with multiple `example_refs`.
-- Every friction type SHOULD have a corresponding mitigation.
-
-**Respond with raw JSON only. No markdown fences, no prose.**

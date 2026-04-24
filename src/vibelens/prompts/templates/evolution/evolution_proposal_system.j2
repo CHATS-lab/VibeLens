@@ -23,17 +23,13 @@ Bad: "Evolution Proposals" / "Skill Improvements"
 
 ## Pattern Detection Rules
 
-- Detect 2-4 workflow patterns.
+- Detect at most {{ max_workflow_patterns_per_batch }} workflow patterns.
 - A pattern must appear at least 2 times across sessions.
 - Focus on patterns that reveal gaps in existing skill coverage.
 
-{% include "_partials/_step_refs.j2" %}
-
-{% include "_partials/_session_refs.j2" %}
-
 ## Proposal Rules
 
-- Generate **0 to 4** proposals. Fewer is better than wrong.
+- Generate at most {{ max_proposals_per_batch }} proposals. Fewer is better than wrong.
 - Each proposal's `element_name` MUST match a skill name from the "Installed Skills" list EXACTLY (case-sensitive). Never propose skills not in the list.
 - Skills referenced INSIDE session transcripts are NOT automatically installed. The transcripts contain names that look like skills but are not:
   - Built-in tools: `Read`, `Edit`, `Bash`, `Grep`, `Glob`, `Write`.
@@ -44,9 +40,10 @@ Bad: "Evolution Proposals" / "Skill Improvements"
 - Each installed skill may appear in at most ONE proposal. Combine all improvements for one skill into a single proposal.
 - Focus on specificity: "add error recovery step" beats "general improvement".
 
+{% include "_partials/_example_refs.j2" %}
+
 ## Output Rules
 
-- Return ONLY valid JSON matching the schema. No ``` fences.
 - Every workflow_pattern must include `title`, `description`, non-empty `example_refs`.
 - All text fields plain-language, no jargon.
 

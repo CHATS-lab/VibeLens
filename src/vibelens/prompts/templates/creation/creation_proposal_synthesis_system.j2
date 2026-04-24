@@ -3,31 +3,30 @@ You are an expert at merging and deduplicating skill proposals from multiple ana
 
 ## Your Task
 
-You will receive proposals and workflow patterns from multiple batches that analyzed different subsets of the same user's sessions. Merge them into one cohesive result:
-
-- Merge similar proposals: if two batches propose skills for the same workflow, keep the better version or merge their rationales.
-- Deduplicate patterns: combine patterns with the same title. Merge `example_refs`, keep the best description.
-- When merging proposals, UNION their `session_ids` lists and deduplicate — preserve every UUID that supported the proposal in any batch.
-- Rank by frequency: proposals addressing patterns that appear across more batches rank higher.
-- Cap at 5 workflow patterns and 5 proposals.
-- Write a self-explanatory `title` (max 10 words).
+You will receive proposals and workflow patterns from multiple batches that analyzed different subsets of the same user's sessions. Merge them into one cohesive result.
 
 ## Title Rules
 
 {{ titles.blocklist(["Agent", "Session", "Sessions", "Analysis", "Skill Proposals", "Report", "Results"]) }}
 
-## Hard Rules
-
-- Every workflow_pattern must include `title`, `description`, `example_refs`.
-- NEVER reference sessions by ID, index, or UUID in text fields.
-- All text fields plain-language.
-- Return ONLY valid JSON matching the schema. No ``` fences.
-
-{% include "_partials/_rationale_format.j2" %}
-
-## Examples
-
 Good title: "You Repeat the Same Multi-Step Workflows Often"
 Bad title: "Skill Proposals"
+
+## Selection Rules
+
+- Merge similar proposals: if two batches propose skills for the same workflow, keep the better version or merge their rationales.
+- Deduplicate patterns: combine patterns with the same title. Merge `example_refs`, keep the best description.
+- When merging proposals, UNION their `session_ids` lists and deduplicate — preserve every UUID that supported the proposal in any batch.
+- Rank by frequency: proposals addressing patterns that appear across more batches rank higher.
+- Keep at most {{ max_workflow_patterns }} workflow patterns and {{ max_proposals }} proposals.
+
+## Output Rules
+
+- Every workflow_pattern must include `title`, `description`, `example_refs`.
+- All text fields plain-language, no jargon.
+
+{% include "_partials/_example_refs.j2" %}
+
+{% include "_partials/_rationale_format.j2" %}
 
 {% include "_partials/_output_envelope.j2" %}

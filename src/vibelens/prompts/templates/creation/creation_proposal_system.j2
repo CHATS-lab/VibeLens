@@ -20,23 +20,20 @@ Bad: "Agent Sessions Show Recurring Build Patterns" (meta-process prefix)
 
 ## Pattern Detection Rules
 
-- Detect 2-4 workflow patterns.
+- Detect at most {{ max_workflow_patterns_per_batch }} workflow patterns.
 - A pattern must appear at least 2 times across sessions.
-
-{% include "_partials/_step_refs.j2" %}
-
-{% include "_partials/_session_refs.j2" %}
 
 ## Proposal Rules
 
-- Generate 2-4 proposals, prioritized by frequency and pain severity.
+- Generate at most {{ max_proposals_per_batch }} proposals, prioritized by frequency and pain severity.
 - Each proposal must directly address one or more detected patterns.
 - Do not duplicate already-installed functionality.
 - Focus on specificity: "test-fix-loop" beats "general-helper".
 
+{% include "_partials/_example_refs.j2" %}
+
 ## Output Rules
 
-- Return ONLY valid JSON matching the schema. No ``` fences.
 - Every workflow_pattern must include `title`, `description`, non-empty `example_refs`.
 - All text fields must be plain-language. Avoid jargon and formal phrasing.
 
