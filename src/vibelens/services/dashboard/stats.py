@@ -179,14 +179,18 @@ class _StatsAccumulator:
 
     def __init__(self, local_tz: datetime.tzinfo) -> None:
         # Period boundaries use local timezone so "this week" and
-        # "this month" match the user's wall clock, not UTC.
+        # "this month" match the user's wall clock, not UTC. We compute
+        # the boundary *date keys* directly from ``now``'s local date
+        # parts rather than constructing datetimes — the latter carries
+        # a fixed-offset tzinfo whose offset is wrong for dates in the
+        # opposite DST season, which would shift year/month starts by
+        # an hour and flip their local_date_key to the previous day.
         self.local_tz = local_tz
-        now = datetime.now(tz=local_tz)
-        self.year_start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-        self.month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        self.week_start = (now - timedelta(days=now.weekday())).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
+        now_local = datetime.now().astimezone()
+        monday = (now_local - timedelta(days=now_local.weekday())).date()
+        self.year_start_key = f"{now_local.year:04d}-01-01"
+        self.month_start_key = f"{now_local.year:04d}-{now_local.month:02d}-01"
+        self.week_start_key = monday.strftime("%Y-%m-%d")
 
         self.total_messages = 0
         self.total_input_tokens = 0
@@ -253,7 +257,12 @@ class _StatsAccumulator:
         session_ts = session.timestamp
         if session_ts.tzinfo is None:
             session_ts = session_ts.replace(tzinfo=timezone.utc)
-        local_ts = session_ts.astimezone(self.local_tz)
+        # ``.astimezone()`` with no args honours DST for the actual
+        # timestamp, unlike ``self.local_tz`` which is the fixed offset
+        # captured at process start. This keeps hourly/heatmap bins
+        # aligned with the local wall-clock hour for winter sessions
+        # viewed in summer (or vice versa).
+        local_ts = session_ts.astimezone()
         creation_key = local_date_key(local_ts)
 
         # Creation-day-only counters.
@@ -279,23 +288,22 @@ class _StatsAccumulator:
         # Activity fields (messages / tokens / cost) sum every breakdown
         # day inside the period — so a session crossing into the period
         # contributes its in-period activity even if created earlier.
-        for period, period_start in (
-            (self.year, self.year_start),
-            (self.month, self.month_start),
-            (self.week, self.week_start),
+        for period, period_start_key in (
+            (self.year, self.year_start_key),
+            (self.month, self.month_start_key),
+            (self.week, self.week_start_key),
         ):
-            self._accumulate_period(period, period_start, creation_key, session, breakdown)
+            self._accumulate_period(period, period_start_key, creation_key, session, breakdown)
 
     def _accumulate_period(
         self,
         period: PeriodStats,
-        period_start: datetime,
+        period_start_key: str,
         creation_key: str,
         session: SessionAggregate,
         breakdown: dict[str, _StepBucket],
     ) -> None:
         """Fold a session's metrics into one period's totals."""
-        period_start_key = local_date_key(period_start)
         if creation_key >= period_start_key:
             period.sessions += 1
             period.tool_calls += session.tool_calls
@@ -429,6 +437,10 @@ def _aggregate_metadata(meta: dict) -> SessionAggregate:
     agg.cache_read_tokens = final_metrics.get("total_cache_read") or 0
     agg.cache_creation_tokens = final_metrics.get("total_cache_write") or 0
     agg.tool_calls = final_metrics.get("tool_call_count") or 0
+    # Provisional — used only by the fallback branch of
+    # ``_breakdown_from_metadata`` when no breakdown is available.
+    # The final value is pinned to the breakdown sum below so the
+    # top-line ``total_messages`` always equals the sum of daily bars.
     agg.messages = final_metrics.get("total_steps") or 0
     agg.duration = final_metrics.get("duration") or 0
 
@@ -447,6 +459,12 @@ def _aggregate_metadata(meta: dict) -> SessionAggregate:
             agg.cost_usd = cost
 
     agg.daily_breakdown = _breakdown_from_metadata(final_metrics, agg)
+    # Invariant: ``session.messages`` equals the sum of its daily-breakdown
+    # messages. Without this, top-line card drifts from daily bars when
+    # ``total_steps`` and ``daily_breakdown`` disagree (e.g. skeleton-vs-
+    # full-parse semantics, or SYSTEM steps inflating ``len(steps)``).
+    if agg.daily_breakdown:
+        agg.messages = sum(b.messages for b in agg.daily_breakdown.values())
     return agg
 
 
@@ -554,6 +572,12 @@ def aggregate_session(traj: Trajectory) -> SessionAggregate:
     if any_cost_found:
         agg.cost_usd = sum(b.cost_usd for b in breakdown.values())
     agg.daily_breakdown = breakdown or None
+    # Invariant: ``session.messages`` equals the sum of its daily-breakdown
+    # messages. The loop above also increments ``agg.messages`` inline, but
+    # steps without a timestamp (and no ``fallback_date``) would count there
+    # yet not in the breakdown — re-pinning here keeps the two in lock-step.
+    if agg.daily_breakdown:
+        agg.messages = sum(b.messages for b in agg.daily_breakdown.values())
     agg.duration = _session_duration(traj)
     return agg
 
@@ -591,12 +615,12 @@ def _session_duration(traj: Trajectory) -> int:
 
 
 def _to_local_date_key(timestamp: datetime | None) -> str | None:
-    """``YYYY-MM-DD`` in local tz, or ``None`` when ``timestamp`` is missing."""
+    """``YYYY-MM-DD`` in local tz (DST-aware), or ``None`` when missing."""
     if timestamp is None:
         return None
-    if timestamp.tzinfo is None:
-        timestamp = timestamp.replace(tzinfo=timezone.utc)
-    return local_date_key(timestamp.astimezone(local_tz()))
+    # ``local_date_key`` already handles naive timestamps (assumes UTC)
+    # and uses ``.astimezone()`` internally for DST-aware rendering.
+    return local_date_key(timestamp)
 
 
 def _in_date_range(meta: dict, date_from: str | None, date_to: str | None) -> bool:

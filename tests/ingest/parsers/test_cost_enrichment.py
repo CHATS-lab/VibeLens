@@ -202,3 +202,34 @@ def test_daily_breakdown_none_when_no_step_timestamps():
     fm = _compute_final_metrics([step], session_model="claude-opus-4-7")
     print(f"daily_breakdown when no ts: {fm.daily_breakdown}")
     assert fm.daily_breakdown is None
+
+
+def test_daily_breakdown_key_is_local_day_dst_aware():
+    """The day key is the timestamp's local-day, resolved per-instant
+    so winter (EST) and summer (EDT) timestamps land on the correct
+    local date regardless of when the ingest process started.
+    """
+    # Use two UTC instants that each resolve to a local evening in their
+    # own season. If the code used a fixed-offset tz (cached at process
+    # start) it would mis-attribute one of them by one calendar day.
+    winter = datetime(2026, 1, 5, 3, 30, tzinfo=timezone.utc)  # 22:30 EST Jan 4
+    summer = datetime(2026, 7, 5, 2, 30, tzinfo=timezone.utc)  # 22:30 EDT Jul 4
+
+    fm_w = _compute_final_metrics(
+        [_agent_step_at("sw", winter, prompt=100, completion=50)],
+        session_model="claude-opus-4-7",
+    )
+    fm_s = _compute_final_metrics(
+        [_agent_step_at("ss", summer, prompt=100, completion=50)],
+        session_model="claude-opus-4-7",
+    )
+
+    expected_w = winter.astimezone().strftime("%Y-%m-%d")
+    expected_s = summer.astimezone().strftime("%Y-%m-%d")
+    actual_w = next(iter(fm_w.daily_breakdown))
+    actual_s = next(iter(fm_s.daily_breakdown))
+    print(f"winter: expected {expected_w} got {actual_w}")
+    print(f"summer: expected {expected_s} got {actual_s}")
+
+    assert actual_w == expected_w
+    assert actual_s == expected_s

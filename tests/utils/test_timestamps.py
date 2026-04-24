@@ -44,3 +44,46 @@ def test_local_date_key_respects_local_tz():
     expected = utc_ts.astimezone(local_tz()).strftime("%Y-%m-%d")
 
     assert key == expected
+
+
+def test_local_date_key_is_dst_aware_across_seasons():
+    """A January UTC timestamp must render with January's local offset,
+    not the offset cached at process start. Otherwise sessions in the
+    opposite DST season land on the wrong local day at the midnight
+    boundary, producing off-by-one daily bars on the dashboard.
+    """
+    # Pick timestamps that straddle local midnight in their own season.
+    # For any tz that observes DST with a one-hour offset (US, most of EU):
+    #   - a UTC instant close to midnight local in winter
+    #   - a UTC instant close to midnight local in summer
+    # The key must match what ``.astimezone()`` (no args — DST-aware)
+    # renders, not what a fixed cached offset would render.
+    winter_utc = datetime(2026, 1, 10, 3, 30, 0, tzinfo=timezone.utc)
+    summer_utc = datetime(2026, 7, 10, 3, 30, 0, tzinfo=timezone.utc)
+
+    winter_key = local_date_key(winter_utc)
+    summer_key = local_date_key(summer_utc)
+
+    winter_expected = winter_utc.astimezone().strftime("%Y-%m-%d")
+    summer_expected = summer_utc.astimezone().strftime("%Y-%m-%d")
+    print(f"winter: {winter_utc} -> key={winter_key} expected={winter_expected}")
+    print(f"summer: {summer_utc} -> key={summer_key} expected={summer_expected}")
+
+    assert winter_key == winter_expected
+    assert summer_key == summer_expected
+
+
+def test_local_date_key_preserves_epoch_across_dst_transitions():
+    """Two UTC timestamps on the same local day must map to the same key
+    regardless of which season the process was started in.
+    """
+    # 23:30 UTC on two dates in opposite seasons.
+    jan_pair = (
+        datetime(2026, 1, 5, 3, 30, 0, tzinfo=timezone.utc),  # local Jan 4 evening in ET
+        datetime(2026, 1, 5, 4, 30, 0, tzinfo=timezone.utc),  # local Jan 4 late evening in ET
+    )
+    for ts in jan_pair:
+        key = local_date_key(ts)
+        expected = ts.astimezone().strftime("%Y-%m-%d")
+        print(f"{ts} -> key={key} expected={expected}")
+        assert key == expected

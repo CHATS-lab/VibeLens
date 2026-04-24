@@ -174,13 +174,22 @@ def local_tz() -> tzinfo:
 
 
 def local_date_key(ts: datetime) -> str:
-    """Render ``ts`` as YYYY-MM-DD in the local timezone.
+    """Render ``ts`` as YYYY-MM-DD in the local timezone, DST-aware.
 
-    Used for day-level aggregation keys (daily activity charts, date
-    filters) that must match the labels the rest of the dashboard shows
-    in the user's local time.
+    Uses ``datetime.astimezone()`` with no args so the OS's time database
+    resolves the correct offset for *this* instant (EST vs EDT, CET vs
+    CEST, etc.). The cached ``local_tz()`` captures a fixed offset at
+    process start, which is wrong for timestamps in the opposite DST
+    season — using it here would shift those timestamps by an hour and
+    mis-attribute activity near midnight to the next or previous day.
+
+    Naive datetimes are assumed UTC (consistent with the rest of the
+    codebase — all parsers produce tz-aware timestamps, but callers may
+    pass synthetic naive ones).
     """
-    return ts.astimezone(local_tz()).strftime("%Y-%m-%d")
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return ts.astimezone().strftime("%Y-%m-%d")
 
 
 def utc_now_iso() -> str:

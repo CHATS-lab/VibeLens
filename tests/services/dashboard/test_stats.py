@@ -834,3 +834,164 @@ class TestFastPathDailyBreakdown:
         (only_day,) = day_map.values()
         assert only_day.total_cost_usd == pytest.approx(7.0, rel=1e-9)
         assert only_day.total_tokens == 1500
+
+
+class TestMessageCountInvariant:
+    """Lock in the invariant that the top-line ``total_messages`` always
+    equals the sum of daily_stats messages and the sum of period messages.
+
+    Violating this invariant caused a 5x day-to-day drift: the top card read
+    ``total_steps`` (which includes SYSTEM steps and differs between
+    ingestion paths) while daily bars read ``daily_breakdown.messages``
+    (non-SYSTEM). A cache rebuild flipped which path populated the cache,
+    producing two wildly different dashboards for the same data.
+    """
+
+    def test_full_path_excludes_system_and_matches_daily_sum(self):
+        """SYSTEM steps never count; total matches sum of daily bars."""
+        from vibelens.models.enums import StepSource
+
+        ts = datetime(2026, 4, 10, 10, 0, tzinfo=timezone.utc)
+        steps = [
+            Step(step_id="sys1", source=StepSource.SYSTEM, message="<reminder>", timestamp=ts),
+            Step(step_id="u1", source=StepSource.USER, message="Hi", timestamp=ts),
+            Step(
+                step_id="a1",
+                source=StepSource.AGENT,
+                message="Hello",
+                timestamp=ts + timedelta(minutes=1),
+                metrics=Metrics(prompt_tokens=100, completion_tokens=50),
+            ),
+            Step(step_id="sys2", source=StepSource.SYSTEM, message="<reminder>", timestamp=ts),
+        ]
+        traj = Trajectory(
+            session_id="s1",
+            project_path="/p",
+            timestamp=ts,
+            agent=Agent(name="claude-code", model_name="claude-sonnet-4-6"),
+            steps=steps,
+            final_metrics=FinalMetrics(duration=60, total_steps=4, tool_call_count=0),
+        )
+        result = compute_dashboard_stats([traj])
+
+        daily_sum = sum(d.total_messages for d in result.daily_stats)
+        year_msgs = result.this_year.messages
+        print(f"total={result.total_messages} daily_sum={daily_sum} year={year_msgs}")
+        assert result.total_messages == 2  # 1 user + 1 agent, no SYSTEM
+        assert result.total_messages == daily_sum
+        assert result.total_messages == result.this_year.messages
+        assert result.avg_messages_per_session == pytest.approx(2.0, rel=1e-9)
+
+    def test_fast_path_uses_breakdown_not_total_steps(self):
+        """When metadata carries daily_breakdown, total_messages follows it,
+        not the raw ``total_steps`` (which may be inflated by SYSTEM steps
+        from full-parse or deflated to user-prompt count from skeleton parse).
+        """
+        from vibelens.services.dashboard.stats import compute_dashboard_stats_from_metadata
+
+        meta = {
+            "session_id": "s1",
+            "project_path": "/p",
+            "timestamp": "2026-04-10T10:00:00+00:00",
+            "agent": {"name": "claude-code", "model_name": "claude-opus-4-7"},
+            "final_metrics": {
+                "total_prompt_tokens": 1000,
+                "total_completion_tokens": 0,
+                "total_cache_read": 0,
+                "total_cache_write": 0,
+                "tool_call_count": 0,
+                "total_steps": 999,  # deliberately wrong — must not leak into UI
+                "duration": 60,
+                "total_cost_usd": 1.0,
+                "daily_breakdown": {
+                    "2026-04-10": {"messages": 5, "tokens": 1000, "cost_usd": 1.0},
+                },
+            },
+        }
+        result = compute_dashboard_stats_from_metadata([meta])
+
+        daily_sum = sum(d.total_messages for d in result.daily_stats)
+        print(f"total={result.total_messages} daily_sum={daily_sum} total_steps_meta=999")
+        assert result.total_messages == 5
+        assert result.total_messages == daily_sum
+        assert result.total_messages == result.this_year.messages
+
+    def test_fast_path_fallback_no_breakdown_still_consistent(self):
+        """Legacy metadata (no daily_breakdown): total must still equal daily sum."""
+        from vibelens.services.dashboard.stats import compute_dashboard_stats_from_metadata
+
+        meta = {
+            "session_id": "s2",
+            "project_path": "/p",
+            "timestamp": "2026-04-10T10:00:00+00:00",
+            "agent": {"name": "claude-code", "model_name": "claude-opus-4-7"},
+            "final_metrics": {
+                "total_prompt_tokens": 500,
+                "total_completion_tokens": 0,
+                "total_cache_read": 0,
+                "total_cache_write": 0,
+                "tool_call_count": 0,
+                "total_steps": 7,
+                "duration": 60,
+                "total_cost_usd": 2.0,
+            },
+        }
+        result = compute_dashboard_stats_from_metadata([meta])
+
+        daily_sum = sum(d.total_messages for d in result.daily_stats)
+        print(f"legacy: total={result.total_messages} daily_sum={daily_sum}")
+        assert result.total_messages == daily_sum
+        assert result.total_messages == result.this_year.messages
+
+    def test_cross_day_session_invariant_holds(self):
+        """Invariant survives the cross-day bucketing case."""
+        from vibelens.utils.timestamps import local_tz
+
+        now = datetime.now(tz=local_tz())
+        day1_ts = now.replace(hour=23, minute=30, second=0, microsecond=0) - timedelta(days=3)
+        day2_ts = day1_ts + timedelta(hours=2)
+        traj = _make_cross_day_trajectory("sess-x", day1_ts, day2_ts)
+        result = compute_dashboard_stats([traj])
+
+        daily_sum = sum(d.total_messages for d in result.daily_stats)
+        print(f"cross-day: total={result.total_messages} daily_sum={daily_sum}")
+        assert result.total_messages == daily_sum
+        assert result.total_messages == result.this_year.messages
+
+    def test_invariant_holds_across_many_sessions(self):
+        """Mixed sessions: invariant holds in aggregate."""
+        from vibelens.models.enums import StepSource
+
+        trajs = []
+        base_ts = datetime(2026, 4, 5, 10, 0, tzinfo=timezone.utc)
+        for i in range(5):
+            ts = base_ts + timedelta(days=i)
+            steps = [
+                Step(step_id=f"sys-{i}", source=StepSource.SYSTEM, message="x", timestamp=ts),
+                Step(step_id=f"u-{i}", source=StepSource.USER, message="q", timestamp=ts),
+                Step(
+                    step_id=f"a-{i}",
+                    source=StepSource.AGENT,
+                    message="a",
+                    timestamp=ts + timedelta(minutes=1),
+                    metrics=Metrics(prompt_tokens=100, completion_tokens=50),
+                ),
+            ]
+            trajs.append(
+                Trajectory(
+                    session_id=f"s{i}",
+                    project_path="/p",
+                    timestamp=ts,
+                    agent=Agent(name="claude-code", model_name="claude-sonnet-4-6"),
+                    steps=steps,
+                    final_metrics=FinalMetrics(
+                        duration=60, total_steps=3, tool_call_count=0
+                    ),
+                )
+            )
+        result = compute_dashboard_stats(trajs)
+        daily_sum = sum(d.total_messages for d in result.daily_stats)
+        print(f"many: total={result.total_messages} daily_sum={daily_sum}")
+        assert result.total_messages == 10  # 5 sessions * 2 non-SYSTEM each
+        assert result.total_messages == daily_sum
+        assert result.total_messages == result.this_year.messages
