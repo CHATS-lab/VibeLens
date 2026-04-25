@@ -1,10 +1,9 @@
-import { Check, Copy } from "lucide-react";
 import { useMemo, useState } from "react";
-import { useCopyFeedback } from "../../hooks/use-copy-feedback";
 import { TOGGLE_ACTIVE, TOGGLE_BUTTON_BASE, TOGGLE_CONTAINER, TOGGLE_INACTIVE } from "../../styles";
 import type { Mitigation } from "../../types";
+import { CopyButton } from "../ui/copy-button";
 import { MarkdownRenderer } from "../ui/markdown-renderer";
-import { Modal, ModalBody, ModalFooter, ModalHeader } from "../ui/modal";
+import { Modal, ModalBody, ModalHeader } from "../ui/modal";
 
 type ViewMode = "preview" | "code";
 
@@ -30,11 +29,12 @@ export function CopyAllDialog({ mitigations, onClose }: CopyAllDialogProps) {
   const initialContent = useMemo(() => buildBulletList(mitigations), [mitigations]);
   const [content, setContent] = useState(initialContent);
   const [mode, setMode] = useState<ViewMode>("preview");
-  const { copied, copy } = useCopyFeedback();
 
   return (
     <Modal onClose={onClose} maxWidth="max-w-3xl">
-      <ModalHeader title="Copy All Productivity Tips" onClose={onClose} />
+      <ModalHeader onClose={onClose}>
+        <h2 className="text-lg font-semibold text-primary">Copy All Productivity Tips</h2>
+      </ModalHeader>
       <ModalBody>
         <div className="flex items-center justify-between gap-3">
           <p className="text-xs text-dimmed">
@@ -55,34 +55,24 @@ export function CopyAllDialog({ mitigations, onClose }: CopyAllDialogProps) {
             </button>
           </div>
         </div>
-        {mode === "preview" ? (
-          <div className="min-h-[300px] max-h-[50vh] overflow-y-auto bg-canvas border border-card rounded-lg px-4 py-3">
-            <MarkdownRenderer content={content} variant="document" />
+        <div className="group relative h-[420px] bg-canvas border border-card rounded-lg overflow-hidden">
+          {mode === "preview" ? (
+            <div className="h-full overflow-y-auto px-4 py-3">
+              <MarkdownRenderer content={content} variant="document" />
+            </div>
+          ) : (
+            <textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              className="w-full h-full bg-canvas text-secondary text-xs font-mono p-4 focus:outline-none resize-none leading-relaxed"
+              spellCheck={false}
+            />
+          )}
+          <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity bg-panel border border-card rounded shadow-sm">
+            <CopyButton text={content} />
           </div>
-        ) : (
-          <textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            className="w-full min-h-[300px] max-h-[50vh] bg-canvas text-secondary text-xs font-mono p-4 rounded-lg border border-card focus:border-amber-600/50 focus:outline-none resize-y leading-relaxed"
-            spellCheck={false}
-          />
-        )}
+        </div>
       </ModalBody>
-      <ModalFooter>
-        <button
-          onClick={onClose}
-          className="px-3 py-1.5 text-xs text-muted hover:text-secondary border border-card hover:border-hover rounded transition"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={() => copy(content)}
-          className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-500 rounded transition"
-        >
-          {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-          {copied ? "Copied" : "Copy"}
-        </button>
-      </ModalFooter>
     </Modal>
   );
 }
