@@ -95,17 +95,11 @@ class SessionSearchIndex:
         self._lock = threading.Lock()
         self._full_building = False
 
-    # ---- Read path ---------------------------------------------------------
-
     def has_full(self) -> bool:
         """True when Tier 2 is built and able to score queries."""
         return self._full_inverted is not None and bool(self._full_entries)
 
-    def search_full(
-        self,
-        query: str,
-        top_k: int | None = None,
-    ) -> list[tuple[str, float]] | None:
+    def search_full(self, query: str, top_k: int | None = None) -> list[tuple[str, float]] | None:
         """Return BM25F-ranked ``(session_id, score)`` pairs from Tier 2.
 
         Returns ``None`` when Tier 2 is not ready so the caller can fall
@@ -117,12 +111,25 @@ class SessionSearchIndex:
         inverted = self._full_inverted
         if inverted is None or inverted.num_docs == 0:
             return None
+
+        # Capture references for the closure so the lookup remains stable
+        # for the duration of this query even if a swap_in_full mutates
+        # state mid-call. Mutations rebind the attributes; closures over
+        # the local names see the snapshot we captured here.
+        entries = self._full_entries
+        order = self._full_order
+
+        def raw_text_lookup(doc_idx: int, field: str) -> str:
+            entry = entries.get(order[doc_idx])
+            return getattr(entry, field, "") if entry else ""
+
         view = RankableView(
             inverted=inverted,
-            order=self._full_order,
+            order=order,
             timestamps=self._full_ts,
             id_exact=self._full_id_exact(),
             id_prefix=self._full_id_prefix(),
+            raw_text_lookup=raw_text_lookup,
         )
         return score_query(view, query, top_k)
 
@@ -143,7 +150,6 @@ class SessionSearchIndex:
         return results
 
     # ---- Tier 1 build ------------------------------------------------------
-
     def build_from_metadata(self, session_token: str | None) -> None:
         """Build Tier 1 from cached metadata. No disk I/O beyond that."""
         new_entries = {
@@ -159,7 +165,6 @@ class SessionSearchIndex:
         logger.info("Search index Tier 1 built: %d entries from metadata", len(new_entries))
 
     # ---- Tier 2 build ------------------------------------------------------
-
     def build_full(self, session_token: str | None) -> None:
         """Parse every session, extract text, tokenize, rebuild Tier 2."""
         if self._full_building:
@@ -188,7 +193,6 @@ class SessionSearchIndex:
             self._full_building = False
 
     # ---- Incremental ops ---------------------------------------------------
-
     def add_sessions(self, session_ids: list[str], session_token: str | None) -> None:
         """Incrementally ingest newly-uploaded sessions into both tiers."""
         if not session_ids:
@@ -222,9 +226,7 @@ class SessionSearchIndex:
         if not new_ids and not stale_ids:
             return
 
-        kept = {
-            sid: entry for sid, entry in self._full_entries.items() if sid not in stale_ids
-        }
+        kept = {sid: entry for sid, entry in self._full_entries.items() if sid not in stale_ids}
         meta_by_id = {s.get("session_id", ""): s for s in summaries}
         parsed, _ = _parse_entries_parallel(new_ids, session_token, meta_by_id)
         self._swap_in_full({**kept, **parsed})
@@ -241,8 +243,6 @@ class SessionSearchIndex:
             self._full_inverted = None
             self._full_ts = np.empty(0, dtype=np.float64)
         logger.info("Search index Tier 2 invalidated (Tier 1 preserved)")
-
-    # ---- Internal helpers --------------------------------------------------
 
     def _swap_in_full(self, new_entries: dict[str, _SessionEntry]) -> None:
         """Rebuild the inverted index and swap state atomically.
@@ -279,9 +279,6 @@ class SessionSearchIndex:
         return prefixes
 
 
-# -- Free helpers ---------------------------------------------------------
-
-
 def _ts_to_epoch(dt: datetime | None) -> float:
     """Convert a tz-aware datetime to epoch seconds, or -inf if missing.
 
@@ -312,9 +309,7 @@ def _tier1_entry_from_summary(summary: dict) -> _SessionEntry:
 
 
 def _parse_entries_parallel(
-    session_ids,
-    session_token: str | None,
-    meta_by_id: dict[str, dict],
+    session_ids, session_token: str | None, meta_by_id: dict[str, dict]
 ) -> tuple[dict[str, _SessionEntry], list[int]]:
     """Parse each session in a thread pool and return ``(entries, durations)``.
 
@@ -344,9 +339,7 @@ def _parse_entries_parallel(
 
 
 def _build_entry(
-    session_id: str,
-    session_token: str | None,
-    timestamp: datetime | None,
+    session_id: str, session_token: str | None, timestamp: datetime | None
 ) -> tuple[_SessionEntry | None, int]:
     """Load + extract + tokenize one session. Released trajectories on return.
 
@@ -456,5 +449,3 @@ def _extract_readable_args(arguments: dict | str | None) -> str:
         if isinstance(value, str):
             parts.append(value)
     return " ".join(parts)
-
-
