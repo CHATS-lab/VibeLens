@@ -205,8 +205,8 @@
     "tool_call_count": 0,
     "total_prompt_tokens": 0,
     "total_completion_tokens": 0,
-    "total_cache_read": 0,
-    "total_cache_write": 0,
+    "total_cache_read_tokens": 0,
+    "total_cache_write_tokens": 0,
     "total_cost_usd": 0.0,
     "extra": null
   },

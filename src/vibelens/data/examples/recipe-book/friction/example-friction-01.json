@@ -1,6 +1,6 @@
 {
-  "id": "KR88Y-Td_oYtMdpK",
-  "title": "Wrong Pictures and a Dead Close Button Made You Rework",
+  "id": "example-friction-01",
+  "title": "Three Tips to Build a Recipe Website",
   "mitigations": [
     {
       "title": "Pick Pictures That Match the Subject",
@@ -12,7 +12,7 @@
       ]
     },
     {
-      "title": "Click Every Button Before Sharing",
+      "title": "Click Every Button Before Completion",
       "action": "Before showing the site, click each button and close-mark. If anything does nothing, fix it first.",
       "rationale": "The close-mark looked right but did nothing.\n- A short click-through catches missing wiring\n- Keeps the user from getting stuck in a pop-up",
       "confidence": 0.88,
@@ -82,8 +82,8 @@
     "tool_call_count": 0,
     "total_prompt_tokens": null,
     "total_completion_tokens": null,
-    "total_cache_read": 0,
-    "total_cache_write": 0,
+    "total_cache_read_tokens": 0,
+    "total_cache_write_tokens": 0,
     "total_cost_usd": 0.0523175,
     "extra": null
   },
