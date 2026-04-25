@@ -61,9 +61,20 @@ class CliBackend(InferenceBackend):
         """
         self._config = config
         self._model = config.model or None
-        self._cli_path = shutil.which(self.cli_executable)
         self._tempfiles: list[Path] = []
         self._thinking_warned: bool = False
+
+    @property
+    def _cli_path(self) -> str | None:
+        """Resolve the CLI binary path lazily on every call.
+
+        We previously cached this in ``__init__``, but that goes stale
+        when the user installs or removes the CLI after the backend was
+        constructed (e.g. ``vibelens serve`` was started before
+        ``claude`` was installed). Resolving each time costs one PATH
+        walk and avoids ``[Errno 2]`` mid-inference.
+        """
+        return shutil.which(self.cli_executable)
 
     @property
     @abstractmethod
@@ -125,7 +136,10 @@ class CliBackend(InferenceBackend):
             InferenceTimeoutError: If the subprocess exceeds the timeout.
         """
         if not self._cli_path:
-            raise InferenceError(f"{self.cli_executable} CLI not found in PATH")
+            raise InferenceError(
+                f"{self.cli_executable!r} CLI not found in PATH. "
+                f"Install it and restart, or pick a different backend in LLM settings."
+            )
         if request.workspace_dir is None:
             raise InferenceError("InferenceRequest.workspace_dir is required for CLI backends")
 
@@ -162,6 +176,12 @@ class CliBackend(InferenceBackend):
                 await _kill_process(proc)
                 raise InferenceTimeoutError(
                     f"{self.cli_executable} timed out after {timeout}s"
+                ) from exc
+            except FileNotFoundError as exc:
+                raise InferenceError(
+                    f"{self.cli_executable!r} CLI not found at {cmd[0]!r}. "
+                    f"It may have been uninstalled since the server started. "
+                    f"Reinstall it, or pick a different backend in LLM settings."
                 ) from exc
             except OSError as exc:
                 raise InferenceError(f"Failed to start {self.cli_executable}: {exc}") from exc
@@ -428,8 +448,8 @@ def _backfill_cost(result: InferenceResult) -> None:
         model=result.model,
         input_tokens=metrics.prompt_tokens or 0,
         output_tokens=metrics.completion_tokens or 0,
-        cache_read_tokens=metrics.cached_tokens or 0,
-        cache_creation_tokens=metrics.cache_creation_tokens or 0,
+        cache_read_tokens=metrics.cache_read_tokens or 0,
+        cache_write_tokens=metrics.cache_write_tokens or 0,
     )
 
 
