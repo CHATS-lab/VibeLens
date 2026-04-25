@@ -195,7 +195,7 @@ def compute_cost_from_tokens(
     input_tokens: int,
     output_tokens: int,
     cache_read_tokens: int = 0,
-    cache_creation_tokens: int = 0,
+    cache_write_tokens: int = 0,
 ) -> float | None:
     """Compute estimated USD cost from aggregate token counts.
 
@@ -209,7 +209,7 @@ def compute_cost_from_tokens(
     return (
         non_cached_input * pricing.input_per_mtok
         + cache_read_tokens * pricing.cache_read_per_mtok
-        + cache_creation_tokens * pricing.cache_write_per_mtok
+        + cache_write_tokens * pricing.cache_write_per_mtok
         + output_tokens * pricing.output_per_mtok
     ) / TOKENS_PER_MTOK
 
@@ -236,11 +236,11 @@ def compute_step_cost(step: Step, session_model: str | None = None) -> float | N
         return None
 
     metrics = step.metrics
-    non_cached_input = max(0, metrics.prompt_tokens - metrics.cached_tokens)
+    non_cached_input = max(0, metrics.prompt_tokens - metrics.cache_read_tokens)
     return (
         non_cached_input * pricing.input_per_mtok
-        + metrics.cached_tokens * pricing.cache_read_per_mtok
-        + metrics.cache_creation_tokens * pricing.cache_write_per_mtok
+        + metrics.cache_read_tokens * pricing.cache_read_per_mtok
+        + metrics.cache_write_tokens * pricing.cache_write_per_mtok
         + metrics.completion_tokens * pricing.output_per_mtok
     ) / TOKENS_PER_MTOK
 

@@ -19,7 +19,6 @@ per-session.
 """
 
 import hashlib
-import json
 import re
 import sqlite3
 from collections import OrderedDict
@@ -27,10 +26,19 @@ from pathlib import Path
 from typing import NamedTuple
 from uuid import uuid4
 
+import orjson
 from pydantic import BaseModel, Field
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
-from vibelens.ingest.parsers.base import ROLE_TO_SOURCE, BaseParser, mark_error_content
+from vibelens.ingest.parsers.base import BaseParser
+from vibelens.ingest.parsers.helpers import (
+    ROLE_TO_SOURCE,
+    build_diagnostics_extra,
+    iter_jsonl_safe,
+    mark_error_content,
+    parse_tool_arguments,
+    truncate_first_message,
+)
 from vibelens.models.enums import AgentType, StepSource
 from vibelens.models.trajectories import (
     FinalMetrics,
@@ -59,7 +67,11 @@ RELEVANT_ROLES = {"user", "assistant"}
 MAX_TOOL_RESULT_CACHE = 500
 
 # Matches the metadata prefix Codex prepends to tool outputs:
-#   Exit code: 0\nWall time: 1.23s\nOutput:\n<actual output>
+#
+#   Exit code: 0
+#   Wall time: 1.23s
+#   Output:
+#   <actual output>
 _OUTPUT_PREFIX_RE = re.compile(
     r"^Exit code:\s*(\d+)\nWall time:\s*([0-9.]+)s?\nOutput:\n", re.DOTALL
 )
@@ -79,6 +91,11 @@ _CODEX_SYSTEM_TAG_PREFIXES = (
     "<user_instructions",
 )
 
+# Tool name that Codex uses to spawn a sub-agent. Output is JSON
+# ``{"agent_id": "<child-thread-id>", "nickname": "..."}`` where
+# ``agent_id`` matches the child rollout's ``session_meta.id``.
+_SPAWN_AGENT_TOOL_NAME = "spawn_agent"
+
 
 class _CodexSessionMeta(NamedTuple):
     """Aggregated metadata from a single pass over raw JSONL content."""
@@ -93,6 +110,8 @@ class _CodexSessionMeta(NamedTuple):
     sandbox_policy: str | None
     approval_policy: str | None
     forked_from_id: str | None
+    agent_role: str | None
+    agent_nickname: str | None
 
 
 class _CodexParseState(BaseModel):
@@ -142,30 +161,66 @@ class CodexParser(BaseParser):
         return sorted(f for f in data_dir.rglob("*.jsonl") if f.stem.startswith("rollout-"))
 
     def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
-        """Parse Codex rollout JSONL content into a Trajectory.
+        """Parse a Codex rollout into a main trajectory plus its sub-agents.
+
+        When ``source_path`` is given and we can locate any sub-agent
+        rollouts spawned from this main session, those rollouts are read
+        off disk and returned alongside the main trajectory — the same
+        shape Claude's parser uses, so the frontend can render sub-agents
+        nested inline under their parent.
+
+        Two lookup paths, tried in order:
+
+        1. SQLite ``state_5.sqlite`` — primary, fast, used by interactive
+           Codex sessions.
+        2. Filesystem scan of ``~/.codex/sessions/`` for rollout files
+           whose stem ends with the spawn_agent output's ``agent_id``.
+           Fallback used by ``codex exec`` runs that don't write SQLite.
 
         Args:
-            content: Raw JSONL content string.
-            source_path: Original file path (used for session ID fallback).
+            content: Raw JSONL content of the main rollout.
+            source_path: Optional file path. Used both as the
+                session-id fallback and to gate sub-agent discovery.
 
         Returns:
-            Single-element list with the Trajectory, or empty list.
+            ``[main]`` when no sub-agents are linked, otherwise
+            ``[main, *sub-agents]``. Empty list on parse failure.
+        """
+        main = self._parse_rollout(content, source_path)
+        if main is None:
+            return []
+        sub_trajectories: list[Trajectory] = []
+        if source_path:
+            sub_trajectories = self._load_subagent_trajectories(main.session_id, content)
+        return [main, *sub_trajectories]
+
+    def _parse_rollout(self, content: str, source_path: str | None) -> Trajectory | None:
+        """Parse a single rollout file's content into one Trajectory.
+
+        Used both for the main rollout and (recursively, via path) for
+        each sub-agent rollout. Strips the fork-context prelude so a
+        ``fork_context: true`` child's first message is the spawn task
+        rather than the parent's earliest prompt.
         """
         collector = DiagnosticsCollector()
-        entries = _load_rollout_content(content, collector)
+        entries = list(iter_jsonl_safe(content, diagnostics=collector))
         if not entries:
-            return []
+            return None
+
+        # Drop the inherited parent history from fork-mode children so
+        # downstream logic only sees the sub-agent's own conversation.
+        entries = _strip_fork_prelude(entries)
 
         meta = _scan_session_metadata(entries)
         fallback_id = Path(source_path).stem if source_path else str(uuid4())
         session_id = meta.session_id or fallback_id
         steps = _build_steps(entries, session_id, collector)
         if not steps:
-            return []
+            return None
 
         agent = self.build_agent(version=meta.cli_version, model=meta.model_name)
 
-        extra = self.build_diagnostics_extra(collector)
+        extra = build_diagnostics_extra(collector)
 
         total_usage = _extract_final_token_usage(entries)
         if total_usage:
@@ -177,20 +232,70 @@ class CodexParser(BaseParser):
             extra = extra or {}
             extra.update(session_extra)
 
-        parent_ref = None
-        if meta.forked_from_id:
-            parent_ref = TrajectoryRef(session_id=meta.forked_from_id)
+        # Three signals point a child at its parent, in order of strength:
+        #   1. ``forked_from_id`` on session_meta — fork-mode children only.
+        #   2. ``source.subagent.thread_spawn.parent_thread_id`` — present
+        #      in both fresh and fork mode for any sub-agent (Codex writes
+        #      this to the rollout itself, so it works without SQLite).
+        #   3. ``agent_role`` alone — confirms sub-agent status when neither
+        #      of the above is available; parent stays unknown.
+        parent_id = meta.forked_from_id or _parent_id_from_source(meta.source)
+        parent_ref = TrajectoryRef(session_id=parent_id) if parent_id else None
 
-        return [
-            self.assemble_trajectory(
-                session_id=session_id,
-                agent=agent,
-                steps=steps,
-                project_path=meta.project_path,
-                parent_trajectory_ref=parent_ref,
-                extra=extra,
-            )
-        ]
+        return self.assemble_trajectory(
+            session_id=session_id,
+            agent=agent,
+            steps=steps,
+            project_path=meta.project_path,
+            parent_trajectory_ref=parent_ref,
+            extra=extra,
+        )
+
+    def _load_subagent_trajectories(
+        self, parent_id: str, parent_content: str
+    ) -> list[Trajectory]:
+        """Find and parse direct sub-agent rollouts spawned from ``parent_id``.
+
+        Tries SQLite first (fast, present for interactive Codex). When
+        that returns nothing — typically ``codex exec`` runs that bypass
+        the database — falls back to scanning the parent's spawn_agent
+        outputs for child agent_ids and locating their rollout files
+        under ``~/.codex/sessions/``.
+
+        Recursion is one level: the frontend only renders direct
+        children inline.
+
+        Args:
+            parent_id: Session id of the main trajectory.
+            parent_content: Raw rollout content of the parent, used to
+                find spawn_agent outputs when the SQLite path returns
+                nothing.
+
+        Returns:
+            List of sub-agent Trajectories with ``parent_trajectory_ref``
+            populated.
+        """
+        rollout_paths = _find_subagent_rollouts(parent_id)
+        if not rollout_paths:
+            rollout_paths = _find_subagent_rollouts_via_filesystem(parent_content)
+        if not rollout_paths:
+            return []
+        out: list[Trajectory] = []
+        for path in rollout_paths:
+            try:
+                content = path.read_text(encoding="utf-8")
+            except OSError:
+                logger.debug("Cannot read sub-agent rollout %s", path)
+                continue
+            sub = self._parse_rollout(content, str(path))
+            if sub is None:
+                continue
+            if sub.parent_trajectory_ref is None:
+                # Last-resort: confirm linkage from caller side when
+                # neither rollout source nor forked_from_id was present.
+                sub.parent_trajectory_ref = TrajectoryRef(session_id=parent_id)
+            out.append(sub)
+        return out
 
     def parse_session_index(self, data_dir: Path) -> list[Trajectory]:
         """Build skeleton trajectories from Codex SQLite index.
@@ -242,18 +347,19 @@ class CodexParser(BaseParser):
         if not session_id:
             return None
 
-        # Sub-agent threads have a JSON source with "subagent" key —
-        # skip them so they only appear as children of their parent.
-        source_val = row["source"] or ""
-        if source_val.startswith("{") and "subagent" in source_val:
-            return None
+        # Sub-agent threads carry a JSON source describing their parent.
+        # We keep the row in the skeleton index but tag it with
+        # ``parent_trajectory_ref`` so downstream listing logic can
+        # filter sub-agents out of the main session list while still
+        # resolving them when the parent is loaded.
+        parent_thread_id = _extract_parent_thread_id(row["source"] or "")
 
         timestamp = normalize_timestamp(row["created_at"])
         agent = self.build_agent(version=row["cli_version"], model=row["model"])
 
         first_message = row["first_user_message"]
         if first_message:
-            first_message = self.truncate_first_message(first_message)
+            first_message = truncate_first_message(first_message)
 
         # Skeleton step so Trajectory validation passes (min_length=1)
         skeleton_step = Step(
@@ -270,8 +376,8 @@ class CodexParser(BaseParser):
             total_steps=0,
             tool_call_count=0,
             duration=0,
-            total_cache_write=0,
-            total_cache_read=0,
+            total_cache_write_tokens=0,
+            total_cache_read_tokens=0,
         )
 
         extra: dict = {"is_skeleton": True}
@@ -282,6 +388,8 @@ class CodexParser(BaseParser):
         if row["title"]:
             extra["title"] = row["title"]
 
+        parent_ref = TrajectoryRef(session_id=parent_thread_id) if parent_thread_id else None
+
         return Trajectory(
             session_id=session_id,
             project_path=row["cwd"],
@@ -290,15 +398,164 @@ class CodexParser(BaseParser):
             agent=agent,
             steps=[skeleton_step],
             final_metrics=final_metrics,
+            parent_trajectory_ref=parent_ref,
             extra=extra,
         )
 
 
-def _load_rollout_content(
-    content: str, diagnostics: DiagnosticsCollector | None = None
-) -> list[dict]:
-    """Parse JSONL content string into entry dicts."""
-    return list(BaseParser.iter_jsonl_safe(content, diagnostics=diagnostics))
+def _extract_parent_thread_id(source_val: str) -> str | None:
+    """Pull ``parent_thread_id`` out of a Codex thread's source JSON.
+
+    Returns None when the source is empty, not JSON, or doesn't
+    describe a sub-agent. Catches malformed JSON quietly because the
+    column is opaque to us — better to lose linkage than reject
+    a row.
+    """
+    if not source_val or not source_val.startswith("{") or "subagent" not in source_val:
+        return None
+    try:
+        source_obj = orjson.loads(source_val)
+    except orjson.JSONDecodeError:
+        return None
+    return _parent_id_from_source(source_obj)
+
+
+def _parent_id_from_source(source: object) -> str | None:
+    """Pull ``parent_thread_id`` from a parsed source object.
+
+    The same shape appears in two places: the rollout's
+    ``session_meta.payload.source`` (already a dict when present) and
+    the SQLite ``threads.source`` column (a JSON string). This helper
+    normalises both — ``_extract_parent_thread_id`` decodes the string
+    and forwards here.
+    """
+    if not isinstance(source, dict):
+        return None
+    spawn = source.get("subagent", {}).get("thread_spawn", {})
+    if not isinstance(spawn, dict):
+        return None
+    parent = spawn.get("parent_thread_id")
+    return parent if isinstance(parent, str) and parent else None
+
+
+def _find_subagent_rollouts(parent_id: str) -> list[Path]:
+    """Return rollout paths for sub-agents directly spawned from ``parent_id``.
+
+    Reads ``~/.codex/state_5.sqlite`` because Codex doesn't write the
+    parent → child link into the rollout files for fresh
+    (``fork_context=false``) spawns. A LIKE query against the source
+    column is fast enough on a few-thousand-row threads table — the
+    column is opaque JSON, so we can't index on the embedded id.
+    """
+    db_path = Path.home() / ".codex" / "state_5.sqlite"
+    if not db_path.is_file():
+        return []
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        # ``LIKE`` with a parameterised string is bind-safe; the JSON
+        # subkey we match on is a stable Codex constant, not user input.
+        cursor = conn.execute(
+            "SELECT rollout_path FROM threads WHERE source LIKE ?",
+            (f'%"parent_thread_id":"{parent_id}"%',),
+        )
+        rows = [row[0] for row in cursor if row[0]]
+        conn.close()
+    except sqlite3.Error as exc:
+        logger.debug("state_5.sqlite sub-agent lookup failed for %s: %s", parent_id, exc)
+        return []
+    return [Path(p) for p in rows if Path(p).is_file()]
+
+
+def _find_subagent_rollouts_via_filesystem(parent_content: str) -> list[Path]:
+    """Locate sub-agent rollout files by scanning the parent's spawn_agent outputs.
+
+    Used when SQLite has no matching rows (``codex exec`` mode). For
+    each ``spawn_agent`` ``function_call_output`` whose JSON carries
+    an ``agent_id``, we look for a rollout whose filename ends with
+    ``-<agent_id>.jsonl`` under ``~/.codex/sessions/``.
+
+    The rglob is bounded by the small total number of rollout files
+    (typically a few hundred); we stop after the first match per
+    agent_id.
+    """
+    sessions_dir = Path.home() / ".codex" / "sessions"
+    if not sessions_dir.is_dir():
+        return []
+    agent_ids: set[str] = set()
+    for line in parent_content.splitlines():
+        # Cheap pre-filter to skip the vast majority of lines. The bytes
+        # form sees the JSON-escaped key (``\"agent_id\"``) the same way
+        # as a plain substring search would in the un-escaped source —
+        # ``agent_id`` as a bare substring is unique enough to gate.
+        if "agent_id" not in line:
+            continue
+        try:
+            entry = orjson.loads(line)
+        except orjson.JSONDecodeError:
+            continue
+        payload = entry.get("payload", {}) if isinstance(entry, dict) else {}
+        if payload.get("type") != "function_call_output":
+            continue
+        output = payload.get("output", "")
+        if not isinstance(output, str):
+            continue
+        try:
+            parsed_output = orjson.loads(output)
+        except orjson.JSONDecodeError:
+            continue
+        if not isinstance(parsed_output, dict):
+            continue
+        agent_id = parsed_output.get("agent_id")
+        if isinstance(agent_id, str) and agent_id:
+            agent_ids.add(agent_id)
+    paths: list[Path] = []
+    for agent_id in agent_ids:
+        for match in sessions_dir.rglob(f"*-{agent_id}.jsonl"):
+            paths.append(match)
+            break
+    return paths
+
+
+def _strip_fork_prelude(entries: list[dict]) -> list[dict]:
+    """Drop the inherited parent-history prefix from a fork-mode rollout.
+
+    A Codex sub-agent spawned with ``fork_context: true`` writes the
+    parent's full conversation into the child's rollout file, then a
+    ``<model_switch>`` developer message marks where the child's own
+    work begins. We keep the child's first ``session_meta`` entry
+    (so id/cli_version extraction still works) and drop everything
+    between it and the boundary.
+
+    Returns ``entries`` unchanged when the rollout isn't a fork-mode
+    child or the boundary marker is missing (degrade gracefully — at
+    worst the listing still shows the parent's first prompt as the
+    sub-agent's first_message, which is the pre-fix behaviour).
+    """
+    if not entries:
+        return entries
+    first = entries[0]
+    if first.get("type") != "session_meta":
+        return entries
+    if not first.get("payload", {}).get("forked_from_id"):
+        return entries
+    for i in range(1, len(entries)):
+        entry = entries[i]
+        if entry.get("type") != "response_item":
+            continue
+        payload = entry.get("payload", {})
+        if payload.get("type") != "message" or payload.get("role") != "developer":
+            continue
+        content = payload.get("content", [])
+        text = ""
+        if isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict):
+                    text += block.get("text", "")
+        elif isinstance(content, str):
+            text = content
+        if "<model_switch>" in text.lstrip()[:80]:
+            return [entries[0]] + entries[i + 1 :]
+    return entries
 
 
 def _scan_session_metadata(entries: list[dict]) -> _CodexSessionMeta:
@@ -324,6 +581,8 @@ def _scan_session_metadata(entries: list[dict]) -> _CodexSessionMeta:
     sandbox_policy: str | None = None
     approval_policy: str | None = None
     forked_from_id: str | None = None
+    agent_role: str | None = None
+    agent_nickname: str | None = None
     found_session_meta = False
     found_turn_context = False
 
@@ -342,6 +601,8 @@ def _scan_session_metadata(entries: list[dict]) -> _CodexSessionMeta:
             source = payload.get("source") or None
             originator = payload.get("originator") or None
             forked_from_id = payload.get("forked_from_id") or None
+            agent_role = payload.get("agent_role") or None
+            agent_nickname = payload.get("agent_nickname") or None
 
         elif entry_type == "turn_context" and not found_turn_context:
             found_turn_context = True
@@ -361,6 +622,8 @@ def _scan_session_metadata(entries: list[dict]) -> _CodexSessionMeta:
         sandbox_policy=sandbox_policy,
         approval_policy=approval_policy,
         forked_from_id=forked_from_id,
+        agent_role=agent_role,
+        agent_nickname=agent_nickname,
     )
 
 
@@ -379,6 +642,8 @@ def _build_session_extra(meta: _CodexSessionMeta) -> dict | None:
         ("reasoning_effort", meta.effort),
         ("sandbox_policy", meta.sandbox_policy),
         ("approval_policy", meta.approval_policy),
+        ("agent_role", meta.agent_role),
+        ("agent_nickname", meta.agent_nickname),
     ]
     extra = {k: v for k, v in pairs if v}
     return extra or None
@@ -530,7 +795,7 @@ def _handle_response_item(
             ToolCall(
                 tool_call_id=call_id,
                 function_name=payload.get("name", "unknown"),
-                arguments=_parse_arguments(raw_args),
+                arguments=parse_tool_arguments(raw_args),
             )
         )
         # Buffer observation result for the tool output
@@ -539,8 +804,14 @@ def _handle_response_item(
             if result.get("is_error", False):
                 content = mark_error_content(content)
             obs_extra = result.get("metadata")
+            sub_ref = _extract_subagent_ref(payload.get("name", ""), content)
             state.pending_obs_results.append(
-                ObservationResult(source_call_id=call_id, content=content, extra=obs_extra)
+                ObservationResult(
+                    source_call_id=call_id,
+                    content=content,
+                    extra=obs_extra,
+                    subagent_trajectory_ref=sub_ref,
+                )
             )
 
     elif payload_type == "reasoning":
@@ -560,6 +831,29 @@ def _handle_response_item(
             if content_hash not in state.thinking_seen:
                 state.thinking_seen.add(content_hash)
                 state.pending_thinking.append(text)
+
+
+def _extract_subagent_ref(function_name: str, output: str | None) -> list[TrajectoryRef] | None:
+    """Extract a sub-agent trajectory reference from a ``spawn_agent`` output.
+
+    Codex's ``spawn_agent`` tool returns JSON like
+    ``{"agent_id": "<child-thread-id>", "nickname": "..."}`` where
+    ``agent_id`` matches the spawned child rollout's ``session_meta.id``.
+    Setting :class:`ObservationResult.subagent_trajectory_ref` here lets
+    the UI navigate parent → child the same way Claude does.
+    """
+    if function_name != _SPAWN_AGENT_TOOL_NAME or not isinstance(output, str) or not output:
+        return None
+    try:
+        parsed = orjson.loads(output)
+    except orjson.JSONDecodeError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    agent_id = parsed.get("agent_id")
+    if not isinstance(agent_id, str) or not agent_id:
+        return None
+    return [TrajectoryRef(session_id=agent_id)]
 
 
 def _flush_pending(steps: list[Step], state: _CodexParseState) -> None:
@@ -616,24 +910,6 @@ def _extract_message_text(payload: dict) -> str:
     return "\n".join(parts)
 
 
-def _parse_arguments(arguments: str | dict) -> dict | str | None:
-    """Parse function_call arguments JSON string.
-
-    OpenAI serialises function_call arguments as a JSON *string* rather
-    than an inline object.  custom_tool_call may pass arguments as a dict
-    directly.  We decode strings back to dicts; if the JSON is malformed,
-    return the raw string so no data is lost.
-    """
-    if not arguments:
-        return None
-    if isinstance(arguments, dict):
-        return arguments
-    try:
-        return json.loads(arguments)
-    except (json.JSONDecodeError, TypeError):
-        return arguments
-
-
 def _parse_structured_output(raw: str) -> tuple[str, bool, dict | None]:
     """Parse Codex structured tool output, stripping metadata prefix.
 
@@ -657,10 +933,10 @@ def _parse_structured_output(raw: str) -> tuple[str, bool, dict | None]:
 
 
 def _parse_token_count(payload: dict) -> Metrics | None:
-    """Parse token_count event_msg payload into Metrics.
+    """Parse a Codex token_count event_msg payload into ``Metrics``.
 
     Per-turn usage is nested under ``info.last_token_usage``; falls back
-    to top-level ``info`` fields for older formats. Accepts both old
+    to the top-level ``info`` fields for older formats. Accepts both old
     (``prompt_tokens``/``completion_tokens``) and new
     (``input_tokens``/``output_tokens``) field names.
     """
@@ -668,31 +944,25 @@ def _parse_token_count(payload: dict) -> Metrics | None:
     if not info:
         return None
 
-    # Per-turn usage is nested under last_token_usage; fall back to
-    # top-level fields for older formats.
     usage = info.get("last_token_usage") or info
 
     input_tokens = usage.get("input_tokens", 0) or usage.get("prompt_tokens", 0)
-    completion_tokens = usage.get("output_tokens", 0) or usage.get("completion_tokens", 0)
+    output_tokens = usage.get("output_tokens", 0) or usage.get("completion_tokens", 0)
+    cache_read_tokens = usage.get("cached_input_tokens", 0)
+    if not cache_read_tokens:
+        cache_read_tokens = (usage.get("input_tokens_details") or {}).get("cache_read_tokens", 0)
 
-    cached_tokens = usage.get("cached_input_tokens", 0)
-    if not cached_tokens:
-        input_details = usage.get("input_tokens_details", {}) or {}
-        cached_tokens = input_details.get("cached_tokens", 0)
-
-    prompt_tokens = input_tokens + cached_tokens
-
-    if prompt_tokens == 0 and completion_tokens == 0:
+    if input_tokens + cache_read_tokens == 0 and output_tokens == 0:
         return None
 
-    reasoning_tokens = usage.get("reasoning_output_tokens", 0)
-    metrics_extra = {"reasoning_output_tokens": reasoning_tokens} if reasoning_tokens else None
+    reasoning = usage.get("reasoning_output_tokens", 0)
+    extra = {"reasoning_output_tokens": reasoning} if reasoning else None
 
-    return Metrics(
-        prompt_tokens=prompt_tokens,
-        completion_tokens=completion_tokens,
-        cached_tokens=cached_tokens,
-        extra=metrics_extra,
+    return Metrics.from_tokens(
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cache_read_tokens=cache_read_tokens,
+        extra=extra,
     )
 
 

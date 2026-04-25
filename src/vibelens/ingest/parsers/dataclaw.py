@@ -20,7 +20,8 @@ from collections.abc import Iterator
 from pathlib import Path
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
-from vibelens.ingest.parsers.base import ROLE_TO_SOURCE, BaseParser
+from vibelens.ingest.parsers.base import BaseParser
+from vibelens.ingest.parsers.helpers import ROLE_TO_SOURCE, iter_jsonl_safe
 from vibelens.models.enums import AgentType, StepSource
 from vibelens.models.trajectories import Step, ToolCall, Trajectory
 from vibelens.utils import (
@@ -85,7 +86,7 @@ class DataclawParser(BaseParser):
             Trajectory objects, one per valid session line.
         """
         collector = DiagnosticsCollector()
-        for record in self.iter_jsonl_safe(file_path, diagnostics=collector):
+        for record in iter_jsonl_safe(file_path, diagnostics=collector):
             try:
                 yield self.parse_session(record, collector)
             except (KeyError, TypeError, ValueError):

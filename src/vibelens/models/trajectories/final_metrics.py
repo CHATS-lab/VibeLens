@@ -25,8 +25,8 @@ class FinalMetrics(BaseModel):
 
     Core ATIF fields: total_prompt_tokens, total_completion_tokens,
     total_cost_usd, total_steps, extra.
-    VibeLens extensions: tool_call_count, duration, total_cache_write,
-    total_cache_read, daily_breakdown.
+    VibeLens extensions: tool_call_count, duration, total_cache_write_tokens,
+    total_cache_read_tokens, daily_breakdown.
     """
 
     duration: int = Field(
@@ -45,11 +45,11 @@ class FinalMetrics(BaseModel):
     total_completion_tokens: int | None = Field(
         default=None, description="Sum of all completion tokens across all steps."
     )
-    total_cache_read: int = Field(
+    total_cache_read_tokens: int = Field(
         default=0,
         description="[VibeLens] Total tokens read from the prompt cache (Anthropic-specific).",
     )
-    total_cache_write: int = Field(
+    total_cache_write_tokens: int = Field(
         default=0,
         description="[VibeLens] Total tokens written into the prompt cache (Anthropic-specific).",
     )

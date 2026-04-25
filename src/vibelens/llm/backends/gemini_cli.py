@@ -225,7 +225,7 @@ class GeminiCliBackend(CliBackend):
             metrics = Metrics(
                 prompt_tokens=tokens.get("prompt", tokens.get("input", 0)),
                 completion_tokens=tokens.get("candidates", 0),
-                cached_tokens=tokens.get("cached", 0),
+                cache_read_tokens=tokens.get("cached", 0),
                 extra={"reasoning_tokens": reasoning_tokens} if reasoning_tokens else None,
             )
         return text, metrics, model

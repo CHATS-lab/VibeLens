@@ -7,12 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from vibelens.ingest.parsers.base import MAX_FIRST_MESSAGE_LENGTH, is_error_content
 from vibelens.ingest.parsers.claude import (
     ClaudeParser,
     _decompose_raw_content,
-    _extract_git_branches,
+    _scan_session_metadata,
 )
+from vibelens.ingest.parsers.helpers import MAX_FIRST_MESSAGE_LENGTH, is_error_content
 from vibelens.models.enums import StepSource
 from vibelens.models.trajectories import (
     Metrics,
@@ -207,7 +207,7 @@ class TestParseSessionJsonl:
         assert agent_step.metrics is not None
         # prompt_tokens = input_tokens + cache_read_input_tokens (Harbor-aligned)
         assert agent_step.metrics.prompt_tokens == 600
-        assert agent_step.metrics.cached_tokens == 100
+        assert agent_step.metrics.cache_read_tokens == 100
         print(f"  parsed {len(result)} steps with timestamps and usage")
 
     def test_tool_use_pairing(self, tmp_path: Path):
@@ -367,8 +367,8 @@ class TestMetadataViaAssembleTrajectory:
                 metrics=Metrics(
                     prompt_tokens=100,
                     completion_tokens=50,
-                    cached_tokens=30,
-                    cache_creation_tokens=20,
+                    cache_read_tokens=30,
+                    cache_write_tokens=20,
                 ),
                 tool_calls=[ToolCall(function_name="Read"), ToolCall(function_name="Edit")],
             ),
@@ -378,8 +378,8 @@ class TestMetadataViaAssembleTrajectory:
                 metrics=Metrics(
                     prompt_tokens=200,
                     completion_tokens=100,
-                    cached_tokens=70,
-                    cache_creation_tokens=10,
+                    cache_read_tokens=70,
+                    cache_write_tokens=10,
                 ),
                 tool_calls=[ToolCall(function_name="Bash")],
             ),
@@ -394,8 +394,8 @@ class TestMetadataViaAssembleTrajectory:
         # Token aggregation
         assert traj.final_metrics.total_prompt_tokens == 300
         assert traj.final_metrics.total_completion_tokens == 150
-        assert traj.final_metrics.total_cache_read == 100
-        assert traj.final_metrics.total_cache_write == 30
+        assert traj.final_metrics.total_cache_read_tokens == 100
+        assert traj.final_metrics.total_cache_write_tokens == 30
 
         # Tool call count
         assert traj.final_metrics.tool_call_count == 3
@@ -1031,13 +1031,12 @@ class TestExtractGitBranches:
             json.dumps({"type": "user", "gitBranch": b})
             for b in ["feature/xyz", "main", "feature/xyz"]
         )
-        result = _extract_git_branches(content)
-        assert result == ["feature/xyz", "main"]
+        assert _scan_session_metadata(content).git_branches == ["feature/xyz", "main"]
 
     def test_returns_none_when_absent(self):
         """Returns None when no entries have gitBranch."""
         content = json.dumps({"type": "user", "message": {"role": "user", "content": "hi"}})
-        assert _extract_git_branches(content) is None
+        assert _scan_session_metadata(content).git_branches is None
 
     def test_git_branches_in_trajectory_extra(self):
         """Parsed trajectory includes git_branches in extra."""
@@ -1143,20 +1142,24 @@ class TestErrorHandling:
         dup_uuid = "d871cdff-101f-460f-baa8-5db4049ecae9"
         content = "\n".join(
             [
-                json.dumps({
-                    "type": "user",
-                    "uuid": dup_uuid,
-                    "sessionId": "s1",
-                    "timestamp": "2026-04-19T00:00:00Z",
-                    "message": {"role": "user", "content": "hi"},
-                }),
-                json.dumps({
-                    "type": "user",
-                    "uuid": dup_uuid,
-                    "sessionId": "s1",
-                    "timestamp": "2026-04-19T00:00:00Z",
-                    "message": {"role": "user", "content": "hi"},
-                }),
+                json.dumps(
+                    {
+                        "type": "user",
+                        "uuid": dup_uuid,
+                        "sessionId": "s1",
+                        "timestamp": "2026-04-19T00:00:00Z",
+                        "message": {"role": "user", "content": "hi"},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "user",
+                        "uuid": dup_uuid,
+                        "sessionId": "s1",
+                        "timestamp": "2026-04-19T00:00:00Z",
+                        "message": {"role": "user", "content": "hi"},
+                    }
+                ),
             ]
         )
         trajectories = _parser.parse(content, source_path="test.jsonl")

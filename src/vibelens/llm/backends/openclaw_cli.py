@@ -104,8 +104,8 @@ class OpenClawCliBackend(CliBackend):
             metrics = Metrics(
                 prompt_tokens=usage.get("input", 0),
                 completion_tokens=usage.get("output", 0),
-                cached_tokens=usage.get("cacheRead", 0),
-                cache_creation_tokens=usage.get("cacheWrite", 0),
+                cache_read_tokens=usage.get("cacheRead", 0),
+                cache_write_tokens=usage.get("cacheWrite", 0),
             )
         model = agent_meta.get("model") or self.model
         return text, metrics, model

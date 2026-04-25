@@ -290,14 +290,14 @@ export function SessionViewHeader({
                   <TokenStat
                     icon={<Database className="w-3 h-3" />}
                     label="Cache Read"
-                    value={metrics.total_cache_read || 0}
+                    value={metrics.total_cache_read_tokens || 0}
                     color="text-accent-emerald"
                     tooltip="Tokens served from prompt cache (reduced cost)"
                   />
                   <TokenStat
                     icon={<HardDrive className="w-3 h-3" />}
                     label="Cache Write"
-                    value={metrics.total_cache_write || 0}
+                    value={metrics.total_cache_write_tokens || 0}
                     color="text-accent-violet"
                     tooltip="Tokens written to prompt cache for future reuse"
                   />

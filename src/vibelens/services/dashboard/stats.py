@@ -120,7 +120,7 @@ class SessionAggregate:
         "input_tokens",
         "output_tokens",
         "cache_read_tokens",
-        "cache_creation_tokens",
+        "cache_write_tokens",
         "tool_calls",
         "duration",
         "model",
@@ -136,7 +136,7 @@ class SessionAggregate:
         self.input_tokens: int = 0
         self.output_tokens: int = 0
         self.cache_read_tokens: int = 0
-        self.cache_creation_tokens: int = 0
+        self.cache_write_tokens: int = 0
         self.tool_calls: int = 0
         self.duration: int = 0
         self.model: str = UNKNOWN_MODEL
@@ -196,7 +196,7 @@ class _StatsAccumulator:
         self.total_input_tokens = 0
         self.total_output_tokens = 0
         self.total_cache_read_tokens = 0
-        self.total_cache_creation_tokens = 0
+        self.total_cache_write_tokens = 0
         self.total_tool_calls = 0
         self.total_duration = 0
         self.total_cost_usd = 0.0
@@ -233,7 +233,7 @@ class _StatsAccumulator:
         self.total_input_tokens += session.input_tokens
         self.total_output_tokens += session.output_tokens
         self.total_cache_read_tokens += session.cache_read_tokens
-        self.total_cache_creation_tokens += session.cache_creation_tokens
+        self.total_cache_write_tokens += session.cache_write_tokens
         self.total_tool_calls += session.tool_calls
         self.total_duration += session.duration
 
@@ -311,7 +311,7 @@ class _StatsAccumulator:
             period.input_tokens += session.input_tokens
             period.output_tokens += session.output_tokens
             period.cache_read_tokens += session.cache_read_tokens
-            period.cache_creation_tokens += session.cache_creation_tokens
+            period.cache_write_tokens += session.cache_write_tokens
 
         for day_key, bucket in breakdown.items():
             if day_key < period_start_key:
@@ -351,9 +351,9 @@ class _StatsAccumulator:
             total_duration_hours=total_hours,
             total_input_tokens=self.total_input_tokens,
             total_output_tokens=self.total_output_tokens,
-            total_cache_tokens=self.total_cache_read_tokens + self.total_cache_creation_tokens,
+            total_cache_tokens=self.total_cache_read_tokens + self.total_cache_write_tokens,
             total_cache_read_tokens=self.total_cache_read_tokens,
-            total_cache_creation_tokens=self.total_cache_creation_tokens,
+            total_cache_write_tokens=self.total_cache_write_tokens,
             this_year=self.year,
             this_month=self.month,
             this_week=self.week,
@@ -434,8 +434,8 @@ def _aggregate_metadata(meta: dict) -> SessionAggregate:
     final_metrics = meta.get("final_metrics") or {}
     agg.input_tokens = final_metrics.get("total_prompt_tokens") or 0
     agg.output_tokens = final_metrics.get("total_completion_tokens") or 0
-    agg.cache_read_tokens = final_metrics.get("total_cache_read") or 0
-    agg.cache_creation_tokens = final_metrics.get("total_cache_write") or 0
+    agg.cache_read_tokens = final_metrics.get("total_cache_read_tokens") or 0
+    agg.cache_write_tokens = final_metrics.get("total_cache_write_tokens") or 0
     agg.tool_calls = final_metrics.get("tool_call_count") or 0
     # Provisional — used only by the fallback branch of
     # ``_breakdown_from_metadata`` when no breakdown is available.
@@ -453,7 +453,7 @@ def _aggregate_metadata(meta: dict) -> SessionAggregate:
             agg.input_tokens,
             agg.output_tokens,
             agg.cache_read_tokens,
-            agg.cache_creation_tokens,
+            agg.cache_write_tokens,
         )
         if cost is not None:
             agg.cost_usd = cost
@@ -552,8 +552,8 @@ def aggregate_session(traj: Trajectory) -> SessionAggregate:
             metrics = step.metrics
             agg.input_tokens += metrics.prompt_tokens
             agg.output_tokens += metrics.completion_tokens
-            agg.cache_read_tokens += metrics.cached_tokens
-            agg.cache_creation_tokens += metrics.cache_creation_tokens
+            agg.cache_read_tokens += metrics.cache_read_tokens
+            agg.cache_write_tokens += metrics.cache_write_tokens
             tokens_this_step = metrics.prompt_tokens + metrics.completion_tokens
             step_cost = metrics.cost_usd
             if step_cost is None:

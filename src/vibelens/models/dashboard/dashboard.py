@@ -105,7 +105,7 @@ class PeriodStats(BaseModel):
     input_tokens: int = Field(default=0, description="Prompt/input tokens in this period.")
     output_tokens: int = Field(default=0, description="Completion/output tokens in this period.")
     cache_read_tokens: int = Field(default=0, description="Cache read tokens in this period.")
-    cache_creation_tokens: int = Field(
+    cache_write_tokens: int = Field(
         default=0, description="Cache creation tokens in this period."
     )
     cost_usd: float = Field(default=0.0, description="Estimated cost in USD for this period.")
@@ -139,8 +139,8 @@ class DashboardStats(BaseModel):
     total_output_tokens: int = Field(default=0, description="Total completion/output tokens.")
     total_cache_tokens: int = Field(default=0, description="Total cache read + write tokens.")
     total_cache_read_tokens: int = Field(default=0, description="Total cache read tokens.")
-    total_cache_creation_tokens: int = Field(
-        default=0, description="Total cache creation/write tokens."
+    total_cache_write_tokens: int = Field(
+        default=0, description="Total cache write tokens."
     )
 
     this_year: PeriodStats = Field(default_factory=PeriodStats, description="Current year stats.")

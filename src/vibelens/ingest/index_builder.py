@@ -141,7 +141,9 @@ def _collect_all_skeletons(
                     )
                     all_trajectories.extend(orphaned)
                 continue
-        all_trajectories.extend(_build_file_parse_skeletons(parser, file_index))
+        all_trajectories.extend(
+            _build_file_parse_skeletons(parser, file_index, dropped_sink=dropped_sink)
+        )
 
     return all_trajectories
 
@@ -244,7 +246,9 @@ def _reconcile_index_skeletons(
 
 
 def _build_file_parse_skeletons(
-    parser: BaseParser, file_index: dict[str, tuple[Path, BaseParser]]
+    parser: BaseParser,
+    file_index: dict[str, tuple[Path, BaseParser]],
+    dropped_sink: list[Path] | None = None,
 ) -> list[Trajectory]:
     """Build skeletons by lightly parsing each session file in parallel.
 
@@ -261,6 +265,10 @@ def _build_file_parse_skeletons(
     Args:
         parser: The parser instance to use.
         file_index: Mutable session file index for ID remapping.
+        dropped_sink: Optional list to receive paths of files that produced
+            no parseable trajectory. Lets the caller persist them so the
+            next startup doesn't retry. Symmetric with
+            :func:`_build_orphaned_skeletons`.
 
     Returns:
         Skeleton trajectories for all parseable files.
@@ -283,6 +291,9 @@ def _build_file_parse_skeletons(
     result: list[Trajectory] = []
     for old_sid, fpath, main in scanned:
         if main is None:
+            if dropped_sink is not None:
+                dropped_sink.append(fpath)
+            file_index.pop(old_sid, None)
             continue
         real_sid = main.session_id
         if real_sid != old_sid:

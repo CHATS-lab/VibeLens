@@ -173,7 +173,7 @@ def _parse_metrics(response) -> Metrics:
     """Extract token usage from a litellm response into a Metrics.
 
     Token bookkeeping matches the parser-side convention (see
-    ``vibelens.ingest.parsers.base._compute_final_metrics``):
+    ``vibelens.ingest.parsers.helpers.compute_final_metrics``):
 
     - ``prompt_tokens`` holds only the non-cached input portion.
     - Anthropic-style cache fields (``cache_read_input_tokens``,
@@ -203,8 +203,8 @@ def _parse_metrics(response) -> Metrics:
     return Metrics(
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
-        cached_tokens=cache_read,
-        cache_creation_tokens=cache_create,
+        cache_read_tokens=cache_read,
+        cache_write_tokens=cache_create,
     )
 
 

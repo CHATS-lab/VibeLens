@@ -42,13 +42,28 @@ class BaseTrajectoryStore(ABC):
         """Set up the storage backend (create dirs, tables, connections)."""
 
     def list_metadata(self) -> list[dict]:
-        """Return all trajectory summaries without steps.
+        """Return summaries for top-level (non-sub-agent) trajectories.
+
+        Sub-agents are excluded so they only surface nested under their
+        parent in the UI. We treat a trajectory as a sub-agent when:
+
+        - ``parent_trajectory_ref`` is set (the strong signal — fork-mode
+          children, SQLite-linked children, Hermes db-linked children), or
+        - ``extra.agent_role`` is set (Codex marks fresh sub-agents this
+          way even when the parent link can't be reconstructed — e.g.
+          ``codex exec`` doesn't write to ``state_5.sqlite``).
+
+        Matches Claude's discovery-time exclusion (sub-agent files
+        aren't indexed at all) so the listing layer is consistent across
+        all parsers.
 
         Returns:
-            Unsorted list of trajectory summary dicts.
+            Unsorted list of trajectory summary dicts for main sessions only.
         """
         self._ensure_index()
-        return list(self._metadata_cache.values()) if self._metadata_cache else []
+        if not self._metadata_cache:
+            return []
+        return [m for m in self._metadata_cache.values() if not _is_sub_agent_metadata(m)]
 
     def list_projects(self) -> list[str]:
         """Return all unique project paths from stored sessions.
@@ -233,3 +248,16 @@ class BaseTrajectoryStore(ABC):
             key=lambda t: t.timestamp or datetime.min,
         )
         return main + subs
+
+
+def _is_sub_agent_metadata(meta: dict) -> bool:
+    """True when a trajectory metadata dict represents a sub-agent.
+
+    Strong signal: ``parent_trajectory_ref`` is set. Fallback signal
+    (Codex fresh sub-agents from ``codex exec`` mode where SQLite
+    isn't written): ``extra.agent_role`` is non-empty.
+    """
+    if meta.get("parent_trajectory_ref"):
+        return True
+    extra = meta.get("extra") or {}
+    return bool(extra.get("agent_role"))

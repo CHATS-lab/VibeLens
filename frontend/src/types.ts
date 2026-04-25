@@ -13,8 +13,8 @@ export interface FinalMetrics {
   tool_call_count: number;
   total_prompt_tokens?: number | null;
   total_completion_tokens?: number | null;
-  total_cache_write: number;
-  total_cache_read: number;
+  total_cache_write_tokens: number;
+  total_cache_read_tokens: number;
   total_cost_usd?: number | null;
 }
 
@@ -27,8 +27,8 @@ export interface TrajectoryRef {
 export interface Metrics {
   prompt_tokens: number;
   completion_tokens: number;
-  cached_tokens: number;
-  cache_creation_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
   cost_usd?: number | null;
 }
 
@@ -160,7 +160,7 @@ export interface PeriodStats {
   input_tokens: number;
   output_tokens: number;
   cache_read_tokens: number;
-  cache_creation_tokens: number;
+  cache_write_tokens: number;
   cost_usd: number;
 }
 
@@ -182,7 +182,7 @@ export interface DashboardStats {
   total_output_tokens: number;
   total_cache_tokens: number;
   total_cache_read_tokens: number;
-  total_cache_creation_tokens: number;
+  total_cache_write_tokens: number;
   this_year: PeriodStats;
   this_month: PeriodStats;
   this_week: PeriodStats;

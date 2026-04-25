@@ -3,8 +3,8 @@
 import json
 from pathlib import Path
 
-from vibelens.ingest.parsers.base import is_error_content
 from vibelens.ingest.parsers.codex import CodexParser, _parse_structured_output
+from vibelens.ingest.parsers.helpers import is_error_content
 from vibelens.models.enums import StepSource
 from vibelens.models.trajectories import Trajectory
 
@@ -396,7 +396,7 @@ class TestTokenCountAttachment:
         # prompt_tokens = input_tokens + cached_input_tokens = 500 + 100
         assert agent_step.metrics.prompt_tokens == 600
         assert agent_step.metrics.completion_tokens == 200
-        assert agent_step.metrics.cached_tokens == 100
+        assert agent_step.metrics.cache_read_tokens == 100
 
         # User step has no metrics
         assert user_step.metrics is None
@@ -911,3 +911,284 @@ class TestStepExtra:
         traj = _parser.parse_file(rollout)[0]
         user_step = [s for s in traj.steps if s.source == StepSource.USER][0]
         assert user_step.extra is None
+
+
+class TestSubAgentLinkage:
+    """Tests for Codex sub-agent bidirectional linkage."""
+
+    def test_child_parent_ref_from_forked_from_id(self, tmp_path: Path):
+        """A child rollout's session_meta with forked_from_id sets parent_trajectory_ref."""
+        rollout = tmp_path / "rollout-child.jsonl"
+        child_meta = _meta_entry(session_id="child-id")
+        # forked_from_id is on the FIRST session_meta payload
+        child_meta["payload"]["forked_from_id"] = "parent-id"
+        _write_rollout(
+            rollout,
+            [
+                child_meta,
+                _turn_context_entry(),
+                _user_msg_entry("Worker task"),
+                _assistant_msg_entry("Done"),
+            ],
+        )
+        traj = _parser.parse_file(rollout)[0]
+        assert traj.session_id == "child-id"
+        assert traj.parent_trajectory_ref is not None
+        assert traj.parent_trajectory_ref.session_id == "parent-id"
+
+    def test_parent_subagent_ref_from_spawn_agent_output(self, tmp_path: Path):
+        """A spawn_agent function_call output JSON populates subagent_trajectory_ref."""
+        rollout = tmp_path / "rollout-parent.jsonl"
+        spawn_output = json.dumps({"agent_id": "child-thread-id", "nickname": "Worker"})
+        _write_rollout(
+            rollout,
+            [
+                _meta_entry(session_id="parent-id"),
+                _turn_context_entry(),
+                _user_msg_entry("Spawn a worker"),
+                _assistant_msg_entry("OK"),
+                _function_call_entry(
+                    call_id="call-spawn", name="spawn_agent", arguments='{"agent_type":"worker"}'
+                ),
+                _function_call_output_entry(call_id="call-spawn", output=spawn_output),
+                _user_msg_entry("done", timestamp="2025-01-15T10:00:10Z"),
+            ],
+        )
+        traj = _parser.parse_file(rollout)[0]
+        agent_steps = [s for s in traj.steps if s.source == StepSource.AGENT]
+        assert agent_steps, "expected at least one agent step"
+        # The spawn observation should be on the agent step that owns the spawn_agent tool call
+        spawn_results = [
+            r
+            for s in agent_steps
+            if s.observation
+            for r in s.observation.results
+            if r.subagent_trajectory_ref
+        ]
+        assert len(spawn_results) == 1
+        assert spawn_results[0].source_call_id == "call-spawn"
+        assert spawn_results[0].subagent_trajectory_ref[0].session_id == "child-thread-id"
+
+    def test_non_spawn_agent_tool_has_no_subagent_ref(self, tmp_path: Path):
+        """Non-spawn_agent tools get no subagent_trajectory_ref, even with JSON-shaped output."""
+        rollout = tmp_path / "rollout.jsonl"
+        json_like_output = json.dumps({"agent_id": "not-a-real-spawn"})
+        _write_rollout(
+            rollout,
+            [
+                _meta_entry(),
+                _turn_context_entry(),
+                _user_msg_entry(),
+                _assistant_msg_entry(),
+                _function_call_entry(call_id="fc-shell", name="shell"),
+                _function_call_output_entry(call_id="fc-shell", output=json_like_output),
+                _user_msg_entry("next", timestamp="2025-01-15T10:00:10Z"),
+            ],
+        )
+        traj = _parser.parse_file(rollout)[0]
+        for step in traj.steps:
+            if not step.observation:
+                continue
+            for r in step.observation.results:
+                assert r.subagent_trajectory_ref is None
+
+    def test_spawn_agent_with_malformed_output_drops_ref(self, tmp_path: Path):
+        """Non-JSON spawn_agent output silently drops the subagent_trajectory_ref (no crash)."""
+        rollout = tmp_path / "rollout.jsonl"
+        _write_rollout(
+            rollout,
+            [
+                _meta_entry(),
+                _turn_context_entry(),
+                _user_msg_entry(),
+                _assistant_msg_entry(),
+                _function_call_entry(call_id="fc-spawn", name="spawn_agent"),
+                _function_call_output_entry(call_id="fc-spawn", output="not json at all"),
+                _user_msg_entry("next", timestamp="2025-01-15T10:00:10Z"),
+            ],
+        )
+        traj = _parser.parse_file(rollout)[0]
+        # Output is preserved as content; the subagent ref is just None
+        spawn_obs = [
+            r
+            for s in traj.steps
+            if s.observation
+            for r in s.observation.results
+            if r.source_call_id == "fc-spawn"
+        ]
+        assert len(spawn_obs) == 1
+        assert spawn_obs[0].content == "not json at all"
+        assert spawn_obs[0].subagent_trajectory_ref is None
+
+
+def _developer_msg_entry(text: str, timestamp: str = "2025-01-15T10:00:03Z") -> dict:
+    """Build a developer response_item entry (used for <model_switch> boundary)."""
+    return {
+        "type": "response_item",
+        "timestamp": timestamp,
+        "payload": {
+            "type": "message",
+            "role": "developer",
+            "content": [{"type": "input_text", "text": text}],
+        },
+    }
+
+
+class TestForkPreludeStripping:
+    """Sub-agents spawned with fork_context=true inherit the parent's history,
+    capped by a <model_switch> developer message. The parser strips that
+    prelude so the sub-agent's first_message is its own task, not the parent's."""
+
+    def test_fork_mode_strips_parent_history(self, tmp_path: Path):
+        """fork-mode child rollouts drop pre-<model_switch> entries."""
+        rollout = tmp_path / "rollout-fork.jsonl"
+        child_meta = _meta_entry(session_id="child-id")
+        child_meta["payload"]["forked_from_id"] = "parent-id"
+        parent_meta = _meta_entry(session_id="parent-id", timestamp="2025-01-15T09:59:59Z")
+        _write_rollout(
+            rollout,
+            [
+                child_meta,
+                parent_meta,
+                _turn_context_entry(model="gpt-5.4"),
+                _user_msg_entry("PARENT'S FIRST PROMPT"),
+                _assistant_msg_entry("parent reply"),
+                _function_call_entry(call_id="fc-spawn", name="spawn_agent"),
+                _function_call_output_entry(
+                    call_id="fc-spawn", output='{"agent_id":"child-id","nickname":"Worker"}'
+                ),
+                _developer_msg_entry(
+                    "<model_switch>\nThe user was previously using a different model."
+                ),
+                _user_msg_entry("THE REAL SUB-AGENT TASK", timestamp="2025-01-15T10:00:05Z"),
+                _assistant_msg_entry("sub-agent reply", timestamp="2025-01-15T10:00:06Z"),
+            ],
+        )
+        traj = _parser.parse_file(rollout)[0]
+        assert traj.session_id == "child-id"
+        assert traj.parent_trajectory_ref is not None
+        assert traj.parent_trajectory_ref.session_id == "parent-id"
+        # First-message detection should pick the post-fork user prompt, not parent's.
+        assert traj.first_message == "THE REAL SUB-AGENT TASK"
+        # No parent steps should leak into the sub-agent's step list.
+        user_steps = [s for s in traj.steps if s.source == StepSource.USER]
+        assert all("PARENT'S FIRST PROMPT" not in (s.message or "") for s in user_steps)
+
+    def test_non_fork_rollout_keeps_all_entries(self, tmp_path: Path):
+        """A regular (non-fork) rollout passes through unchanged."""
+        rollout = tmp_path / "rollout-regular.jsonl"
+        _write_rollout(
+            rollout,
+            [
+                _meta_entry(session_id="regular"),
+                _turn_context_entry(),
+                _user_msg_entry("hello"),
+                _assistant_msg_entry("hi"),
+            ],
+        )
+        traj = _parser.parse_file(rollout)[0]
+        assert traj.session_id == "regular"
+        assert traj.first_message == "hello"
+        assert traj.parent_trajectory_ref is None
+
+    def test_fork_mode_without_model_switch_falls_back(self, tmp_path: Path):
+        """When the boundary marker is missing, keep the rollout intact (degrade gracefully)."""
+        rollout = tmp_path / "rollout-no-boundary.jsonl"
+        child_meta = _meta_entry(session_id="child")
+        child_meta["payload"]["forked_from_id"] = "parent"
+        _write_rollout(
+            rollout,
+            [
+                child_meta,
+                _meta_entry(session_id="parent", timestamp="2025-01-15T09:59:59Z"),
+                _turn_context_entry(),
+                _user_msg_entry("only message"),
+                _assistant_msg_entry("only reply"),
+            ],
+        )
+        # Doesn't crash; first_message picks the inherited prompt.
+        traj = _parser.parse_file(rollout)[0]
+        assert traj.first_message == "only message"
+        assert traj.parent_trajectory_ref.session_id == "parent"
+
+
+class TestSubAgentSqliteLookup:
+    """Sub-agent rollouts whose parent → child link lives only in SQLite
+    (fresh sub-agents) need _extract_parent_thread_id to surface the link."""
+
+    def test_extract_parent_thread_id_from_subagent_source(self):
+        """Sub-agent SQLite source returns the embedded parent_thread_id."""
+        from vibelens.ingest.parsers.codex import _extract_parent_thread_id
+
+        source = (
+            '{"subagent":{"thread_spawn":{"parent_thread_id":"019d0e38-b3bd",'
+            '"depth":1,"agent_role":"worker"}}}'
+        )
+        assert _extract_parent_thread_id(source) == "019d0e38-b3bd"
+
+    def test_extract_parent_thread_id_returns_none_for_non_subagent(self):
+        """Plain string sources (e.g. 'cli', 'vscode') yield None."""
+        from vibelens.ingest.parsers.codex import _extract_parent_thread_id
+
+        assert _extract_parent_thread_id("cli") is None
+        assert _extract_parent_thread_id("vscode") is None
+        assert _extract_parent_thread_id("") is None
+
+    def test_extract_parent_thread_id_handles_malformed_json(self):
+        """Bad JSON in source returns None instead of raising."""
+        from vibelens.ingest.parsers.codex import _extract_parent_thread_id
+
+        assert _extract_parent_thread_id('{"subagent":{not json') is None
+
+
+class TestAgentRoleSignal:
+    """The session_meta payload carries agent_role + agent_nickname for
+    every Codex sub-agent (fresh and fork mode). The parser surfaces
+    these in trajectory.extra so the storage layer can filter them
+    out of the listing even when no parent_trajectory_ref is set."""
+
+    def test_subagent_extra_includes_agent_role_and_nickname(self, tmp_path: Path):
+        """Sub-agent rollouts carry agent_role/nickname in trajectory.extra."""
+        rollout = tmp_path / "rollout-fresh-sub.jsonl"
+        meta = _meta_entry(session_id="child-id")
+        meta["payload"]["agent_role"] = "worker"
+        meta["payload"]["agent_nickname"] = "Hegel"
+        # Fresh-style subagent source carries the parent_thread_id directly:
+        meta["payload"]["source"] = {
+            "subagent": {"thread_spawn": {"parent_thread_id": "parent-id", "depth": 1}}
+        }
+        _write_rollout(
+            rollout,
+            [meta, _turn_context_entry(), _user_msg_entry("task"), _assistant_msg_entry("done")],
+        )
+        traj = _parser.parse_file(rollout)[0]
+        assert traj.extra is not None
+        assert traj.extra.get("agent_role") == "worker"
+        assert traj.extra.get("agent_nickname") == "Hegel"
+
+    def test_session_meta_source_dict_sets_parent_ref(self, tmp_path: Path):
+        """Fresh sub-agents (no forked_from_id) recover parent_id from source."""
+        rollout = tmp_path / "rollout-fresh.jsonl"
+        meta = _meta_entry(session_id="fresh-child")
+        meta["payload"]["agent_role"] = "worker"
+        meta["payload"]["source"] = {
+            "subagent": {"thread_spawn": {"parent_thread_id": "fresh-parent"}}
+        }
+        _write_rollout(
+            rollout,
+            [meta, _turn_context_entry(), _user_msg_entry("hi"), _assistant_msg_entry("hello")],
+        )
+        traj = _parser.parse_file(rollout)[0]
+        assert traj.parent_trajectory_ref is not None
+        assert traj.parent_trajectory_ref.session_id == "fresh-parent"
+
+    def test_regular_session_has_no_agent_role(self, tmp_path: Path):
+        """Plain Codex sessions have no agent_role in extra."""
+        rollout = tmp_path / "rollout-regular.jsonl"
+        _write_rollout(
+            rollout,
+            [_meta_entry(), _turn_context_entry(), _user_msg_entry(), _assistant_msg_entry()],
+        )
+        traj = _parser.parse_file(rollout)[0]
+        assert (traj.extra or {}).get("agent_role") is None
+        assert traj.parent_trajectory_ref is None

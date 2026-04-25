@@ -61,8 +61,8 @@ def _compute_token_breakdown(trajectories: list[Trajectory]) -> dict[str, int]:
             if step.metrics:
                 prompt += step.metrics.prompt_tokens
                 completion += step.metrics.completion_tokens
-                cache_read += step.metrics.cached_tokens
-                cache_write += step.metrics.cache_creation_tokens
+                cache_read += step.metrics.cache_read_tokens
+                cache_write += step.metrics.cache_write_tokens
 
     return {
         "prompt": prompt,

@@ -281,8 +281,8 @@ class TestComputeStepCost:
             metrics=Metrics(
                 prompt_tokens=1000,
                 completion_tokens=500,
-                cached_tokens=200,
-                cache_creation_tokens=100,
+                cache_read_tokens=200,
+                cache_write_tokens=100,
             ),
         )
         cost = compute_step_cost(step)

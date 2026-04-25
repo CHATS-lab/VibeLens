@@ -42,8 +42,8 @@ def test_claude_parses_envelope():
     assert result.text == "ok"
     assert result.metrics.prompt_tokens == 5
     assert result.metrics.completion_tokens == 6
-    assert result.metrics.cache_creation_tokens == 5220
-    assert result.metrics.cached_tokens == 0
+    assert result.metrics.cache_write_tokens == 5220
+    assert result.metrics.cache_read_tokens == 0
     assert result.metrics.cost_usd == pytest.approx(0.0328)
     assert result.metrics.duration_ms == 1000
     assert result.model == "claude-opus-4-6"
@@ -64,7 +64,7 @@ def test_codex_parses_ndjson_stream():
     assert result.text == "ok"
     assert result.metrics.prompt_tokens == 10590
     assert result.metrics.completion_tokens == 18
-    assert result.metrics.cached_tokens == 3456
+    assert result.metrics.cache_read_tokens == 3456
     assert result.metrics.cost_usd is None
     assert result.metrics.duration_ms == 1000
     assert result.model == "gpt-5.4-mini"
@@ -94,7 +94,7 @@ def test_gemini_parses_main_role_model():
     assert result.model == "gemini-3-flash-preview"
     assert result.metrics.prompt_tokens == 9324
     assert result.metrics.completion_tokens == 1
-    assert result.metrics.cached_tokens == 0
+    assert result.metrics.cache_read_tokens == 0
     assert result.metrics.extra is not None
     assert result.metrics.extra["reasoning_tokens"] == 44
     assert result.metrics.cost_usd is None
@@ -121,8 +121,8 @@ def test_amp_parses_ndjson_stream():
     assert result.text == "ok"
     assert result.metrics.prompt_tokens == 12
     assert result.metrics.completion_tokens == 1
-    assert result.metrics.cached_tokens == 8
-    assert result.metrics.cache_creation_tokens == 0
+    assert result.metrics.cache_read_tokens == 8
+    assert result.metrics.cache_write_tokens == 0
     print(f"amp: text={result.text!r} model={result.model} metrics={result.metrics}")
 
 
@@ -163,7 +163,7 @@ def test_opencode_parses_ndjson_stream():
     assert result.text == "ok"
     assert result.metrics.prompt_tokens == 11743
     assert result.metrics.completion_tokens == 26
-    assert result.metrics.cached_tokens == 1840
+    assert result.metrics.cache_read_tokens == 1840
     assert result.model == "gemini-2.5-flash"
 
 

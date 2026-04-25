@@ -260,7 +260,7 @@ export function DashboardView({ cache }: DashboardViewProps) {
                   `Input: ${stats.this_year.input_tokens.toLocaleString()}`,
                   `Output: ${stats.this_year.output_tokens.toLocaleString()}`,
                   `Cache Read: ${stats.this_year.cache_read_tokens.toLocaleString()}`,
-                  `Cache Write: ${stats.this_year.cache_creation_tokens.toLocaleString()}`,
+                  `Cache Write: ${stats.this_year.cache_write_tokens.toLocaleString()}`,
                 ].join("\n"),
               },
               {
@@ -271,7 +271,7 @@ export function DashboardView({ cache }: DashboardViewProps) {
                   `Input: ${stats.this_month.input_tokens.toLocaleString()}`,
                   `Output: ${stats.this_month.output_tokens.toLocaleString()}`,
                   `Cache Read: ${stats.this_month.cache_read_tokens.toLocaleString()}`,
-                  `Cache Write: ${stats.this_month.cache_creation_tokens.toLocaleString()}`,
+                  `Cache Write: ${stats.this_month.cache_write_tokens.toLocaleString()}`,
                 ].join("\n"),
               },
               {
@@ -282,7 +282,7 @@ export function DashboardView({ cache }: DashboardViewProps) {
                   `Total Input: ${stats.total_input_tokens.toLocaleString()}`,
                   `Total Output: ${stats.total_output_tokens.toLocaleString()}`,
                   `Total Cache Read: ${stats.total_cache_read_tokens.toLocaleString()}`,
-                  `Total Cache Write: ${stats.total_cache_creation_tokens.toLocaleString()}`,
+                  `Total Cache Write: ${stats.total_cache_write_tokens.toLocaleString()}`,
                 ].join("\n"),
               },
             ]}

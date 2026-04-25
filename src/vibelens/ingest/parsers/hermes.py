@@ -41,6 +41,11 @@ from uuid import uuid4
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
 from vibelens.ingest.parsers.base import BaseParser
+from vibelens.ingest.parsers.helpers import (
+    build_diagnostics_extra,
+    iter_jsonl_safe,
+    parse_tool_arguments,
+)
 from vibelens.llm.normalizer import normalize_model_name
 from vibelens.models.enums import AgentType, StepSource
 from vibelens.models.trajectories import (
@@ -166,31 +171,49 @@ class HermesParser(BaseParser):
         return sorted(primary)
 
     def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
-        """Parse a single Hermes session file into one Trajectory.
+        """Parse a Hermes session file into a main trajectory plus its sub-agents.
+
+        When the file is a top-level session and ``source_path`` is set,
+        the parser queries ``state.db`` for any sessions whose
+        ``parent_session_id`` matches this one and loads each child as a
+        sub-agent trajectory. Sessions invoked directly that already have
+        a parent (i.e. they ARE a sub-agent) return only their own
+        trajectory — no recursion into nested children.
 
         Args:
             content: Raw file content (jsonl stream or snapshot JSON).
-            source_path: Original file path, used to locate paired files
-                and to derive the session_id from the filename.
+            source_path: Original file path, used to locate paired files,
+                derive the session_id, and locate sibling children.
 
         Returns:
-            Single-element list with the Trajectory, or empty list if
-            the content is malformed or empty.
+            ``[main]`` when no children are linked, otherwise
+            ``[main, *children]``. Empty list on parse failure.
         """
         if not source_path:
             return []
+        main = self._parse_one_session(content, source_path)
+        if main is None:
+            return []
+        if main.parent_trajectory_ref is not None:
+            return [main]
+        path = Path(source_path)
+        children = self._load_subagent_trajectories(main.session_id, path.parent)
+        return [main, *children]
+
+    def _parse_one_session(self, content: str, source_path: str) -> Trajectory | None:
+        """Parse a single Hermes session file (jsonl or snapshot) into one Trajectory."""
         path = Path(source_path)
         session_id = _session_id_from_path(path)
         if not session_id:
-            return []
+            return None
 
         collector = DiagnosticsCollector()
         sessions_dir = path.parent
 
         if path.suffix == ".jsonl":
-            records = _parse_jsonl(content, collector)
+            records = list(iter_jsonl_safe(content, diagnostics=collector))
             if not records:
-                return []
+                return None
             steps, session_model, session_tools = _build_steps_from_jsonl(records, collector)
             snapshot = _load_snapshot(sessions_dir, session_id)
             base_url = snapshot.get("base_url") if snapshot else None
@@ -208,7 +231,7 @@ class HermesParser(BaseParser):
         else:
             snapshot = _parse_snapshot(content)
             if not snapshot:
-                return []
+                return None
             steps = _build_steps_from_snapshot(snapshot, collector)
             base_url = snapshot.get("base_url")
             system_prompt = snapshot.get("system_prompt")
@@ -218,7 +241,7 @@ class HermesParser(BaseParser):
             session_start = parse_iso_timestamp(snapshot.get("session_start"))
 
         if not steps:
-            return []
+            return None
 
         db_row = _load_state_db(sessions_dir, session_id)
         origin = _load_index_entry(sessions_dir, session_id)
@@ -239,7 +262,7 @@ class HermesParser(BaseParser):
             system_prompt=system_prompt,
             db_row=db_row,
             origin=origin,
-            diagnostics=self.build_diagnostics_extra(collector),
+            diagnostics=build_diagnostics_extra(collector),
         )
 
         parent_ref = None
@@ -258,7 +281,55 @@ class HermesParser(BaseParser):
         )
         if final_metrics:
             trajectory.final_metrics = final_metrics
-        return [trajectory]
+        return trajectory
+
+    def _load_subagent_trajectories(
+        self, parent_session_id: str, sessions_dir: Path
+    ) -> list[Trajectory]:
+        """Parse children of ``parent_session_id`` linked via state.db."""
+        conn = _open_state_db_ro(sessions_dir)
+        if conn is None:
+            return []
+        try:
+            cursor = conn.execute(
+                "SELECT id FROM sessions WHERE parent_session_id = ?",
+                (parent_session_id,),
+            )
+            child_ids = [row[0] for row in cursor if row[0]]
+        except sqlite3.Error as exc:
+            logger.debug("state.db child lookup failed for %s: %s", parent_session_id, exc)
+            return []
+        finally:
+            conn.close()
+
+        subs: list[Trajectory] = []
+        for cid in child_ids:
+            child_path = _locate_session_file(sessions_dir, cid)
+            if child_path is None:
+                continue
+            try:
+                child_content = child_path.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            sub = self._parse_one_session(child_content, str(child_path))
+            if sub is not None:
+                subs.append(sub)
+        return subs
+
+
+def _locate_session_file(sessions_dir: Path, session_id: str) -> Path | None:
+    """Pick the primary on-disk file for a Hermes session id.
+
+    Mirrors ``discover_session_files`` priority: jsonl wins, snapshot is
+    a fallback for CLI-only sessions.
+    """
+    jsonl = sessions_dir / f"{session_id}.jsonl"
+    if jsonl.is_file():
+        return jsonl
+    snapshot = sessions_dir / f"{_SNAPSHOT_PREFIX}{session_id}.json"
+    if snapshot.is_file():
+        return snapshot
+    return None
 
 
 # Hermes records model versions with dots (``claude-opus-4.7``) but
@@ -286,11 +357,6 @@ def _session_id_from_path(path: Path) -> str | None:
         if _SESSION_ID_RE.match(candidate):
             return candidate
     return None
-
-
-def _parse_jsonl(content: str, diagnostics: DiagnosticsCollector) -> list[dict]:
-    """Parse line-delimited JSON into a list of record dicts."""
-    return list(BaseParser.iter_jsonl_safe(content, diagnostics=diagnostics))
 
 
 def _parse_snapshot(content: str) -> dict | None:
@@ -469,7 +535,7 @@ def _build_tool_calls_and_observation(
         tool_call_id = raw.get("id") or raw.get("call_id") or ""
         function = raw.get("function") or {}
         function_name = function.get("name", "unknown")
-        arguments = _parse_tool_arguments(function.get("arguments"))
+        arguments = parse_tool_arguments(function.get("arguments"))
         tc_extra: dict[str, Any] = {}
         if raw.get("response_item_id"):
             tc_extra["response_item_id"] = raw["response_item_id"]
@@ -493,64 +559,49 @@ def _build_tool_calls_and_observation(
     return calls, observation
 
 
-def _parse_tool_arguments(raw: Any) -> dict | str | None:
-    """Decode a tool_call arguments JSON string into a dict.
+def _open_state_db_ro(sessions_dir: Path) -> sqlite3.Connection | None:
+    """Open ``state.db`` in read-only mode, or return None if absent/unreadable.
 
-    Hermes follows the OpenAI convention and serialises ``arguments``
-    as a JSON string. If decoding fails we keep the raw string so no
-    data is lost.
+    Read-only avoids write contention with a running Hermes process. Caller
+    is responsible for closing the connection.
     """
-    if raw is None or raw == "":
+    db_path = sessions_dir.parent / "state.db"
+    if not db_path.is_file():
         return None
-    if isinstance(raw, dict):
-        return raw
-    if isinstance(raw, str):
-        try:
-            parsed = json.loads(raw)
-        except json.JSONDecodeError:
-            return raw
-        if isinstance(parsed, dict):
-            return parsed
-        return raw
-    return None
+    try:
+        return sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    except sqlite3.Error as exc:
+        logger.debug("state.db open failed: %s", exc)
+        return None
 
 
 def _list_state_db_sessions(sessions_dir: Path) -> set[str] | None:
     """Return the set of session ids known to state.db, or None if absent.
 
-    Used by ``discover_session_files`` to filter out stale intermediate
-    snapshots — files Hermes rewrote during an active session that never
-    made it into the canonical state.db.  Returning ``None`` (not an empty
-    set) distinguishes "db is missing, don't filter" from "db is present
-    but empty, drop every snapshot-only file".
+    Returning ``None`` (not an empty set) distinguishes "db is missing,
+    don't filter" from "db is present but empty, drop every snapshot-only
+    file" — used by ``discover_session_files`` to drop stale intermediate
+    snapshots Hermes never recorded in state.db.
     """
-    db_path = sessions_dir.parent / "state.db"
-    if not db_path.is_file():
+    conn = _open_state_db_ro(sessions_dir)
+    if conn is None:
         return None
     try:
-        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         cursor = conn.execute("SELECT id FROM sessions")
-        ids = {row[0] for row in cursor if row[0]}
-        conn.close()
+        return {row[0] for row in cursor if row[0]}
     except sqlite3.Error as exc:
         logger.debug("state.db session list read failed: %s", exc)
         return None
-    return ids
+    finally:
+        conn.close()
 
 
 def _load_state_db(sessions_dir: Path, session_id: str) -> dict | None:
-    """Read the single sessions row for a session_id, if present.
-
-    state.db is at ``~/.hermes/state.db``; when the parser is invoked
-    against an extracted archive the file may be missing or located in
-    a different place. Opening read-only avoids any write contention
-    with a running Hermes process.
-    """
-    db_path = sessions_dir.parent / "state.db"
-    if not db_path.is_file():
+    """Read the single sessions row for a session_id, if present."""
+    conn = _open_state_db_ro(sessions_dir)
+    if conn is None:
         return None
     try:
-        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         conn.row_factory = sqlite3.Row
         # Column names are a module-level constant tuple, not user input,
         # so there is no SQL-injection surface here.
@@ -560,10 +611,11 @@ def _load_state_db(sessions_dir: Path, session_id: str) -> dict | None:
             (session_id,),
         )
         row = cursor.fetchone()
-        conn.close()
     except sqlite3.Error as exc:
         logger.debug("state.db read failed for %s: %s", session_id, exc)
         return None
+    finally:
+        conn.close()
     if not row:
         return None
     return {col: row[col] for col in _STATE_DB_COLUMNS}
@@ -617,8 +669,8 @@ def _attach_session_metrics_to_last_assistant(
         step.metrics = Metrics(
             prompt_tokens=input_tokens + cache_read,
             completion_tokens=output_tokens,
-            cached_tokens=cache_read,
-            cache_creation_tokens=cache_write,
+            cache_read_tokens=cache_read,
+            cache_write_tokens=cache_write,
         )
         if not step.model_name and session_model:
             step.model_name = session_model
@@ -631,7 +683,7 @@ def _build_final_metrics(
     """Compute FinalMetrics, overlaying real token/cost data from state.db.
 
     When a state.db row exists, its session-level totals override the
-    step-aggregated zeros that ``_compute_final_metrics`` produces
+    step-aggregated zeros that ``compute_final_metrics`` produces
     (hermes has no per-step metrics). Duration comes from
     ``ended_at - started_at`` when available, else from step timestamps.
     """
@@ -655,8 +707,8 @@ def _build_final_metrics(
             tool_call_count=tool_call_count,
             total_prompt_tokens=db_row.get("input_tokens") or 0,
             total_completion_tokens=db_row.get("output_tokens") or 0,
-            total_cache_read=db_row.get("cache_read_tokens") or 0,
-            total_cache_write=db_row.get("cache_write_tokens") or 0,
+            total_cache_read_tokens=db_row.get("cache_read_tokens") or 0,
+            total_cache_write_tokens=db_row.get("cache_write_tokens") or 0,
             total_cost_usd=cost,
             extra=extra or None,
         )

@@ -108,8 +108,8 @@ class OpenCodeCliBackend(CliBackend):
                     metrics = Metrics(
                         prompt_tokens=tokens.get("input", 0),
                         completion_tokens=tokens.get("output", 0),
-                        cached_tokens=cache.get("read", 0),
-                        cache_creation_tokens=cache.get("write", 0),
+                        cache_read_tokens=cache.get("read", 0),
+                        cache_write_tokens=cache.get("write", 0),
                     )
 
         if not text_parts:
@@ -117,6 +117,4 @@ class OpenCodeCliBackend(CliBackend):
         if metrics is None:
             metrics = Metrics()
         metrics.duration_ms = duration_ms
-        return InferenceResult(
-            text="".join(text_parts).strip(), model=self.model, metrics=metrics
-        )
+        return InferenceResult(text="".join(text_parts).strip(), model=self.model, metrics=metrics)

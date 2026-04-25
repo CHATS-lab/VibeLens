@@ -83,8 +83,8 @@ def _make_trajectory(
         metrics=Metrics(
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
-            cached_tokens=50,
-            cache_creation_tokens=10,
+            cache_read_tokens=50,
+            cache_write_tokens=10,
         ),
     )
     steps.append(agent_step)
@@ -737,9 +737,7 @@ class TestCrossDayBucketing:
         """Regression: a session whose steps all live in one day behaves as before."""
         from vibelens.utils.timestamps import local_date_key, local_tz
 
-        session_ts = datetime.now(tz=local_tz()).replace(
-            hour=10, minute=0, second=0, microsecond=0
-        )
+        session_ts = datetime.now(tz=local_tz()).replace(hour=10, minute=0, second=0, microsecond=0)
         traj = _make_trajectory(timestamp=session_ts)
         result = compute_dashboard_stats([traj])
 
@@ -749,9 +747,7 @@ class TestCrossDayBucketing:
         assert day_map[session_key].session_count == 1
         assert day_map[session_key].total_messages == result.total_messages
         assert day_map[session_key].total_tokens == result.total_tokens
-        assert day_map[session_key].total_cost_usd == pytest.approx(
-            result.total_cost_usd, rel=1e-9
-        )
+        assert day_map[session_key].total_cost_usd == pytest.approx(result.total_cost_usd, rel=1e-9)
 
 
 class TestFastPathDailyBreakdown:
@@ -770,8 +766,8 @@ class TestFastPathDailyBreakdown:
             "final_metrics": {
                 "total_prompt_tokens": sum(b["tokens"] for b in breakdown.values()),
                 "total_completion_tokens": 0,
-                "total_cache_read": 0,
-                "total_cache_write": 0,
+                "total_cache_read_tokens": 0,
+                "total_cache_write_tokens": 0,
                 "tool_call_count": 0,
                 "total_steps": sum(b["messages"] for b in breakdown.values()),
                 "duration": 3600,
@@ -782,7 +778,9 @@ class TestFastPathDailyBreakdown:
 
     def test_cross_day_session_splits_across_local_days(self):
         """A session created yesterday but active today shows up on both bars."""
-        from vibelens.services.dashboard.stats import compute_dashboard_stats_from_metadata
+        from vibelens.services.dashboard.stats import (
+            compute_dashboard_stats_from_metadata,
+        )
 
         meta = self._metadata_with_breakdown(
             session_id="s1",
@@ -808,7 +806,9 @@ class TestFastPathDailyBreakdown:
 
     def test_missing_breakdown_falls_back_to_creation_day(self):
         """Legacy metadata (no daily_breakdown) → credit creation day."""
-        from vibelens.services.dashboard.stats import compute_dashboard_stats_from_metadata
+        from vibelens.services.dashboard.stats import (
+            compute_dashboard_stats_from_metadata,
+        )
 
         meta = {
             "session_id": "s2",
@@ -818,8 +818,8 @@ class TestFastPathDailyBreakdown:
             "final_metrics": {
                 "total_prompt_tokens": 1500,
                 "total_completion_tokens": 0,
-                "total_cache_read": 0,
-                "total_cache_write": 0,
+                "total_cache_read_tokens": 0,
+                "total_cache_write_tokens": 0,
                 "tool_call_count": 0,
                 "total_steps": 5,
                 "duration": 3600,
@@ -887,7 +887,9 @@ class TestMessageCountInvariant:
         not the raw ``total_steps`` (which may be inflated by SYSTEM steps
         from full-parse or deflated to user-prompt count from skeleton parse).
         """
-        from vibelens.services.dashboard.stats import compute_dashboard_stats_from_metadata
+        from vibelens.services.dashboard.stats import (
+            compute_dashboard_stats_from_metadata,
+        )
 
         meta = {
             "session_id": "s1",
@@ -897,8 +899,8 @@ class TestMessageCountInvariant:
             "final_metrics": {
                 "total_prompt_tokens": 1000,
                 "total_completion_tokens": 0,
-                "total_cache_read": 0,
-                "total_cache_write": 0,
+                "total_cache_read_tokens": 0,
+                "total_cache_write_tokens": 0,
                 "tool_call_count": 0,
                 "total_steps": 999,  # deliberately wrong — must not leak into UI
                 "duration": 60,
@@ -918,7 +920,9 @@ class TestMessageCountInvariant:
 
     def test_fast_path_fallback_no_breakdown_still_consistent(self):
         """Legacy metadata (no daily_breakdown): total must still equal daily sum."""
-        from vibelens.services.dashboard.stats import compute_dashboard_stats_from_metadata
+        from vibelens.services.dashboard.stats import (
+            compute_dashboard_stats_from_metadata,
+        )
 
         meta = {
             "session_id": "s2",
@@ -928,8 +932,8 @@ class TestMessageCountInvariant:
             "final_metrics": {
                 "total_prompt_tokens": 500,
                 "total_completion_tokens": 0,
-                "total_cache_read": 0,
-                "total_cache_write": 0,
+                "total_cache_read_tokens": 0,
+                "total_cache_write_tokens": 0,
                 "tool_call_count": 0,
                 "total_steps": 7,
                 "duration": 60,
@@ -984,9 +988,7 @@ class TestMessageCountInvariant:
                     timestamp=ts,
                     agent=Agent(name="claude-code", model_name="claude-sonnet-4-6"),
                     steps=steps,
-                    final_metrics=FinalMetrics(
-                        duration=60, total_steps=3, tool_call_count=0
-                    ),
+                    final_metrics=FinalMetrics(duration=60, total_steps=3, tool_call_count=0),
                 )
             )
         result = compute_dashboard_stats(trajs)

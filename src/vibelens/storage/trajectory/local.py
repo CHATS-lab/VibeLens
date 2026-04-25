@@ -501,8 +501,8 @@ def _apply_scanned_metrics(traj: Trajectory, metrics: dict) -> None:
     fm = traj.final_metrics or FinalMetrics()
     fm.total_prompt_tokens = metrics["input_tokens"]
     fm.total_completion_tokens = metrics["output_tokens"]
-    fm.total_cache_read = metrics["cache_read_tokens"]
-    fm.total_cache_write = metrics["cache_creation_tokens"]
+    fm.total_cache_read_tokens = metrics["cache_read_tokens"]
+    fm.total_cache_write_tokens = metrics["cache_write_tokens"]
     fm.tool_call_count = metrics["tool_call_count"]
     if fm.total_steps is None or fm.total_steps == 0:
         fm.total_steps = metrics["message_count"]
@@ -537,8 +537,8 @@ def _prev_metrics_from_entry(entry: dict) -> dict:
     return {
         "input_tokens": fm.get("total_prompt_tokens") or 0,
         "output_tokens": fm.get("total_completion_tokens") or 0,
-        "cache_read_tokens": fm.get("total_cache_read") or 0,
-        "cache_creation_tokens": fm.get("total_cache_write") or 0,
+        "cache_read_tokens": fm.get("total_cache_read_tokens") or 0,
+        "cache_write_tokens": fm.get("total_cache_write_tokens") or 0,
         "tool_call_count": fm.get("tool_call_count") or 0,
         "model": agent.get("model_name"),
         "message_count": fm.get("total_steps") or 0,

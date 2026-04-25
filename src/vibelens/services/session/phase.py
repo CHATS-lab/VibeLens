@@ -12,7 +12,7 @@ step list so the frontend can map segments to steps directly.
 """
 
 
-from vibelens.ingest.parsers.base import is_error_content
+from vibelens.ingest.parsers.helpers import is_error_content
 from vibelens.models.enums import SessionPhase
 from vibelens.models.session.phase import PhaseSegment
 from vibelens.models.trajectories import Step

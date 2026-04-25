@@ -27,7 +27,7 @@ CSV_COLUMNS = [
     "input_tokens",
     "output_tokens",
     "cache_read_tokens",
-    "cache_creation_tokens",
+    "cache_write_tokens",
     "tool_calls",
     "cost_usd",
 ]
@@ -123,7 +123,7 @@ def _format_csv_row(session_id: str, agg: SessionAggregate) -> list:
         agg.input_tokens,
         agg.output_tokens,
         agg.cache_read_tokens,
-        agg.cache_creation_tokens,
+        agg.cache_write_tokens,
         agg.tool_calls,
         round(agg.cost_usd, 6),
     ]

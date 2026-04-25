@@ -25,7 +25,8 @@ from os.path import commonpath
 from pathlib import Path
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
-from vibelens.ingest.parsers.base import BaseParser, mark_error_content
+from vibelens.ingest.parsers.base import BaseParser
+from vibelens.ingest.parsers.helpers import build_diagnostics_extra, mark_error_content
 from vibelens.models.enums import AgentType, StepSource
 from vibelens.models.trajectories import (
     Metrics,
@@ -34,6 +35,7 @@ from vibelens.models.trajectories import (
     Step,
     ToolCall,
     Trajectory,
+    TrajectoryRef,
 )
 from vibelens.utils import (
     coerce_to_string,
@@ -61,6 +63,9 @@ _PATH_ARG_KEYS = {"file_path", "path", "filename", "directory"}
 # paths like "/" or "/Users" are not meaningful project roots.
 _MIN_PATH_DEPTH = 3
 
+# Value of the chat-file ``kind`` field that marks a sub-agent rollout.
+_KIND_SUBAGENT = "subagent"
+
 
 class GeminiParser(BaseParser):
     """Parser for Gemini CLI's native session JSON format.
@@ -77,24 +82,48 @@ class GeminiParser(BaseParser):
         return sorted(f for f in data_dir.rglob("session-*.json") if "chats" in f.parts)
 
     def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
-        """Parse Gemini CLI session JSON content into a Trajectory.
+        """Parse a Gemini chat file into a main trajectory plus its sub-agents.
 
-        Args:
-            content: Raw JSON content string.
-            source_path: Original file path for project resolution.
-
-        Returns:
-            Single-element list with the Trajectory, or empty list.
+        When the file is a main session and a ``source_path`` is available,
+        sibling ``kind: subagent`` files in the same ``chats/`` directory
+        with a matching ``sessionId`` are loaded as children. Sub-agent
+        files invoked directly return only themselves (no recursion).
         """
         try:
             data = json.loads(content)
         except json.JSONDecodeError:
             logger.debug("Invalid JSON in Gemini session content")
             return []
-
-        session_id = data.get("sessionId", "")
-        if not session_id:
+        main = self._parse_session_data(data, source_path)
+        if main is None:
             return []
+        if main.parent_trajectory_ref is not None or not source_path:
+            return [main]
+        subs = self._load_subagent_trajectories(main.session_id, Path(source_path))
+        return [main, *subs]
+
+    def _parse_session_data(
+        self, data: dict, source_path: str | None
+    ) -> Trajectory | None:
+        """Build one Trajectory from a parsed Gemini chat-file JSON object.
+
+        Sub-agent files (``kind: subagent``) get a synthetic session id from
+        the filename stem to avoid colliding with the main session's
+        ``sessionId`` (which they share verbatim).
+        """
+        original_sid = data.get("sessionId", "")
+        if not original_sid:
+            return None
+
+        kind = data.get("kind", "main")
+        parent_ref: TrajectoryRef | None = None
+        if kind == _KIND_SUBAGENT:
+            if not source_path:
+                return None
+            session_id = Path(source_path).stem
+            parent_ref = TrajectoryRef(session_id=original_sid)
+        else:
+            session_id = original_sid
 
         collector = DiagnosticsCollector()
         raw_messages = data.get("messages", [])
@@ -102,24 +131,47 @@ class GeminiParser(BaseParser):
         steps = _build_steps(raw_messages, session_id)
         collector.parsed_lines = len(steps)
         if not steps:
-            return []
+            return None
 
         file_path = Path(source_path) if source_path else None
         project_path = _resolve_project(file_path, data, steps) if file_path else None
-        extra = self.build_diagnostics_extra(collector)
+        extra = build_diagnostics_extra(collector)
         # Gemini doesn't persist a session-level model; use the most
         # recently seen step model so downstream pricing lookup can match.
         session_model = next((step.model_name for step in reversed(steps) if step.model_name), None)
         agent = self.build_agent(model=session_model)
-        return [
-            self.assemble_trajectory(
-                session_id=session_id,
-                agent=agent,
-                steps=steps,
-                project_path=project_path,
-                extra=extra,
-            )
-        ]
+        return self.assemble_trajectory(
+            session_id=session_id,
+            agent=agent,
+            steps=steps,
+            project_path=project_path,
+            parent_trajectory_ref=parent_ref,
+            extra=extra,
+        )
+
+    def _load_subagent_trajectories(
+        self, parent_session_id: str, parent_path: Path
+    ) -> list[Trajectory]:
+        """Parse sibling ``kind: subagent`` files in the same ``chats/`` dir."""
+        chats_dir = parent_path.parent
+        if chats_dir.name != "chats" or not chats_dir.is_dir():
+            return []
+        subs: list[Trajectory] = []
+        for sibling in sorted(chats_dir.iterdir()):
+            if sibling == parent_path or not sibling.is_file():
+                continue
+            if not (sibling.name.startswith("session-") and sibling.suffix == ".json"):
+                continue
+            try:
+                data = json.loads(sibling.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if data.get("kind") != _KIND_SUBAGENT or data.get("sessionId") != parent_session_id:
+                continue
+            sub = self._parse_session_data(data, str(sibling))
+            if sub is not None:
+                subs.append(sub)
+        return subs
 
 
 def _resolve_project(file_path: Path, data: dict, steps: list[Step]) -> str:
@@ -347,7 +399,6 @@ def _build_steps(raw_messages: list, session_id: str) -> list[Step]:
                     observation=observation,
                 )
             )
-
     return steps
 
 
@@ -379,13 +430,18 @@ def _extract_thinking(raw: dict) -> str | None:
 
 
 def _parse_gemini_tokens(tokens: dict | None) -> Metrics | None:
-    """Parse Gemini CLI token statistics into Metrics."""
+    """Parse Gemini CLI token statistics into ``Metrics``.
+
+    Gemini reports ``input`` already including any cached portion, so
+    we don't add ``cached`` into ``prompt_tokens`` (unlike the
+    Anthropic-style :meth:`Metrics.from_tokens`).
+    """
     if not tokens:
         return None
     return Metrics(
         prompt_tokens=tokens.get("input", 0),
         completion_tokens=tokens.get("output", 0),
-        cached_tokens=tokens.get("cached", 0),
+        cache_read_tokens=tokens.get("cached", 0),
     )
 
 

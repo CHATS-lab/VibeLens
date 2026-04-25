@@ -138,7 +138,7 @@ class CodexCliBackend(CliBackend):
                     metrics = Metrics(
                         prompt_tokens=usage_data.get("input_tokens", 0),
                         completion_tokens=usage_data.get("output_tokens", 0),
-                        cached_tokens=usage_data.get("cached_input_tokens", 0),
+                        cache_read_tokens=usage_data.get("cached_input_tokens", 0),
                     )
         if not text_parts:
             raise InferenceError("codex NDJSON stream contained no agent_message items")

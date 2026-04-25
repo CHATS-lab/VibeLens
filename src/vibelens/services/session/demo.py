@@ -9,12 +9,9 @@ from vibelens.config.settings import Settings
 from vibelens.deps import get_settings
 from vibelens.ingest.discovery import discover_all_session_files
 from vibelens.ingest.parsers import LOCAL_PARSER_CLASSES
-from vibelens.ingest.parsers.base import (
-    MAX_FIRST_MESSAGE_LENGTH,
-    BaseParser,
-    _is_meaningful_prompt,
-)
+from vibelens.ingest.parsers.base import BaseParser
 from vibelens.ingest.parsers.dataclaw import DataclawParser
+from vibelens.ingest.parsers.helpers import MAX_FIRST_MESSAGE_LENGTH, is_meaningful_prompt
 from vibelens.models.enums import StepSource
 from vibelens.models.trajectories import Trajectory
 from vibelens.storage.trajectory.disk import INDEX_FILENAME, DiskTrajectoryStore
@@ -199,14 +196,14 @@ def _fix_first_message(traj: Trajectory) -> None:
     Args:
         traj: Trajectory to fix in-place.
     """
-    if traj.first_message and _is_meaningful_prompt(traj.first_message):
+    if traj.first_message and is_meaningful_prompt(traj.first_message):
         return
     for step in traj.steps:
         if step.source != StepSource.USER:
             continue
         if step.extra and (step.extra.get("is_skill_output") or step.extra.get("is_auto_prompt")):
             continue
-        if isinstance(step.message, str) and _is_meaningful_prompt(step.message):
+        if isinstance(step.message, str) and is_meaningful_prompt(step.message):
             text = step.message
             if len(text) > MAX_FIRST_MESSAGE_LENGTH:
                 text = text[:MAX_FIRST_MESSAGE_LENGTH] + "..."

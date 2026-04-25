@@ -12,7 +12,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from vibelens.ingest.parsers.base import is_error_content
+from vibelens.ingest.parsers.helpers import is_error_content
 from vibelens.models.dashboard.dashboard import SessionToolUsage, ToolUsageStat
 from vibelens.models.trajectories import Step, Trajectory
 from vibelens.utils import get_logger

@@ -103,7 +103,7 @@ def test_incremental_matches_full(tmp_path: Path):
     assert incremental["input_tokens"] == full["input_tokens"]
     assert incremental["output_tokens"] == full["output_tokens"]
     assert incremental["cache_read_tokens"] == full["cache_read_tokens"]
-    assert incremental["cache_creation_tokens"] == full["cache_creation_tokens"]
+    assert incremental["cache_write_tokens"] == full["cache_write_tokens"]
     assert incremental["tool_call_count"] == full["tool_call_count"]
     assert incremental["message_count"] == full["message_count"]
     assert incremental["model"] == full["model"]

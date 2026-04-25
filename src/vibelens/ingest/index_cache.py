@@ -16,8 +16,13 @@ logger = get_logger(__name__)
 
 # Bump to invalidate existing caches after schema changes. Stat tuples
 # are stored as ``[mtime_ns, size_bytes]`` per file; size catches
-# in-place rewrites that preserve mtime.
-CACHE_VERSION = 7
+# in-place rewrites that preserve mtime. v8 invalidates v7 caches whose
+# entries still carry the old ``total_cache_read`` / ``total_cache_write``
+# (and Metrics ``cached_tokens`` / ``cache_creation_tokens``) field names.
+# v9 invalidates v8 caches that don't carry Codex sub-agent linkage
+# (``parent_trajectory_ref`` populated from session_meta source /
+# forked_from_id, and ``extra.agent_role`` / ``extra.agent_nickname``).
+CACHE_VERSION = 9
 
 # User-home path for the persistent session index cache
 DEFAULT_CACHE_PATH = Path.home() / ".vibelens" / "session_index.json"

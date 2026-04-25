@@ -3,13 +3,13 @@
 import json
 from pathlib import Path
 
-from vibelens.ingest.parsers.base import is_error_content
 from vibelens.ingest.parsers.gemini import (
     GeminiParser,
     _extract_thinking,
     _parse_gemini_tokens,
     resolve_project_path,
 )
+from vibelens.ingest.parsers.helpers import is_error_content
 from vibelens.models.enums import StepSource
 
 _parser = GeminiParser()
@@ -441,13 +441,13 @@ class TestGeminiTokens:
         metrics = _parse_gemini_tokens({"input": 100, "output": 50, "cached": 20})
         assert metrics.prompt_tokens == 100
         assert metrics.completion_tokens == 50
-        assert metrics.cached_tokens == 20
+        assert metrics.cache_read_tokens == 20
 
         # Partial tokens: missing fields default to zero
         metrics = _parse_gemini_tokens({"input": 200})
         assert metrics.prompt_tokens == 200
         assert metrics.completion_tokens == 0
-        assert metrics.cached_tokens == 0
+        assert metrics.cache_read_tokens == 0
 
         # None returns None
         assert _parse_gemini_tokens(None) is None
@@ -464,7 +464,7 @@ class TestGeminiTokens:
         metrics = _parse_gemini_tokens(tokens_extra)
         assert metrics.prompt_tokens == 100
         assert metrics.completion_tokens == 50
-        assert metrics.cached_tokens == 10
+        assert metrics.cache_read_tokens == 10
 
         # Tokens in full parse are attached to step metrics
         messages = [
@@ -483,7 +483,7 @@ class TestGeminiTokens:
         assert traj.steps[0].metrics is not None
         assert traj.steps[0].metrics.prompt_tokens == 500
         assert traj.steps[0].metrics.completion_tokens == 200
-        assert traj.steps[0].metrics.cached_tokens == 100
+        assert traj.steps[0].metrics.cache_read_tokens == 100
 
 
 class TestProjectHashResolution:
@@ -616,3 +616,120 @@ class TestDuration:
         traj = _parser.parse_file(path)[0]
         assert traj.final_metrics is not None
         assert isinstance(traj.final_metrics.duration, int)
+
+
+class TestSubAgentLinkage:
+    """Tests for Gemini sub-agent ↔ main session pairing."""
+
+    def test_main_session_has_no_parent_ref(self, tmp_path: Path):
+        """A kind=main file uses sessionId directly with no parent_trajectory_ref."""
+        path = tmp_path / "session-2026-01-01T00-00-abc.json"
+        _write_session_json(path, _make_session(session_id="shared-id", kind="main"))
+        traj = _parser.parse_file(path)[0]
+        assert traj.session_id == "shared-id"
+        assert traj.parent_trajectory_ref is None
+
+    def test_subagent_uses_synthetic_id_and_links_back(self, tmp_path: Path):
+        """kind=subagent uses the file stem as session_id and links to the original sessionId."""
+        path = tmp_path / "session-2026-01-01T00-01-abc.json"
+        _write_session_json(path, _make_session(session_id="shared-id", kind="subagent"))
+        traj = _parser.parse_file(path)[0]
+        assert traj.session_id == "session-2026-01-01T00-01-abc"
+        assert traj.parent_trajectory_ref is not None
+        assert traj.parent_trajectory_ref.session_id == "shared-id"
+
+    def test_main_and_subagent_with_same_sessionid_get_distinct_ids(self, tmp_path: Path):
+        """Parsing a main and its sub-agent (same in-file sessionId) yields two distinct ids."""
+        main_path = tmp_path / "session-2026-01-01T00-00-abc.json"
+        sub_path = tmp_path / "session-2026-01-01T00-01-abc.json"
+        _write_session_json(main_path, _make_session(session_id="shared-id", kind="main"))
+        _write_session_json(sub_path, _make_session(session_id="shared-id", kind="subagent"))
+
+        main_traj = _parser.parse_file(main_path)[0]
+        sub_traj = _parser.parse_file(sub_path)[0]
+
+        assert main_traj.session_id != sub_traj.session_id
+        assert sub_traj.parent_trajectory_ref.session_id == main_traj.session_id
+
+    def test_subagent_without_source_path_returns_empty(self):
+        """Without source_path a subagent file has no unique id, so parse() returns empty."""
+        content = json.dumps(_make_session(session_id="shared-id", kind="subagent"))
+        result = _parser.parse(content, source_path=None)
+        assert result == []
+
+    def test_kind_main_is_default_when_field_missing(self, tmp_path: Path):
+        """Files without a kind field are treated as main (no parent ref, real sessionId)."""
+        path = tmp_path / "session-no-kind.json"
+        _write_session_json(path, _make_session(session_id="shared-id"))  # no kind set
+        traj = _parser.parse_file(path)[0]
+        assert traj.session_id == "shared-id"
+        assert traj.parent_trajectory_ref is None
+
+    def test_main_file_in_chats_dir_loads_sibling_subagents(self, tmp_path: Path):
+        """Parsing a main session file pulls in sibling kind=subagent files with same sessionId."""
+        chats_dir = tmp_path / "chats"
+        chats_dir.mkdir()
+        main_path = chats_dir / "session-2026-01-01T00-00-abc.json"
+        sub_path_1 = chats_dir / "session-2026-01-01T00-05-abc.json"
+        sub_path_2 = chats_dir / "session-2026-01-01T00-10-abc.json"
+        _write_session_json(main_path, _make_session(session_id="shared-id", kind="main"))
+        _write_session_json(sub_path_1, _make_session(session_id="shared-id", kind="subagent"))
+        _write_session_json(sub_path_2, _make_session(session_id="shared-id", kind="subagent"))
+
+        trajectories = _parser.parse_file(main_path)
+
+        assert len(trajectories) == 3
+        main_traj = trajectories[0]
+        sub_trajs = trajectories[1:]
+        assert main_traj.session_id == "shared-id"
+        assert main_traj.parent_trajectory_ref is None
+        sub_ids = {t.session_id for t in sub_trajs}
+        assert sub_ids == {"session-2026-01-01T00-05-abc", "session-2026-01-01T00-10-abc"}
+        for sub in sub_trajs:
+            assert sub.parent_trajectory_ref is not None
+            assert sub.parent_trajectory_ref.session_id == "shared-id"
+
+    def test_main_file_skips_unrelated_subagent_with_different_sessionid(
+        self, tmp_path: Path
+    ):
+        """Subs in the same chats/ dir with a different sessionId are not pulled in."""
+        chats_dir = tmp_path / "chats"
+        chats_dir.mkdir()
+        main_path = chats_dir / "session-aaa-main.json"
+        unrelated_sub = chats_dir / "session-bbb-sub.json"
+        _write_session_json(main_path, _make_session(session_id="aaa", kind="main"))
+        _write_session_json(unrelated_sub, _make_session(session_id="bbb", kind="subagent"))
+
+        trajectories = _parser.parse_file(main_path)
+
+        assert len(trajectories) == 1
+        assert trajectories[0].session_id == "aaa"
+
+    def test_main_file_outside_chats_dir_does_not_scan_siblings(self, tmp_path: Path):
+        """If the main file isn't inside a chats/ directory, sibling discovery is skipped."""
+        main_path = tmp_path / "session-2026-01-01T00-00-abc.json"
+        sub_path = tmp_path / "session-2026-01-01T00-05-abc.json"
+        _write_session_json(main_path, _make_session(session_id="shared-id", kind="main"))
+        _write_session_json(sub_path, _make_session(session_id="shared-id", kind="subagent"))
+
+        trajectories = _parser.parse_file(main_path)
+
+        assert len(trajectories) == 1
+        assert trajectories[0].session_id == "shared-id"
+
+    def test_subagent_file_does_not_recurse_into_siblings(self, tmp_path: Path):
+        """Calling parse_file on a sub-agent returns just that sub, even with siblings present."""
+        chats_dir = tmp_path / "chats"
+        chats_dir.mkdir()
+        main_path = chats_dir / "session-2026-01-01T00-00-abc.json"
+        sub_path_1 = chats_dir / "session-2026-01-01T00-05-abc.json"
+        sub_path_2 = chats_dir / "session-2026-01-01T00-10-abc.json"
+        _write_session_json(main_path, _make_session(session_id="shared-id", kind="main"))
+        _write_session_json(sub_path_1, _make_session(session_id="shared-id", kind="subagent"))
+        _write_session_json(sub_path_2, _make_session(session_id="shared-id", kind="subagent"))
+
+        trajectories = _parser.parse_file(sub_path_1)
+
+        assert len(trajectories) == 1
+        assert trajectories[0].session_id == "session-2026-01-01T00-05-abc"
+        assert trajectories[0].parent_trajectory_ref.session_id == "shared-id"

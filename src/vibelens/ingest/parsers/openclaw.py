@@ -24,7 +24,13 @@ from pathlib import Path
 from uuid import uuid4
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
-from vibelens.ingest.parsers.base import ROLE_TO_SOURCE, BaseParser, mark_error_content
+from vibelens.ingest.parsers.base import BaseParser
+from vibelens.ingest.parsers.helpers import (
+    ROLE_TO_SOURCE,
+    build_diagnostics_extra,
+    iter_jsonl_safe,
+    mark_error_content,
+)
 from vibelens.models.enums import AgentType, StepSource
 from vibelens.models.trajectories import (
     Agent,
@@ -144,7 +150,7 @@ class OpenClawParser(BaseParser):
             List containing one Trajectory (main session).
         """
         collector = DiagnosticsCollector()
-        entries = _parse_jsonl_content(content, collector)
+        entries = list(iter_jsonl_safe(content, diagnostics=collector))
         if not entries:
             return []
 
@@ -158,7 +164,7 @@ class OpenClawParser(BaseParser):
             return []
 
         agent = self.build_agent(model=meta["model"])
-        extra = self.build_diagnostics_extra(collector)
+        extra = build_diagnostics_extra(collector)
 
         return [
             self.assemble_trajectory(
@@ -169,19 +175,6 @@ class OpenClawParser(BaseParser):
                 extra=extra,
             )
         ]
-
-
-def _parse_jsonl_content(content: str, diagnostics: DiagnosticsCollector) -> list[dict]:
-    """Parse JSONL string into a list of dicts, tracking parse quality.
-
-    Args:
-        content: Raw JSONL content.
-        diagnostics: Collector for tracking skipped lines.
-
-    Returns:
-        List of parsed JSON dicts.
-    """
-    return list(BaseParser.iter_jsonl_safe(content, diagnostics=diagnostics))
 
 
 def _extract_session_meta(entries: list[dict]) -> dict:
@@ -268,7 +261,17 @@ def _build_steps(entries: list[dict], diagnostics: DiagnosticsCollector) -> list
         model_name = msg.get("model") or None
 
         message, reasoning_content, tool_calls = _decompose_content(raw_content)
-        metrics = _build_metrics(msg.get("usage")) if source == StepSource.AGENT else None
+        metrics: Metrics | None = None
+        usage = msg.get("usage") if source == StepSource.AGENT else None
+        if usage:
+            cost_data = usage.get("cost")
+            metrics = Metrics.from_tokens(
+                input_tokens=usage.get("input") or 0,
+                output_tokens=usage.get("output") or 0,
+                cache_read_tokens=usage.get("cacheRead") or 0,
+                cache_write_tokens=usage.get("cacheWrite") or 0,
+                cost_usd=cost_data.get("total") if isinstance(cost_data, dict) else None,
+            )
 
         # Build observation from tool results linked to this step's tool calls
         observation = _build_observation(tool_calls, tool_result_map)
@@ -376,42 +379,6 @@ def _decompose_content(raw_content: str | list) -> tuple[str, str | None, list[T
     message = "\n\n".join(text_parts).strip()
     reasoning = "\n\n".join(thinking_parts).strip() or None
     return (message, reasoning, tool_calls)
-
-
-def _build_metrics(usage: dict | None) -> Metrics | None:
-    """Convert OpenClaw usage dict to ATIF Metrics model.
-
-    OpenClaw usage field mapping:
-    - ``input`` -> prompt_tokens
-    - ``output`` -> completion_tokens
-    - ``cacheRead`` -> cached_tokens
-    - ``cacheWrite`` -> cache_creation_tokens
-    - ``cost.total`` -> cost_usd
-
-    Args:
-        usage: Usage dict from assistant message, or None.
-
-    Returns:
-        Metrics instance, or None if no usage data.
-    """
-    if not usage:
-        return None
-
-    input_tok = usage.get("input") or 0
-    output_tok = usage.get("output") or 0
-    cache_read = usage.get("cacheRead") or 0
-    cache_write = usage.get("cacheWrite") or 0
-
-    cost_data = usage.get("cost")
-    cost_usd = cost_data.get("total") if isinstance(cost_data, dict) else None
-
-    return Metrics(
-        prompt_tokens=input_tok + cache_read,
-        completion_tokens=output_tok,
-        cached_tokens=cache_read,
-        cache_creation_tokens=cache_write,
-        cost_usd=cost_usd,
-    )
 
 
 def _build_observation(

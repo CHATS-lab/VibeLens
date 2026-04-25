@@ -33,7 +33,7 @@ def _empty_state() -> dict:
         "input_tokens": 0,
         "output_tokens": 0,
         "cache_read_tokens": 0,
-        "cache_creation_tokens": 0,
+        "cache_write_tokens": 0,
         "tool_call_count": 0,
         "model": None,
         "message_count": 0,
@@ -107,7 +107,7 @@ def _scan_into(file_path: Path, state: dict, start_offset: int = 0) -> dict | No
                     state["input_tokens"] += input_tok + cache_read
                     state["output_tokens"] += usage.get("output_tokens") or 0
                     state["cache_read_tokens"] += cache_read
-                    state["cache_creation_tokens"] += usage.get("cache_creation_input_tokens") or 0
+                    state["cache_write_tokens"] += usage.get("cache_creation_input_tokens") or 0
 
                 # Count tool_use blocks in content
                 content = msg.get("content")
@@ -132,7 +132,7 @@ def scan_session_metrics(file_path: Path) -> dict | None:
 
     Returns:
         Dict with keys: input_tokens, output_tokens, cache_read_tokens,
-        cache_creation_tokens, tool_call_count, model, message_count,
+        cache_write_tokens, tool_call_count, model, message_count,
         duration, first_timestamp, last_timestamp. None on read failure.
     """
     return _scan_into(file_path, _empty_state())
