@@ -65,7 +65,6 @@ export interface Step {
   tool_calls: ToolCall[];
   observation?: Observation | null;
   metrics?: Metrics | null;
-  is_copied_context?: boolean | null;
   extra?: Record<string, unknown> | null;
 }
 
