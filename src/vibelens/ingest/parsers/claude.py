@@ -228,7 +228,13 @@ class ClaudeParser(BaseParser):
         ``subagent_trajectory_ref`` set right here, so ``_load_subagents``
         only has to locate child files.
         """
-        steps = self._parse_content(raw, diagnostics=diagnostics, session_id=traj.session_id)
+        # Copied-context detection compares each entry's sessionId against the
+        # file's *in-file* canonical sessionId, not ``traj.session_id`` —
+        # sub-agent files use a synthetic id (filename stem) but their JSONL
+        # entries carry the parent's sessionId, which would otherwise flag
+        # every entry as copied and blank out ``first_message``.
+        canonical_sid = _scan_session_metadata(raw).session_id or traj.session_id
+        steps = self._parse_content(raw, diagnostics=diagnostics, session_id=canonical_sid)
         if not steps:
             if diagnostics.parsed_lines == 0 and diagnostics.total_lines > 0:
                 logger.warning(
