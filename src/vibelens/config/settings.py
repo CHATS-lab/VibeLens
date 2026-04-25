@@ -70,24 +70,28 @@ class StorageConfig(BaseModel):
         description="Directory for shared session snapshots.",
     )
     managed_skills_dir: Path = Field(
-        default_factory=lambda: _vibelens_home("skills"),
+        default_factory=lambda: _vibelens_home("extensions", "skills"),
         description="Central directory containing VibeLens-managed skills.",
     )
     managed_commands_dir: Path = Field(
-        default_factory=lambda: _vibelens_home("commands"),
+        default_factory=lambda: _vibelens_home("extensions", "commands"),
         description="Central directory for VibeLens-managed commands.",
     )
     managed_subagents_dir: Path = Field(
-        default_factory=lambda: _vibelens_home("subagents"),
+        default_factory=lambda: _vibelens_home("extensions", "subagents"),
         description="Central directory for VibeLens-managed subagents.",
     )
     managed_hooks_dir: Path = Field(
-        default_factory=lambda: _vibelens_home("hooks"),
+        default_factory=lambda: _vibelens_home("extensions", "hooks"),
         description="Central directory for VibeLens-managed hooks.",
     )
     managed_plugins_dir: Path = Field(
-        default_factory=lambda: _vibelens_home("plugins"),
+        default_factory=lambda: _vibelens_home("extensions", "plugins"),
         description="Central directory for VibeLens-managed plugins.",
+    )
+    managed_collections_dir: Path = Field(
+        default_factory=lambda: _vibelens_home("extensions", "collections"),
+        description="Central directory for VibeLens-managed extension collections.",
     )
     friction_dir: Path = Field(
         default_factory=lambda: _vibelens_home("friction"),
