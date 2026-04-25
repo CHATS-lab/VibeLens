@@ -19,6 +19,10 @@ Rules of thumb:
 - If a helper exists in `services/` but has no service-layer dep, it belongs in `utils/` or `context/`.
 - `services/inference_shared.py` is the inference-orchestration hub.
 
+## Adding a new agent parser
+
+Read [`docs/spec/parsers/writing-a-parser.md`](docs/spec/parsers/writing-a-parser.md) end-to-end before writing code. It covers the closed-loop process (data collection → format research → design → implementation → testing → validation), the 4-stage `BaseParser` template, hook contracts, helper conventions, robustness rules, and the final checklist. Each existing parser's per-format specifics live in `docs/spec/parsers/<agent>.md`; the comparison matrix is [README.md](docs/spec/parsers/README.md).
+
 ## Frontend Conventions (React + Vite + Tailwind)
 
 Refer to `DESIGN.md` for visual/layout conventions.

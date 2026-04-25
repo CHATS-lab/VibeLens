@@ -30,7 +30,8 @@ config/redteam.yaml
 # Docs (internal reference only, except specs and the public install guide)
 docs/*
 !docs/INSTALL.md
-!docs/writing-a-parser.md
+!docs/spec/
+!docs/spec/**
 
 # Datasets
 datasets/
