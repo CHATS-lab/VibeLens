@@ -175,6 +175,7 @@ class OpenClawParser(BaseParser):
             diagnostics.record_orphaned_result(tr_id)
         return steps
 
+
 def _extract_session_meta(entries: list[dict]) -> dict:
     """Scan entries for session_id / cwd / model. Header events can be interleaved
     with early ``delivery-mirror`` system messages, so we don't break at first message.

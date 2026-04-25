@@ -171,6 +171,7 @@ class GeminiParser(BaseParser):
             return None
         return self._finalize(traj, diagnostics)
 
+
 def _build_steps(raw_messages: list, session_id: str) -> list[Step]:
     """Convert Gemini CLI messages into Step objects.
 

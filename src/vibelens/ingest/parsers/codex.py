@@ -333,6 +333,7 @@ class CodexParser(BaseParser):
             extra=extra,
         )
 
+
 def _scan_session_metadata(entries: list[dict]) -> _CodexSessionMeta:
     """Extract session metadata from a single pass over entries.
 
@@ -554,9 +555,7 @@ def _handle_response_item(
                     content=content,
                     is_error=bool(result.get("is_error")),
                     extra=result.get("metadata"),
-                    subagent_trajectory_ref=_extract_subagent_ref(
-                        payload.get("name", ""), content
-                    ),
+                    subagent_trajectory_ref=_extract_subagent_ref(payload.get("name", ""), content),
                 )
             )
 
