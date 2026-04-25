@@ -19,6 +19,7 @@ import { sessionsClient } from "../../api/sessions";
 import type { Trajectory } from "../../types";
 import { baseProjectName } from "../../utils";
 import { Tooltip } from "../ui/tooltip";
+import { EmptyState } from "../ui/empty-state";
 import { SESSIONS_PER_PAGE, SEARCH_DEBOUNCE_MS } from "../../constants";
 import { SessionRow } from "./session-row";
 import { AgentFilterDropdown, DonateButton } from "./session-list-controls";
@@ -145,6 +146,7 @@ export function SessionList({
   const someChecked = checkedInView.length > 0 && !allChecked;
 
   const groupedByProject = useMemo(() => {
+    if (viewMode !== "project") return new Map<string, Trajectory[]>();
     const groups = new Map<string, Trajectory[]>();
     for (const session of filtered) {
       const key = session.project_path || "Unknown";
@@ -164,7 +166,7 @@ export function SessionList({
       ([a], [b]) => tier(a) - tier(b),
     );
     return new Map(entries);
-  }, [filtered]);
+  }, [filtered, viewMode]);
 
   // Auto-expand first project on initial load
   useEffect(() => {
@@ -176,12 +178,14 @@ export function SessionList({
     }
   }, [groupedByProject]);
 
-  // Client-side pagination for "time" view
+  // null rankedIds means the search request is in flight — fall back to grouped/time.
+  const searchActive = !!search && rankedIds !== null;
+
   const paginatedFiltered = useMemo(() => {
-    if (viewMode !== "time") return filtered;
+    if (!searchActive && viewMode !== "time") return filtered;
     const start = page * SESSIONS_PER_PAGE;
     return filtered.slice(start, start + SESSIONS_PER_PAGE);
-  }, [filtered, viewMode, page]);
+  }, [filtered, viewMode, page, searchActive]);
 
   const handleSetViewMode = (mode: ViewMode) => {
     if (mode === "project" && viewMode !== "project") {
@@ -306,7 +310,16 @@ export function SessionList({
             <Loader2 className="w-6 h-6 animate-spin text-accent-cyan" />
             <span className="text-sm">Loading sessions…</span>
           </div>
-        ) : viewMode === "time" ? (
+        ) : searchActive && filtered.length === 0 ? (
+          <EmptyState icon={Search} title="No sessions match">
+            <button
+              onClick={() => setSearch("")}
+              className="px-3 py-1 text-xs font-medium text-accent-cyan bg-accent-cyan-subtle hover:bg-accent-cyan-muted border border-accent-cyan-border rounded transition"
+            >
+              Clear search
+            </button>
+          </EmptyState>
+        ) : searchActive || viewMode === "time" ? (
           paginatedFiltered.map((session) => (
             <SessionRow
               key={session.session_id}
@@ -395,7 +408,7 @@ export function SessionList({
       <div className="shrink-0 border-t border-card px-3 py-2 flex items-center justify-between text-xs text-muted">
         <span>{filtered.length} sessions</span>
         <div className="flex items-center gap-2">
-          {viewMode === "time" && filtered.length > SESSIONS_PER_PAGE && (
+          {(searchActive || viewMode === "time") && filtered.length > SESSIONS_PER_PAGE && (
             <div className="flex items-center gap-1">
               <Tooltip text="Previous page">
                 <button
