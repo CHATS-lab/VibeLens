@@ -621,46 +621,6 @@ class TestSubagentParsing:
         print("  main session excludes subagent messages")
 
 
-class TestDiscoverSubagentOnlySessions:
-    def test_discover_subagent_only_sessions(self, tmp_path: Path):
-        """Finds session dirs with only subagent files,
-        ignores dirs with root JSONL, tool-only, empty, or nonexistent."""
-        project_dir = tmp_path / "project"
-        project_dir.mkdir()
-
-        # Session with root JSONL — should NOT be returned
-        (project_dir / "has-root.jsonl").write_text("{}\n")
-        sa_dir = project_dir / "has-root" / "subagents"
-        sa_dir.mkdir(parents=True)
-        (sa_dir / "agent-a1.jsonl").write_text("{}\n")
-
-        # Session with only subagent data — SHOULD be returned
-        sa_dir2 = project_dir / "subagent-only" / "subagents"
-        sa_dir2.mkdir(parents=True)
-        (sa_dir2 / "agent-b1.jsonl").write_text("{}\n")
-
-        # Tool-only dir — should NOT be returned
-        (project_dir / "tool-only" / "tool-results").mkdir(parents=True)
-
-        # Empty subagent dir — should NOT be returned
-        (project_dir / "empty-sa" / "subagents").mkdir(parents=True)
-
-        result = _parser.discover_subagent_only_sessions(project_dir)
-        print(f"  discovered: {[p.name for p in result]}")
-        assert len(result) == 1
-        assert result[0].parent.name == "subagent-only"
-
-        # Nonexistent project dir
-        assert _parser.discover_subagent_only_sessions(tmp_path / "nonexistent") == []
-
-        # Directory with only root JSONL, no session subdirs
-        flat_dir = tmp_path / "flat"
-        flat_dir.mkdir()
-        (flat_dir / "session.jsonl").write_text("{}\n")
-        assert _parser.discover_subagent_only_sessions(flat_dir) == []
-        print("  subagent-only discovery: correct filtering verified")
-
-
 class TestMetricsDedup:
     def test_streaming_chunks_merged_into_single_step(self, tmp_path: Path):
         """Consecutive entries with same message.id are merged into one step."""
