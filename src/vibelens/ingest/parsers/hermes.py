@@ -318,6 +318,19 @@ class HermesParser(BaseParser):
                 subs.append(sub)
         return subs
 
+_DEFAULT_PROJECT_PATH = "hermes://local"
+
+
+def _session_id_from_path(path: Path) -> str | None:
+    """Extract the canonical session_id from a jsonl or snapshot path."""
+    if path.suffix == ".jsonl" and _SESSION_ID_RE.match(path.stem):
+        return path.stem
+    if path.suffix == ".json" and path.stem.startswith(_SNAPSHOT_PREFIX):
+        candidate = path.stem[len(_SNAPSHOT_PREFIX) :]
+        if _SESSION_ID_RE.match(candidate):
+            return candidate
+    return None
+
 
 def _locate_session_file(sessions_dir: Path, session_id: str) -> Path | None:
     """Pick the primary on-disk file for a Hermes session id.
@@ -332,233 +345,6 @@ def _locate_session_file(sessions_dir: Path, session_id: str) -> Path | None:
     if snapshot.is_file():
         return snapshot
     return None
-
-
-# Hermes records model versions with dots (``claude-opus-4.7``) but
-# VibeLens's pricing / normalizer expects dashes (``claude-opus-4-7``).
-def _canonical_model_name(raw: str | None) -> str | None:
-    """Canonicalise a raw Hermes model name via the shared llm normalizer.
-
-    Hermes emits Anthropic models with dotted versions
-    (``anthropic/claude-opus-4.7``). The shared ``llm.normalize_model_name``
-    understands this form. When the model is unknown to the pricing catalog
-    we keep the raw string so it still surfaces in the UI — losing it
-    would silently drop model information for any wrapper not yet mapped.
-    """
-    if not raw:
-        return raw
-    return normalize_model_name(raw) or raw
-
-
-def _session_id_from_path(path: Path) -> str | None:
-    """Extract the canonical session_id from a jsonl or snapshot path."""
-    if path.suffix == ".jsonl" and _SESSION_ID_RE.match(path.stem):
-        return path.stem
-    if path.suffix == ".json" and path.stem.startswith(_SNAPSHOT_PREFIX):
-        candidate = path.stem[len(_SNAPSHOT_PREFIX) :]
-        if _SESSION_ID_RE.match(candidate):
-            return candidate
-    return None
-
-
-def _parse_snapshot(content: str) -> dict | None:
-    """Parse a snapshot JSON string into a dict."""
-    try:
-        data = json.loads(content)
-    except json.JSONDecodeError:
-        logger.debug("Invalid JSON in Hermes snapshot")
-        return None
-    if not isinstance(data, dict):
-        return None
-    return data
-
-
-def _load_snapshot(sessions_dir: Path, session_id: str) -> dict | None:
-    """Load the paired snapshot for a jsonl session, if it exists."""
-    snap_path = sessions_dir / f"{_SNAPSHOT_PREFIX}{session_id}.json"
-    if not snap_path.is_file():
-        return None
-    try:
-        return _parse_snapshot(snap_path.read_text(encoding="utf-8"))
-    except OSError:
-        return None
-
-
-def _session_meta_value(records: list[dict], key: str) -> Any:
-    """Return ``key`` from the first ``session_meta`` record, if any."""
-    for rec in records:
-        if rec.get("role") == "session_meta":
-            return rec.get(key)
-    return None
-
-
-def _first_nonnull(*values: Any) -> Any:
-    """Return the first non-None, non-empty argument, or None."""
-    for value in values:
-        if value:
-            return value
-    return None
-
-
-def _build_steps_from_jsonl(
-    records: list[dict], diagnostics: DiagnosticsCollector
-) -> tuple[list[Step], str | None, list | None]:
-    """Build Step objects from jsonl records.
-
-    Pairs each assistant tool_call with its matching tool record by
-    tool_call_id. Returns the steps along with the session-level model
-    and tool list pulled from the ``session_meta`` record.
-    """
-    tool_results_by_id = _collect_tool_results(records, diagnostics)
-    session_model = _session_meta_value(records, "model")
-    session_tools = _session_meta_value(records, "tools")
-
-    steps: list[Step] = []
-    for rec in records:
-        role = rec.get("role")
-        if role in (None, "session_meta", "tool"):
-            continue
-        timestamp = parse_iso_timestamp(rec.get("timestamp"))
-        if role == "user":
-            steps.append(
-                Step(
-                    step_id=str(uuid4()),
-                    source=StepSource.USER,
-                    message=rec.get("content", "") or "",
-                    timestamp=timestamp,
-                )
-            )
-        elif role == "assistant":
-            steps.append(_build_assistant_step(rec, timestamp, session_model, tool_results_by_id))
-    return steps, session_model, session_tools if isinstance(session_tools, list) else None
-
-
-def _collect_tool_results(
-    records: list[dict], diagnostics: DiagnosticsCollector
-) -> dict[str, dict]:
-    """Index tool records by ``tool_call_id`` for later pairing."""
-    results: dict[str, dict] = {}
-    for rec in records:
-        if rec.get("role") != "tool":
-            continue
-        tool_call_id = rec.get("tool_call_id")
-        if not tool_call_id:
-            diagnostics.record_orphaned_result("")
-            continue
-        results[tool_call_id] = rec
-        diagnostics.record_tool_result()
-    return results
-
-
-def _build_assistant_step(
-    rec: dict,
-    timestamp: datetime | None,
-    session_model: str | None,
-    tool_results_by_id: dict[str, dict],
-) -> Step:
-    """Build a single assistant Step, including any tool calls and results."""
-    raw_tool_calls = rec.get("tool_calls") or []
-    tool_calls, observation = _build_tool_calls_and_observation(raw_tool_calls, tool_results_by_id)
-    reasoning = rec.get("reasoning")
-    finish_reason = rec.get("finish_reason")
-    step_extra: dict[str, Any] = {}
-    if finish_reason:
-        step_extra["finish_reason"] = finish_reason
-    return Step(
-        step_id=str(uuid4()),
-        source=StepSource.AGENT,
-        message=rec.get("content", "") or "",
-        reasoning_content=reasoning or None,
-        model_name=session_model or None,
-        timestamp=timestamp,
-        tool_calls=tool_calls,
-        observation=observation,
-        extra=step_extra or None,
-    )
-
-
-def _build_steps_from_snapshot(snapshot: dict, diagnostics: DiagnosticsCollector) -> list[Step]:
-    """Build Step objects from a snapshot's ``messages`` array.
-
-    Snapshot messages have no per-message timestamps; all steps share
-    the session-level ``session_start`` as their coarse timestamp.
-    Tool results appear as ``role=tool`` messages linked to the
-    preceding assistant's tool_calls by ``tool_call_id``.
-    """
-    messages = snapshot.get("messages", [])
-    if not isinstance(messages, list):
-        return []
-    diagnostics.total_lines = len(messages)
-    fallback_ts = parse_iso_timestamp(snapshot.get("session_start"))
-    session_model = snapshot.get("model")
-
-    tool_results_by_id: dict[str, dict] = {}
-    for msg in messages:
-        if isinstance(msg, dict) and msg.get("role") == "tool":
-            tool_call_id = msg.get("tool_call_id")
-            if tool_call_id:
-                tool_results_by_id[tool_call_id] = {"content": msg.get("content", "")}
-                diagnostics.record_tool_result()
-
-    steps: list[Step] = []
-    for msg in messages:
-        if not isinstance(msg, dict):
-            continue
-        role = msg.get("role")
-        if role == "user":
-            steps.append(
-                Step(
-                    step_id=str(uuid4()),
-                    source=StepSource.USER,
-                    message=msg.get("content", "") or "",
-                    timestamp=fallback_ts,
-                )
-            )
-            diagnostics.parsed_lines += 1
-        elif role == "assistant":
-            steps.append(_build_assistant_step(msg, fallback_ts, session_model, tool_results_by_id))
-            diagnostics.parsed_lines += 1
-        elif role == "tool":
-            diagnostics.parsed_lines += 1
-    return steps
-
-
-def _build_tool_calls_and_observation(
-    raw_tool_calls: list, tool_results_by_id: dict[str, dict]
-) -> tuple[list[ToolCall], Observation | None]:
-    """Turn a list of raw tool_call dicts into ToolCall + Observation."""
-    if not raw_tool_calls:
-        return [], None
-    calls: list[ToolCall] = []
-    results: list[ObservationResult] = []
-    for raw in raw_tool_calls:
-        if not isinstance(raw, dict):
-            continue
-        tool_call_id = raw.get("id") or raw.get("call_id") or ""
-        function = raw.get("function") or {}
-        function_name = function.get("name", "unknown")
-        arguments = parse_tool_arguments(function.get("arguments"))
-        tc_extra: dict[str, Any] = {}
-        if raw.get("response_item_id"):
-            tc_extra["response_item_id"] = raw["response_item_id"]
-        calls.append(
-            ToolCall(
-                tool_call_id=tool_call_id,
-                function_name=function_name,
-                arguments=arguments,
-                extra=tc_extra or None,
-            )
-        )
-        result = tool_results_by_id.get(tool_call_id)
-        if result is not None:
-            results.append(
-                ObservationResult(
-                    source_call_id=tool_call_id,
-                    content=result.get("content", "") or "",
-                )
-            )
-    observation = Observation(results=results) if results else None
-    return calls, observation
 
 
 def _open_state_db_ro(sessions_dir: Path) -> sqlite3.Connection | None:
@@ -623,6 +409,17 @@ def _load_state_db(sessions_dir: Path, session_id: str) -> dict | None:
     return {col: row[col] for col in _STATE_DB_COLUMNS}
 
 
+def _load_snapshot(sessions_dir: Path, session_id: str) -> dict | None:
+    """Load the paired snapshot for a jsonl session, if it exists."""
+    snap_path = sessions_dir / f"{_SNAPSHOT_PREFIX}{session_id}.json"
+    if not snap_path.is_file():
+        return None
+    try:
+        return _parse_snapshot(snap_path.read_text(encoding="utf-8"))
+    except OSError:
+        return None
+
+
 def _load_index_entry(sessions_dir: Path, session_id: str) -> dict | None:
     """Find the origin metadata for a session_id in sessions.json."""
     index_path = sessions_dir / "sessions.json"
@@ -638,6 +435,168 @@ def _load_index_entry(sessions_dir: Path, session_id: str) -> dict | None:
         if isinstance(entry, dict) and entry.get("session_id") == session_id:
             return entry
     return None
+
+
+def _canonical_model_name(raw: str | None) -> str | None:
+    """Canonicalise a raw Hermes model name via the shared llm normalizer.
+
+    Hermes emits Anthropic models with dotted versions
+    (``anthropic/claude-opus-4.7``). The shared ``llm.normalize_model_name``
+    understands this form. When the model is unknown to the pricing catalog
+    we keep the raw string so it still surfaces in the UI — losing it
+    would silently drop model information for any wrapper not yet mapped.
+    """
+    if not raw:
+        return raw
+    return normalize_model_name(raw) or raw
+
+
+def _derive_project_path(platform: str | None, origin: dict | None, db_row: dict | None) -> str:
+    """Synthesise a ``project_path`` for a Hermes session.
+
+    Hermes doesn't persist a filesystem cwd for its sessions. For the
+    UI to group related conversations we instead derive a logical
+    location URI from the chat platform and id:
+
+      - Slack (and similar platforms with a chat_id) →
+        ``slack://<chat_id>`` (e.g. ``slack://D0ATU26RX1Q``)
+      - CLI sessions → ``hermes://cli``
+      - Anything else → ``hermes://<platform>`` or ``hermes://local``
+
+    This gives each chat / surface its own "project" and keeps unrelated
+    chats from being bucketed together.
+    """
+    origin_details: dict = {}
+    if origin:
+        detail = origin.get("origin")
+        origin_details = detail if isinstance(detail, dict) else origin
+
+    effective_platform = (
+        platform or origin_details.get("platform") or (db_row.get("source") if db_row else None)
+    )
+    chat_id = origin_details.get("chat_id") if origin_details else None
+
+    if effective_platform and chat_id:
+        return f"{effective_platform}://{chat_id}"
+    if effective_platform == "cli":
+        return "hermes://cli"
+    if effective_platform:
+        return f"hermes://{effective_platform}"
+    return _DEFAULT_PROJECT_PATH
+
+
+def _build_trajectory_extra(
+    platform: str | None,
+    base_url: str | None,
+    system_prompt: str | None,
+    db_row: dict | None,
+    origin: dict | None,
+    diagnostics: dict | None,
+) -> dict[str, Any] | None:
+    """Assemble the per-trajectory ``extra`` dict from all enrichment sources."""
+    extra: dict[str, Any] = {}
+    if platform:
+        extra["platform"] = platform
+    if base_url:
+        extra["base_url"] = base_url
+    if system_prompt:
+        extra["system_prompt"] = system_prompt
+    if db_row:
+        for key in ("title", "end_reason", "cost_status", "cost_source", "billing_provider"):
+            value = db_row.get(key)
+            if value:
+                extra[key] = value
+        source = db_row.get("source")
+        if source and source != platform:
+            extra["source"] = source
+    if origin:
+        origin_details = origin.get("origin") if isinstance(origin.get("origin"), dict) else {}
+        for key in ("chat_type", "chat_id", "user_name", "thread_id"):
+            value = origin_details.get(key) if origin_details else origin.get(key)
+            if value:
+                extra[key] = value
+    if diagnostics:
+        extra.update(diagnostics)
+    return extra or None
+
+
+def _build_steps_from_jsonl(
+    records: list[dict], diagnostics: DiagnosticsCollector
+) -> tuple[list[Step], str | None, list | None]:
+    """Build Step objects from jsonl records.
+
+    Pairs each assistant tool_call with its matching tool record by
+    tool_call_id. Returns the steps along with the session-level model
+    and tool list pulled from the ``session_meta`` record.
+    """
+    tool_results_by_id = _collect_tool_results(records, diagnostics)
+    session_model = _session_meta_value(records, "model")
+    session_tools = _session_meta_value(records, "tools")
+
+    steps: list[Step] = []
+    for rec in records:
+        role = rec.get("role")
+        if role in (None, "session_meta", "tool"):
+            continue
+        timestamp = parse_iso_timestamp(rec.get("timestamp"))
+        if role == "user":
+            steps.append(
+                Step(
+                    step_id=str(uuid4()),
+                    source=StepSource.USER,
+                    message=rec.get("content", "") or "",
+                    timestamp=timestamp,
+                )
+            )
+        elif role == "assistant":
+            steps.append(_build_assistant_step(rec, timestamp, session_model, tool_results_by_id))
+    return steps, session_model, session_tools if isinstance(session_tools, list) else None
+
+
+def _build_steps_from_snapshot(snapshot: dict, diagnostics: DiagnosticsCollector) -> list[Step]:
+    """Build Step objects from a snapshot's ``messages`` array.
+
+    Snapshot messages have no per-message timestamps; all steps share
+    the session-level ``session_start`` as their coarse timestamp.
+    Tool results appear as ``role=tool`` messages linked to the
+    preceding assistant's tool_calls by ``tool_call_id``.
+    """
+    messages = snapshot.get("messages", [])
+    if not isinstance(messages, list):
+        return []
+    diagnostics.total_lines = len(messages)
+    fallback_ts = parse_iso_timestamp(snapshot.get("session_start"))
+    session_model = snapshot.get("model")
+
+    tool_results_by_id: dict[str, dict] = {}
+    for msg in messages:
+        if isinstance(msg, dict) and msg.get("role") == "tool":
+            tool_call_id = msg.get("tool_call_id")
+            if tool_call_id:
+                tool_results_by_id[tool_call_id] = {"content": msg.get("content", "")}
+                diagnostics.record_tool_result()
+
+    steps: list[Step] = []
+    for msg in messages:
+        if not isinstance(msg, dict):
+            continue
+        role = msg.get("role")
+        if role == "user":
+            steps.append(
+                Step(
+                    step_id=str(uuid4()),
+                    source=StepSource.USER,
+                    message=msg.get("content", "") or "",
+                    timestamp=fallback_ts,
+                )
+            )
+            diagnostics.parsed_lines += 1
+        elif role == "assistant":
+            steps.append(_build_assistant_step(msg, fallback_ts, session_model, tool_results_by_id))
+            diagnostics.parsed_lines += 1
+        elif role == "tool":
+            diagnostics.parsed_lines += 1
+    return steps
 
 
 def _attach_session_metrics_to_last_assistant(
@@ -725,81 +684,119 @@ def _build_final_metrics(
     )
 
 
+def _parse_snapshot(content: str) -> dict | None:
+    """Parse a snapshot JSON string into a dict."""
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError:
+        logger.debug("Invalid JSON in Hermes snapshot")
+        return None
+    if not isinstance(data, dict):
+        return None
+    return data
+
+
+def _session_meta_value(records: list[dict], key: str) -> Any:
+    """Return ``key`` from the first ``session_meta`` record, if any."""
+    for rec in records:
+        if rec.get("role") == "session_meta":
+            return rec.get(key)
+    return None
+
+
+def _first_nonnull(*values: Any) -> Any:
+    """Return the first non-None, non-empty argument, or None."""
+    for value in values:
+        if value:
+            return value
+    return None
+
+
+def _collect_tool_results(
+    records: list[dict], diagnostics: DiagnosticsCollector
+) -> dict[str, dict]:
+    """Index tool records by ``tool_call_id`` for later pairing."""
+    results: dict[str, dict] = {}
+    for rec in records:
+        if rec.get("role") != "tool":
+            continue
+        tool_call_id = rec.get("tool_call_id")
+        if not tool_call_id:
+            diagnostics.record_orphaned_result("")
+            continue
+        results[tool_call_id] = rec
+        diagnostics.record_tool_result()
+    return results
+
+
+def _build_assistant_step(
+    rec: dict,
+    timestamp: datetime | None,
+    session_model: str | None,
+    tool_results_by_id: dict[str, dict],
+) -> Step:
+    """Build a single assistant Step, including any tool calls and results."""
+    raw_tool_calls = rec.get("tool_calls") or []
+    tool_calls, observation = _build_tool_calls_and_observation(raw_tool_calls, tool_results_by_id)
+    reasoning = rec.get("reasoning")
+    finish_reason = rec.get("finish_reason")
+    step_extra: dict[str, Any] = {}
+    if finish_reason:
+        step_extra["finish_reason"] = finish_reason
+    return Step(
+        step_id=str(uuid4()),
+        source=StepSource.AGENT,
+        message=rec.get("content", "") or "",
+        reasoning_content=reasoning or None,
+        model_name=session_model or None,
+        timestamp=timestamp,
+        tool_calls=tool_calls,
+        observation=observation,
+        extra=step_extra or None,
+    )
+
+
+def _build_tool_calls_and_observation(
+    raw_tool_calls: list, tool_results_by_id: dict[str, dict]
+) -> tuple[list[ToolCall], Observation | None]:
+    """Turn a list of raw tool_call dicts into ToolCall + Observation."""
+    if not raw_tool_calls:
+        return [], None
+    calls: list[ToolCall] = []
+    results: list[ObservationResult] = []
+    for raw in raw_tool_calls:
+        if not isinstance(raw, dict):
+            continue
+        tool_call_id = raw.get("id") or raw.get("call_id") or ""
+        function = raw.get("function") or {}
+        function_name = function.get("name", "unknown")
+        arguments = parse_tool_arguments(function.get("arguments"))
+        tc_extra: dict[str, Any] = {}
+        if raw.get("response_item_id"):
+            tc_extra["response_item_id"] = raw["response_item_id"]
+        calls.append(
+            ToolCall(
+                tool_call_id=tool_call_id,
+                function_name=function_name,
+                arguments=arguments,
+                extra=tc_extra or None,
+            )
+        )
+        result = tool_results_by_id.get(tool_call_id)
+        if result is not None:
+            results.append(
+                ObservationResult(
+                    source_call_id=tool_call_id,
+                    content=result.get("content", "") or "",
+                )
+            )
+    observation = Observation(results=results) if results else None
+    return calls, observation
+
+
 def _compute_duration(steps: list[Step]) -> int:
     """Wall-clock seconds between the first and last step timestamps."""
     timestamps = [s.timestamp for s in steps if s.timestamp]
     if len(timestamps) < 2:
         return 0
     return int((max(timestamps) - min(timestamps)).total_seconds())
-
-
-_DEFAULT_PROJECT_PATH = "hermes://local"
-
-
-def _derive_project_path(platform: str | None, origin: dict | None, db_row: dict | None) -> str:
-    """Synthesise a ``project_path`` for a Hermes session.
-
-    Hermes doesn't persist a filesystem cwd for its sessions. For the
-    UI to group related conversations we instead derive a logical
-    location URI from the chat platform and id:
-
-      - Slack (and similar platforms with a chat_id) →
-        ``slack://<chat_id>`` (e.g. ``slack://D0ATU26RX1Q``)
-      - CLI sessions → ``hermes://cli``
-      - Anything else → ``hermes://<platform>`` or ``hermes://local``
-
-    This gives each chat / surface its own "project" and keeps unrelated
-    chats from being bucketed together.
-    """
-    origin_details: dict = {}
-    if origin:
-        detail = origin.get("origin")
-        origin_details = detail if isinstance(detail, dict) else origin
-
-    effective_platform = (
-        platform or origin_details.get("platform") or (db_row.get("source") if db_row else None)
-    )
-    chat_id = origin_details.get("chat_id") if origin_details else None
-
-    if effective_platform and chat_id:
-        return f"{effective_platform}://{chat_id}"
-    if effective_platform == "cli":
-        return "hermes://cli"
-    if effective_platform:
-        return f"hermes://{effective_platform}"
-    return _DEFAULT_PROJECT_PATH
-
-
-def _build_trajectory_extra(
-    platform: str | None,
-    base_url: str | None,
-    system_prompt: str | None,
-    db_row: dict | None,
-    origin: dict | None,
-    diagnostics: dict | None,
-) -> dict[str, Any] | None:
-    """Assemble the per-trajectory ``extra`` dict from all enrichment sources."""
-    extra: dict[str, Any] = {}
-    if platform:
-        extra["platform"] = platform
-    if base_url:
-        extra["base_url"] = base_url
-    if system_prompt:
-        extra["system_prompt"] = system_prompt
-    if db_row:
-        for key in ("title", "end_reason", "cost_status", "cost_source", "billing_provider"):
-            value = db_row.get(key)
-            if value:
-                extra[key] = value
-        source = db_row.get("source")
-        if source and source != platform:
-            extra["source"] = source
-    if origin:
-        origin_details = origin.get("origin") if isinstance(origin.get("origin"), dict) else {}
-        for key in ("chat_type", "chat_id", "user_name", "thread_id"):
-            value = origin_details.get(key) if origin_details else origin.get(key)
-            if value:
-                extra[key] = value
-    if diagnostics:
-        extra.update(diagnostics)
-    return extra or None

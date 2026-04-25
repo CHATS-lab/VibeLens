@@ -175,7 +175,6 @@ class OpenClawParser(BaseParser):
             diagnostics.record_orphaned_result(tr_id)
         return steps
 
-
 def _extract_session_meta(entries: list[dict]) -> dict:
     """Scan entries for session_id / cwd / model. Header events can be interleaved
     with early ``delivery-mirror`` system messages, so we don't break at first message.
@@ -205,13 +204,6 @@ def _extract_session_meta(entries: list[dict]) -> dict:
     if not meta["model"] and first_assistant_model:
         meta["model"] = first_assistant_model
     return meta
-
-
-def _format_model(provider: str | None, model_id: str | None) -> str | None:
-    """Combine provider + modelId into ``provider/modelId`` (or just modelId)."""
-    if not model_id:
-        return None
-    return f"{provider}/{model_id}" if provider else model_id
 
 
 def _collect_tool_results(message_entries: list[dict]) -> dict[str, dict]:
@@ -263,6 +255,13 @@ def _decompose_content(raw_content: str | list) -> tuple[str, str | None, list[T
         "\n\n".join(thinking_parts).strip() or None,
         tool_calls,
     )
+
+
+def _format_model(provider: str | None, model_id: str | None) -> str | None:
+    """Combine provider + modelId into ``provider/modelId`` (or just modelId)."""
+    if not model_id:
+        return None
+    return f"{provider}/{model_id}" if provider else model_id
 
 
 def _build_metrics(usage: dict | None) -> Metrics | None:
