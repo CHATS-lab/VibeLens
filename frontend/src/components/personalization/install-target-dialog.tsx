@@ -1,11 +1,12 @@
 import { Check, Download, Loader2, Monitor, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useExtensionsClient } from "../../app";
-import type { AgentCapability } from "../../api/extensions";
+import type { AgentCapability, LinkType } from "../../api/extensions";
 import type { ExtensionSyncTarget } from "../../types";
 import { Modal, ModalBody, ModalFooter, ModalHeader } from "../ui/modal";
 import { normalizeSourceType, SOURCE_LABELS } from "./constants";
 import { TYPE_PLURAL } from "./extensions/extension-constants";
+import { LinkTypeToggle } from "./extensions/link-type-toggle";
 
 function centralStoreLabel(type: string): string {
   if (type === "hook") return "~/.vibelens/hooks/";
@@ -22,10 +23,11 @@ interface InstallTargetDialogProps {
   typeKey: string;
   syncTargets: ExtensionSyncTarget[];
   /**
-   * Called with the agents to sync TO (add) and agents to sync OFF (remove).
-   * The caller is responsible for issuing the POST/DELETE requests.
+   * Called with the agents to sync TO (add), agents to sync OFF (remove),
+   * and the user-chosen link type. The caller is responsible for issuing
+   * the POST/DELETE requests.
    */
-  onInstall: (toAdd: string[], toRemove: string[]) => void;
+  onInstall: (toAdd: string[], toRemove: string[], linkType: LinkType) => void;
   onCancel: () => void;
   /**
    * Agent keys that already contain this extension. When omitted, the dialog
@@ -108,6 +110,7 @@ export function InstallTargetDialog({
   // Agents the user has toggled away from their current installed state.
   const [toggled, setToggled] = useState<Set<string>>(() => new Set());
   const [installing, setInstalling] = useState(false);
+  const [linkType, setLinkType] = useState<LinkType>("symlink");
 
   const toggleTarget = useCallback((key: string) => {
     setToggled((prev) => {
@@ -138,8 +141,8 @@ export function InstallTargetDialog({
     setInstalling(true);
     // Central-only: no sync targets exist, install to default platform
     const effectiveAdd = centralOnly && toAdd.length === 0 ? ["claude"] : toAdd;
-    await onInstall(effectiveAdd, toRemove);
-  }, [onInstall, toAdd, toRemove, centralOnly]);
+    await onInstall(effectiveAdd, toRemove, linkType);
+  }, [onInstall, toAdd, toRemove, centralOnly, linkType]);
 
   const totalChanges = toAdd.length + toRemove.length;
   const buttonLabel = (() => {
@@ -273,6 +276,12 @@ export function InstallTargetDialog({
           <p className="text-xs text-dimmed italic">
             No agent interfaces detected. The {typeKey} will only be saved to the central store.
           </p>
+        )}
+
+        {syncTargets.length > 0 && (
+          <div className="pt-3 border-t border-card">
+            <LinkTypeToggle value={linkType} onChange={setLinkType} />
+          </div>
         )}
       </ModalBody>
       <ModalFooter>

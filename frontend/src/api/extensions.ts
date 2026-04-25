@@ -11,6 +11,51 @@ import type {
 type FetchFn = (url: string, init?: RequestInit) => Promise<Response>;
 const BASE = "/api/extensions";
 
+export type LinkType = "symlink" | "copy";
+const DEFAULT_LINK_TYPE: LinkType = "symlink";
+
+export interface CollectionItemRef {
+  extension_type: "skill" | "command" | "subagent" | "hook" | "plugin";
+  name: string;
+  pinned_version?: string | null;
+}
+
+export interface Collection {
+  name: string;
+  description: string;
+  items: CollectionItemRef[];
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+interface CollectionsApi {
+  list(): Promise<{ items: Collection[]; total: number }>;
+  get(name: string): Promise<Collection>;
+  create(req: {
+    name: string;
+    description: string;
+    items: CollectionItemRef[];
+    tags: string[];
+  }): Promise<Collection>;
+  update(
+    name: string,
+    req: {
+      description?: string;
+      items?: CollectionItemRef[];
+      tags?: string[];
+    },
+  ): Promise<Collection>;
+  delete(name: string): Promise<{ deleted: string }>;
+  install(
+    name: string,
+    agents: string[],
+    linkType?: LinkType,
+  ): Promise<{ name: string; results: Record<string, Record<string, string>> }>;
+  export(name: string): Promise<Record<string, unknown>>;
+  import(payload: Record<string, unknown>): Promise<Collection>;
+}
+
 interface CatalogApi {
   list(params: {
     page?: number;
@@ -60,8 +105,9 @@ interface TypeApi<T> {
     name: string,
     content: string,
     syncTo?: string[],
+    linkType?: LinkType,
   ): Promise<T>;
-  modify(name: string, content: string): Promise<T>;
+  modify(name: string, content: string, linkType?: LinkType): Promise<T>;
   uninstall(name: string): Promise<{
     deleted: string;
     removed_from: string[];
@@ -69,6 +115,7 @@ interface TypeApi<T> {
   syncToAgents(
     name: string,
     agents: string[],
+    linkType?: LinkType,
   ): Promise<{ name: string; results: Record<string, boolean> }>;
   unsyncFromAgent(
     name: string,
@@ -106,6 +153,7 @@ export interface ExtensionsClient {
   subagents: TypeApi<unknown>;
   plugins: TypeApi<unknown>;
   agents: AgentsApi;
+  collections: CollectionsApi;
   syncTargets: SyncTargetsCache;
 }
 
@@ -150,11 +198,16 @@ function createTypeApi<T>(fetchFn: FetchFn, typePlural: string): TypeApi<T> {
       if (!res.ok) throw new Error(`${typePlural} ${name} file not found`);
       return res.json();
     },
-    async install(name, content, syncTo) {
+    async install(name, content, syncTo, linkType = DEFAULT_LINK_TYPE) {
       const res = await fetchFn(base, {
         method: "POST",
         headers: json,
-        body: JSON.stringify({ name, content, sync_to: syncTo || [] }),
+        body: JSON.stringify({
+          name,
+          content,
+          sync_to: syncTo || [],
+          link_type: linkType,
+        }),
       });
       if (!res.ok) {
         const e = await res.json().catch(() => ({}));
@@ -162,13 +215,13 @@ function createTypeApi<T>(fetchFn: FetchFn, typePlural: string): TypeApi<T> {
       }
       return res.json();
     },
-    async modify(name, content) {
+    async modify(name, content, linkType = DEFAULT_LINK_TYPE) {
       const res = await fetchFn(
         `${base}/${encodeURIComponent(name)}`,
         {
           method: "PUT",
           headers: json,
-          body: JSON.stringify({ content }),
+          body: JSON.stringify({ content, link_type: linkType }),
         },
       );
       if (!res.ok) throw new Error(`Failed to modify ${name}`);
@@ -182,13 +235,13 @@ function createTypeApi<T>(fetchFn: FetchFn, typePlural: string): TypeApi<T> {
       if (!res.ok) throw new Error(`Failed to uninstall ${name}`);
       return res.json();
     },
-    async syncToAgents(name, agents) {
+    async syncToAgents(name, agents, linkType = DEFAULT_LINK_TYPE) {
       const res = await fetchFn(
         `${base}/${encodeURIComponent(name)}/agents`,
         {
           method: "POST",
           headers: json,
-          body: JSON.stringify({ agents }),
+          body: JSON.stringify({ agents, link_type: linkType }),
         },
       );
       if (!res.ok) throw new Error(`Failed to sync ${name}`);
@@ -346,6 +399,69 @@ export function createExtensionsClient(
     },
   };
 
+  const collectionsBase = `${BASE}/collections`;
+  const jsonHeaders = { "Content-Type": "application/json" };
+  const collections: CollectionsApi = {
+    async list() {
+      const res = await fetchFn(collectionsBase);
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    async get(name) {
+      const res = await fetchFn(`${collectionsBase}/${encodeURIComponent(name)}`);
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    async create(req) {
+      const res = await fetchFn(collectionsBase, {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify(req),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    async update(name, req) {
+      const res = await fetchFn(`${collectionsBase}/${encodeURIComponent(name)}`, {
+        method: "PUT",
+        headers: jsonHeaders,
+        body: JSON.stringify(req),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    async delete(name) {
+      const res = await fetchFn(`${collectionsBase}/${encodeURIComponent(name)}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    async install(name, agentList, linkType = DEFAULT_LINK_TYPE) {
+      const res = await fetchFn(`${collectionsBase}/${encodeURIComponent(name)}/install`, {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({ agents: agentList, link_type: linkType }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    async export(name) {
+      const res = await fetchFn(`${collectionsBase}/${encodeURIComponent(name)}/export`);
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    async import(payload) {
+      const res = await fetchFn(`${collectionsBase}/import`, {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({ payload }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+  };
+
   return {
     catalog,
     skills: createTypeApi(fetchFn, "skills"),
@@ -354,6 +470,7 @@ export function createExtensionsClient(
     subagents: createTypeApi(fetchFn, "subagents"),
     plugins: createTypeApi(fetchFn, "plugins"),
     agents,
+    collections,
     syncTargets,
   };
 }

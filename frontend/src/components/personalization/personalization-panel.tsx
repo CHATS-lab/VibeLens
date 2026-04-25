@@ -14,6 +14,7 @@ import { AnalysisWelcomePage, TutorialBanner } from "../analysis-welcome";
 import { CostEstimateDialog } from "../cost-estimate-dialog";
 import { Modal, ModalBody, ModalFooter, ModalHeader } from "../ui/modal";
 import { Tooltip } from "../ui/tooltip";
+import { CollectionsTab } from "./extensions/collections/collections-tab";
 import { ExtensionExploreTab } from "./extensions/extension-explore-tab";
 import { LocalExtensionsTab } from "./local-extensions-tab";
 import {
@@ -22,8 +23,16 @@ import {
 } from "./personalization-view";
 import { PersonalizationHistory } from "./personalization-history";
 
+// Collections is feature-gated off until the UX is fleshed out. Backend, API
+// client, tab component, detail view, and dialogs are all in place — flip
+// this flag to true to expose them again.
+const SHOW_COLLECTIONS = false;
+
 const TAB_CONFIG: { id: PersonalizationTab; label: string; tooltip: string }[] = [
   { id: "local", label: "Local", tooltip: "Manage installed skills, subagents, commands, and plugins" },
+  ...(SHOW_COLLECTIONS
+    ? [{ id: "collections" as const, label: "Collections", tooltip: "Group extensions for batch installs" }]
+    : []),
   { id: "explore", label: "Explore", tooltip: "Browse community skills" },
   { id: "retrieve", label: "Recommend", tooltip: "Find skills matching your workflow" },
   { id: "create", label: "Customize", tooltip: "Generate skills from your patterns" },
@@ -88,6 +97,7 @@ const MODE_LOADING_TITLES: Record<PersonalizationMode, string> = {
 
 interface PersonalizationPanelProps {
   checkedIds: Set<string>;
+  selectedProjectCount: number;
   resetKey?: number;
 }
 
@@ -123,7 +133,7 @@ function persistJobIds(jobs: ModeMap<string | null>): void {
   }
 }
 
-export function PersonalizationPanel({ checkedIds, resetKey = 0 }: PersonalizationPanelProps) {
+export function PersonalizationPanel({ checkedIds, selectedProjectCount, resetKey = 0 }: PersonalizationPanelProps) {
   const { fetchWithToken, appMode, maxSessions } = useAppContext();
   const llmApi = useMemo(() => llmClient(fetchWithToken), [fetchWithToken]);
   const sessionsApi = useMemo(() => sessionsClient(fetchWithToken), [fetchWithToken]);
@@ -500,7 +510,8 @@ export function PersonalizationPanel({ checkedIds, resetKey = 0 }: Personalizati
     setModeField(mode, "loading", false);
   }, [jobIdsByMode, fetchWithToken, apiBaseForMode, setModeField]);
 
-  const isAnalysisTab = activeTab !== "local" && activeTab !== "explore";
+  const isAnalysisTab =
+    activeTab !== "local" && activeTab !== "explore" && activeTab !== "collections";
   const currentMode = MODE_MAP[activeTab];
   const currentResult = currentMode ? resultsByMode[currentMode] : null;
   const currentLoading = currentMode ? loadingByMode[currentMode] : false;
@@ -564,6 +575,14 @@ export function PersonalizationPanel({ checkedIds, resetKey = 0 }: Personalizati
               onDetailOpenChange={setLocalDetailOpen}
               resetKey={localResetKey}
             />
+          )}
+          {SHOW_COLLECTIONS && activeTab === "collections" && (
+            <div className="px-6 py-5">
+              <CollectionsTab
+                refreshTrigger={localRefresh}
+                onDetailOpenChange={setLocalDetailOpen}
+              />
+            </div>
           )}
           {activeTab === "explore" && (
             <ExtensionExploreTab
@@ -681,6 +700,7 @@ export function PersonalizationPanel({ checkedIds, resetKey = 0 }: Personalizati
           onConfirm={handleConfirmAnalysis}
           onCancel={clearEstimate}
           backendId={llmStatus?.backend_id}
+          multipleProjects={selectedProjectCount > 1 && pendingModeRef.current !== "recommendation"}
         />
       )}
       {showSkillSelector && (

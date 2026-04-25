@@ -19,7 +19,13 @@ import { ExtensionDetailView } from "./extensions/extension-detail-view";
 import { PatternSection } from "./patterns-view";
 import { RecommendationSection } from "./recommendations-view";
 
-export type PersonalizationTab = "local" | "explore" | "retrieve" | "create" | "evolve";
+export type PersonalizationTab =
+  | "local"
+  | "collections"
+  | "explore"
+  | "retrieve"
+  | "create"
+  | "evolve";
 
 // Re-export SectionHeader so consumers that were importing from this file still work.
 export { SectionHeader } from "./result-shared";
