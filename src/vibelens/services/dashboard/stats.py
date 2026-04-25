@@ -17,7 +17,6 @@ from vibelens.models.dashboard.dashboard import (
     PeriodStats,
     ProjectDetail,
 )
-from vibelens.models.enums import StepSource
 from vibelens.models.trajectories import Step, Trajectory
 from vibelens.utils import get_logger
 from vibelens.utils.timestamps import local_date_key, local_tz, parse_metadata_timestamp
@@ -389,8 +388,9 @@ def compute_dashboard_stats_from_metadata(metadata_list: list[dict]) -> Dashboar
     """Compute dashboard stats from enriched metadata without loading trajectories.
 
     Uses pre-computed final_metrics stored in the metadata cache (populated
-    by fast_metrics scanning during index build). This avoids the ~16s cost
-    of parsing all session files for dashboard statistics.
+    by ``parser.parse_file`` during index build). This avoids reloading
+    every trajectory at request time — the cache holds session-level
+    aggregates so the dashboard hot path stays in the tens of milliseconds.
 
     Args:
         metadata_list: Metadata dicts with enriched final_metrics and agent fields.
@@ -542,9 +542,7 @@ def aggregate_session(traj: Trajectory) -> SessionAggregate:
     any_cost_found = False
     for step in traj.steps:
         agg.tool_calls += len(step.tool_calls)
-        is_message = step.source != StepSource.SYSTEM
-        if is_message:
-            agg.messages += 1
+        agg.messages += 1
 
         tokens_this_step = 0
         cost_this_step = 0.0
@@ -563,9 +561,9 @@ def aggregate_session(traj: Trajectory) -> SessionAggregate:
                 any_cost_found = True
 
         day = _to_local_date_key(step.timestamp) or fallback_date
-        if day and (is_message or tokens_this_step or cost_this_step):
+        if day:
             bucket = breakdown.setdefault(day, _StepBucket())
-            bucket.messages += int(is_message)
+            bucket.messages += 1
             bucket.tokens += tokens_this_step
             bucket.cost_usd += cost_this_step
 
@@ -573,9 +571,9 @@ def aggregate_session(traj: Trajectory) -> SessionAggregate:
         agg.cost_usd = sum(b.cost_usd for b in breakdown.values())
     agg.daily_breakdown = breakdown or None
     # Invariant: ``session.messages`` equals the sum of its daily-breakdown
-    # messages. The loop above also increments ``agg.messages`` inline, but
-    # steps without a timestamp (and no ``fallback_date``) would count there
-    # yet not in the breakdown — re-pinning here keeps the two in lock-step.
+    # messages. Steps without a timestamp (and no ``fallback_date``) would
+    # count above yet not in the breakdown — re-pin here so the two stay
+    # in lock-step. messages == len(steps) is the unified contract.
     if agg.daily_breakdown:
         agg.messages = sum(b.messages for b in agg.daily_breakdown.values())
     agg.duration = _session_duration(traj)

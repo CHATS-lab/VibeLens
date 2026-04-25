@@ -837,18 +837,25 @@ class TestFastPathDailyBreakdown:
 
 
 class TestMessageCountInvariant:
-    """Lock in the invariant that the top-line ``total_messages`` always
-    equals the sum of daily_stats messages and the sum of period messages.
+    """Lock in the invariant that ``total_messages`` always equals
+    ``sum(len(traj.steps))`` across sessions, and that daily / period
+    sums agree with the top-line.
 
-    Violating this invariant caused a 5x day-to-day drift: the top card read
-    ``total_steps`` (which includes SYSTEM steps and differs between
-    ingestion paths) while daily bars read ``daily_breakdown.messages``
-    (non-SYSTEM). A cache rebuild flipped which path populated the cache,
-    producing two wildly different dashboards for the same data.
+    Contract: a "message" is any trajectory step, regardless of source
+    (USER, AGENT, or SYSTEM). The fast path's ``final_metrics.total_steps``
+    must be ``len(steps)`` (parser-written truth, not a fast-scanner
+    line-count approximation), and ``daily_breakdown.messages`` must
+    sum to that same value.
+
+    The historical bug class this guards: the top card read one number
+    (e.g. fast-scanner ``message_count`` ~= JSONL line count, structurally
+    larger than ``len(steps)``) while daily bars read another (parser's
+    SYSTEM-filtered breakdown), producing wildly different dashboards
+    for the same data after a cache rebuild flipped the source.
     """
 
-    def test_full_path_excludes_system_and_matches_daily_sum(self):
-        """SYSTEM steps never count; total matches sum of daily bars."""
+    def test_full_path_includes_all_steps_and_matches_daily_sum(self):
+        """All steps count (incl. SYSTEM); total matches sum of daily bars."""
         from vibelens.models.enums import StepSource
 
         ts = datetime(2026, 4, 10, 10, 0, tzinfo=timezone.utc)
@@ -877,15 +884,14 @@ class TestMessageCountInvariant:
         daily_sum = sum(d.total_messages for d in result.daily_stats)
         year_msgs = result.this_year.messages
         print(f"total={result.total_messages} daily_sum={daily_sum} year={year_msgs}")
-        assert result.total_messages == 2  # 1 user + 1 agent, no SYSTEM
+        assert result.total_messages == 4  # all steps count, including SYSTEM
         assert result.total_messages == daily_sum
         assert result.total_messages == result.this_year.messages
-        assert result.avg_messages_per_session == pytest.approx(2.0, rel=1e-9)
+        assert result.avg_messages_per_session == pytest.approx(4.0, rel=1e-9)
 
-    def test_fast_path_uses_breakdown_not_total_steps(self):
-        """When metadata carries daily_breakdown, total_messages follows it,
-        not the raw ``total_steps`` (which may be inflated by SYSTEM steps
-        from full-parse or deflated to user-prompt count from skeleton parse).
+    def test_fast_path_uses_breakdown_when_present(self):
+        """Fast path with daily_breakdown: total_messages follows the breakdown
+        sum, which must equal ``total_steps`` under the unified contract.
         """
         from vibelens.services.dashboard.stats import (
             compute_dashboard_stats_from_metadata,
@@ -902,7 +908,7 @@ class TestMessageCountInvariant:
                 "total_cache_read_tokens": 0,
                 "total_cache_write_tokens": 0,
                 "tool_call_count": 0,
-                "total_steps": 999,  # deliberately wrong — must not leak into UI
+                "total_steps": 5,
                 "duration": 60,
                 "total_cost_usd": 1.0,
                 "daily_breakdown": {
@@ -913,13 +919,15 @@ class TestMessageCountInvariant:
         result = compute_dashboard_stats_from_metadata([meta])
 
         daily_sum = sum(d.total_messages for d in result.daily_stats)
-        print(f"total={result.total_messages} daily_sum={daily_sum} total_steps_meta=999")
+        print(f"total={result.total_messages} daily_sum={daily_sum}")
         assert result.total_messages == 5
         assert result.total_messages == daily_sum
         assert result.total_messages == result.this_year.messages
 
-    def test_fast_path_fallback_no_breakdown_still_consistent(self):
-        """Legacy metadata (no daily_breakdown): total must still equal daily sum."""
+    def test_fast_path_fallback_no_breakdown_uses_total_steps(self):
+        """No daily_breakdown: fallback bucket must use ``total_steps`` directly,
+        and total_messages must equal that value (= len(steps)).
+        """
         from vibelens.services.dashboard.stats import (
             compute_dashboard_stats_from_metadata,
         )
@@ -943,7 +951,8 @@ class TestMessageCountInvariant:
         result = compute_dashboard_stats_from_metadata([meta])
 
         daily_sum = sum(d.total_messages for d in result.daily_stats)
-        print(f"legacy: total={result.total_messages} daily_sum={daily_sum}")
+        print(f"fallback: total={result.total_messages} daily_sum={daily_sum}")
+        assert result.total_messages == 7
         assert result.total_messages == daily_sum
         assert result.total_messages == result.this_year.messages
 
@@ -959,11 +968,12 @@ class TestMessageCountInvariant:
 
         daily_sum = sum(d.total_messages for d in result.daily_stats)
         print(f"cross-day: total={result.total_messages} daily_sum={daily_sum}")
+        assert result.total_messages == 4  # 4 steps (USER, AGENT, USER, AGENT)
         assert result.total_messages == daily_sum
         assert result.total_messages == result.this_year.messages
 
     def test_invariant_holds_across_many_sessions(self):
-        """Mixed sessions: invariant holds in aggregate."""
+        """Mixed sessions: every step counts, including SYSTEM."""
         from vibelens.models.enums import StepSource
 
         trajs = []
@@ -994,6 +1004,6 @@ class TestMessageCountInvariant:
         result = compute_dashboard_stats(trajs)
         daily_sum = sum(d.total_messages for d in result.daily_stats)
         print(f"many: total={result.total_messages} daily_sum={daily_sum}")
-        assert result.total_messages == 10  # 5 sessions * 2 non-SYSTEM each
+        assert result.total_messages == 15  # 5 sessions * 3 steps each (incl. SYSTEM)
         assert result.total_messages == daily_sum
         assert result.total_messages == result.this_year.messages

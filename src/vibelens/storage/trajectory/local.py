@@ -12,10 +12,6 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from vibelens.ingest.fast_metrics import (
-    scan_session_metrics,
-    scan_session_metrics_incremental,
-)
 from vibelens.ingest.index_builder import (
     build_partial_session_index,
     build_session_index,
@@ -24,7 +20,7 @@ from vibelens.ingest.index_cache import collect_file_mtimes, load_cache, save_ca
 from vibelens.ingest.parsers import LOCAL_PARSER_CLASSES
 from vibelens.ingest.parsers.base import BaseParser
 from vibelens.models.enums import AgentType
-from vibelens.models.trajectories import FinalMetrics, Trajectory
+from vibelens.models.trajectories import Trajectory
 from vibelens.storage.trajectory.base import BaseTrajectoryStore
 from vibelens.utils import get_logger
 
@@ -328,9 +324,7 @@ class LocalTrajectoryStore(BaseTrajectoryStore):
             return True
 
         try:
-            self._partial_rebuild(
-                partition, cached_entries, cached_stats, current_stats, fresh_dropped
-            )
+            self._partial_rebuild(partition, cached_entries, fresh_dropped)
         except Exception:
             logger.warning("Partial rebuild failed, falling back to full rebuild", exc_info=True)
             return False
@@ -340,8 +334,6 @@ class LocalTrajectoryStore(BaseTrajectoryStore):
         self,
         partition: CachePartition,
         cached_entries: dict[str, dict],
-        cached_stats: dict[str, list[int]],
-        current_stats: dict[str, list[int]],
         fresh_dropped: dict[str, list[int]],
     ) -> None:
         """Re-parse only changed/new files; hydrate the rest from cache."""
@@ -353,32 +345,19 @@ class LocalTrajectoryStore(BaseTrajectoryStore):
                 meta["filepath"] = str(self._index[sid][0])
                 self._metadata_cache[sid] = meta
 
-        # Re-parse changed + new.
+        # Re-parse changed + new. Both go through parser.parse_file in
+        # _enrich; we no longer try to do a fast-scanner incremental on
+        # appended files because the dashboard needs len(steps) truth and
+        # that cannot be merged from a delta without re-running parser
+        # merge logic on the full file.
         only_paths = {str(fpath) for fpath, _p in partition.changed.values()} | {
             str(fpath) for fpath, _p in partition.new.values()
         }
 
-        # Build incremental seeds for changed files whose current size is
-        # strictly larger than the cached size — the append-only case.
-        # Files that shrank or stayed the same fall through to a full scan.
-        incremental_seeds: dict[str, tuple[dict, int]] = {}
-        for sid, (fpath, _p) in partition.changed.items():
-            cached_entry = cached_entries.get(sid)
-            prev_stat = cached_stats.get(str(fpath))
-            current_stat = current_stats.get(str(fpath))
-            if cached_entry is None or prev_stat is None or current_stat is None:
-                continue
-            if current_stat[1] <= prev_stat[1]:
-                continue
-            incremental_seeds[sid] = (
-                _prev_metrics_from_entry(cached_entry),
-                prev_stat[1],
-            )
-
         new_dropped: dict[str, list[int]] = {}
         if only_paths:
             partial_skeletons, dropped_paths = build_partial_session_index(self._index, only_paths)
-            _enrich_skeleton_metrics(partial_skeletons, self._index, incremental_seeds)
+            _enrich_skeleton_metrics(partial_skeletons, self._index)
             for t in partial_skeletons:
                 meta = t.model_dump(exclude={"steps"}, mode="json")
                 entry = self._index.get(t.session_id)
@@ -486,123 +465,59 @@ class LocalTrajectoryStore(BaseTrajectoryStore):
         )
 
 
-def _apply_scanned_metrics(traj: Trajectory, metrics: dict) -> None:
-    """Apply fast-scanned metrics to a single trajectory in-place.
-
-    Populates final_metrics with token counts, tool call count, model
-    name, and duration computed from timestamp span.
-
-    Args:
-        traj: Skeleton trajectory to enrich.
-        metrics: Dict from scan_session_metrics with token/tool/timestamp data.
-    """
-    from vibelens.utils import normalize_timestamp
-
-    fm = traj.final_metrics or FinalMetrics()
-    fm.total_prompt_tokens = metrics["input_tokens"]
-    fm.total_completion_tokens = metrics["output_tokens"]
-    fm.total_cache_read_tokens = metrics["cache_read_tokens"]
-    fm.total_cache_write_tokens = metrics["cache_write_tokens"]
-    fm.tool_call_count = metrics["tool_call_count"]
-    if fm.total_steps is None or fm.total_steps == 0:
-        fm.total_steps = metrics["message_count"]
-
-    if fm.duration == 0 and metrics["first_timestamp"] and metrics["last_timestamp"]:
-        first_ts = normalize_timestamp(metrics["first_timestamp"])
-        last_ts = normalize_timestamp(metrics["last_timestamp"])
-        if first_ts and last_ts:
-            fm.duration = max(0, int((last_ts - first_ts).total_seconds()))
-
-    traj.final_metrics = fm
-
-    if metrics["model"] and traj.agent and not traj.agent.model_name:
-        traj.agent.model_name = metrics["model"]
-
-
-def _prev_metrics_from_entry(entry: dict) -> dict:
-    """Reconstitute a :func:`scan_session_metrics` output shape from a cached metadata entry.
-
-    Used as the seed for incremental enrichment when a session file has
-    grown on disk: the cumulative totals from the previous scan are
-    pulled out of the cached trajectory's ``final_metrics``, then
-    :func:`scan_session_metrics_incremental` accumulates the new lines
-    into the same shape.
-
-    Note that ``last_timestamp`` is intentionally left ``None`` — it
-    will be repopulated from the appended content. The trajectory's
-    own ``timestamp`` field carries the first_ts.
-    """
-    fm = entry.get("final_metrics") or {}
-    agent = entry.get("agent") or {}
-    return {
-        "input_tokens": fm.get("total_prompt_tokens") or 0,
-        "output_tokens": fm.get("total_completion_tokens") or 0,
-        "cache_read_tokens": fm.get("total_cache_read_tokens") or 0,
-        "cache_write_tokens": fm.get("total_cache_write_tokens") or 0,
-        "tool_call_count": fm.get("tool_call_count") or 0,
-        "model": agent.get("model_name"),
-        "message_count": fm.get("total_steps") or 0,
-        "first_timestamp": entry.get("timestamp"),
-        "last_timestamp": None,
-    }
-
-
 def _enrich_skeleton_metrics(
     trajectories: list[Trajectory],
     file_index: dict[str, tuple[Path, BaseParser]],
-    incremental_seeds: dict[str, tuple[dict, int]] | None = None,
 ) -> None:
-    """Enrich skeleton trajectories with fast-scanned metrics.
+    """Replace skeleton final_metrics with parser-computed truth.
 
-    Runs ``scan_session_metrics`` (or its incremental variant when a
-    seed is provided) over the source JSONL of each trajectory to
-    populate token totals, tool count, model name, and duration.
+    The skeleton path (``parser.parse_skeleton_for_file``) emits placeholder
+    metrics — ``total_steps`` is ``None``, no ``daily_breakdown``. To match
+    the dashboard's ``messages == len(traj.steps)`` contract we re-parse
+    each file through the full parser and adopt its ``final_metrics``,
+    which ``helpers.compute_final_metrics`` populates from real per-step
+    aggregations (``total_steps = len(steps)``, ``daily_breakdown.messages``
+    summing to the same).
 
-    Parallelism notes:
+    Cost: ~25-30 ms per file (1480 sessions ≈ 30 s on cold start). This
+    replaces the previous fast-scanner path (~3 ms per file) — accuracy
+    over speed because the fast scanner counted JSONL lines, not steps,
+    and produced a ~2-7× over-count for active Claude sessions.
 
-    * ``ThreadPoolExecutor`` is *slower* than sequential here on a
-      1.8 GB corpus — the inner work holds the GIL on every post-parse
-      dict update, and disk reads don't parallelize on the host
-      filesystem either.
-    * ``ProcessPoolExecutor`` gives a real ~3× speedup but adds spawn
-      cost and breaks when the process has no re-importable
-      ``__main__`` (e.g. ``python -c``), so we don't ship that path.
+    Parallelism notes (carried over from the fast-scanner era):
 
-    Args:
-        trajectories: Skeleton trajectories to enrich in-place.
-        file_index: session_id -> (filepath, parser) map.
-        incremental_seeds: Optional sid -> (prev_metrics, start_offset)
-            mapping. When the source file has grown since the cached
-            scan, this lets us resume past ``start_offset`` and merge
-            into ``prev_metrics`` instead of re-reading the whole file.
+    * ``ThreadPoolExecutor`` does not help — most per-file work after the
+      orjson decode holds the GIL.
+    * ``ProcessPoolExecutor`` gives a real ~3× speedup but adds spawn cost
+      and breaks for stdin-launched processes (no re-importable
+      ``__main__``); not worth the operational complexity here.
     """
     enriched = 0
-    incremental_used = 0
-    seeds = incremental_seeds or {}
     for traj in trajectories:
         entry = file_index.get(traj.session_id)
         if not entry:
             continue
-        fpath, _parser = entry
-        seed = seeds.get(traj.session_id)
-        if seed is not None:
-            prev, start_offset = seed
-            metrics = scan_session_metrics_incremental(fpath, start_offset, prev)
-            if metrics is not None:
-                incremental_used += 1
-        else:
-            metrics = scan_session_metrics(fpath)
-        if not metrics:
+        fpath, parser = entry
+        try:
+            full_trajs = parser.parse(fpath)
+        except Exception:
+            logger.warning(
+                "Failed to full-parse %s for enrichment, skipping", fpath, exc_info=True
+            )
             continue
-        _apply_scanned_metrics(traj, metrics)
+        if not full_trajs:
+            continue
+        main = full_trajs[0]
+        if main.final_metrics is not None:
+            traj.final_metrics = main.final_metrics
+        if (
+            main.agent
+            and main.agent.model_name
+            and traj.agent
+            and not traj.agent.model_name
+        ):
+            traj.agent.model_name = main.agent.model_name
         enriched += 1
 
     if enriched:
-        if incremental_used:
-            logger.info(
-                "Enriched %d skeletons with fast-scanned metrics (%d incremental)",
-                enriched,
-                incremental_used,
-            )
-        else:
-            logger.info("Enriched %d skeletons with fast-scanned metrics", enriched)
+        logger.info("Enriched %d skeletons via parser.parse_file", enriched)

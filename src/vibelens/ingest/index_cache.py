@@ -22,7 +22,13 @@ logger = get_logger(__name__)
 # v9 invalidates v8 caches that don't carry Codex sub-agent linkage
 # (``parent_trajectory_ref`` populated from session_meta source /
 # forked_from_id, and ``extra.agent_role`` / ``extra.agent_nickname``).
-CACHE_VERSION = 9
+# v10 invalidates v9 caches whose ``final_metrics.total_steps`` was
+# populated from the fast scanner's ``message_count`` (JSONL line count,
+# structurally larger than ``len(steps)``). v10 entries are written via
+# ``parser.parse_file`` so ``total_steps == len(traj.steps)`` and
+# ``daily_breakdown.messages`` sums to the same — the contract the
+# dashboard relies on.
+CACHE_VERSION = 10
 
 # User-home path for the persistent session index cache
 DEFAULT_CACHE_PATH = Path.home() / ".vibelens" / "session_index.json"
