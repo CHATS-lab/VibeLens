@@ -228,13 +228,7 @@ class ClaudeParser(BaseParser):
         ``subagent_trajectory_ref`` set right here, so ``_load_subagents``
         only has to locate child files.
         """
-        # Copied-context detection compares each entry's sessionId against the
-        # file's *in-file* canonical sessionId, not ``traj.session_id`` —
-        # sub-agent files use a synthetic id (filename stem) but their JSONL
-        # entries carry the parent's sessionId, which would otherwise flag
-        # every entry as copied and blank out ``first_message``.
-        canonical_sid = _scan_session_metadata(raw).session_id or traj.session_id
-        steps = self._parse_content(raw, diagnostics=diagnostics, session_id=canonical_sid)
+        steps = self._parse_content(raw, diagnostics=diagnostics)
         if not steps:
             if diagnostics.parsed_lines == 0 and diagnostics.total_lines > 0:
                 logger.warning(
@@ -363,124 +357,36 @@ class ClaudeParser(BaseParser):
         return self._parse_content(content)
 
     def _parse_content(
-        self,
-        content: str,
-        diagnostics: DiagnosticsCollector | None = None,
-        session_id: str | None = None,
+        self, content: str, diagnostics: DiagnosticsCollector | None = None
     ) -> list[Step]:
-        """Parse JSONL content string into Step objects.
+        """Parse JSONL content into Steps.
 
-        Merges consecutive assistant entries sharing the same message.id
-        into a single step (streaming chunk consolidation), then converts
-        each merged entry into an ATIF Step.
+        Pipeline:
+          1. Decode JSONL + filter to relevant types (with queue-op synthesis)
+          2. Drop replay duplicates (compaction can re-emit a uuid)
+          3. Pre-scan user messages for tool_result blocks → tool_use_id map
+          4. Group assistant entries by message.id (streaming-chunk merge)
+          5. Per group: build a Step (or None for tool-relay user messages)
+          6. Record orphaned tool_use / tool_result IDs in diagnostics
 
-        Args:
-            content: Raw JSONL content string.
-            diagnostics: Optional collector for parse quality metrics.
-            session_id: Main session ID for detecting copied context steps.
-
-        Returns:
-            List of Step objects.
+        ``canonical_sid`` for ``is_copied_context`` is recovered from the
+        in-file ``session_meta`` rather than passed in — sub-agent files use
+        a synthetic trajectory id (filename stem) but their entries carry
+        the parent's sessionId, which is the right comparator.
         """
-        raw_entries = _parse_jsonl_content(content, diagnostics)
-        raw_entries = _deduplicate_entries_by_uuid(raw_entries)
+        entries = _deduplicate_entries_by_uuid(_parse_jsonl_content(content, diagnostics))
+        canonical_sid = _scan_session_metadata(content).session_id
+        tool_results = _collect_tool_results(entries)
+        seen_call_ids: set[str] = set()
 
-        # Two-pass: first scan user messages for tool results,
-        # then construct Steps with results already paired
-        tool_results = _collect_tool_results(raw_entries)
-        tool_use_ids: set[str] = set()
-
-        # Merge assistant entries with the same message.id into single steps
-        step_groups = _group_entries_by_step(raw_entries)
-
-        steps = []
-        for group in step_groups:
-            entry = _merge_entry_group(group)
-            msg = entry.get("message", {})
-            timestamp = normalize_timestamp(entry.get("timestamp"))
-
-            role = msg.get("role", entry.get("type", ""))
-            source = ROLE_TO_SOURCE.get(role, StepSource.USER)
-            model_name = msg.get("model") or None
-            raw_content = msg.get("content", "")
-
-            # Use message.id as step_id for assistant entries (stable across
-            # streaming chunks); fall back to entry uuid for user entries.
-            # Only assistant entries get message.id — user entries sharing the
-            # same message.id (tool-relay pairs) must use their own uuid to
-            # avoid duplicate step IDs.
-            if source == StepSource.AGENT:
-                step_id = msg.get("id") or entry.get("uuid", str(uuid4()))
-            else:
-                step_id = entry.get("uuid", str(uuid4()))
-
-            # Build Metrics from usage data when available
-            metrics = None
-            usage_data = msg.get("usage")
-            if usage_data:
-                metrics = Metrics.from_tokens(
-                    input_tokens=usage_data.get("input_tokens") or 0,
-                    output_tokens=usage_data.get("output_tokens") or 0,
-                    cache_read_tokens=usage_data.get("cache_read_input_tokens") or 0,
-                    cache_write_tokens=usage_data.get("cache_creation_input_tokens") or 0,
-                )
-
-            # Decompose Anthropic Messages API content blocks into
-            # separated ATIF Step fields with pre-scanned tool results
-            message, reasoning_content, tool_calls, observation = _decompose_raw_content(
-                raw_content, tool_results
-            )
-
-            # Skip "tool-relay" user messages — entries containing ONLY
-            # tool_result blocks with no human-authored text. Their content
-            # is already injected into the preceding assistant step via the
-            # pre-scan tool_results map (tool_use_id linkage).
-            if source == StepSource.USER and not message and not tool_calls and observation is None:
-                continue
-
-            for tc in tool_calls:
-                if tc.tool_call_id:
-                    tool_use_ids.add(tc.tool_call_id)
-                    if diagnostics:
-                        diagnostics.record_tool_call()
-
-            # Reclassify user messages that contain system-injected or
-            # skill content so they get the correct source label and metadata.
-            # Only classify string messages; multimodal (list) messages are
-            # always genuine user content (e.g. pasted screenshots).
-            extra_classify: dict[str, Any] | None = None
-            if source == StepSource.USER and message and isinstance(message, str):
-                source, extra_classify = classify_user_message(message, entry)
-
-            # Detect steps copied from a previous session for context
-            entry_session_id = entry.get("sessionId", "")
-            is_copied = (
-                session_id is not None and entry_session_id and entry_session_id != session_id
-            )
-
-            extra = _build_step_extra(entry)
-            if extra_classify:
-                extra = {**(extra or {}), **extra_classify}
-
-            steps.append(
-                Step(
-                    step_id=step_id,
-                    source=source,
-                    message=message,
-                    reasoning_content=reasoning_content,
-                    model_name=model_name,
-                    timestamp=timestamp,
-                    metrics=metrics,
-                    tool_calls=tool_calls,
-                    observation=observation,
-                    is_copied_context=True if is_copied else None,
-                    extra=extra or None,
-                )
-            )
+        steps: list[Step] = []
+        for group in _group_entries_by_step(entries):
+            step = _step_from_group(group, tool_results, canonical_sid, seen_call_ids, diagnostics)
+            if step is not None:
+                steps.append(step)
 
         if diagnostics:
-            _detect_orphans(tool_use_ids, tool_results, diagnostics)
-
+            _detect_orphans(seen_call_ids, tool_results, diagnostics)
         return steps
 
 
@@ -719,18 +625,15 @@ def _make_enqueue_user_entry(entry: dict) -> dict:
     }
 
 
-def _build_step_extra(entry: dict) -> dict[str, Any] | None:
+def _build_step_extra(
+    entry: dict, classify_extra: dict[str, Any] | None = None
+) -> dict[str, Any] | None:
     """Build step-level extra dict from Claude Code entry fields.
 
-    Extracts format-specific metadata mirroring Harbor's convention:
-    is_sidechain, stop_reason, stop_sequence, cwd, request_id,
-    service_tier, and user_type.
-
-    Args:
-        entry: Raw JSONL entry dict.
-
-    Returns:
-        Extra dict with format-specific fields, or None if empty.
+    Extracts format-specific metadata (is_sidechain, stop_reason, stop_sequence,
+    cwd, request_id, service_tier, user_type) and merges in any classifier
+    extras (is_skill_output / is_auto_prompt / sourceToolUseID) returned by
+    :func:`classify_user_message`.
     """
     extra: dict[str, Any] = {}
     msg = entry.get("message", {})
@@ -761,7 +664,84 @@ def _build_step_extra(entry: dict) -> dict[str, Any] | None:
     if entry.get("userType") and entry["userType"] != "external":
         extra["user_type"] = entry["userType"]
 
+    if classify_extra:
+        extra.update(classify_extra)
+
     return extra or None
+
+
+def _build_step_metrics(usage_data: dict | None) -> Metrics | None:
+    """Build a :class:`Metrics` from an Anthropic-style ``usage`` dict, or None."""
+    if not usage_data:
+        return None
+    return Metrics.from_tokens(
+        input_tokens=usage_data.get("input_tokens") or 0,
+        output_tokens=usage_data.get("output_tokens") or 0,
+        cache_read_tokens=usage_data.get("cache_read_input_tokens") or 0,
+        cache_write_tokens=usage_data.get("cache_creation_input_tokens") or 0,
+    )
+
+
+def _step_from_group(
+    group: list[dict],
+    tool_results: dict[str, dict],
+    canonical_sid: str | None,
+    seen_call_ids: set[str],
+    diagnostics: DiagnosticsCollector | None,
+) -> Step | None:
+    """Convert one entry group to a Step, or None for tool-relay user messages.
+
+    Tool-relay = a ``type: "user"`` entry whose content is only ``tool_result``
+    blocks; its content is already injected into the preceding assistant step
+    via the pre-scanned ``tool_results`` map, so we drop it here to avoid
+    phantom user steps.
+    """
+    entry = _merge_entry_group(group)
+    msg = entry.get("message", {})
+    role = msg.get("role", entry.get("type", ""))
+    source = ROLE_TO_SOURCE.get(role, StepSource.USER)
+
+    message, reasoning_content, tool_calls, observation = _decompose_raw_content(
+        msg.get("content", ""), tool_results
+    )
+    if source == StepSource.USER and not message and not tool_calls and observation is None:
+        return None
+
+    # Reclassify user-role messages that carry system / skill / auto-prompt content.
+    classify_extra: dict[str, Any] | None = None
+    if source == StepSource.USER and message and isinstance(message, str):
+        source, classify_extra = classify_user_message(message, entry)
+
+    for tc in tool_calls:
+        if tc.tool_call_id:
+            seen_call_ids.add(tc.tool_call_id)
+            if diagnostics:
+                diagnostics.record_tool_call()
+
+    # Assistant entries reuse ``message.id`` so streaming chunks collapse to one
+    # step_id; user entries fall back to entry.uuid to avoid colliding when a
+    # tool-relay shares an id.
+    if source == StepSource.AGENT:
+        step_id = msg.get("id") or entry.get("uuid", str(uuid4()))
+    else:
+        step_id = entry.get("uuid", str(uuid4()))
+
+    entry_sid = entry.get("sessionId", "")
+    is_copied = bool(canonical_sid and entry_sid and entry_sid != canonical_sid)
+
+    return Step(
+        step_id=step_id,
+        source=source,
+        message=message,
+        reasoning_content=reasoning_content,
+        model_name=msg.get("model") or None,
+        timestamp=normalize_timestamp(entry.get("timestamp")),
+        metrics=_build_step_metrics(msg.get("usage")),
+        tool_calls=tool_calls,
+        observation=observation,
+        is_copied_context=True if is_copied else None,
+        extra=_build_step_extra(entry, classify_extra=classify_extra),
+    )
 
 
 def _scan_session_metadata(content: str) -> _SessionMeta:
@@ -851,6 +831,44 @@ def _scan_user_text(content) -> str:
         if text and not _IMAGE_SOURCE_PLACEHOLDER_RE.match(text):
             parts.append(text)
     return "\n\n".join(parts)
+
+
+def _collect_tool_results(raw_entries: list[dict]) -> dict[str, dict]:
+    """Build a mapping of tool_use_id -> result from user messages.
+
+    Uses a plain dict (unbounded) so that long sessions with many tool
+    calls do not lose early results to eviction. Also captures the
+    event-level ``toolUseResult`` field (structured metadata like
+    exit_code, stdout, stderr) for downstream extraction.
+    """
+    tool_results: dict[str, dict] = {}
+    for entry in raw_entries:
+        if entry.get("type") != "user":
+            continue
+        msg = entry.get("message", {})
+        content = msg.get("content", "")
+        if not isinstance(content, list):
+            continue
+        # Event-level toolUseResult carries structured execution metadata
+        tool_use_result = entry.get("toolUseResult")
+        for block in content:
+            if block.get("type") == "tool_result":
+                tool_use_id = block.get("tool_use_id", "")
+                if tool_use_id:
+                    result_content = block.get("content", "")
+                    is_error = block.get("is_error", False)
+                    # Preserve raw content (may contain image blocks)
+                    has_images = isinstance(result_content, list) and any(
+                        isinstance(b, dict) and b.get("type") == "image" for b in result_content
+                    )
+                    output: str | list = (
+                        result_content if has_images else coerce_to_string(result_content)
+                    )
+                    result_entry: dict = {"output": output, "is_error": bool(is_error)}
+                    if tool_use_result and isinstance(tool_use_result, dict):
+                        result_entry["tool_use_result"] = tool_use_result
+                    tool_results[tool_use_id] = result_entry
+    return tool_results
 
 
 def _decompose_raw_content(
@@ -1149,44 +1167,6 @@ def _build_agent_spawn_map(
     return {
         agent_id: (tc_to_step_id.get(tc_id, ""), tc_id) for agent_id, tc_id in agent_to_tc.items()
     }
-
-
-def _collect_tool_results(raw_entries: list[dict]) -> dict[str, dict]:
-    """Build a mapping of tool_use_id -> result from user messages.
-
-    Uses a plain dict (unbounded) so that long sessions with many tool
-    calls do not lose early results to eviction. Also captures the
-    event-level ``toolUseResult`` field (structured metadata like
-    exit_code, stdout, stderr) for downstream extraction.
-    """
-    tool_results: dict[str, dict] = {}
-    for entry in raw_entries:
-        if entry.get("type") != "user":
-            continue
-        msg = entry.get("message", {})
-        content = msg.get("content", "")
-        if not isinstance(content, list):
-            continue
-        # Event-level toolUseResult carries structured execution metadata
-        tool_use_result = entry.get("toolUseResult")
-        for block in content:
-            if block.get("type") == "tool_result":
-                tool_use_id = block.get("tool_use_id", "")
-                if tool_use_id:
-                    result_content = block.get("content", "")
-                    is_error = block.get("is_error", False)
-                    # Preserve raw content (may contain image blocks)
-                    has_images = isinstance(result_content, list) and any(
-                        isinstance(b, dict) and b.get("type") == "image" for b in result_content
-                    )
-                    output: str | list = (
-                        result_content if has_images else coerce_to_string(result_content)
-                    )
-                    result_entry: dict = {"output": output, "is_error": bool(is_error)}
-                    if tool_use_result and isinstance(tool_use_result, dict):
-                        result_entry["tool_use_result"] = tool_use_result
-                    tool_results[tool_use_id] = result_entry
-    return tool_results
 
 
 def _link_subagent_to_parent(
