@@ -42,13 +42,6 @@ def project_dir(claude_dir: Path) -> Path:
     return p
 
 
-def _write_history(claude_dir: Path, entries: list[dict]) -> None:
-    """Write entries to history.jsonl."""
-    with open(claude_dir / "history.jsonl", "w", encoding="utf-8") as f:
-        for entry in entries:
-            f.write(json.dumps(entry) + "\n")
-
-
 def _write_session(path: Path, entries: list[dict]) -> None:
     """Write entries to a session .jsonl file."""
     with open(path, "w", encoding="utf-8") as f:
@@ -165,107 +158,6 @@ class TestDecomposeRawContent:
         assert obs_m is not None
         assert len(obs_m.results) == 2
         print("  tool results injected: normal, error, multiple calls")
-
-
-class TestParseHistoryIndex:
-    def test_basic_history_parsing(self, claude_dir: Path):
-        """Covers single session fields, multi-entry dedup, sort order, since filter, and limit."""
-        _write_history(
-            claude_dir,
-            [
-                {
-                    "sessionId": "old",
-                    "display": "Old message",
-                    "timestamp": 1700000000000,
-                    "project": "/Users/Test/ProjA",
-                },
-                {
-                    "sessionId": "old",
-                    "display": "Second old entry",
-                    "timestamp": 1700000001000,
-                    "project": "/Users/Test/ProjA",
-                },
-                {
-                    "sessionId": "mid",
-                    "display": "Mid message",
-                    "timestamp": 1710000000000,
-                    "project": "/Users/Test/ProjB",
-                },
-                {
-                    "sessionId": "new1",
-                    "display": "New1",
-                    "timestamp": 1720000000000,
-                    "project": "/p",
-                },
-                {
-                    "sessionId": "new2",
-                    "display": "New2",
-                    "timestamp": 1730000000000,
-                    "project": "/p",
-                },
-            ],
-        )
-        # All sessions returned, sorted newest-first
-        result = _parser.parse_session_index(claude_dir)
-        assert len(result) == 4
-        assert result[0].session_id == "new2"
-        assert result[-1].session_id == "old"
-
-        # Session fields
-        old_traj = [t for t in result if t.session_id == "old"][0]
-        assert old_traj.project_path == "/Users/Test/ProjA"
-        assert old_traj.first_message == "Old message"
-        assert old_traj.final_metrics.total_steps == 2
-        print(f"  parsed {len(result)} sessions, sorted newest-first")
-
-        # since filter
-        since = datetime(2024, 3, 1, tzinfo=timezone.utc)
-        filtered = _parser.parse_session_index(claude_dir, since=since)
-        filtered_ids = {t.session_id for t in filtered}
-        assert "old" not in filtered_ids
-        assert "new1" in filtered_ids
-        print(f"  since filter kept {len(filtered)} of 4 sessions")
-
-        # limit
-        limited = _parser.parse_session_index(claude_dir, limit=2)
-        assert len(limited) == 2
-        print(f"  limit=2 returned {len(limited)} sessions")
-
-    def test_edge_cases(self, claude_dir: Path):
-        """Missing file, empty file, malformed JSON, missing sessionId, and blank lines."""
-        # Missing history file
-        assert _parser.parse_session_index(claude_dir) == []
-
-        # Empty history file
-        (claude_dir / "history.jsonl").write_text("")
-        assert _parser.parse_session_index(claude_dir) == []
-
-        # Malformed JSON + missing sessionId + blank lines mixed with valid entry
-        with open(claude_dir / "history.jsonl", "w") as f:
-            f.write("NOT VALID JSON\n")
-            f.write("\n")
-            no_id = {"display": "No session id", "timestamp": 1000000, "project": "/p"}
-            f.write(json.dumps(no_id) + "\n")
-            valid = {"sessionId": "s1", "display": "Valid", "timestamp": 1000000, "project": "/p"}
-            f.write(json.dumps(valid) + "\n")
-            f.write("\n")
-        result = _parser.parse_session_index(claude_dir)
-        assert len(result) == 1
-        assert result[0].session_id == "s1"
-        print("  edge cases: missing/empty/malformed/blank all handled")
-
-    def test_first_message_truncated(self, claude_dir: Path):
-        """Long first_message is truncated with '...' suffix."""
-        long_message = "x" * 500
-        _write_history(
-            claude_dir,
-            [{"sessionId": "s1", "display": long_message, "timestamp": 1000000, "project": "/p"}],
-        )
-        result = _parser.parse_session_index(claude_dir)
-        # Truncation adds "..." suffix beyond the max length
-        assert len(result[0].first_message) == MAX_FIRST_MESSAGE_LENGTH + 3
-        assert result[0].first_message.endswith("...")
-        print(f"  truncated to {len(result[0].first_message)} chars")
 
 
 class TestParseSessionJsonl:

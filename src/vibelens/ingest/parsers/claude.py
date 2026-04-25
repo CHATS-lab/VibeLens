@@ -14,7 +14,7 @@ a pre-scan to build the result map before constructing ToolCall objects.
 """
 
 import re
-from collections import Counter
+from collections import Counter, deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -30,7 +30,6 @@ from vibelens.ingest.parsers.base import (
 from vibelens.models.enums import AgentType, ContentType, StepSource
 from vibelens.models.trajectories import (
     Agent,
-    FinalMetrics,
     Metrics,
     Observation,
     ObservationResult,
@@ -132,6 +131,11 @@ _SYSTEM_TAG_PATTERN = re.compile(
 
 # Plain-text prefixes that indicate system-injected content
 _SYSTEM_PREFIXES = ("[Request interrupted", "This session is being continued")
+
+# Claude Code echoes pasted images as a "[Image: source: <path>]" text block
+# in a follow-up user turn. The previous turn already carries the image as
+# a base64 block, so the echo is noise — filter it from the displayed text.
+_IMAGE_SOURCE_PLACEHOLDER_RE = re.compile(r"^\s*\[Image: source: [^\]]+\]\s*$")
 
 # Skill output injected after a Skill tool_use
 _SKILL_PREFIX = "Base directory for this skill:"
@@ -260,61 +264,95 @@ class ClaudeParser(BaseParser):
     def parse_session_index(
         self, claude_dir: Path, since: datetime | None = None, limit: int | None = None
     ) -> list[Trajectory]:
-        """Parse history.jsonl to build lightweight skeleton Trajectory objects.
+        """Build skeleton trajectories by scanning each session JSONL.
 
-        Groups entries by sessionId, extracts project name, first message,
-        timestamp, and step count per session. These are skeleton
-        trajectories for listing — full parse happens on get_session().
+        For each session file we read until we find the first meaningful
+        user message — no fixed line cap, since some sessions begin with
+        long stretches of system caveats and tool-relay turns before the
+        real prompt. ``history.jsonl`` is intentionally ignored: its
+        ``display`` field is the user's typed text, which diverges from
+        the on-record first message when Claude Code rewrites the prompt
+        (e.g. pasted screenshots).
 
         Args:
             claude_dir: Path to ~/.claude directory.
-            since: Only include sessions with activity at or after this time.
-            limit: Maximum number of sessions to return (after sorting).
+            since: Only include sessions with start time at or after this.
+            limit: Maximum number of sessions to return after sorting.
 
         Returns:
             List of skeleton Trajectory objects sorted by timestamp descending.
         """
-        history_file = claude_dir / "history.jsonl"
-        if not history_file.exists():
-            logger.debug("history.jsonl not found at %s", history_file)
+        projects_dir = claude_dir / "projects"
+        if not projects_dir.is_dir():
             return []
 
-        since_ms = int(since.timestamp() * 1000) if since else 0
-        sessions = _aggregate_history_lines(history_file, since_ms)
+        trajectories: list[Trajectory] = []
+        for project_dir in projects_dir.iterdir():
+            if not project_dir.is_dir() or project_dir.name in _SKIP_DIR_NAMES:
+                continue
+            for jsonl_file in project_dir.glob("*.jsonl"):
+                skeleton = self.parse_skeleton_for_file(jsonl_file)
+                if skeleton is None:
+                    continue
+                if since and skeleton.timestamp and skeleton.timestamp < since:
+                    continue
+                trajectories.append(skeleton)
 
-        trajectories = []
-        for session_id, data in sessions.items():
-            project_path = data["project_path"] or None
-            first_message = self.truncate_first_message(data["first_message"]) or None
-            timestamp = datetime.fromtimestamp(data["last_timestamp"] / 1000, tz=timezone.utc)
-
-            # Skeleton step so Trajectory validation passes (min_length=1)
-            skeleton_step = Step(
-                step_id="index-0",
-                source=StepSource.USER,
-                message=first_message or "",
-                timestamp=timestamp,
-            )
-
-            # Build trajectory directly — skeleton data should not trigger
-            # derived field computation from assemble_trajectory
-            trajectories.append(
-                Trajectory(
-                    schema_version=DEFAULT_ATIF_VERSION,
-                    session_id=session_id,
-                    project_path=project_path,
-                    first_message=first_message,
-                    agent=Agent(name=self.AGENT_TYPE.value),
-                    steps=[skeleton_step],
-                    final_metrics=FinalMetrics(total_steps=data["message_count"]),
-                    extra={"is_skeleton": True, "total_entries": data["message_count"]},
-                )
-            )
-
-        trajectories.sort(key=lambda t: t.steps[0].timestamp or _EPOCH_MIN, reverse=True)
+        trajectories.sort(key=lambda t: t.timestamp or _EPOCH_MIN, reverse=True)
         if limit is not None:
             trajectories = trajectories[:limit]
         return trajectories
+
+    def parse_skeleton_for_file(self, jsonl_file: Path) -> Trajectory | None:
+        """Read a session file until the first meaningful user message.
+
+        Stops as soon as a usable first message is found. Returns None
+        when the file has no meaningful user message — those sessions
+        are dropped from the index by the downstream validator.
+        """
+        first_message: str | None = None
+        project_path: str | None = None
+        start_ts: datetime | None = None
+
+        for entry in self.iter_jsonl_safe(jsonl_file):
+            if not isinstance(entry, dict):
+                continue
+            if project_path is None:
+                cwd = entry.get("cwd")
+                if isinstance(cwd, str) and cwd:
+                    project_path = cwd
+            if start_ts is None:
+                start_ts = normalize_timestamp(entry.get("timestamp"))
+            if entry.get("type") != "user":
+                continue
+            msg = entry.get("message")
+            if not isinstance(msg, dict):
+                continue
+            text = _scan_user_text(msg.get("content"))
+            if text and _is_meaningful_prompt(text):
+                first_message = self.truncate_first_message(text)
+                break
+
+        if not first_message:
+            return None
+
+        return Trajectory(
+            schema_version=DEFAULT_ATIF_VERSION,
+            session_id=jsonl_file.stem,
+            project_path=project_path,
+            timestamp=start_ts,
+            first_message=first_message,
+            agent=Agent(name=self.AGENT_TYPE.value),
+            steps=[
+                Step(
+                    step_id="index-0",
+                    source=StepSource.USER,
+                    message=first_message,
+                    timestamp=start_ts,
+                )
+            ],
+            extra={"is_skeleton": True},
+        )
 
     def parse_session_jsonl(self, file_path: Path) -> list[Step]:
         """Parse a session .jsonl file into main-session steps only.
@@ -749,7 +787,12 @@ def _deduplicate_entries_by_uuid(entries: list[dict]) -> list[dict]:
 
 
 def _collect_dequeued_timestamps(all_parsed: list[dict]) -> set[str]:
-    """Collect timestamps of enqueue events that were later dequeued.
+    """Return enqueue timestamps that were paired with a later dequeue.
+
+    Dequeue events don't reference the original enqueue — they only
+    record their own (delivery) timestamp, which lands a few ms after
+    the enqueue. Pair them FIFO by occurrence order so the matching
+    survives that drift.
 
     Dequeued messages are delivered as normal ``type: "user"`` entries,
     so creating a synthetic user entry would duplicate them.
@@ -758,15 +801,21 @@ def _collect_dequeued_timestamps(all_parsed: list[dict]) -> set[str]:
         all_parsed: All parsed JSONL entries (unfiltered).
 
     Returns:
-        Set of timestamp strings for enqueue events followed by dequeue.
+        Set of enqueue timestamp strings that were paired with a dequeue.
     """
-    dequeued: set[str] = set()
+    pending_enqueue_ts: deque[str] = deque()
+    delivered: set[str] = set()
     for entry in all_parsed:
-        if entry.get("type") == "queue-operation" and entry.get("operation") == "dequeue":
+        if entry.get("type") != "queue-operation":
+            continue
+        op = entry.get("operation")
+        if op == "enqueue":
             ts = entry.get("timestamp", "")
             if ts:
-                dequeued.add(ts)
-    return dequeued
+                pending_enqueue_ts.append(ts)
+        elif op == "dequeue" and pending_enqueue_ts:
+            delivered.add(pending_enqueue_ts.popleft())
+    return delivered
 
 
 def _make_enqueue_user_entry(entry: dict) -> dict:
@@ -921,6 +970,29 @@ def _extract_git_branches(content: str) -> list[str] | None:
     return _scan_session_metadata(content).git_branches
 
 
+def _scan_user_text(content) -> str:
+    """Extract human-typed text from a raw user-message ``content`` field.
+
+    Handles both shapes Claude Code emits — string content and the
+    Anthropic content-block list — joining text blocks while skipping
+    image-source echoes and non-text blocks (images, tool_result). Used
+    by the lightweight index scan; full parsing goes through
+    :func:`_decompose_raw_content`.
+    """
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return ""
+    parts: list[str] = []
+    for block in content:
+        if not isinstance(block, dict) or block.get("type") != "text":
+            continue
+        text = block.get("text", "")
+        if text and not _IMAGE_SOURCE_PLACEHOLDER_RE.match(text):
+            parts.append(text)
+    return "\n\n".join(parts)
+
+
 def _decompose_raw_content(
     raw_content: str | list, tool_results: dict[str, dict] | None = None
 ) -> tuple[str, str | None, list[ToolCall], Observation | None]:
@@ -961,7 +1033,7 @@ def _decompose_raw_content(
 
         if block_type == "text":
             text = block.get("text", "")
-            if text:
+            if text and not _IMAGE_SOURCE_PLACEHOLDER_RE.match(text):
                 text_parts.append(text)
 
         elif block_type == "image":
@@ -1038,9 +1110,7 @@ def _decompose_raw_content(
     return message, reasoning_content, tool_calls, observation
 
 
-def _extract_tool_result_content(
-    content: str | list | None,
-) -> str | list[ContentPart] | None:
+def _extract_tool_result_content(content: str | list | None) -> str | list[ContentPart] | None:
     """Extract text (and optionally images) from a tool_result content field.
 
     When the content list contains image blocks, returns a list[ContentPart]
@@ -1151,54 +1221,6 @@ def count_history_entries(claude_dir: Path) -> int:
     except OSError:
         return 0
     return count
-
-
-def _aggregate_history_lines(history_file: Path, since_ms: int) -> dict[str, dict]:
-    """Read history.jsonl and group entries by session.
-
-    Skips entries whose timestamp falls before ``since_ms`` for early
-    filtering when callers only need recent sessions.
-
-    Args:
-        history_file: Path to the history.jsonl file.
-        since_ms: Minimum timestamp in milliseconds (0 to include all).
-
-    Returns:
-        Dict mapping session_id -> aggregated session data.
-    """
-    sessions: dict[str, dict] = {}
-    for entry in BaseParser.iter_jsonl_safe(history_file):
-        session_id = entry.get("sessionId", "")
-        if not session_id:
-            continue
-
-        timestamp_ms = entry.get("timestamp", 0)
-        if since_ms and timestamp_ms < since_ms:
-            continue
-
-        display = entry.get("display", "")
-        project_path = entry.get("project", "")
-
-        if session_id not in sessions:
-            sessions[session_id] = {
-                "first_timestamp": timestamp_ms,
-                "last_timestamp": timestamp_ms,
-                "first_message": display if _is_meaningful_prompt(display) else "",
-                "project_path": project_path,
-                "message_count": 1,
-            }
-        else:
-            sess = sessions[session_id]
-            sess["message_count"] += 1
-            if not sess["first_message"] and _is_meaningful_prompt(display):
-                sess["first_message"] = display
-            if timestamp_ms < sess["first_timestamp"]:
-                sess["first_timestamp"] = timestamp_ms
-                if _is_meaningful_prompt(display):
-                    sess["first_message"] = display
-            if timestamp_ms > sess["last_timestamp"]:
-                sess["last_timestamp"] = timestamp_ms
-    return sessions
 
 
 def _detect_orphans(

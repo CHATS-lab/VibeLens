@@ -12,6 +12,8 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 
+import orjson
+
 from vibelens.ingest.diagnostics import DiagnosticsCollector
 from vibelens.models.enums import AgentType, StepSource
 from vibelens.models.trajectories import (
@@ -24,6 +26,7 @@ from vibelens.models.trajectories import (
 )
 from vibelens.models.trajectories.trajectory import DEFAULT_ATIF_VERSION
 from vibelens.utils import log_duration
+from vibelens.utils.content import content_to_text
 from vibelens.utils.log import get_logger
 from vibelens.utils.timestamps import local_date_key
 
@@ -170,6 +173,34 @@ class BaseParser(ABC):
         """
         return None
 
+    def parse_skeleton_for_file(self, file_path: Path) -> Trajectory | None:
+        """Lightweight per-file skeleton extraction.
+
+        Default implementation full-parses the file via :meth:`parse_file`
+        and clears the steps list — correct but slow. Parsers whose format
+        permits a head-of-file scan (append-only JSONL, SQLite-indexed,
+        small JSON document) should override to avoid building the entire
+        Trajectory.
+
+        Returns ``None`` when the file produces no usable trajectory; the
+        caller drops it from the index.
+
+        Args:
+            file_path: Path to the session file.
+
+        Returns:
+            Skeleton Trajectory with cleared steps, or None.
+        """
+        try:
+            trajs = self.parse_file(file_path)
+        except Exception:  # noqa: BLE001 — parser-level failures are logged elsewhere
+            return None
+        if not trajs:
+            return None
+        main = trajs[0]
+        main.steps = []
+        return main
+
     def discover_session_files(self, data_dir: Path) -> list[Path]:
         """Discover session files in the given directory.
 
@@ -259,7 +290,8 @@ class BaseParser(ABC):
 
         Skips copied context (from ``claude --resume``) and slash commands
         (e.g. ``/permissions``, ``/compact``) that are not meaningful
-        conversation starters.
+        conversation starters. For multimodal messages (list[ContentPart],
+        e.g. pasted screenshots), joins the text parts before checking.
 
         Args:
             steps: Ordered list of parsed Step objects.
@@ -272,13 +304,12 @@ class BaseParser(ABC):
                 continue
             if step.is_copied_context:
                 continue
-            if not isinstance(step.message, str):
-                continue
             extra = step.extra or {}
             if extra.get("is_skill_output") or extra.get("is_auto_prompt"):
                 continue
-            if _is_meaningful_prompt(step.message):
-                return self.truncate_first_message(step.message)
+            text = content_to_text(step.message)
+            if text and _is_meaningful_prompt(text):
+                return self.truncate_first_message(text)
         return None
 
     @staticmethod
@@ -394,6 +425,8 @@ def _iter_parsed_jsonl(
     paths can share the same blank-line / decode-error / diagnostics
     handling.
     """
+    # orjson.JSONDecodeError is a subclass of json.JSONDecodeError, so
+    # the except below catches both implementations.
     for line in lines:
         stripped = line.strip()
         if not stripped:
@@ -401,7 +434,7 @@ def _iter_parsed_jsonl(
         if diagnostics is not None:
             diagnostics.total_lines += 1
         try:
-            parsed = json.loads(stripped)
+            parsed = orjson.loads(stripped)
         except json.JSONDecodeError:
             if diagnostics is not None:
                 diagnostics.record_skip("invalid JSON")

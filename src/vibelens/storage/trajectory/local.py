@@ -12,7 +12,10 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from vibelens.ingest.fast_metrics import scan_session_metrics
+from vibelens.ingest.fast_metrics import (
+    scan_session_metrics,
+    scan_session_metrics_incremental,
+)
 from vibelens.ingest.index_builder import (
     build_partial_session_index,
     build_session_index,
@@ -67,61 +70,81 @@ def _extract_session_id(filepath: Path, agent_type: AgentType) -> str:
     return f"{agent_type.value}:{stem}"
 
 
+def _coerce_stats(raw: dict) -> dict[str, list[int]]:
+    """Coerce a cached stat map into the canonical ``[mtime_ns, size]`` shape.
+
+    Tolerates either the new list-of-two-ints format or any prior shape
+    (single int mtime, missing size). Entries that can't be coerced are
+    dropped — they fall through to ``new`` in the partition and get
+    re-parsed.
+    """
+    out: dict[str, list[int]] = {}
+    for path_str, value in raw.items():
+        if isinstance(value, list) and len(value) == 2:
+            try:
+                out[path_str] = [int(value[0]), int(value[1])]
+            except (TypeError, ValueError):
+                continue
+    return out
+
+
 def _partition_files(
     file_index: dict[str, tuple[Path, BaseParser]],
-    cached_mtimes: dict[str, int],
-    dropped_paths: dict[str, int],
-) -> tuple[CachePartition, dict[str, int]]:
+    cached_stats: dict[str, list[int]],
+    dropped_paths: dict[str, list[int]],
+) -> tuple[CachePartition, dict[str, list[int]], dict[str, list[int]]]:
     """Compare current file index against the cache and partition by state.
+
+    Compares ``[mtime_ns, size]`` per file. The size component catches
+    in-place rewrites that don't move mtime.
 
     Args:
         file_index: Current session_id -> (filepath, parser) map after
-            discovery (``_walk_session_files``) and ``_remap_index``.
-        cached_mtimes: filepath_str -> mtime_ns from the previous cache.
-        dropped_paths: filepath_str -> mtime_ns for files the previous build
-            dropped as empty/invalid. Files in here with unchanged mtimes are
-            excluded from the partition entirely (not retried).
+            discovery and ``_remap_index``.
+        cached_stats: filepath_str -> ``[mtime_ns, size]`` from the
+            previous cache.
+        dropped_paths: filepath_str -> ``[mtime_ns, size]`` for files the
+            previous build dropped as empty/invalid. Files here with an
+            unchanged stat tuple are excluded from the partition entirely.
 
     Returns:
-        Tuple of (CachePartition, fresh_dropped_paths) where ``fresh_dropped_paths``
-        is the subset of ``dropped_paths`` whose files still exist with the
-        same mtime — these carry forward into the next saved cache.
+        Tuple of ``(CachePartition, fresh_dropped, current_stats)`` where
+        ``current_stats`` maps filepath_str to the live ``[mtime_ns, size]``
+        captured during this pass. Callers reuse it to avoid a second
+        ``stat()`` per file.
     """
     unchanged: dict[str, tuple[Path, BaseParser]] = {}
     changed: dict[str, tuple[Path, BaseParser]] = {}
     new: dict[str, tuple[Path, BaseParser]] = {}
-    fresh_dropped: dict[str, int] = {}
-    current_paths: set[str] = set()
+    fresh_dropped: dict[str, list[int]] = {}
+    current_stats: dict[str, list[int]] = {}
 
     for sid, (fpath, parser) in file_index.items():
         path_str = str(fpath)
         try:
-            current_mtime = fpath.stat().st_mtime_ns
+            st = fpath.stat()
         except OSError:
-            # File vanished between discovery and stat; skip it. The
-            # removed_paths logic below ignores it too — either it wasn't
-            # in cached_mtimes (previously absent) or it will fall into
-            # removed_paths (previously cached).
             continue
-        current_paths.add(path_str)
+        current_stat = [st.st_mtime_ns, st.st_size]
+        current_stats[path_str] = current_stat
 
-        # Filter out previously-dropped paths whose mtime is unchanged.
-        if path_str in dropped_paths and dropped_paths[path_str] == current_mtime:
-            fresh_dropped[path_str] = current_mtime
+        if path_str in dropped_paths and dropped_paths[path_str] == current_stat:
+            fresh_dropped[path_str] = current_stat
             continue
 
-        cached_mtime = cached_mtimes.get(path_str)
-        if cached_mtime is None:
+        cached_stat = cached_stats.get(path_str)
+        if cached_stat is None:
             new[sid] = (fpath, parser)
-        elif cached_mtime != current_mtime:
+        elif cached_stat != current_stat:
             changed[sid] = (fpath, parser)
         else:
             unchanged[sid] = (fpath, parser)
 
-    removed_paths = set(cached_mtimes.keys()) - current_paths
+    removed_paths = set(cached_stats.keys()) - set(current_stats.keys())
     return (
         CachePartition(unchanged=unchanged, changed=changed, new=new, removed_paths=removed_paths),
         fresh_dropped,
+        current_stats,
     )
 
 
@@ -276,17 +299,17 @@ class LocalTrajectoryStore(BaseTrajectoryStore):
         if not cache:
             return False
 
-        cached_mtimes: dict[str, int] = {k: int(v) for k, v in cache.get("file_mtimes", {}).items()}
+        cached_stats: dict[str, list[int]] = _coerce_stats(cache.get("file_mtimes", {}))
         cached_entries: dict[str, dict] = cache.get("entries", {})
         cached_path_map: dict[str, str] = cache.get("path_to_session_id", {})
-        cached_dropped: dict[str, int] = {
-            k: int(v) for k, v in cache.get("dropped_paths", {}).items()
-        }
+        cached_dropped: dict[str, list[int]] = _coerce_stats(cache.get("dropped_paths", {}))
 
         # Remap before partitioning so cached real session_ids line up with _index.
         self._remap_index(cached_path_map)
 
-        partition, fresh_dropped = _partition_files(self._index, cached_mtimes, cached_dropped)
+        partition, fresh_dropped, current_stats = _partition_files(
+            self._index, cached_stats, cached_dropped
+        )
 
         # Drop dropped-paths from _index — they should not appear as live sessions.
         if fresh_dropped:
@@ -305,7 +328,9 @@ class LocalTrajectoryStore(BaseTrajectoryStore):
             return True
 
         try:
-            self._partial_rebuild(partition, cached_entries, fresh_dropped)
+            self._partial_rebuild(
+                partition, cached_entries, cached_stats, current_stats, fresh_dropped
+            )
         except Exception:
             logger.warning("Partial rebuild failed, falling back to full rebuild", exc_info=True)
             return False
@@ -315,7 +340,9 @@ class LocalTrajectoryStore(BaseTrajectoryStore):
         self,
         partition: CachePartition,
         cached_entries: dict[str, dict],
-        fresh_dropped: dict[str, int],
+        cached_stats: dict[str, list[int]],
+        current_stats: dict[str, list[int]],
+        fresh_dropped: dict[str, list[int]],
     ) -> None:
         """Re-parse only changed/new files; hydrate the rest from cache."""
         # Hydrate unchanged entries from cache.
@@ -331,10 +358,27 @@ class LocalTrajectoryStore(BaseTrajectoryStore):
             str(fpath) for fpath, _p in partition.new.values()
         }
 
-        new_dropped: dict[str, int] = {}
+        # Build incremental seeds for changed files whose current size is
+        # strictly larger than the cached size — the append-only case.
+        # Files that shrank or stayed the same fall through to a full scan.
+        incremental_seeds: dict[str, tuple[dict, int]] = {}
+        for sid, (fpath, _p) in partition.changed.items():
+            cached_entry = cached_entries.get(sid)
+            prev_stat = cached_stats.get(str(fpath))
+            current_stat = current_stats.get(str(fpath))
+            if cached_entry is None or prev_stat is None or current_stat is None:
+                continue
+            if current_stat[1] <= prev_stat[1]:
+                continue
+            incremental_seeds[sid] = (
+                _prev_metrics_from_entry(cached_entry),
+                prev_stat[1],
+            )
+
+        new_dropped: dict[str, list[int]] = {}
         if only_paths:
             partial_skeletons, dropped_paths = build_partial_session_index(self._index, only_paths)
-            _enrich_skeleton_metrics(partial_skeletons, self._index)
+            _enrich_skeleton_metrics(partial_skeletons, self._index, incremental_seeds)
             for t in partial_skeletons:
                 meta = t.model_dump(exclude={"steps"}, mode="json")
                 entry = self._index.get(t.session_id)
@@ -343,7 +387,8 @@ class LocalTrajectoryStore(BaseTrajectoryStore):
                 self._metadata_cache[t.session_id] = meta
             for fpath in dropped_paths:
                 try:
-                    new_dropped[str(fpath)] = fpath.stat().st_mtime_ns
+                    st = fpath.stat()
+                    new_dropped[str(fpath)] = [st.st_mtime_ns, st.st_size]
                 except OSError:
                     continue
 
@@ -425,10 +470,11 @@ class LocalTrajectoryStore(BaseTrajectoryStore):
 
         # Build path -> real session_id map for cache restoration
         path_to_session_id = {str(fpath): sid for sid, (fpath, _parser) in self._index.items()}
-        dropped_paths_dict: dict[str, int] = {}
+        dropped_paths_dict: dict[str, list[int]] = {}
         for fpath in dropped_paths:
             try:
-                dropped_paths_dict[str(fpath)] = fpath.stat().st_mtime_ns
+                st = fpath.stat()
+                dropped_paths_dict[str(fpath)] = [st.st_mtime_ns, st.st_size]
             except OSError:
                 continue
         save_cache(
@@ -473,29 +519,90 @@ def _apply_scanned_metrics(traj: Trajectory, metrics: dict) -> None:
         traj.agent.model_name = metrics["model"]
 
 
+def _prev_metrics_from_entry(entry: dict) -> dict:
+    """Reconstitute a :func:`scan_session_metrics` output shape from a cached metadata entry.
+
+    Used as the seed for incremental enrichment when a session file has
+    grown on disk: the cumulative totals from the previous scan are
+    pulled out of the cached trajectory's ``final_metrics``, then
+    :func:`scan_session_metrics_incremental` accumulates the new lines
+    into the same shape.
+
+    Note that ``last_timestamp`` is intentionally left ``None`` — it
+    will be repopulated from the appended content. The trajectory's
+    own ``timestamp`` field carries the first_ts.
+    """
+    fm = entry.get("final_metrics") or {}
+    agent = entry.get("agent") or {}
+    return {
+        "input_tokens": fm.get("total_prompt_tokens") or 0,
+        "output_tokens": fm.get("total_completion_tokens") or 0,
+        "cache_read_tokens": fm.get("total_cache_read") or 0,
+        "cache_creation_tokens": fm.get("total_cache_write") or 0,
+        "tool_call_count": fm.get("tool_call_count") or 0,
+        "model": agent.get("model_name"),
+        "message_count": fm.get("total_steps") or 0,
+        "first_timestamp": entry.get("timestamp"),
+        "last_timestamp": None,
+    }
+
+
 def _enrich_skeleton_metrics(
-    trajectories: list[Trajectory], file_index: dict[str, tuple[Path, BaseParser]]
+    trajectories: list[Trajectory],
+    file_index: dict[str, tuple[Path, BaseParser]],
+    incremental_seeds: dict[str, tuple[dict, int]] | None = None,
 ) -> None:
     """Enrich skeleton trajectories with fast-scanned metrics.
 
-    Runs scan_session_metrics on each file to populate final_metrics
-    with token counts, tool call count, model name, and duration.
+    Runs ``scan_session_metrics`` (or its incremental variant when a
+    seed is provided) over the source JSONL of each trajectory to
+    populate token totals, tool count, model name, and duration.
+
+    Parallelism notes:
+
+    * ``ThreadPoolExecutor`` is *slower* than sequential here on a
+      1.8 GB corpus — the inner work holds the GIL on every post-parse
+      dict update, and disk reads don't parallelize on the host
+      filesystem either.
+    * ``ProcessPoolExecutor`` gives a real ~3× speedup but adds spawn
+      cost and breaks when the process has no re-importable
+      ``__main__`` (e.g. ``python -c``), so we don't ship that path.
 
     Args:
         trajectories: Skeleton trajectories to enrich in-place.
         file_index: session_id -> (filepath, parser) map.
+        incremental_seeds: Optional sid -> (prev_metrics, start_offset)
+            mapping. When the source file has grown since the cached
+            scan, this lets us resume past ``start_offset`` and merge
+            into ``prev_metrics`` instead of re-reading the whole file.
     """
     enriched = 0
+    incremental_used = 0
+    seeds = incremental_seeds or {}
     for traj in trajectories:
         entry = file_index.get(traj.session_id)
         if not entry:
             continue
         fpath, _parser = entry
-        metrics = scan_session_metrics(fpath)
+        seed = seeds.get(traj.session_id)
+        if seed is not None:
+            prev, start_offset = seed
+            metrics = scan_session_metrics_incremental(fpath, start_offset, prev)
+            if metrics is not None:
+                incremental_used += 1
+        else:
+            metrics = scan_session_metrics(fpath)
         if not metrics:
             continue
         _apply_scanned_metrics(traj, metrics)
         enriched += 1
 
     if enriched:
-        logger.info("Enriched %d skeletons with fast-scanned metrics", enriched)
+        if incremental_used:
+            logger.info(
+                "Enriched %d skeletons with fast-scanned metrics (%d incremental)",
+                enriched,
+                incremental_used,
+            )
+        else:
+            logger.info("Enriched %d skeletons with fast-scanned metrics", enriched)

@@ -4,7 +4,9 @@ Builds skeleton trajectories from parser indexes with polymorphic dispatch,
 plus deduplication/validation and continuation chain enrichment.
 """
 
+import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from vibelens.ingest.parsers.base import BaseParser
@@ -13,6 +15,10 @@ from vibelens.models.trajectories import Trajectory, TrajectoryRef
 from vibelens.utils import get_logger
 
 logger = get_logger(__name__)
+
+# Per-file skeleton parsing is I/O-bound; cap thread count to avoid
+# thrashing the disk scheduler.
+INDEX_PARSE_WORKERS = min(8, (os.cpu_count() or 4))
 
 
 def build_session_index(
@@ -170,27 +176,29 @@ def _build_orphaned_skeletons(
     if not orphaned_entries:
         return []
 
-    result: list[Trajectory] = []
-    for old_sid, fpath, p in orphaned_entries:
+    def _scan(entry: tuple[str, Path, BaseParser]) -> tuple[str, Path, Trajectory | None]:
+        old_sid, fpath, p = entry
         try:
-            trajs = p.parse_file(fpath)
-            if not trajs:
-                if dropped_sink is not None:
-                    dropped_sink.append(fpath)
-                file_index.pop(old_sid, None)
-                continue
-            main = trajs[0]
-            real_sid = main.session_id
-            if real_sid != old_sid:
-                file_index.pop(old_sid, None)
-                file_index[real_sid] = (fpath, p)
-            main.steps = []
-            result.append(main)
+            return old_sid, fpath, p.parse_skeleton_for_file(fpath)
         except Exception:
             logger.debug("Failed to parse orphaned file %s, skipping", fpath)
+            return old_sid, fpath, None
+
+    with ThreadPoolExecutor(max_workers=INDEX_PARSE_WORKERS) as pool:
+        scanned = list(pool.map(_scan, orphaned_entries))
+
+    result: list[Trajectory] = []
+    for old_sid, fpath, main in scanned:
+        if main is None:
             if dropped_sink is not None:
                 dropped_sink.append(fpath)
             file_index.pop(old_sid, None)
+            continue
+        real_sid = main.session_id
+        if real_sid != old_sid:
+            file_index.pop(old_sid, None)
+            file_index[real_sid] = (fpath, parser)
+        result.append(main)
     return result
 
 
@@ -238,7 +246,13 @@ def _reconcile_index_skeletons(
 def _build_file_parse_skeletons(
     parser: BaseParser, file_index: dict[str, tuple[Path, BaseParser]]
 ) -> list[Trajectory]:
-    """Build skeletons by fully parsing each session file.
+    """Build skeletons by lightly parsing each session file in parallel.
+
+    Dispatches to the parser's :meth:`parse_skeleton_for_file` hook so
+    formats with append-only JSONL (Claude, OpenClaw) can scan only the
+    head; parsers that don't override fall back to a full parse with
+    cleared steps. Files are processed in a thread pool because the work
+    is dominated by I/O.
 
     Collects entries first to avoid mutating file_index during iteration.
     Remaps session IDs when the parser produces different IDs than
@@ -249,27 +263,32 @@ def _build_file_parse_skeletons(
         file_index: Mutable session file index for ID remapping.
 
     Returns:
-        Skeleton trajectories (steps cleared) for all parseable files.
+        Skeleton trajectories for all parseable files.
     """
-    parser_entries = [(sid, fpath, p) for sid, (fpath, p) in file_index.items() if p is parser]
+    parser_entries = [(sid, fpath) for sid, (fpath, p) in file_index.items() if p is parser]
+    if not parser_entries:
+        return []
 
-    result: list[Trajectory] = []
-    for old_sid, fpath, p in parser_entries:
+    def _scan(entry: tuple[str, Path]) -> tuple[str, Path, Trajectory | None]:
+        old_sid, fpath = entry
         try:
-            trajs = p.parse_file(fpath)
-            if not trajs:
-                continue
-            main = trajs[0]
-            # Remap: parser may produce a session_id different from filename key
-            real_sid = main.session_id
-            if real_sid != old_sid:
-                file_index.pop(old_sid, None)
-                file_index[real_sid] = (fpath, p)
-            main.steps = []
-            result.append(main)
+            return old_sid, fpath, parser.parse_skeleton_for_file(fpath)
         except Exception:
             logger.warning("Failed to index %s, skipping", fpath)
+            return old_sid, fpath, None
 
+    with ThreadPoolExecutor(max_workers=INDEX_PARSE_WORKERS) as pool:
+        scanned = list(pool.map(_scan, parser_entries))
+
+    result: list[Trajectory] = []
+    for old_sid, fpath, main in scanned:
+        if main is None:
+            continue
+        real_sid = main.session_id
+        if real_sid != old_sid:
+            file_index.pop(old_sid, None)
+            file_index[real_sid] = (fpath, parser)
+        result.append(main)
     return result
 
 

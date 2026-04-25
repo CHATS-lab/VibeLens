@@ -170,38 +170,59 @@ def test_partition_files_classifies_correctly(tmp_path):
         "b": (file_b, object()),
     }
 
-    # cached_mtimes records a's old mtime + a third file 'c' that no longer exists.
-    cached_mtimes = {
-        str(file_a): file_a.stat().st_mtime_ns - 1,  # different → changed
-        str(tmp_path / "c.jsonl"): 999_999,  # gone → removed
+    # cached stat records a's old mtime + a third file 'c' that no longer exists.
+    a_st = file_a.stat()
+    cached_stats = {
+        str(file_a): [a_st.st_mtime_ns - 1, a_st.st_size],  # different mtime → changed
+        str(tmp_path / "c.jsonl"): [999_999, 0],  # gone → removed
     }
-    dropped_paths: dict[str, int] = {}
+    dropped_paths: dict[str, list[int]] = {}
 
-    partition, fresh_dropped = _partition_files(file_index, cached_mtimes, dropped_paths)
+    partition, fresh_dropped, current_stats = _partition_files(
+        file_index, cached_stats, dropped_paths
+    )
 
     assert "a" in partition.changed
     assert "b" in partition.new
     assert partition.unchanged == {}
     assert str(tmp_path / "c.jsonl") in partition.removed_paths
     assert fresh_dropped == {}
+    # current_stats should cover every live file we actually statted.
+    assert str(file_a) in current_stats
+    assert str(file_b) in current_stats
+
+
+def test_partition_files_size_change_marks_changed(tmp_path):
+    """In-place rewrite that preserves mtime is caught by the size component."""
+    f = tmp_path / "rewritten.jsonl"
+    f.write_text("hello")
+    st = f.stat()
+
+    file_index = {"r": (f, object())}
+    cached_stats = {str(f): [st.st_mtime_ns, st.st_size + 1]}  # size differs only
+
+    partition, _, _ = _partition_files(file_index, cached_stats, {})
+
+    assert "r" in partition.changed
 
 
 def test_partition_files_skips_dropped_with_unchanged_mtime(tmp_path):
-    """Files in dropped_paths with matching mtimes are excluded from all sets."""
+    """Files in dropped_paths with matching stat tuples are excluded from all sets."""
     bad = tmp_path / "bad.jsonl"
     bad.write_text("x")
-    bad_mtime = bad.stat().st_mtime_ns
+    st = bad.stat()
+    bad_stat = [st.st_mtime_ns, st.st_size]
 
     file_index = {"bad": (bad, object())}
-    cached_mtimes: dict[str, int] = {}
-    dropped_paths = {str(bad): bad_mtime}
+    cached_stats: dict[str, list[int]] = {}
+    dropped_paths = {str(bad): bad_stat}
 
-    partition, fresh_dropped = _partition_files(file_index, cached_mtimes, dropped_paths)
+    partition, fresh_dropped, _ = _partition_files(file_index, cached_stats, dropped_paths)
 
     assert partition.new == {}
     assert partition.unchanged == {}
     assert partition.changed == {}
-    assert fresh_dropped == {str(bad): bad_mtime}
+    assert fresh_dropped == {str(bad): bad_stat}
 
 
 def _write_claude_session(projects_dir: Path, sid: str, text: str = "prompt") -> Path:

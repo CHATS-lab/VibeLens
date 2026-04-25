@@ -14,12 +14,11 @@ from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
 
-# Bump to invalidate all existing caches after schema changes.
-# v6: final_metrics.daily_breakdown populated at ingest so the dashboard
-# fast path can split cross-day sessions by local-day step timestamps.
-# v5: final_metrics.total_cost_usd is now populated during ingest (was
-# None for every Claude/Hermes/Codex session prior to this version).
-CACHE_VERSION = 6
+# Bump to invalidate existing caches after schema changes. Stat tuples
+# are stored as ``[mtime_ns, size_bytes]`` per file; size catches
+# in-place rewrites that preserve mtime.
+CACHE_VERSION = 7
+
 # User-home path for the persistent session index cache
 DEFAULT_CACHE_PATH = Path.home() / ".vibelens" / "session_index.json"
 
@@ -80,22 +79,24 @@ def load_cache(cache_path: Path | None = None) -> dict | None:
 
 def save_cache(
     metadata_cache: dict[str, dict],
-    file_mtimes: dict[str, float],
+    file_mtimes: dict[str, list[int]],
     continuation_map: dict[str, str],
     path_to_session_id: dict[str, str] | None = None,
-    dropped_paths: dict[str, int] | None = None,
+    dropped_paths: dict[str, list[int]] | None = None,
     cache_path: Path | None = None,
 ) -> None:
     """Write the index cache to disk.
 
     Args:
         metadata_cache: session_id -> metadata dict (from model_dump).
-        file_mtimes: file_path_str -> mtime_ns for staleness detection.
+        file_mtimes: file_path_str -> ``[mtime_ns, size]`` for staleness
+            detection. Both must match on next startup for a cache hit;
+            this catches in-place rewrites that preserve mtime.
         continuation_map: current_session_id -> previous_session_id.
         path_to_session_id: file_path_str -> real session_id for index remapping.
-        dropped_paths: file_path_str -> mtime_ns for files dropped as empty/invalid.
-            Lets the next startup skip re-parsing them as long as their mtime is
-            unchanged.
+        dropped_paths: file_path_str -> ``[mtime_ns, size]`` for files dropped
+            as empty/invalid. Lets the next startup skip re-parsing them as
+            long as their stat tuple is unchanged.
         cache_path: Path to write the cache file. Defaults to the
             module-level ``DEFAULT_CACHE_PATH`` (resolved at call time).
     """
@@ -117,17 +118,22 @@ def save_cache(
         logger.warning("Failed to write index cache to %s", cache_path)
 
 
-def collect_file_mtimes(file_index: dict[str, tuple[Path, object]]) -> dict[str, float]:
-    """Build a filepath -> mtime_ns map from the current file index.
+def collect_file_mtimes(file_index: dict[str, tuple[Path, object]]) -> dict[str, list[int]]:
+    """Build a filepath -> ``[mtime_ns, size]`` map from the current file index.
+
+    The size component lets the staleness check catch in-place rewrites
+    that preserve mtime (rare with normal Claude Code/Codex session
+    files, but possible with editors that ``write -> rename`` quickly).
 
     Args:
         file_index: session_id -> (filepath, parser) map.
 
     Returns:
-        Dict of filepath string -> mtime in nanoseconds.
+        Dict of filepath string -> ``[mtime_ns, size_bytes]``.
     """
-    mtimes: dict[str, float] = {}
+    stats: dict[str, list[int]] = {}
     for _sid, (fpath, _parser) in file_index.items():
         with contextlib.suppress(OSError):
-            mtimes[str(fpath)] = fpath.stat().st_mtime_ns
-    return mtimes
+            st = fpath.stat()
+            stats[str(fpath)] = [st.st_mtime_ns, st.st_size]
+    return stats
