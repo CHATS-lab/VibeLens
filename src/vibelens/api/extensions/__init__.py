@@ -4,9 +4,11 @@ from fastapi import APIRouter
 
 from vibelens.api.extensions.agents import router as agents_router
 from vibelens.api.extensions.catalog import router as catalog_router
+from vibelens.api.extensions.collections import build_collections_router
 from vibelens.api.extensions.factory import build_typed_router
 from vibelens.api.extensions.hook import router as hooks_router
 from vibelens.deps import (
+    get_collection_service,
     get_command_service,
     get_plugin_service,
     get_skill_service,
@@ -33,4 +35,5 @@ def build_extensions_router() -> APIRouter:
         build_typed_router(get_subagent_service, AgentExtensionType.SUBAGENT)
     )
     extensions_router.include_router(hooks_router)
+    extensions_router.include_router(build_collections_router(get_collection_service))
     return extensions_router

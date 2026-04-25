@@ -159,6 +159,39 @@ class BaseExtensionStore(ABC, Generic[TItem]):
         """Copy an item from another store. Returns True on success."""
         return self._copy_impl(source, name)
 
+    @staticmethod
+    def _replace_target(target: Path) -> None:
+        """Remove a target path that may be a symlink, file, or directory.
+
+        Necessary because ``shutil.rmtree`` refuses symlinks and ``Path.unlink``
+        refuses non-symlink directories. No-op when target is missing.
+        """
+        if target.is_symlink() or target.is_file():
+            target.unlink(missing_ok=True)
+        elif target.is_dir():
+            shutil.rmtree(target)
+
+    def link_from(self, source: "BaseExtensionStore[TItem]", name: str) -> bool:
+        """Create a symlink in this store pointing at the source's named item.
+
+        Replaces any existing file/dir/symlink at the target path. Returns True
+        on success. Raises ``OSError`` if the platform/filesystem doesn't
+        support symlinks (Windows without dev mode, some FUSE mounts, etc.) so
+        callers can fall back to copy.
+        """
+        source_root = source._item_root(name)
+        if not source_root.exists():
+            raise FileNotFoundError(f"source missing: {source_root}")
+
+        target_root = self._item_root(name)
+        target_root.parent.mkdir(parents=True, exist_ok=True)
+        self._replace_target(target_root)
+
+        target_root.symlink_to(
+            source_root.resolve(), target_is_directory=source_root.is_dir()
+        )
+        return True
+
     def list_names(self) -> list[str]:
         """Return sorted list of valid item names passing the include filter."""
         if not self._root.is_dir():

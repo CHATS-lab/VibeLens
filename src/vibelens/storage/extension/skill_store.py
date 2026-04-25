@@ -52,11 +52,11 @@ class SkillStore(BaseExtensionStore[Skill]):
         ]
 
     def _delete_impl(self, name: str) -> bool:
-        """Remove the skill's entire subdirectory tree."""
+        """Remove the skill's subdirectory tree (or symlink)."""
         skill_dir = self._root / name
-        if not skill_dir.is_dir():
+        if not (skill_dir.is_symlink() or skill_dir.is_dir()):
             return False
-        shutil.rmtree(skill_dir)
+        self._replace_target(skill_dir)
         return True
 
     def _copy_impl(self, source: BaseExtensionStore[Skill], name: str) -> bool:
@@ -65,9 +65,8 @@ class SkillStore(BaseExtensionStore[Skill]):
         if not (source_dir / SKILL_FILENAME).is_file():
             return False
         target_dir = self._root / name
-        if target_dir.exists():
-            shutil.rmtree(target_dir)
         target_dir.parent.mkdir(parents=True, exist_ok=True)
+        self._replace_target(target_dir)
         shutil.copytree(source_dir, target_dir)
         return True
 

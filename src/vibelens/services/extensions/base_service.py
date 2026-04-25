@@ -2,7 +2,7 @@
 
 import time
 from dataclasses import dataclass
-from typing import Generic, TypeVar
+from typing import Generic, Literal, TypeVar
 
 from vibelens.storage.extension.base_store import (
     VALID_EXTENSION_NAME,
@@ -15,6 +15,15 @@ logger = get_logger(__name__)
 T = TypeVar("T")
 
 CACHE_TTL_SECONDS = 300
+
+# How content-based extensions (skill, command, subagent, plugin) get into
+# each agent's directory. ``"symlink"`` keeps central edits live across all
+# linked agents; ``"copy"`` makes an independent copy. Hooks ignore this and
+# always merge JSON into the agent's settings.json.
+LinkType = Literal["symlink", "copy"]
+# Used when the caller doesn't specify; ``_sync_to_agent`` falls back to copy
+# at runtime if the platform/filesystem rejects ``symlink_to``.
+DEFAULT_LINK_TYPE: LinkType = "symlink"
 
 
 @dataclass
@@ -46,7 +55,13 @@ class BaseExtensionService(Generic[T]):
         self._cache_at: float = 0.0
         self._cache_ttl = cache_ttl
 
-    def install(self, name: str, content: str, sync_to: list[str] | None = None) -> T:
+    def install(
+        self,
+        name: str,
+        content: str,
+        sync_to: list[str] | None = None,
+        link_type: LinkType = DEFAULT_LINK_TYPE,
+    ) -> T:
         """Write to central store and optionally sync to agents."""
         if not VALID_EXTENSION_NAME.match(name):
             raise ValueError(f"Extension name must be kebab-case: {name!r}")
@@ -54,18 +69,23 @@ class BaseExtensionService(Generic[T]):
             raise ValueError("Extension content must not be empty")
         if self._central.exists(name):
             raise FileExistsError(f"Extension {name!r} already exists. Use modify() to update.")
-        logger.debug("Writing %r to central store at %s", name, self._central.root)
+        logger.debug(f"Writing {name!r} to central store at {self._central.root}")
         self._central.write(name, content)
         self._invalidate_cache()
         if sync_to:
-            results = self.sync_to_agents(name, sync_to)
+            results = self.sync_to_agents(name, sync_to, link_type=link_type)
             failed = [k for k, ok in results.items() if not ok]
             if failed:
-                logger.error("Sync failed for agents: %s", failed)
+                logger.error(f"Sync failed for agents: {failed}")
         return self.get_item(name)
 
-    def modify(self, name: str, content: str) -> T:
-        """Update content in central store and auto-sync to agents that have it."""
+    def modify(
+        self,
+        name: str,
+        content: str,
+        link_type: LinkType = DEFAULT_LINK_TYPE,
+    ) -> T:
+        """Update central content and re-sync to every agent that already has it."""
         if not self._central.exists(name):
             raise FileNotFoundError(f"Extension {name!r} not found in central store")
         self._central.write(name, content)
@@ -73,7 +93,7 @@ class BaseExtensionService(Generic[T]):
         for agent_key in self._find_installed_agents(name):
             store = self._agents.get(agent_key)
             if store:
-                self._sync_to_agent(name, store)
+                self._sync_to_agent(name, store, link_type=link_type)
         return self.get_item(name)
 
     def uninstall(self, name: str) -> list[str]:
@@ -178,21 +198,27 @@ class BaseExtensionService(Generic[T]):
         """
         return str(self._central._item_root(name))
 
-    def sync_to_agents(self, name: str, agents: list[str]) -> dict[str, bool]:
-        """Copy extension from central to specified agents. Returns per-agent success."""
+    def sync_to_agents(
+        self, name: str, agents: list[str], link_type: LinkType = DEFAULT_LINK_TYPE
+    ) -> dict[str, bool]:
+        """Copy or symlink extension from central to specified agents."""
         if not self._central.exists(name):
             raise FileNotFoundError(f"Extension {name!r} not found in central store")
-        logger.debug("Syncing %r to agents %s (known: %s)", name, agents, list(self._agents.keys()))
+        logger.debug(f"Syncing {name!r} to agents {agents} (known: {list(self._agents.keys())})")
         results: dict[str, bool] = {}
         for agent_key in agents:
             store = self._agents.get(agent_key)
             if store is None:
-                logger.warning("Unknown agent %r, skipping sync", agent_key)
+                logger.warning(f"Unknown agent {agent_key!r}, skipping sync")
                 results[agent_key] = False
-            else:
-                logger.debug("Copying %r to agent %r at %s", name, agent_key, store.root)
-                self._sync_to_agent(name, store)
+                continue
+            try:
+                logger.debug(f"Syncing {name!r} to agent {agent_key!r} at {store.root}")
+                self._sync_to_agent(name, store, link_type=link_type)
                 results[agent_key] = True
+            except (OSError, FileNotFoundError) as exc:
+                logger.warning(f"Sync of {name!r} to {agent_key!r} failed: {exc}")
+                results[agent_key] = False
         self._invalidate_cache()
         return results
 
@@ -207,8 +233,19 @@ class BaseExtensionService(Generic[T]):
             for agent_key, store in self._agents.items()
         ]
 
-    def _sync_to_agent(self, name: str, agent_store: BaseExtensionStore[T]) -> None:
-        """Copy extension from central to agent store. Override for hooks."""
+    def _sync_to_agent(
+        self, name: str, agent_store: BaseExtensionStore[T], link_type: LinkType = DEFAULT_LINK_TYPE
+    ) -> None:
+        """Copy or symlink extension from central to agent store. Override for hooks."""
+        if link_type == "symlink":
+            try:
+                agent_store.link_from(self._central, name)
+                return
+            except OSError as exc:
+                logger.warning(
+                    f"symlink failed for {name!r} on {agent_store.root}, "
+                    f"falling back to copy: {exc}"
+                )
         agent_store.copy_from(self._central, name)
 
     def _unsync_from_agent(self, name: str, agent_store: BaseExtensionStore[T]) -> None:

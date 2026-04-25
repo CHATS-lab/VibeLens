@@ -66,9 +66,9 @@ class PluginStore(BaseExtensionStore[Plugin]):
 
     def _delete_impl(self, name: str) -> bool:
         plugin_dir = self._root / name
-        if not plugin_dir.is_dir():
+        if not (plugin_dir.is_symlink() or plugin_dir.is_dir()):
             return False
-        shutil.rmtree(plugin_dir)
+        self._replace_target(plugin_dir)
         return True
 
     def _copy_impl(self, source: BaseExtensionStore[Plugin], name: str) -> bool:
@@ -85,9 +85,8 @@ class PluginStore(BaseExtensionStore[Plugin]):
         if not source_manifest.is_file():
             return False
         target_dir = self._root / name
-        if target_dir.exists():
-            shutil.rmtree(target_dir)
         target_dir.parent.mkdir(parents=True, exist_ok=True)
+        self._replace_target(target_dir)
         shutil.copytree(source_dir, target_dir)
         _relocate_manifest(
             plugin_dir=target_dir,

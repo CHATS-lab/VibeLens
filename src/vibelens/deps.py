@@ -192,6 +192,27 @@ def get_plugin_service():
     return _get_or_create("plugin_service", _create)
 
 
+def get_collection_service():
+    """Return cached CollectionService singleton."""
+
+    def _create():
+        from vibelens.services.extensions.collection_service import CollectionService
+        from vibelens.storage.extension.collection_store import CollectionStore
+
+        settings = get_settings()
+        store = CollectionStore(settings.storage.managed_collections_dir, create=True)
+        services_by_type = {
+            AgentExtensionType.SKILL: get_skill_service(),
+            AgentExtensionType.COMMAND: get_command_service(),
+            AgentExtensionType.SUBAGENT: get_subagent_service(),
+            AgentExtensionType.HOOK: get_hook_service(),
+            AgentExtensionType.PLUGIN: get_plugin_service(),
+        }
+        return CollectionService(store=store, services_by_type=services_by_type)
+
+    return _get_or_create("collection_service", _create)
+
+
 def _build_agent_plugin_stores() -> dict:
     """Build agent plugin store instances from platform registry.
 

@@ -103,7 +103,12 @@ def build_typed_router(
     def install_item(req: ExtensionInstallRequest) -> dict:
         service = service_getter()
         try:
-            item = service.install(name=req.name, content=req.content, sync_to=req.sync_to)
+            item = service.install(
+                name=req.name,
+                content=req.content,
+                sync_to=req.sync_to,
+                link_type=req.link_type,
+            )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except FileExistsError as exc:
@@ -114,7 +119,7 @@ def build_typed_router(
     def modify_item(name: str, req: ExtensionModifyRequest) -> dict:
         service = service_getter()
         try:
-            item = service.modify(name=name, content=req.content)
+            item = service.modify(name=name, content=req.content, link_type=req.link_type)
         except FileNotFoundError:
             raise HTTPException(status_code=404, detail=f"{label} {name!r} not found") from None
         return item.model_dump()
@@ -132,7 +137,7 @@ def build_typed_router(
     def sync_item(name: str, req: ExtensionSyncRequest) -> dict:
         service = service_getter()
         try:
-            results = service.sync_to_agents(name, req.agents)
+            results = service.sync_to_agents(name, req.agents, link_type=req.link_type)
         except FileNotFoundError:
             raise HTTPException(status_code=404, detail=f"{label} {name!r} not found") from None
         item = service.get_item(name)

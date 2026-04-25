@@ -12,7 +12,12 @@ import json
 from pathlib import Path
 
 from vibelens.models.extension.hook import Hook
-from vibelens.services.extensions.base_service import BaseExtensionService, SyncTarget
+from vibelens.services.extensions.base_service import (
+    DEFAULT_LINK_TYPE,
+    BaseExtensionService,
+    LinkType,
+    SyncTarget,
+)
 from vibelens.storage.extension.base_store import VALID_EXTENSION_NAME
 from vibelens.storage.extension.hook_store import HookStore, serialize_hook
 from vibelens.utils.json import atomic_write_json
@@ -46,6 +51,7 @@ class HookService(BaseExtensionService[Hook]):
         hook_config: dict[str, list[dict]] | None = None,
         sync_to: list[str] | None = None,
         content: str | None = None,
+        link_type: LinkType = DEFAULT_LINK_TYPE,
     ) -> Hook:
         """Install a hook. Accepts structured fields or raw JSON content.
 
@@ -91,6 +97,7 @@ class HookService(BaseExtensionService[Hook]):
         topics: list[str] | None = None,
         hook_config: dict[str, list[dict]] | None = None,
         content: str | None = None,
+        link_type: LinkType = DEFAULT_LINK_TYPE,
     ) -> Hook:
         """Partial update. None fields are left unchanged.
 
@@ -168,7 +175,12 @@ class HookService(BaseExtensionService[Hook]):
         self._remove_marker_from_settings(name, agent_key)
         self._invalidate_cache()
 
-    def sync_to_agents(self, name: str, agents: list[str]) -> dict[str, bool]:
+    def sync_to_agents(
+        self,
+        name: str,
+        agents: list[str],
+        link_type: LinkType = DEFAULT_LINK_TYPE,
+    ) -> dict[str, bool]:
         """Merge central hook into each listed agent's settings.json.
 
         Args:

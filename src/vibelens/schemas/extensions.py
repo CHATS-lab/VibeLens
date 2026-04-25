@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from vibelens.models.enums import AgentExtensionType
+
 
 class SyncTargetResponse(BaseModel):
     """Unified sync target for all extension types."""
@@ -21,18 +23,30 @@ class ExtensionInstallRequest(BaseModel):
     sync_to: list[str] = Field(
         default_factory=list, description="Agent keys to sync to after install."
     )
+    link_type: Literal["symlink", "copy"] = Field(
+        default="symlink",
+        description="Whether to symlink (default) or copy when syncing to agents.",
+    )
 
 
 class ExtensionModifyRequest(BaseModel):
     """Update extension content."""
 
     content: str = Field(description="New file content.")
+    link_type: Literal["symlink", "copy"] = Field(
+        default="symlink",
+        description="Used when re-syncing the modified extension to agents that already have it.",
+    )
 
 
 class ExtensionSyncRequest(BaseModel):
     """Sync extension to specific agents."""
 
     agents: list[str] = Field(description="Agent keys to sync to.")
+    link_type: Literal["symlink", "copy"] = Field(
+        default="symlink",
+        description="Whether to symlink (default) or copy when syncing.",
+    )
 
 
 class ExtensionDetailResponse(BaseModel):
@@ -140,3 +154,70 @@ class AgentCapabilitiesResponse(BaseModel):
     """Response for GET /extensions/agents."""
 
     agents: list[AgentCapability] = Field(description="All known platforms.")
+
+
+class CollectionItemSchema(BaseModel):
+    """One extension reference inside a collection."""
+
+    extension_type: AgentExtensionType = Field(description="Extension type.")
+    name: str = Field(description="Kebab-case extension name.")
+    pinned_version: str | None = Field(default=None, description="Optional version pin.")
+
+
+class CollectionCreateRequest(BaseModel):
+    """Body for POST /extensions/collections."""
+
+    name: str = Field(description="Kebab-case collection name.")
+    description: str = Field(default="", description="Description.")
+    items: list[CollectionItemSchema] = Field(default_factory=list, description="Items.")
+    tags: list[str] = Field(default_factory=list, description="Tags.")
+
+
+class CollectionUpdateRequest(BaseModel):
+    """Body for PUT /extensions/collections/{name}. Fields left None are kept."""
+
+    description: str | None = Field(default=None, description="New description.")
+    items: list[CollectionItemSchema] | None = Field(default=None, description="New items.")
+    tags: list[str] | None = Field(default=None, description="New tags.")
+
+
+class CollectionInstallRequest(BaseModel):
+    """Body for POST /extensions/collections/{name}/install."""
+
+    agents: list[str] = Field(description="Agent keys to install to.")
+    link_type: Literal["symlink", "copy"] = Field(
+        default="symlink", description="Install method."
+    )
+
+
+class CollectionImportRequest(BaseModel):
+    """Body for POST /extensions/collections/import."""
+
+    payload: dict = Field(description="Exported collection JSON payload.")
+
+
+class CollectionResponse(BaseModel):
+    """Single collection in the API."""
+
+    name: str = Field(description="Kebab-case collection name.")
+    description: str = Field(description="Human description of the collection.")
+    items: list[CollectionItemSchema] = Field(description="Ordered list of references.")
+    tags: list[str] = Field(description="Free-form tags for discovery.")
+    created_at: str = Field(description="Creation timestamp (ISO 8601 UTC).")
+    updated_at: str = Field(description="Last-modified timestamp (ISO 8601 UTC).")
+
+
+class CollectionListResponse(BaseModel):
+    """Response for GET /extensions/collections."""
+
+    items: list[CollectionResponse] = Field(description="Collections in the response page.")
+    total: int = Field(description="Total number of collections.")
+
+
+class CollectionInstallResponse(BaseModel):
+    """Response for POST /extensions/collections/{name}/install."""
+
+    name: str = Field(description="Collection name that was installed.")
+    results: dict[str, dict[str, str]] = Field(
+        description="Per-item, per-agent install outcome: 'ok' | 'missing' | 'failed' | error."
+    )
