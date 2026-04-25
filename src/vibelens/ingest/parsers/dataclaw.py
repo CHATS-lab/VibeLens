@@ -15,7 +15,6 @@ agents.  Tool calls use a flat ``tool_uses`` array without result data
 (dataclaw strips tool outputs during privacy scrubbing).
 """
 
-import json
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -39,94 +38,37 @@ class DataclawParser(BaseParser):
 
     AGENT_TYPE = AgentType.DATACLAW
 
-    def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
-        """Parse dataclaw JSONL content into Trajectory objects.
-
-        Args:
-            content: Raw JSONL content (one session per line).
-            source_path: Unused (dataclaw is self-contained).
-
-        Returns:
-            List of Trajectory objects, one per session.
-        """
-        collector = DiagnosticsCollector()
-        trajectories = []
-        for line in content.split("\n"):
-            stripped = line.strip()
-            if not stripped:
-                continue
-            collector.total_lines += 1
-            try:
-                record = json.loads(stripped)
-                collector.parsed_lines += 1
-                trajectories.append(self.parse_session(record, collector))
-            except (json.JSONDecodeError, KeyError, TypeError, ValueError):
-                collector.record_skip("invalid record")
-                continue
-        return trajectories
-
-    def parse_file(self, file_path: Path) -> list[Trajectory]:
-        """Parse a dataclaw conversations.jsonl file.
-
-        Args:
-            file_path: Path to the conversations.jsonl file.
-
-        Returns:
-            List of Trajectory objects, one per session.
-        """
+    def parse(self, file_path: Path) -> list[Trajectory]:
+        """Parse a dataclaw ``conversations.jsonl`` file: one session per line."""
         return list(self.iter_trajectories(file_path))
 
     def iter_trajectories(self, file_path: Path) -> Iterator[Trajectory]:
-        """Yield trajectories one at a time for constant-memory processing.
-
-        Args:
-            file_path: Path to the conversations.jsonl file.
-
-        Yields:
-            Trajectory objects, one per valid session line.
-        """
-        collector = DiagnosticsCollector()
-        for record in iter_jsonl_safe(file_path, diagnostics=collector):
+        """Yield trajectories one at a time for constant-memory processing of large datasets."""
+        diagnostics = DiagnosticsCollector()
+        for record in iter_jsonl_safe(file_path, diagnostics=diagnostics):
             try:
-                yield self.parse_session(record, collector)
+                traj = self._record_to_trajectory(record)
             except (KeyError, TypeError, ValueError):
                 logger.warning("Failed to parse dataclaw session", exc_info=True)
                 continue
+            if traj is not None and traj.steps:
+                yield self._finalize(traj, diagnostics)
 
-    def parse_session(
-        self, record: dict, diagnostics: DiagnosticsCollector | None = None
-    ) -> Trajectory:
-        """Parse a single dataclaw session record into a Trajectory.
-
-        Args:
-            record: Parsed JSON object from a conversations.jsonl line.
-            diagnostics: Optional collector for parse quality metrics.
-
-        Returns:
-            Trajectory with steps and metadata in extra.
-        """
+    def _record_to_trajectory(self, record: dict) -> Trajectory | None:
+        """Convert one ``conversations.jsonl`` line into a Trajectory header + steps."""
         # Dataclaw may omit session_id; derive a deterministic one from
-        # project + start_time so parsing the same file twice yields the same ID.
+        # project + start_time so re-parses are stable.
         session_id = record.get("session_id") or deterministic_id(
             "sess", record.get("project", ""), record.get("start_time", "")
         )
-        project = record.get("project", "")
-        model = record.get("model", "")
-        raw_messages = record.get("messages", [])
-        steps = _build_steps(raw_messages, session_id, model)
-        extra: dict | None = {"source_type": "huggingface"}
-        if diagnostics:
-            diag = diagnostics.to_diagnostics().model_dump()
-            if any(v for v in diag.values()):
-                extra["diagnostics"] = diag
-
-        agent = self.build_agent(model=model or None)
-        return self.assemble_trajectory(
+        model = record.get("model") or None
+        steps = _build_steps(record.get("messages", []), session_id, model or "")
+        return Trajectory(
             session_id=session_id,
-            agent=agent,
+            agent=self.build_agent(model_name=model),
+            project_path=record.get("project") or None,
             steps=steps,
-            project_path=project or None,
-            extra=extra,
+            extra={"source_type": "huggingface"},
         )
 
 

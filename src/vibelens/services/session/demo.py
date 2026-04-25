@@ -148,7 +148,7 @@ def _try_parse_with_all(file_path: Path) -> list[Trajectory]:
     """
     for parser_cls in _ALL_PARSERS:
         try:
-            result = parser_cls().parse_file(file_path)
+            result = parser_cls().parse(file_path)
             if result:
                 return result
         except Exception:

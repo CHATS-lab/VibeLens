@@ -9,7 +9,6 @@ from vibelens.ingest.parsers.gemini import (
     _parse_gemini_tokens,
     resolve_project_path,
 )
-from vibelens.ingest.parsers.helpers import is_error_content
 from vibelens.models.enums import StepSource
 
 _parser = GeminiParser()
@@ -64,7 +63,7 @@ class TestParseFile:
         path = tmp_path / "session-1.json"
         _write_session_json(path, _make_session(session_id="abc"))
 
-        results = _parser.parse_file(path)
+        results = _parser.parse(path)
         assert len(results) == 1
         traj = results[0]
         print(f"  traj: id={traj.session_id}, agent={traj.agent.name}")
@@ -96,27 +95,27 @@ class TestParseFile:
         # Empty file
         empty_path = tmp_path / "empty.json"
         empty_path.write_text("")
-        assert _parser.parse_file(empty_path) == []
+        assert _parser.parse(empty_path) == []
 
         # Non-existent file
-        assert _parser.parse_file(tmp_path / "missing.json") == []
+        assert _parser.parse(tmp_path / "missing.json") == []
 
         # Missing sessionId key
         data_no_id = _make_session()
         data_no_id.pop("sessionId")
         no_id_path = tmp_path / "no-id.json"
         _write_session_json(no_id_path, data_no_id)
-        assert _parser.parse_file(no_id_path) == []
+        assert _parser.parse(no_id_path) == []
 
         # Empty sessionId string
         empty_id_path = tmp_path / "empty-id.json"
         _write_session_json(empty_id_path, _make_session(session_id=""))
-        assert _parser.parse_file(empty_id_path) == []
+        assert _parser.parse(empty_id_path) == []
 
         # Empty message list
         no_msgs_path = tmp_path / "no-msgs.json"
         _write_session_json(no_msgs_path, _make_session(messages=[]))
-        assert _parser.parse_file(no_msgs_path) == []
+        assert _parser.parse(no_msgs_path) == []
 
     def test_content_formats(self, tmp_path: Path):
         """Various user content types: array, string, empty array, non-string coercion."""
@@ -131,7 +130,7 @@ class TestParseFile:
         ]
         path = tmp_path / "array.json"
         _write_session_json(path, _make_session(messages=array_msgs))
-        traj = _parser.parse_file(path)[0]
+        traj = _parser.parse(path)[0]
         assert traj.steps[0].message == "Line one\nLine two"
 
         # Plain string content
@@ -145,7 +144,7 @@ class TestParseFile:
         ]
         path = tmp_path / "string.json"
         _write_session_json(path, _make_session(messages=string_msgs))
-        traj = _parser.parse_file(path)[0]
+        traj = _parser.parse(path)[0]
         assert traj.steps[0].message == "Just a string"
 
         # Empty content array produces empty string
@@ -165,7 +164,7 @@ class TestParseFile:
         ]
         path = tmp_path / "empty-content.json"
         _write_session_json(path, _make_session(messages=empty_msgs))
-        traj = _parser.parse_file(path)[0]
+        traj = _parser.parse(path)[0]
         user_step = [s for s in traj.steps if s.source == StepSource.USER][0]
         assert user_step.message == ""
 
@@ -186,7 +185,7 @@ class TestParseFile:
         ]
         path = tmp_path / "numeric.json"
         _write_session_json(path, _make_session(messages=numeric_msgs))
-        traj = _parser.parse_file(path)[0]
+        traj = _parser.parse(path)[0]
         user_step = [s for s in traj.steps if s.source == StepSource.USER][0]
         assert user_step.message == "42"
 
@@ -244,7 +243,7 @@ class TestThinkingExtraction:
         path = tmp_path / "session.json"
         _write_session_json(path, _make_session(messages=messages))
 
-        traj = _parser.parse_file(path)[0]
+        traj = _parser.parse(path)[0]
         print(f"  reasoning_content: {traj.steps[0].reasoning_content}")
         assert traj.steps[0].reasoning_content == "[Reason] Because..."
 
@@ -282,14 +281,14 @@ class TestToolCalls:
         ]
         path = tmp_path / "single-tc.json"
         _write_session_json(path, _make_session(messages=messages_single))
-        traj = _parser.parse_file(path)[0]
+        traj = _parser.parse(path)[0]
         tc = traj.steps[0].tool_calls[0]
         assert tc.function_name == "ReadFile"
         assert tc.tool_call_id == "tc-1"
         assert tc.arguments == {"path": "test.py"}
         assert traj.steps[0].observation is not None
         assert traj.steps[0].observation.results[0].content == "file content"
-        assert not is_error_content(traj.steps[0].observation.results[0].content)
+        assert traj.steps[0].observation.results[0].is_error is False
 
         # Multiple tool calls in one step
         messages_multi = [
@@ -307,7 +306,7 @@ class TestToolCalls:
         ]
         path = tmp_path / "multi-tc.json"
         _write_session_json(path, _make_session(messages=messages_multi))
-        traj = _parser.parse_file(path)[0]
+        traj = _parser.parse(path)[0]
         assert len(traj.steps[0].tool_calls) == 3
         names = [tc.function_name for tc in traj.steps[0].tool_calls]
         assert names == ["Read", "Write", "Bash"]
@@ -337,9 +336,9 @@ class TestToolCalls:
         ]
         path = tmp_path / "error-tc.json"
         _write_session_json(path, _make_session(messages=error_msgs))
-        traj = _parser.parse_file(path)[0]
+        traj = _parser.parse(path)[0]
         assert traj.steps[0].observation is not None
-        assert is_error_content(traj.steps[0].observation.results[0].content)
+        assert traj.steps[0].observation.results[0].is_error is True
 
         # Missing result array
         no_result_msgs = [
@@ -359,10 +358,10 @@ class TestToolCalls:
         ]
         path = tmp_path / "no-result-tc.json"
         _write_session_json(path, _make_session(messages=no_result_msgs))
-        traj = _parser.parse_file(path)[0]
+        traj = _parser.parse(path)[0]
         if traj.steps[0].observation:
             assert traj.steps[0].observation.results[0].content is None
-            assert not is_error_content(traj.steps[0].observation.results[0].content)
+            assert traj.steps[0].observation.results[0].is_error is False
 
 
 class TestMalformedInput:
@@ -373,7 +372,7 @@ class TestMalformedInput:
         # Non-parseable JSON
         bad_path = tmp_path / "bad.json"
         bad_path.write_text("{not valid json!!!}")
-        assert _parser.parse_file(bad_path) == []
+        assert _parser.parse(bad_path) == []
 
         # Unrecognized message types are skipped
         invalid_type_msgs = [
@@ -392,7 +391,7 @@ class TestMalformedInput:
         ]
         path = tmp_path / "invalid-type.json"
         _write_session_json(path, _make_session(messages=invalid_type_msgs))
-        traj = _parser.parse_file(path)[0]
+        traj = _parser.parse(path)[0]
         assert len(traj.steps) == 1
         assert traj.steps[0].source == StepSource.USER
 
@@ -409,7 +408,7 @@ class TestMalformedInput:
         ]
         path = tmp_path / "non-dict-msgs.json"
         _write_session_json(path, _make_session(messages=non_dict_msgs))
-        traj = _parser.parse_file(path)[0]
+        traj = _parser.parse(path)[0]
         assert len(traj.steps) == 1
         assert traj.steps[0].message == "valid"
 
@@ -428,7 +427,7 @@ class TestMalformedInput:
         ]
         path = tmp_path / "non-dict-tc.json"
         _write_session_json(path, _make_session(messages=non_dict_tc_msgs))
-        traj = _parser.parse_file(path)[0]
+        traj = _parser.parse(path)[0]
         assert len(traj.steps[0].tool_calls) == 1
 
 
@@ -479,7 +478,7 @@ class TestGeminiTokens:
         ]
         path = tmp_path / "session.json"
         _write_session_json(path, _make_session(messages=messages))
-        traj = _parser.parse_file(path)[0]
+        traj = _parser.parse(path)[0]
         assert traj.steps[0].metrics is not None
         assert traj.steps[0].metrics.prompt_tokens == 500
         assert traj.steps[0].metrics.completion_tokens == 200
@@ -546,7 +545,7 @@ class TestProjectHashResolution:
         session_file = chats_dir / "session-1.json"
         _write_session_json(session_file, _make_session())
 
-        results = _parser.parse_file(session_file)
+        results = _parser.parse(session_file)
         traj = results[0]
         assert traj.project_path == "/Users/dev/cool-project"
 
@@ -559,7 +558,7 @@ class TestDuration:
         # Standard 5-second gap from default messages
         path = tmp_path / "standard.json"
         _write_session_json(path, _make_session())
-        traj = _parser.parse_file(path)[0]
+        traj = _parser.parse(path)[0]
         assert traj.final_metrics is not None
         assert traj.final_metrics.duration == 5
 
@@ -581,7 +580,7 @@ class TestDuration:
         ]
         path = tmp_path / "zero.json"
         _write_session_json(path, _make_session(messages=zero_msgs))
-        traj = _parser.parse_file(path)[0]
+        traj = _parser.parse(path)[0]
         assert traj.final_metrics is not None
         assert traj.final_metrics.duration == 0
 
@@ -603,7 +602,7 @@ class TestDuration:
         ]
         path = tmp_path / "short.json"
         _write_session_json(path, _make_session(messages=short_msgs))
-        traj = _parser.parse_file(path)[0]
+        traj = _parser.parse(path)[0]
         assert traj.final_metrics is not None
         assert traj.final_metrics.duration == 45
 
@@ -613,7 +612,7 @@ class TestDuration:
         data.pop("lastUpdated", None)
         path = tmp_path / "no-header-ts.json"
         _write_session_json(path, data)
-        traj = _parser.parse_file(path)[0]
+        traj = _parser.parse(path)[0]
         assert traj.final_metrics is not None
         assert isinstance(traj.final_metrics.duration, int)
 
@@ -625,7 +624,7 @@ class TestSubAgentLinkage:
         """A kind=main file uses sessionId directly with no parent_trajectory_ref."""
         path = tmp_path / "session-2026-01-01T00-00-abc.json"
         _write_session_json(path, _make_session(session_id="shared-id", kind="main"))
-        traj = _parser.parse_file(path)[0]
+        traj = _parser.parse(path)[0]
         assert traj.session_id == "shared-id"
         assert traj.parent_trajectory_ref is None
 
@@ -633,7 +632,7 @@ class TestSubAgentLinkage:
         """kind=subagent uses the file stem as session_id and links to the original sessionId."""
         path = tmp_path / "session-2026-01-01T00-01-abc.json"
         _write_session_json(path, _make_session(session_id="shared-id", kind="subagent"))
-        traj = _parser.parse_file(path)[0]
+        traj = _parser.parse(path)[0]
         assert traj.session_id == "session-2026-01-01T00-01-abc"
         assert traj.parent_trajectory_ref is not None
         assert traj.parent_trajectory_ref.session_id == "shared-id"
@@ -645,23 +644,17 @@ class TestSubAgentLinkage:
         _write_session_json(main_path, _make_session(session_id="shared-id", kind="main"))
         _write_session_json(sub_path, _make_session(session_id="shared-id", kind="subagent"))
 
-        main_traj = _parser.parse_file(main_path)[0]
-        sub_traj = _parser.parse_file(sub_path)[0]
+        main_traj = _parser.parse(main_path)[0]
+        sub_traj = _parser.parse(sub_path)[0]
 
         assert main_traj.session_id != sub_traj.session_id
         assert sub_traj.parent_trajectory_ref.session_id == main_traj.session_id
-
-    def test_subagent_without_source_path_returns_empty(self):
-        """Without source_path a subagent file has no unique id, so parse() returns empty."""
-        content = json.dumps(_make_session(session_id="shared-id", kind="subagent"))
-        result = _parser.parse(content, source_path=None)
-        assert result == []
 
     def test_kind_main_is_default_when_field_missing(self, tmp_path: Path):
         """Files without a kind field are treated as main (no parent ref, real sessionId)."""
         path = tmp_path / "session-no-kind.json"
         _write_session_json(path, _make_session(session_id="shared-id"))  # no kind set
-        traj = _parser.parse_file(path)[0]
+        traj = _parser.parse(path)[0]
         assert traj.session_id == "shared-id"
         assert traj.parent_trajectory_ref is None
 
@@ -676,7 +669,7 @@ class TestSubAgentLinkage:
         _write_session_json(sub_path_1, _make_session(session_id="shared-id", kind="subagent"))
         _write_session_json(sub_path_2, _make_session(session_id="shared-id", kind="subagent"))
 
-        trajectories = _parser.parse_file(main_path)
+        trajectories = _parser.parse(main_path)
 
         assert len(trajectories) == 3
         main_traj = trajectories[0]
@@ -700,7 +693,7 @@ class TestSubAgentLinkage:
         _write_session_json(main_path, _make_session(session_id="aaa", kind="main"))
         _write_session_json(unrelated_sub, _make_session(session_id="bbb", kind="subagent"))
 
-        trajectories = _parser.parse_file(main_path)
+        trajectories = _parser.parse(main_path)
 
         assert len(trajectories) == 1
         assert trajectories[0].session_id == "aaa"
@@ -712,7 +705,7 @@ class TestSubAgentLinkage:
         _write_session_json(main_path, _make_session(session_id="shared-id", kind="main"))
         _write_session_json(sub_path, _make_session(session_id="shared-id", kind="subagent"))
 
-        trajectories = _parser.parse_file(main_path)
+        trajectories = _parser.parse(main_path)
 
         assert len(trajectories) == 1
         assert trajectories[0].session_id == "shared-id"
@@ -728,7 +721,7 @@ class TestSubAgentLinkage:
         _write_session_json(sub_path_1, _make_session(session_id="shared-id", kind="subagent"))
         _write_session_json(sub_path_2, _make_session(session_id="shared-id", kind="subagent"))
 
-        trajectories = _parser.parse_file(sub_path_1)
+        trajectories = _parser.parse(sub_path_1)
 
         assert len(trajectories) == 1
         assert trajectories[0].session_id == "session-2026-01-01T00-05-abc"

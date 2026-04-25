@@ -12,7 +12,6 @@ step list so the frontend can map segments to steps directly.
 """
 
 
-from vibelens.ingest.parsers.helpers import is_error_content
 from vibelens.models.enums import SessionPhase
 from vibelens.models.session.phase import PhaseSegment
 from vibelens.models.trajectories import Step
@@ -109,7 +108,7 @@ def _classify_window(window: list[Step]) -> SessionPhase:
             total_tools += 1
         if step.observation:
             for result in step.observation.results:
-                if is_error_content(result.content):
+                if result.is_error:
                     has_error = True
 
     if total_tools == 0:

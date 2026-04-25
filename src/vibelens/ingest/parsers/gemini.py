@@ -26,7 +26,6 @@ from pathlib import Path
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
 from vibelens.ingest.parsers.base import BaseParser
-from vibelens.ingest.parsers.helpers import build_diagnostics_extra, mark_error_content
 from vibelens.models.enums import AgentType, StepSource
 from vibelens.models.trajectories import (
     Metrics,
@@ -81,84 +80,67 @@ class GeminiParser(BaseParser):
         """Find Gemini session files inside chats/ directories."""
         return sorted(f for f in data_dir.rglob("session-*.json") if "chats" in f.parts)
 
-    def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
-        """Parse a Gemini chat file into a main trajectory plus its sub-agents.
-
-        When the file is a main session and a ``source_path`` is available,
-        sibling ``kind: subagent`` files in the same ``chats/`` directory
-        with a matching ``sessionId`` are loaded as children. Sub-agent
-        files invoked directly return only themselves (no recursion).
-        """
+    # ---- 4-stage parsing ----
+    def _decode_file(self, file_path: Path, diagnostics: DiagnosticsCollector) -> dict | None:
+        """Stage 1: read + JSON-parse the chat file."""
         try:
-            data = json.loads(content)
-        except json.JSONDecodeError:
-            logger.debug("Invalid JSON in Gemini session content")
-            return []
-        main = self._parse_session_data(data, source_path)
-        if main is None:
-            return []
-        if main.parent_trajectory_ref is not None or not source_path:
-            return [main]
-        subs = self._load_subagent_trajectories(main.session_id, Path(source_path))
-        return [main, *subs]
+            data = json.loads(file_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            logger.debug("Invalid JSON in Gemini session %s", file_path)
+            return None
+        if not isinstance(data, dict):
+            return None
+        diagnostics.total_lines = len(data.get("messages", []) or [])
+        return data
 
-    def _parse_session_data(
-        self, data: dict, source_path: str | None
+    def _extract_metadata(
+        self, raw: dict, file_path: Path, diagnostics: DiagnosticsCollector
     ) -> Trajectory | None:
-        """Build one Trajectory from a parsed Gemini chat-file JSON object.
-
-        Sub-agent files (``kind: subagent``) get a synthetic session id from
-        the filename stem to avoid colliding with the main session's
-        ``sessionId`` (which they share verbatim).
-        """
-        original_sid = data.get("sessionId", "")
+        """Stage 2: identity + parent linkage. Sub-agent files (``kind: subagent``)
+        get a synthetic session id from the filename stem to avoid colliding with
+        the main's ``sessionId`` (which they share verbatim)."""
+        original_sid = raw.get("sessionId")
         if not original_sid:
             return None
-
-        kind = data.get("kind", "main")
-        parent_ref: TrajectoryRef | None = None
-        if kind == _KIND_SUBAGENT:
-            if not source_path:
-                return None
-            session_id = Path(source_path).stem
+        if raw.get("kind", "main") == _KIND_SUBAGENT:
+            session_id = file_path.stem
             parent_ref = TrajectoryRef(session_id=original_sid)
         else:
             session_id = original_sid
-
-        collector = DiagnosticsCollector()
-        raw_messages = data.get("messages", [])
-        collector.total_lines = len(raw_messages) if isinstance(raw_messages, list) else 0
-        steps = _build_steps(raw_messages, session_id)
-        collector.parsed_lines = len(steps)
-        if not steps:
-            return None
-
-        file_path = Path(source_path) if source_path else None
-        project_path = _resolve_project(file_path, data, steps) if file_path else None
-        extra = build_diagnostics_extra(collector)
-        # Gemini doesn't persist a session-level model; use the most
-        # recently seen step model so downstream pricing lookup can match.
-        session_model = next((step.model_name for step in reversed(steps) if step.model_name), None)
-        agent = self.build_agent(model=session_model)
-        return self.assemble_trajectory(
+            parent_ref = None
+        return Trajectory(
             session_id=session_id,
-            agent=agent,
-            steps=steps,
-            project_path=project_path,
+            agent=self.build_agent(),  # model filled in stage 3
             parent_trajectory_ref=parent_ref,
-            extra=extra,
         )
 
-    def _load_subagent_trajectories(
-        self, parent_session_id: str, parent_path: Path
-    ) -> list[Trajectory]:
-        """Parse sibling ``kind: subagent`` files in the same ``chats/`` dir."""
-        chats_dir = parent_path.parent
+    def _build_steps(
+        self, raw: dict, traj: Trajectory, file_path: Path, diagnostics: DiagnosticsCollector
+    ) -> list[Step]:
+        """Stage 3: build steps + backfill model + project path (both depend on steps)."""
+        steps = _build_steps(raw.get("messages", []), traj.session_id)
+        diagnostics.parsed_lines = len(steps)
+        if not steps:
+            return []
+        # Gemini has no session-level model; take the most recent step model
+        # so downstream pricing lookup matches.
+        traj.agent.model_name = next((s.model_name for s in reversed(steps) if s.model_name), None)
+        traj.project_path = _resolve_project(file_path, raw, steps)
+        return steps
+
+    def _load_subagents(self, main: Trajectory, file_path: Path) -> list[Trajectory]:
+        """Sibling-file scan: load every ``kind: subagent`` chat in the same
+        ``chats/`` directory whose ``sessionId`` matches ``main``.
+
+        Decodes each candidate sibling once and reuses the parsed dict for
+        the full parse (skipping the second ``_decode_file`` read).
+        """
+        chats_dir = file_path.parent
         if chats_dir.name != "chats" or not chats_dir.is_dir():
             return []
         subs: list[Trajectory] = []
         for sibling in sorted(chats_dir.iterdir()):
-            if sibling == parent_path or not sibling.is_file():
+            if sibling == file_path or not sibling.is_file():
                 continue
             if not (sibling.name.startswith("session-") and sibling.suffix == ".json"):
                 continue
@@ -166,12 +148,28 @@ class GeminiParser(BaseParser):
                 data = json.loads(sibling.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
                 continue
-            if data.get("kind") != _KIND_SUBAGENT or data.get("sessionId") != parent_session_id:
+            if data.get("kind") != _KIND_SUBAGENT or data.get("sessionId") != main.session_id:
                 continue
-            sub = self._parse_session_data(data, str(sibling))
+            sub = self._parse_decoded(data, sibling)
             if sub is not None:
                 subs.append(sub)
         return subs
+
+    def _parse_decoded(self, data: dict, file_path: Path) -> Trajectory | None:
+        """Run stages 2-4 on a pre-decoded chat dict (skips the file re-read).
+
+        Mirrors ``BaseParser._parse_trajectory`` but starts from data that
+        ``_load_subagents`` already loaded for its sibling-filter check.
+        """
+        diagnostics = DiagnosticsCollector()
+        diagnostics.total_lines = len(data.get("messages", []) or [])
+        traj = self._extract_metadata(data, file_path, diagnostics)
+        if traj is None:
+            return None
+        traj.steps = self._build_steps(data, traj, file_path, diagnostics)
+        if not traj.steps:
+            return None
+        return self._finalize(traj, diagnostics)
 
 
 def _resolve_project(file_path: Path, data: dict, steps: list[Step]) -> str:
@@ -473,10 +471,13 @@ def _build_tool_calls_and_observation(
         calls.append(
             ToolCall(tool_call_id=tc_id, function_name=tool_name, arguments=tool.get("args"))
         )
-        output = _extract_tool_output(tool.get("result", []))
-        has_error = tool.get("status") == "error"
-        content = mark_error_content(output) if has_error else output
-        obs_results.append(ObservationResult(source_call_id=tc_id, content=content))
+        obs_results.append(
+            ObservationResult(
+                source_call_id=tc_id,
+                content=_extract_tool_output(tool.get("result", [])),
+                is_error=tool.get("status") == "error",
+            )
+        )
 
     observation = Observation(results=obs_results) if obs_results else None
     return calls, observation

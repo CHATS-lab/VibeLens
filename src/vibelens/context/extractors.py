@@ -326,18 +326,6 @@ class DetailExtractor(ContextExtractor):
             tool_summary = summarize_tool_args(tc.function_name, tc.arguments, self.params)
             agent_lines.append(f"  TOOL: fn={tc.function_name} {tool_summary}")
 
-        # Remove observations since it's too noisy. Can re-enable if needed.
-        # if step.observation:
-        #     for result in step.observation.results:
-        #         obs_text = content_to_text(result.content)
-        #         if is_error_content(obs_text):
-        #             error_truncated = truncate(obs_text, self.params.error_truncate_chars)
-        #             agent_lines.append(f"  ERROR: {error_truncated}")
-        #         elif self.params.include_non_error_obs and self.params.observation_max_chars > 0:
-        #             obs_truncated = truncate(obs_text, self.params.observation_max_chars)
-        #             if obs_truncated.strip():
-        #                 agent_lines.append(f"  RESULT: {obs_truncated}")
-
         # Include only if there's something beyond the header line
         if len(agent_lines) > 1:
             return "\n".join(agent_lines)

@@ -382,14 +382,15 @@ class TestParserResilience:
         corrupt_file.write_bytes(b"\x80\x81\x82 invalid utf-8 bytes")
 
         parser = ClaudeParser()
-        result = parser.parse_file(corrupt_file)
+        result = parser.parse(corrupt_file)
         assert result == []
         print("parse_file returns [] for non-UTF-8 file")
 
-    def test_parse_handles_all_unparseable_lines(self):
+    def test_parse_handles_all_unparseable_lines(self, tmp_path: Path):
         """parse returns [] (not raises ValueError) when all lines are corrupt JSON."""
-        corrupt_content = "not json at all\nalso not json\nstill not json\n"
+        path = tmp_path / "session.jsonl"
+        path.write_text("not json at all\nalso not json\nstill not json\n", encoding="utf-8")
         parser = ClaudeParser()
-        result = parser.parse(corrupt_content, source_path="/fake/session.jsonl")
+        result = parser.parse(path)
         assert result == []
         print("parse returns [] for fully corrupt content")

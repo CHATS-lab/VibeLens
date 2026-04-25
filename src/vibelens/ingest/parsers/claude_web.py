@@ -23,6 +23,7 @@ Data format observations:
 import json
 from pathlib import Path
 
+from vibelens.ingest.diagnostics import DiagnosticsCollector
 from vibelens.ingest.parsers.base import BaseParser
 from vibelens.models.enums import AgentType, StepSource
 from vibelens.models.trajectories import (
@@ -60,76 +61,55 @@ class ClaudeWebParser(BaseParser):
         """
         return sorted(data_dir.rglob(CONVERSATIONS_FILENAME))
 
-    def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
-        """Parse a conversations.json array into Trajectory objects.
-
-        Args:
-            content: Raw JSON content (array of conversation objects).
-            source_path: Original file path for logging.
-
-        Returns:
-            List of Trajectory objects, one per non-empty conversation.
-        """
+    def parse(self, file_path: Path) -> list[Trajectory]:
+        """Parse a ``conversations.json`` export array into one Trajectory per conversation."""
         try:
-            conversations = json.loads(content)
-        except json.JSONDecodeError as exc:
-            logger.warning("Invalid JSON in %s: %s", source_path, exc)
+            conversations = json.loads(file_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning("Invalid JSON in %s: %s", file_path, exc)
             return []
-
         if not isinstance(conversations, list):
-            actual_type = type(conversations).__name__
-            logger.warning("Expected JSON array in %s, got %s", source_path, actual_type)
+            logger.warning(
+                "Expected JSON array in %s, got %s", file_path, type(conversations).__name__
+            )
             return []
 
+        diagnostics = DiagnosticsCollector()
         trajectories: list[Trajectory] = []
         for conversation in conversations:
-            trajectory = _parse_conversation(self, conversation)
-            if trajectory:
-                trajectories.append(trajectory)
-
+            traj = self._conversation_to_trajectory(conversation)
+            if traj is not None and traj.steps:
+                trajectories.append(self._finalize(traj, diagnostics))
         logger.info(
             "Parsed %d trajectories from %s (%d conversations total)",
             len(trajectories),
-            source_path or "unknown",
+            file_path,
             len(conversations),
         )
         return trajectories
 
-
-def _parse_conversation(parser: ClaudeWebParser, conversation: dict) -> Trajectory | None:
-    """Convert one conversation dict to a Trajectory.
-
-    Args:
-        parser: Parser instance for calling assemble_trajectory.
-        conversation: Single conversation object from conversations.json.
-
-    Returns:
-        Trajectory, or None if the conversation has no messages.
-    """
-    session_id = conversation.get("uuid", "")
-    if not session_id:
-        return None
-
-    chat_messages = conversation.get("chat_messages", [])
-    if not chat_messages:
-        return None
-
-    steps = _build_steps(chat_messages, session_id)
-    if not steps:
-        return None
-
-    extra: dict = {}
-    conversation_name = conversation.get("name")
-    if conversation_name:
-        extra["conversation_name"] = conversation_name
-    summary = conversation.get("summary")
-    if summary:
-        extra["summary"] = summary
-
-    agent = parser.build_agent()
-    return parser.assemble_trajectory(
-        session_id=session_id, agent=agent, steps=steps, extra=extra or None
-    )
+    def _conversation_to_trajectory(self, conversation: dict) -> Trajectory | None:
+        """Build one Trajectory from a single ``conversations.json`` entry."""
+        session_id = conversation.get("uuid")
+        if not session_id:
+            return None
+        chat_messages = conversation.get("chat_messages", [])
+        if not chat_messages:
+            return None
+        steps = _build_steps(chat_messages, session_id)
+        if not steps:
+            return None
+        extra: dict = {}
+        if conversation.get("name"):
+            extra["conversation_name"] = conversation["name"]
+        if conversation.get("summary"):
+            extra["summary"] = conversation["summary"]
+        return Trajectory(
+            session_id=session_id,
+            agent=self.build_agent(),
+            steps=steps,
+            extra=extra or None,
+        )
 
 
 def _build_steps(chat_messages: list, session_id: str) -> list[Step]:

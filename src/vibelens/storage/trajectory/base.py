@@ -104,7 +104,7 @@ class BaseTrajectoryStore(ABC):
             return None
 
         path, parser = entry
-        trajectories = parser.parse_file(path)
+        trajectories = parser.parse(path)
         if not trajectories:
             logger.warning(
                 "Parser %s returned no trajectories for session %s from %s",

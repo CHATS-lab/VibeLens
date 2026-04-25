@@ -20,8 +20,6 @@ FRONTMATTER_DELIMITER = "---"
 DEFAULT_MAX_TOTAL_CHARS = 200
 # Default cap for a single argument value in summarize_args
 DEFAULT_MAX_VALUE_CHARS = 60
-# Lowercased substrings that indicate error content in observations
-ERROR_SIGNALS = ("error:", "traceback", "exception", "failed", "fatal")
 
 
 def coerce_to_string(value: str | list | dict | int | float | bool | None) -> str:
@@ -140,21 +138,6 @@ def summarize_args(
             parts.append(f"{key}={truncate(val_str, max_value_chars)}")
         return ", ".join(parts)
     return truncate(str(arguments), max_total_chars)
-
-
-def is_error_content(content: str) -> bool:
-    """Heuristic check for error content in tool output.
-
-    Args:
-        content: Text content to check.
-
-    Returns:
-        True if content contains error signals.
-    """
-    if not content:
-        return False
-    lower = content.lower()
-    return any(signal in lower for signal in ERROR_SIGNALS)
 
 
 def parse_frontmatter(text: str, source: str | None = None) -> dict:

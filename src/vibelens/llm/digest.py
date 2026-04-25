@@ -6,12 +6,7 @@ of trajectory data at three depth levels for different context budgets.
 
 from vibelens.models.trajectories import Trajectory
 from vibelens.utils.compat import StrEnum
-from vibelens.utils.content import (
-    content_to_text,
-    is_error_content,
-    summarize_args,
-    truncate,
-)
+from vibelens.utils.content import content_to_text, summarize_args, truncate
 
 # Character limits per message at each digest depth
 MAX_MESSAGE_CHARS_BRIEF = 80
@@ -142,7 +137,7 @@ def _format_step_standard(index: int, step) -> str:
     if step.observation:
         for result in step.observation.results:
             content = content_to_text(result.content)
-            if is_error_content(content):
+            if result.is_error:
                 # Always include error output in full for friction detection
                 lines.append(f"  <- ERROR: {truncate(content, MAX_TOOL_OUTPUT_CHARS)}")
             else:
@@ -178,4 +173,4 @@ def _has_error_observation(step) -> bool:
     """Check whether a step has any error observations."""
     if not step.observation:
         return False
-    return any(is_error_content(content_to_text(r.content)) for r in step.observation.results)
+    return any(r.is_error for r in step.observation.results)

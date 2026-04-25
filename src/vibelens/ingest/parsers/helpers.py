@@ -6,11 +6,9 @@ small surface they need.
 
 Public surface, grouped by lifecycle phase:
 
-* Constants — ``MAX_FIRST_MESSAGE_LENGTH``, ``ERROR_PREFIX``,
-  ``ROLE_TO_SOURCE``.
+* Constants — ``MAX_FIRST_MESSAGE_LENGTH``, ``ROLE_TO_SOURCE``.
 * JSONL iteration — ``iter_jsonl_safe``.
 * Tool-arg decoding — ``parse_tool_arguments``.
-* Error helpers — ``is_error_content``, ``mark_error_content``.
 * First-message detection — ``is_meaningful_prompt``,
   ``step_text_only``, ``find_first_user_text``,
   ``truncate_first_message``.
@@ -39,29 +37,8 @@ logger = get_logger(__name__)
 # enough context for the user to recognise the conversation at a glance.
 MAX_FIRST_MESSAGE_LENGTH = 200
 
-# Convention for marking error content in ObservationResult. ATIF
-# ObservationResult has no is_error field, so errors are signalled by
-# prefixing the content string with this marker.
-ERROR_PREFIX = "[ERROR] "
-
 # ATIF source mapping shared across parsers that use standard role names.
 ROLE_TO_SOURCE: dict[str, StepSource] = {"user": StepSource.USER, "assistant": StepSource.AGENT}
-
-
-def is_error_content(content: str | list | None) -> bool:
-    """Return True if observation content carries the error prefix."""
-    if not content or not isinstance(content, str):
-        return False
-    return content.startswith(ERROR_PREFIX)
-
-
-def mark_error_content(content: str | None) -> str:
-    """Prefix content with the error marker if not already present."""
-    text = content or ""
-    if text.startswith(ERROR_PREFIX):
-        return text
-    return f"{ERROR_PREFIX}{text}"
-
 
 # System-XML-tag prefixes are agent-specific (observed via actual session scans):
 #   claude  -> <local-command-caveat, <command-name, <command-message,
@@ -96,21 +73,6 @@ _ALL_KNOWN_SYSTEM_TAG_PREFIXES = (
 # "Base directory for this skill: ..." as the first line of its result).
 # Unique enough that the agent-agnostic check costs nothing for other agents.
 _SKILL_OUTPUT_PREFIX = "Base directory for this skill:"
-
-
-def step_text_only(message) -> str:
-    """Join only the text parts of a step message.
-
-    Differs from :func:`vibelens.utils.content.content_to_text` by
-    skipping non-text parts entirely instead of emitting ``[<type>]``
-    placeholders. Used for first-message detection where placeholders
-    would break the bracket-wrapped system-message filter.
-    """
-    if isinstance(message, str):
-        return message
-    if isinstance(message, list):
-        return "\n\n".join(p.text for p in message if getattr(p, "text", None))
-    return ""
 
 
 def is_meaningful_prompt(text: str, extra_system_prefixes: tuple[str, ...] = ()) -> bool:
@@ -169,6 +131,21 @@ def find_first_user_text(steps: list[Step]) -> str | None:
         if text and is_meaningful_prompt(text):
             return truncate_first_message(text)
     return None
+
+
+def step_text_only(message) -> str:
+    """Join only the text parts of a step message.
+
+    Differs from :func:`vibelens.utils.content.content_to_text` by
+    skipping non-text parts entirely instead of emitting ``[<type>]``
+    placeholders. Used for first-message detection where placeholders
+    would break the bracket-wrapped system-message filter.
+    """
+    if isinstance(message, str):
+        return message
+    if isinstance(message, list):
+        return "\n\n".join(p.text for p in message if getattr(p, "text", None))
+    return ""
 
 
 def parse_tool_arguments(raw: Any) -> dict | str | None:
@@ -281,10 +258,16 @@ def compute_final_metrics(steps: list[Step], session_model: str | None) -> Final
     tool_call_count = 0
     breakdown: dict[str, DailyBucket] = {}
 
+    # Fallback day for steps that lack their own timestamp. Mirrors the
+    # behaviour of ``aggregate_session`` in services/dashboard/stats.py
+    # so ``sum(daily_breakdown.messages) == len(steps)`` holds even when
+    # some steps (e.g. injected SYSTEM markers) carry no timestamp.
+    fallback_ts = next((s.timestamp for s in steps if s.timestamp), None)
+    fallback_day = local_date_key(fallback_ts) if fallback_ts else None
+
     for step in steps:
         tool_call_count += len(step.tool_calls)
 
-        is_message = step.source != StepSource.SYSTEM
         tokens_this_step = 0
         cost_this_step = 0.0
 
@@ -302,15 +285,14 @@ def compute_final_metrics(steps: list[Step], session_model: str | None) -> Final
                 cost_this_step = step.metrics.cost_usd
                 total_cost = (total_cost or 0.0) + cost_this_step
 
-        if step.timestamp and (is_message or tokens_this_step or cost_this_step):
-            # ``local_date_key`` uses ``.astimezone()`` (no args) so the
-            # offset is resolved per-timestamp, honouring DST. A cached
-            # fixed-offset tz would mis-attribute sessions across the
-            # midnight boundary on DST transition days.
-            day = local_date_key(step.timestamp)
+        # ``local_date_key`` uses ``.astimezone()`` (no args) so the
+        # offset is resolved per-timestamp, honouring DST. A cached
+        # fixed-offset tz would mis-attribute sessions across the
+        # midnight boundary on DST transition days.
+        day = local_date_key(step.timestamp) if step.timestamp else fallback_day
+        if day:
             bucket = breakdown.setdefault(day, DailyBucket())
-            if is_message:
-                bucket.messages += 1
+            bucket.messages += 1
             bucket.tokens += tokens_this_step
             bucket.cost_usd += cost_this_step
 

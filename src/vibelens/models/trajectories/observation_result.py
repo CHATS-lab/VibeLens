@@ -31,6 +31,14 @@ class ObservationResult(BaseModel):
             "for multimodal content (ATIF v1.6)."
         ),
     )
+    is_error: bool = Field(
+        default=False,
+        description=(
+            "[VibeLens] Tool execution failed. Set by the parser from "
+            "format-specific error signals (claude tool_result.is_error, "
+            "openclaw msg.isError, gemini status='error', etc.)."
+        ),
+    )
     subagent_trajectory_ref: list[TrajectoryRef] | None = Field(
         default=None, description="References to delegated subagent trajectories."
     )

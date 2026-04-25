@@ -264,7 +264,7 @@ def _parse_and_store_files(session_files: list[Path], ctx: _ProcessingContext) -
 
     for file_path in session_files:
         try:
-            trajectories = ctx.parser.parse_file(file_path=file_path)
+            trajectories = ctx.parser.parse(file_path=file_path)
         except Exception as exc:
             logger.warning("Failed to parse %s: %s", file_path.name, exc)
             ctx.result.errors.append({"filename": file_path.name, "error": str(exc)})

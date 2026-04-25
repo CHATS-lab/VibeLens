@@ -328,7 +328,7 @@ def test_parse_jsonl_with_tools_and_enrichment(tmp_path: Path) -> None:
     _seed_index(sessions_dir, _JSONL_SESSION_ID)
 
     jsonl_path = sessions_dir / f"{_JSONL_SESSION_ID}.jsonl"
-    trajectories = _parser.parse_file(jsonl_path)
+    trajectories = _parser.parse(jsonl_path)
     print("parsed:", len(trajectories))
     assert len(trajectories) == 1
     traj = trajectories[0]
@@ -403,7 +403,7 @@ def test_db_totals_attached_to_last_assistant_step(tmp_path: Path) -> None:
         estimated_cost_usd=0.25,
     )
 
-    trajectories = _parser.parse_file(sessions_dir / f"{_JSONL_SESSION_ID}.jsonl")
+    trajectories = _parser.parse(sessions_dir / f"{_JSONL_SESSION_ID}.jsonl")
     traj = trajectories[0]
     assistant_steps = [s for s in traj.steps if s.source == StepSource.AGENT]
     print("assistant steps:", len(assistant_steps))
@@ -447,7 +447,7 @@ def test_parse_snapshot_only_without_db(tmp_path: Path) -> None:
     )
 
     snapshot_path = sessions_dir / f"session_{_SNAPSHOT_SESSION_ID}.json"
-    trajectories = _parser.parse_file(snapshot_path)
+    trajectories = _parser.parse(snapshot_path)
     assert len(trajectories) == 1
     traj = trajectories[0]
     print("extra:", traj.extra)
@@ -487,7 +487,7 @@ def test_parent_trajectory_ref_from_db(tmp_path: Path) -> None:
         parent_session_id="parent-xyz",
     )
 
-    trajectories = _parser.parse_file(sessions_dir / f"{_JSONL_SESSION_ID}.jsonl")
+    trajectories = _parser.parse(sessions_dir / f"{_JSONL_SESSION_ID}.jsonl")
     assert len(trajectories) == 1
     traj = trajectories[0]
     print("parent_ref:", traj.parent_trajectory_ref)
@@ -529,7 +529,7 @@ def test_error_tool_result_passthrough(tmp_path: Path) -> None:
     ]
     _write_jsonl(sessions_dir / f"{_JSONL_SESSION_ID}.jsonl", records)
 
-    trajectories = _parser.parse_file(sessions_dir / f"{_JSONL_SESSION_ID}.jsonl")
+    trajectories = _parser.parse(sessions_dir / f"{_JSONL_SESSION_ID}.jsonl")
     traj = trajectories[0]
     obs_content = traj.steps[1].observation.results[0].content
     print("obs content:", obs_content)
@@ -569,7 +569,7 @@ def test_parent_loads_db_linked_children(tmp_path: Path) -> None:
     _seed_state_db(db_path, child_a, parent_session_id=parent_id, started_at=200.0)
     _seed_state_db(db_path, child_b, parent_session_id=parent_id, started_at=300.0)
 
-    trajectories = _parser.parse_file(sessions_dir / f"{parent_id}.jsonl")
+    trajectories = _parser.parse(sessions_dir / f"{parent_id}.jsonl")
 
     assert len(trajectories) == 3
     assert trajectories[0].session_id == parent_id
@@ -594,7 +594,7 @@ def test_child_loaded_directly_returns_only_itself(tmp_path: Path) -> None:
     _seed_state_db(db_path, parent_id)
     _seed_state_db(db_path, child_id, parent_session_id=parent_id)
 
-    trajectories = _parser.parse_file(sessions_dir / f"{child_id}.jsonl")
+    trajectories = _parser.parse(sessions_dir / f"{child_id}.jsonl")
 
     assert len(trajectories) == 1
     assert trajectories[0].session_id == child_id
@@ -618,7 +618,7 @@ def test_parent_skips_children_with_missing_files(tmp_path: Path) -> None:
     _seed_state_db(db_path, real_child, parent_session_id=parent_id)
     _seed_state_db(db_path, ghost_child, parent_session_id=parent_id)
 
-    trajectories = _parser.parse_file(sessions_dir / f"{parent_id}.jsonl")
+    trajectories = _parser.parse(sessions_dir / f"{parent_id}.jsonl")
 
     assert len(trajectories) == 2
     assert trajectories[0].session_id == parent_id
@@ -650,7 +650,7 @@ def test_parent_falls_back_to_snapshot_for_child(tmp_path: Path) -> None:
     _seed_state_db(db_path, parent_id)
     _seed_state_db(db_path, child_id, parent_session_id=parent_id)
 
-    trajectories = _parser.parse_file(sessions_dir / f"{parent_id}.jsonl")
+    trajectories = _parser.parse(sessions_dir / f"{parent_id}.jsonl")
 
     assert len(trajectories) == 2
     assert trajectories[1].session_id == child_id
@@ -664,7 +664,7 @@ def test_parent_without_state_db_returns_only_itself(tmp_path: Path) -> None:
     parent_id = "20260418_120000_aaaaaa"
     _write_jsonl(sessions_dir / f"{parent_id}.jsonl", _minimal_records())
 
-    trajectories = _parser.parse_file(sessions_dir / f"{parent_id}.jsonl")
+    trajectories = _parser.parse(sessions_dir / f"{parent_id}.jsonl")
 
     assert len(trajectories) == 1
     assert trajectories[0].session_id == parent_id

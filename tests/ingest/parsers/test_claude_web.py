@@ -60,6 +60,13 @@ def _assistant_msg(
     }
 
 
+def _parse_content(content: str, tmp_path: Path) -> list:
+    """Write content to a tmp file and parse it via the new path-based API."""
+    path = tmp_path / "conversations.json"
+    path.write_text(content, encoding="utf-8")
+    return _parser.parse(path)
+
+
 def test_parse_real_dataset_1():
     """Parse the first real dataset and verify trajectory count."""
     file_path = DATASET_DIR_1 / "conversations.json"
@@ -67,7 +74,7 @@ def test_parse_real_dataset_1():
         print(f"SKIP: {file_path} not found")
         return
 
-    trajectories = _parser.parse_file(file_path)
+    trajectories = _parser.parse(file_path)
     print(f"Dataset 1: {len(trajectories)} trajectories from {file_path}")
 
     # Count non-empty conversations in the source data
@@ -99,7 +106,7 @@ def test_parse_real_dataset_2():
         print(f"SKIP: {file_path} not found")
         return
 
-    trajectories = _parser.parse_file(file_path)
+    trajectories = _parser.parse(file_path)
     print(f"Dataset 2: {len(trajectories)} trajectories from {file_path}")
 
     with open(file_path) as f:
@@ -113,7 +120,7 @@ def test_parse_real_dataset_2():
     assert len(trajectories) <= total
 
 
-def test_parse_text_only_conversation():
+def test_parse_text_only_conversation(tmp_path: Path):
     """Simple human/assistant text exchange."""
     conversation = _make_conversation(
         chat_messages=[
@@ -124,7 +131,7 @@ def test_parse_text_only_conversation():
         ]
     )
     content = json.dumps([conversation])
-    trajectories = _parser.parse(content)
+    trajectories = _parse_content(content, tmp_path)
 
     assert len(trajectories) == 1
     traj = trajectories[0]
@@ -144,7 +151,7 @@ def test_parse_text_only_conversation():
     print(f"Text-only: {len(traj.steps)} steps, first_message={traj.first_message!r}")
 
 
-def test_parse_thinking_blocks():
+def test_parse_thinking_blocks(tmp_path: Path):
     """Thinking content maps to reasoning_content."""
     conversation = _make_conversation(
         chat_messages=[
@@ -158,7 +165,7 @@ def test_parse_thinking_blocks():
         ]
     )
     content = json.dumps([conversation])
-    trajectories = _parser.parse(content)
+    trajectories = _parse_content(content, tmp_path)
 
     assert len(trajectories) == 1
     agent_step = trajectories[0].steps[1]
@@ -168,7 +175,7 @@ def test_parse_thinking_blocks():
     print(f"Thinking: reasoning={preview}")
 
 
-def test_parse_tool_pairing():
+def test_parse_tool_pairing(tmp_path: Path):
     """Tool use in assistant paired with inline tool result."""
     conversation = _make_conversation(
         chat_messages=[
@@ -195,7 +202,7 @@ def test_parse_tool_pairing():
         ]
     )
     content = json.dumps([conversation])
-    trajectories = _parser.parse(content)
+    trajectories = _parse_content(content, tmp_path)
 
     assert len(trajectories) == 1
     agent_step = trajectories[0].steps[1]
@@ -221,7 +228,7 @@ def test_parse_tool_pairing():
     print(f"Tool pairing: tool={tc.function_name}, result={result_preview}")
 
 
-def test_parse_multiple_tools_positional():
+def test_parse_multiple_tools_positional(tmp_path: Path):
     """N tool_use blocks paired with N tool_result blocks."""
     conversation = _make_conversation(
         chat_messages=[
@@ -258,7 +265,7 @@ def test_parse_multiple_tools_positional():
         ]
     )
     content = json.dumps([conversation])
-    trajectories = _parser.parse(content)
+    trajectories = _parse_content(content, tmp_path)
 
     assert len(trajectories) == 1
     agent_step = trajectories[0].steps[1]
@@ -285,7 +292,7 @@ def test_parse_multiple_tools_positional():
     print(f"Multiple tools: {call_count} calls, {result_count} results")
 
 
-def test_parse_tool_use_without_id():
+def test_parse_tool_use_without_id(tmp_path: Path):
     """Tool use/result blocks with None IDs (artifact tools) are still paired positionally."""
     conversation = _make_conversation(
         chat_messages=[
@@ -309,7 +316,7 @@ def test_parse_tool_use_without_id():
         ]
     )
     content = json.dumps([conversation])
-    trajectories = _parser.parse(content)
+    trajectories = _parse_content(content, tmp_path)
 
     agent_step = trajectories[0].steps[1]
     assert len(agent_step.tool_calls) == 1
@@ -323,7 +330,7 @@ def test_parse_tool_use_without_id():
     print("Tool without ID: paired successfully via None key")
 
 
-def test_parse_orphaned_tool_use():
+def test_parse_orphaned_tool_use(tmp_path: Path):
     """Tool use without a following result (e.g. last message interrupted)."""
     conversation = _make_conversation(
         chat_messages=[
@@ -341,7 +348,7 @@ def test_parse_orphaned_tool_use():
         ]
     )
     content = json.dumps([conversation])
-    trajectories = _parser.parse(content)
+    trajectories = _parse_content(content, tmp_path)
 
     agent_step = trajectories[0].steps[1]
     assert len(agent_step.tool_calls) == 1
@@ -352,7 +359,7 @@ def test_parse_orphaned_tool_use():
     print("Orphaned tool_use: parsed with no observation")
 
 
-def test_parse_attachments():
+def test_parse_attachments(tmp_path: Path):
     """Attachments on human messages stored in step.extra."""
     conversation = _make_conversation(
         chat_messages=[
@@ -371,7 +378,7 @@ def test_parse_attachments():
         ]
     )
     content = json.dumps([conversation])
-    trajectories = _parser.parse(content)
+    trajectories = _parse_content(content, tmp_path)
 
     user_step = trajectories[0].steps[0]
     assert user_step.extra is not None
@@ -387,24 +394,24 @@ def test_parse_attachments():
     print(f"Attachments: {att}")
 
 
-def test_parse_empty_conversations():
+def test_parse_empty_conversations(tmp_path: Path):
     """Empty array returns empty list."""
     content = json.dumps([])
-    trajectories = _parser.parse(content)
+    trajectories = _parse_content(content, tmp_path)
     assert trajectories == []
     print("Empty conversations: 0 trajectories")
 
 
-def test_parse_no_messages():
+def test_parse_no_messages(tmp_path: Path):
     """Conversation with empty chat_messages is skipped."""
     conversation = _make_conversation(chat_messages=[])
     content = json.dumps([conversation])
-    trajectories = _parser.parse(content)
+    trajectories = _parse_content(content, tmp_path)
     assert trajectories == []
     print("No messages: skipped")
 
 
-def test_deterministic_ids():
+def test_deterministic_ids(tmp_path: Path):
     """Parsing same content twice yields identical IDs."""
     conversation = _make_conversation(
         chat_messages=[
@@ -428,8 +435,8 @@ def test_deterministic_ids():
         ]
     )
     content = json.dumps([conversation])
-    traj1 = _parser.parse(content)[0]
-    traj2 = _parser.parse(content)[0]
+    traj1 = _parse_content(content, tmp_path)[0]
+    traj2 = _parse_content(content, tmp_path)[0]
 
     assert traj1.session_id == traj2.session_id
     for s1, s2 in zip(traj1.steps, traj2.steps, strict=True):
@@ -454,7 +461,7 @@ def test_discover_conversations_json(tmp_path: Path):
     print(f"Discovery: found {files}")
 
 
-def test_parse_conversation_name_in_extra():
+def test_parse_conversation_name_in_extra(tmp_path: Path):
     """Conversation name and summary stored in trajectory extra."""
     conversation = _make_conversation(
         name="My Important Chat",
@@ -465,7 +472,7 @@ def test_parse_conversation_name_in_extra():
     )
     conversation["summary"] = "A friendly greeting"
     content = json.dumps([conversation])
-    trajectories = _parser.parse(content)
+    trajectories = _parse_content(content, tmp_path)
 
     traj = trajectories[0]
     assert traj.extra is not None
@@ -474,7 +481,7 @@ def test_parse_conversation_name_in_extra():
     print(f"Extra: {traj.extra}")
 
 
-def test_parse_token_budget_skipped():
+def test_parse_token_budget_skipped(tmp_path: Path):
     """token_budget blocks are skipped without error."""
     conversation = _make_conversation(
         chat_messages=[
@@ -493,7 +500,7 @@ def test_parse_token_budget_skipped():
         ]
     )
     content = json.dumps([conversation])
-    trajectories = _parser.parse(content)
+    trajectories = _parse_content(content, tmp_path)
 
     assert len(trajectories) == 1
     agent_step = trajectories[0].steps[1]
@@ -502,23 +509,22 @@ def test_parse_token_budget_skipped():
     print("token_budget: skipped correctly")
 
 
-def test_agent_type_is_claude_web():
+def test_agent_type_is_claude_web(tmp_path: Path):
     """Parser AGENT_TYPE is set correctly."""
     from vibelens.models.enums import AgentType
 
     assert _parser.AGENT_TYPE == AgentType.CLAUDE_WEB
 
-    trajectories = _parser.parse(
-        json.dumps(
-            [
-                _make_conversation(
-                    chat_messages=[
-                        _human_msg(text="Hi"),
-                        _assistant_msg(content_blocks=[{"type": "text", "text": "Hello"}]),
-                    ]
-                )
-            ]
-        )
+    content = json.dumps(
+        [
+            _make_conversation(
+                chat_messages=[
+                    _human_msg(text="Hi"),
+                    _assistant_msg(content_blocks=[{"type": "text", "text": "Hello"}]),
+                ]
+            )
+        ]
     )
+    trajectories = _parse_content(content, tmp_path)
     assert trajectories[0].agent.name == "claude_web"
     print(f"Agent type: {trajectories[0].agent.name}")

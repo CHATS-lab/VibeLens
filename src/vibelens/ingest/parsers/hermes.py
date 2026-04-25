@@ -34,6 +34,7 @@ which sums per-step metrics rather than reading ``final_metrics``).
 import json
 import re
 import sqlite3
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -41,11 +42,7 @@ from uuid import uuid4
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
 from vibelens.ingest.parsers.base import BaseParser
-from vibelens.ingest.parsers.helpers import (
-    build_diagnostics_extra,
-    iter_jsonl_safe,
-    parse_tool_arguments,
-)
+from vibelens.ingest.parsers.helpers import iter_jsonl_safe, parse_tool_arguments
 from vibelens.llm.normalizer import normalize_model_name
 from vibelens.models.enums import AgentType, StepSource
 from vibelens.models.trajectories import (
@@ -68,6 +65,18 @@ logger = get_logger(__name__)
 _SESSION_ID_RE = re.compile(r"^\d{8}_\d{6}_[0-9a-f]+$")
 
 _SNAPSHOT_PREFIX = "session_"
+
+
+@dataclass
+class _HermesRaw:
+    """Stage-1 output: everything decoded from disk in one pass."""
+
+    session_id: str
+    records: list[dict] | None  # JSONL records when primary file is .jsonl
+    snapshot: dict | None  # ``session_<id>.json`` (paired with jsonl, or primary)
+    db_row: dict | None  # state.db row keyed by session_id
+    origin: dict | None  # sessions.json origin entry
+
 
 # Columns pulled from state.db. Kept as a constant so discover_session_files
 # and _load_state_db stay in sync.
@@ -170,148 +179,141 @@ class HermesParser(BaseParser):
             primary.append(snap_path)
         return sorted(primary)
 
-    def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
-        """Parse a Hermes session file into a main trajectory plus its sub-agents.
-
-        When the file is a top-level session and ``source_path`` is set,
-        the parser queries ``state.db`` for any sessions whose
-        ``parent_session_id`` matches this one and loads each child as a
-        sub-agent trajectory. Sessions invoked directly that already have
-        a parent (i.e. they ARE a sub-agent) return only their own
-        trajectory — no recursion into nested children.
-
-        Args:
-            content: Raw file content (jsonl stream or snapshot JSON).
-            source_path: Original file path, used to locate paired files,
-                derive the session_id, and locate sibling children.
-
-        Returns:
-            ``[main]`` when no children are linked, otherwise
-            ``[main, *children]``. Empty list on parse failure.
-        """
-        if not source_path:
-            return []
-        main = self._parse_one_session(content, source_path)
-        if main is None:
-            return []
-        if main.parent_trajectory_ref is not None:
-            return [main]
-        path = Path(source_path)
-        children = self._load_subagent_trajectories(main.session_id, path.parent)
-        return [main, *children]
-
-    def _parse_one_session(self, content: str, source_path: str) -> Trajectory | None:
-        """Parse a single Hermes session file (jsonl or snapshot) into one Trajectory."""
-        path = Path(source_path)
-        session_id = _session_id_from_path(path)
+    # ---- 4-stage parsing ----
+    def _decode_file(
+        self, file_path: Path, diagnostics: DiagnosticsCollector
+    ) -> "_HermesRaw | None":
+        """Stage 1: read primary file (jsonl or snapshot) + load paired snapshot,
+        state.db row, and sessions.json origin entry. All sources are gathered
+        here so later stages don't re-hit disk."""
+        session_id = _session_id_from_path(file_path)
         if not session_id:
             return None
-
-        collector = DiagnosticsCollector()
-        sessions_dir = path.parent
-
-        if path.suffix == ".jsonl":
-            records = list(iter_jsonl_safe(content, diagnostics=collector))
-            if not records:
-                return None
-            steps, session_model, session_tools = _build_steps_from_jsonl(records, collector)
-            snapshot = _load_snapshot(sessions_dir, session_id)
-            base_url = snapshot.get("base_url") if snapshot else None
-            system_prompt = snapshot.get("system_prompt") if snapshot else None
-            platform = _first_nonnull(
-                _session_meta_value(records, "platform"),
-                snapshot.get("platform") if snapshot else None,
-            )
-            model = _first_nonnull(
-                session_model,
-                snapshot.get("model") if snapshot else None,
-            )
-            tools = session_tools or (snapshot.get("tools") if snapshot else None)
-            session_start = parse_iso_timestamp(snapshot.get("session_start")) if snapshot else None
-        else:
-            snapshot = _parse_snapshot(content)
-            if not snapshot:
-                return None
-            steps = _build_steps_from_snapshot(snapshot, collector)
-            base_url = snapshot.get("base_url")
-            system_prompt = snapshot.get("system_prompt")
-            platform = snapshot.get("platform")
-            model = snapshot.get("model")
-            tools = snapshot.get("tools")
-            session_start = parse_iso_timestamp(snapshot.get("session_start"))
-
-        if not steps:
+        try:
+            content = file_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            logger.warning("Cannot read Hermes file %s: %s", file_path, exc)
             return None
 
-        db_row = _load_state_db(sessions_dir, session_id)
-        origin = _load_index_entry(sessions_dir, session_id)
+        sessions_dir = file_path.parent
+        if file_path.suffix == ".jsonl":
+            records = list(iter_jsonl_safe(content, diagnostics=diagnostics))
+            if not records:
+                return None
+            snapshot = _load_snapshot(sessions_dir, session_id)
+            return _HermesRaw(
+                session_id=session_id,
+                records=records,
+                snapshot=snapshot,
+                db_row=_load_state_db(sessions_dir, session_id),
+                origin=_load_index_entry(sessions_dir, session_id),
+            )
+        snapshot = _parse_snapshot(content)
+        if not snapshot:
+            return None
+        return _HermesRaw(
+            session_id=session_id,
+            records=None,
+            snapshot=snapshot,
+            db_row=_load_state_db(sessions_dir, session_id),
+            origin=_load_index_entry(sessions_dir, session_id),
+        )
 
-        model = _canonical_model_name(model)
-        agent = self.build_agent(version=None, model=model)
-        agent.tool_definitions = tools if isinstance(tools, list) else None
-        for step in steps:
-            if step.model_name:
-                step.model_name = _canonical_model_name(step.model_name)
+    def _extract_metadata(
+        self, raw: "_HermesRaw", file_path: Path, diagnostics: DiagnosticsCollector
+    ) -> Trajectory | None:
+        """Stage 2: combine session_meta / snapshot / state.db / sessions.json
+        into the Trajectory header (agent + project_path + parent_ref + extra)."""
+        records, snapshot = raw.records, raw.snapshot
+        platform = _first_nonnull(
+            _session_meta_value(records, "platform") if records else None,
+            snapshot.get("platform") if snapshot else None,
+        )
+        model = _canonical_model_name(
+            _first_nonnull(
+                _session_meta_value(records, "model") if records else None,
+                snapshot.get("model") if snapshot else None,
+            )
+        )
+        tools = (_session_meta_value(records, "tools") if records else None) or (
+            snapshot.get("tools") if snapshot else None
+        )
 
-        _attach_session_metrics_to_last_assistant(steps, db_row, model)
-        final_metrics = _build_final_metrics(steps, db_row, session_start)
-
-        extra = _build_trajectory_extra(
-            platform=platform,
-            base_url=base_url,
-            system_prompt=system_prompt,
-            db_row=db_row,
-            origin=origin,
-            diagnostics=build_diagnostics_extra(collector),
+        agent = self.build_agent(
+            model_name=model,
+            tool_definitions=tools if isinstance(tools, list) else None,
         )
 
         parent_ref = None
-        if db_row and db_row.get("parent_session_id"):
-            parent_ref = TrajectoryRef(session_id=db_row["parent_session_id"])
+        if raw.db_row and raw.db_row.get("parent_session_id"):
+            parent_ref = TrajectoryRef(session_id=raw.db_row["parent_session_id"])
 
-        project_path = _derive_project_path(platform, origin, db_row)
-
-        trajectory = self.assemble_trajectory(
-            session_id=session_id,
+        return Trajectory(
+            session_id=raw.session_id,
             agent=agent,
-            steps=steps,
-            project_path=project_path,
+            project_path=_derive_project_path(platform, raw.origin, raw.db_row),
             parent_trajectory_ref=parent_ref,
-            extra=extra,
+            extra=_build_trajectory_extra(
+                platform=platform,
+                base_url=snapshot.get("base_url") if snapshot else None,
+                system_prompt=snapshot.get("system_prompt") if snapshot else None,
+                db_row=raw.db_row,
+                origin=raw.origin,
+                diagnostics=None,  # diagnostics merged by _finalize
+            ),
         )
-        if final_metrics:
-            trajectory.final_metrics = final_metrics
-        return trajectory
 
-    def _load_subagent_trajectories(
-        self, parent_session_id: str, sessions_dir: Path
-    ) -> list[Trajectory]:
-        """Parse children of ``parent_session_id`` linked via state.db."""
+    def _build_steps(
+        self,
+        raw: "_HermesRaw",
+        traj: Trajectory,
+        file_path: Path,
+        diagnostics: DiagnosticsCollector,
+    ) -> list[Step]:
+        """Stage 3: build steps from jsonl or snapshot; canonicalize per-step models;
+        attach state.db session totals to the last assistant step; override final_metrics."""
+        if raw.records is not None:
+            steps, _, _ = _build_steps_from_jsonl(raw.records, diagnostics)
+        else:
+            steps = _build_steps_from_snapshot(raw.snapshot, diagnostics)
+        if not steps:
+            return []
+        for step in steps:
+            if step.model_name:
+                step.model_name = _canonical_model_name(step.model_name)
+        _attach_session_metrics_to_last_assistant(steps, raw.db_row, traj.agent.model_name)
+        session_start = (
+            parse_iso_timestamp(raw.snapshot.get("session_start")) if raw.snapshot else None
+        )
+        final_metrics = _build_final_metrics(steps, raw.db_row, session_start)
+        if final_metrics:
+            traj.final_metrics = final_metrics
+        return steps
+
+    def _load_subagents(self, main: Trajectory, file_path: Path) -> list[Trajectory]:
+        """state.db reverse query: find sessions where ``parent_session_id`` matches
+        ``main`` and parse each child's primary file."""
+        sessions_dir = file_path.parent
         conn = _open_state_db_ro(sessions_dir)
         if conn is None:
             return []
         try:
             cursor = conn.execute(
                 "SELECT id FROM sessions WHERE parent_session_id = ?",
-                (parent_session_id,),
+                (main.session_id,),
             )
             child_ids = [row[0] for row in cursor if row[0]]
         except sqlite3.Error as exc:
-            logger.debug("state.db child lookup failed for %s: %s", parent_session_id, exc)
+            logger.debug("state.db child lookup failed for %s: %s", main.session_id, exc)
             return []
         finally:
             conn.close()
-
         subs: list[Trajectory] = []
         for cid in child_ids:
             child_path = _locate_session_file(sessions_dir, cid)
             if child_path is None:
                 continue
-            try:
-                child_content = child_path.read_text(encoding="utf-8")
-            except OSError:
-                continue
-            sub = self._parse_one_session(child_content, str(child_path))
+            sub = self._parse_trajectory(child_path)
             if sub is not None:
                 subs.append(sub)
         return subs

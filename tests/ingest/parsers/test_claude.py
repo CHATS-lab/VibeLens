@@ -7,12 +7,13 @@ from pathlib import Path
 
 import pytest
 
+from vibelens.ingest.diagnostics import DiagnosticsCollector
 from vibelens.ingest.parsers.claude import (
     ClaudeParser,
     _decompose_raw_content,
     _scan_session_metadata,
 )
-from vibelens.ingest.parsers.helpers import MAX_FIRST_MESSAGE_LENGTH, is_error_content
+from vibelens.ingest.parsers.helpers import MAX_FIRST_MESSAGE_LENGTH
 from vibelens.models.enums import StepSource
 from vibelens.models.trajectories import (
     Metrics,
@@ -20,6 +21,7 @@ from vibelens.models.trajectories import (
     ObservationResult,
     Step,
     ToolCall,
+    Trajectory,
 )
 
 _parser = ClaudeParser()
@@ -137,11 +139,12 @@ class TestDecomposeRawContent:
         assert obs.results[0].source_call_id == "tu-1"
         assert obs.results[0].content == "file content"
 
-        # Error result uses "[ERROR]" prefix
+        # Error result sets is_error=True; content stays verbatim
         results_err = {"tu-1": {"output": "command not found", "is_error": True}}
         _, _, _, obs_err = _decompose_raw_content(raw, results_err)
         assert obs_err is not None
-        assert "[ERROR]" in obs_err.results[0].content
+        assert obs_err.results[0].is_error is True
+        assert obs_err.results[0].content == "command not found"
 
         # Multiple tool calls with results
         raw_multi = [
@@ -301,8 +304,8 @@ class TestParseSessionJsonl:
         result = _parser.parse_session_jsonl(f)
         agent_step = [s for s in result if s.source == StepSource.AGENT][0]
         assert agent_step.observation is not None
-        assert is_error_content(agent_step.observation.results[0].content)
-        print("  error tool results marked with [ERROR] prefix")
+        assert agent_step.observation.results[0].is_error is True
+        print("  error tool results marked with is_error=True")
 
     def test_edge_cases(self, tmp_path: Path):
         """Nonexistent file, empty file, non-relevant types, malformed lines, and sidechain flag."""
@@ -355,8 +358,18 @@ class TestParseSessionJsonl:
         print("  edge cases: missing/empty/filtered/malformed/sidechain all handled")
 
 
+def _finalize(steps: list, session_id: str = "test") -> Trajectory:
+    """Construct a Trajectory + run _finalize. Replaces the old assemble_trajectory."""
+    traj = Trajectory(
+        session_id=session_id,
+        agent=_parser.build_agent(model_name="claude-code"),
+        steps=steps,
+    )
+    return _parser._finalize(traj, DiagnosticsCollector())
+
+
 class TestMetadataViaAssembleTrajectory:
-    """Tests that assemble_trajectory auto-computes first_message and final_metrics."""
+    """Tests that _finalize auto-computes first_message and final_metrics."""
 
     def test_metrics_aggregation(self):
         """Step count, token sums, and tool call count are aggregated across steps."""
@@ -385,9 +398,7 @@ class TestMetadataViaAssembleTrajectory:
             ),
             Step(step_id="m3", source=StepSource.USER, message="hi"),
         ]
-        traj = _parser.assemble_trajectory(
-            session_id="test", agent=_parser.build_agent("claude-code"), steps=steps
-        )
+        traj = _finalize(steps)
         # Step count includes all steps
         assert traj.final_metrics.total_steps == 3
 
@@ -402,9 +413,7 @@ class TestMetadataViaAssembleTrajectory:
 
         # Steps without metrics contribute zero
         steps_no_metrics = [Step(step_id="m1", source=StepSource.USER)]
-        traj_no = _parser.assemble_trajectory(
-            session_id="test2", agent=_parser.build_agent("claude-code"), steps=steps_no_metrics
-        )
+        traj_no = _finalize(steps_no_metrics, session_id="test2")
         assert traj_no.final_metrics.total_prompt_tokens == 0
         step_count = traj.final_metrics.total_steps
         tc_count = traj.final_metrics.tool_call_count
@@ -417,17 +426,13 @@ class TestMetadataViaAssembleTrajectory:
             Step(step_id="m1", source=StepSource.AGENT, message="I'll help"),
             Step(step_id="m2", source=StepSource.USER, message="Fix the bug"),
         ]
-        traj = _parser.assemble_trajectory(
-            session_id="test", agent=_parser.build_agent("claude-code"), steps=steps
-        )
+        traj = _finalize(steps)
         assert traj.first_message == "Fix the bug"
 
         # Long first message is truncated
         long = "x" * 500
         steps_long = [Step(step_id="m1", source=StepSource.USER, message=long)]
-        traj_long = _parser.assemble_trajectory(
-            session_id="test2", agent=_parser.build_agent("claude-code"), steps=steps_long
-        )
+        traj_long = _finalize(steps_long, session_id="test2")
         assert len(traj_long.first_message) == MAX_FIRST_MESSAGE_LENGTH + 3
         print("  first_message extraction and truncation verified")
 
@@ -441,27 +446,23 @@ class TestMetadataViaAssembleTrajectory:
             Step(step_id="m1", source=StepSource.USER, timestamp=t1),
             Step(step_id="m2", source=StepSource.AGENT, timestamp=t2),
         ]
-        traj = _parser.assemble_trajectory(
-            session_id="test", agent=_parser.build_agent("claude-code"), steps=steps
-        )
+        traj = _finalize(steps)
         assert traj.final_metrics.duration == 300
 
         # Single timestamp produces zero duration
-        traj_single = _parser.assemble_trajectory(
+        traj_single = _finalize(
+            [Step(step_id="m1", source=StepSource.USER, timestamp=t1)],
             session_id="test2",
-            agent=_parser.build_agent("claude-code"),
-            steps=[Step(step_id="m1", source=StepSource.USER, timestamp=t1)],
         )
         assert traj_single.final_metrics.duration == 0
 
         # No timestamps produce zero duration
-        traj_none = _parser.assemble_trajectory(
-            session_id="test3",
-            agent=_parser.build_agent("claude-code"),
-            steps=[
+        traj_none = _finalize(
+            [
                 Step(step_id="m1", source=StepSource.USER),
                 Step(step_id="m2", source=StepSource.AGENT),
             ],
+            session_id="test3",
         )
         assert traj_none.final_metrics.duration == 0
         print("  duration: 300s, 0s (single), 0s (no timestamps)")
@@ -530,7 +531,7 @@ class TestSubagentParsing:
                 ],
             )
 
-        trajectories = _parser.parse_file(main_file)
+        trajectories = _parser.parse(main_file)
         print(f"  total trajectories: {len(trajectories)}")
         for traj in trajectories:
             print(f"    session_id={traj.session_id}, steps={len(traj.steps)}")
@@ -566,7 +567,7 @@ class TestSubagentParsing:
                 }
             ],
         )
-        trajectories = _parser.parse_file(main_file)
+        trajectories = _parser.parse(main_file)
         print(f"  no subagent dir: {len(trajectories)} trajectories")
         assert len(trajectories) == 1
 
@@ -584,7 +585,7 @@ class TestSubagentParsing:
             ],
         )
         (tmp_path / "session2" / "subagents").mkdir(parents=True)
-        trajectories2 = _parser.parse_file(main_file2)
+        trajectories2 = _parser.parse(main_file2)
         assert len(trajectories2) == 1
         print(f"  empty subagent dir: {len(trajectories2)} trajectories")
 
@@ -1015,7 +1016,7 @@ class TestSubagentLinkageValidation:
             )
 
         with caplog.at_level(logging.DEBUG, logger="vibelens.ingest.parsers.claude"):
-            trajectories = _parser.parse_file(main_file)
+            trajectories = _parser.parse(main_file)
 
         # Should succeed with main + 2 sub-agents
         assert len(trajectories) == 3
@@ -1038,7 +1039,7 @@ class TestExtractGitBranches:
         content = json.dumps({"type": "user", "message": {"role": "user", "content": "hi"}})
         assert _scan_session_metadata(content).git_branches is None
 
-    def test_git_branches_in_trajectory_extra(self):
+    def test_git_branches_in_trajectory_extra(self, tmp_path: Path):
         """Parsed trajectory includes git_branches in extra."""
         entries = [
             {
@@ -1057,7 +1058,9 @@ class TestExtractGitBranches:
             },
         ]
         content = "\n".join(json.dumps(e) for e in entries)
-        trajectories = _parser.parse(content)
+        path = tmp_path / "session.jsonl"
+        path.write_text(content, encoding="utf-8")
+        trajectories = _parser.parse(path)
         assert len(trajectories) == 1
         assert trajectories[0].extra is not None
         assert trajectories[0].extra["git_branches"] == ["dev"]
@@ -1127,13 +1130,13 @@ class TestStepExtraEnrichment:
 
 
 class TestErrorHandling:
-    def test_all_invalid_json_returns_empty(self):
+    def test_all_invalid_json_returns_empty(self, tmp_path: Path):
         """Content where all lines fail JSON parsing returns [] with warning."""
-        content = "not json\nalso not json\n"
-        result = _parser.parse(content, source_path="test.jsonl")
-        assert result == []
+        path = tmp_path / "session.jsonl"
+        path.write_text("not json\nalso not json\n", encoding="utf-8")
+        assert _parser.parse(path) == []
 
-    def test_duplicate_uuid_entries_do_not_produce_duplicate_step_ids(self):
+    def test_duplicate_uuid_entries_do_not_produce_duplicate_step_ids(self, tmp_path: Path):
         """Claude Code occasionally writes the same entry twice (seen with compaction replay).
 
         When the file contains two entries sharing a uuid, we must emit only
@@ -1162,7 +1165,9 @@ class TestErrorHandling:
                 ),
             ]
         )
-        trajectories = _parser.parse(content, source_path="test.jsonl")
+        path = tmp_path / "session.jsonl"
+        path.write_text(content, encoding="utf-8")
+        trajectories = _parser.parse(path)
         assert len(trajectories) == 1
         step_ids = [s.step_id for s in trajectories[0].steps]
         assert len(step_ids) == len(set(step_ids)), f"duplicate step_ids: {step_ids}"

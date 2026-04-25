@@ -23,10 +23,8 @@ from vibelens.ingest.diagnostics import DiagnosticsCollector
 from vibelens.ingest.parsers.base import BaseParser
 from vibelens.ingest.parsers.helpers import (
     ROLE_TO_SOURCE,
-    build_diagnostics_extra,
     is_meaningful_prompt,
     iter_jsonl_safe,
-    mark_error_content,
     truncate_first_message,
 )
 from vibelens.models.enums import AgentType, ContentType, StepSource
@@ -183,76 +181,113 @@ class ClaudeParser(BaseParser):
             files.extend(sorted(subagent_dir.glob("agent-*.jsonl")))
         return files
 
-    def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
-        """Parse JSONL session content into Trajectory objects.
+    # ---- 4-stage parsing ----
+    def _decode_file(self, file_path: Path, diagnostics: DiagnosticsCollector) -> str | None:
+        """Stage 1: read raw JSONL content. Decoding is delayed to later stages
+        because both metadata scan and step build re-walk the same JSONL."""
+        try:
+            return file_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            logger.warning("Cannot read Claude session %s: %s", file_path, exc)
+            return None
 
-        Returns a list containing the main session trajectory and any
-        sub-agent trajectories. Sub-agents are separate Trajectory objects
-        with parent_trajectory_ref pointing back to the main session.
+    def _extract_metadata(
+        self, raw: str, file_path: Path, diagnostics: DiagnosticsCollector
+    ) -> Trajectory | None:
+        """Stage 2: session_id / model / git branches / continuation ref.
 
-        Args:
-            content: Raw JSONL content string.
-            source_path: Original file path for sub-agent file discovery.
-
-        Returns:
-            List of Trajectory objects (main + sub-agents).
+        Sub-agent files (under ``<sid>/subagents/``) inherit their parent's
+        in-file ``sessionId`` but need a unique trajectory id; we use the
+        filename stem (e.g. ``agent-001``) so they don't collide with the main.
         """
-        collector = DiagnosticsCollector()
-        meta = _scan_session_metadata(content)
-        project_path = meta.project_path
-        git_branches = meta.git_branches
-        session_id = meta.session_id
-        last_session_id = meta.last_session_id
-        model_name = meta.model_name
-        version = meta.version
-
-        # Use extracted session_id, fallback to filename stem, then UUID
-        if not session_id:
-            session_id = Path(source_path).stem if source_path else str(uuid4())
-
-        steps = self._parse_content(content, diagnostics=collector, session_id=session_id)
-        if not steps:
-            if collector.parsed_lines == 0 and collector.total_lines > 0:
-                source = source_path or "unknown"
-                logger.warning(
-                    "No parseable entries in %s (%d lines, %d skipped)",
-                    source,
-                    collector.total_lines,
-                    collector.skipped_lines,
-                )
-            return []
-
-        agent = self.build_agent(version=version, model=model_name)
-
-        extra: dict | None = build_diagnostics_extra(collector)
-        if git_branches:
-            extra = extra or {}
-            extra["git_branches"] = git_branches
-
-        # Sub-agent trajectories require filesystem access via source_path
-        sub_trajectories: list[Trajectory] = []
-        if source_path:
-            sub_trajectories = self._parse_subagent_trajectories(
-                Path(source_path), content, steps, session_id
-            )
-            if sub_trajectories:
-                extra = extra or {}
-                extra["sub_agent_count"] = len(sub_trajectories)
-
-        prev_trajectory_ref = TrajectoryRef(session_id=last_session_id) if last_session_id else None
-        main_trajectory = self.assemble_trajectory(
+        meta = _scan_session_metadata(raw)
+        is_subagent = file_path.parent.name == SUBAGENTS_DIR_NAME
+        if is_subagent:
+            session_id = file_path.stem
+        else:
+            session_id = meta.session_id or file_path.stem or str(uuid4())
+        prev_ref = TrajectoryRef(session_id=meta.last_session_id) if meta.last_session_id else None
+        extra: dict[str, Any] = {}
+        if meta.git_branches:
+            extra["git_branches"] = meta.git_branches
+        return Trajectory(
             session_id=session_id,
-            agent=agent,
-            steps=steps,
-            project_path=project_path,
-            prev_trajectory_ref=prev_trajectory_ref,
-            extra=extra,
+            agent=self.build_agent(version=meta.version, model_name=meta.model_name),
+            project_path=meta.project_path,
+            prev_trajectory_ref=prev_ref,
+            extra=extra or None,
         )
 
-        if sub_trajectories:
-            _validate_subagent_linkage(main_trajectory, sub_trajectories)
+    def _build_steps(
+        self, raw: str, traj: Trajectory, file_path: Path, diagnostics: DiagnosticsCollector
+    ) -> list[Step]:
+        """Stage 3: build steps + in-step linkage for ``Task`` / ``Agent`` spawn pairs.
 
-        return [main_trajectory, *sub_trajectories]
+        ``_build_agent_spawn_map`` regex-extracts ``agentId: <hex>`` from each
+        spawn ``tool_result`` text; the matching observation gets its
+        ``subagent_trajectory_ref`` set right here, so ``_load_subagents``
+        only has to locate child files.
+        """
+        steps = self._parse_content(raw, diagnostics=diagnostics, session_id=traj.session_id)
+        if not steps:
+            if diagnostics.parsed_lines == 0 and diagnostics.total_lines > 0:
+                logger.warning(
+                    "No parseable entries in %s (%d lines, %d skipped)",
+                    file_path,
+                    diagnostics.total_lines,
+                    diagnostics.skipped_lines,
+                )
+            return []
+        spawn_map = _build_agent_spawn_map(raw, steps)
+        for agent_id, spawn in spawn_map.items():
+            _, tool_call_id = spawn
+            _link_subagent_to_parent(steps, tool_call_id, f"agent-{agent_id}")
+        return steps
+
+    def _load_subagents(self, main: Trajectory, file_path: Path) -> list[Trajectory]:
+        """Locate ``<sid>/subagents/agent-*.jsonl`` files and parse each.
+        Per-call linkage (step_id + tool_call_id) is recovered from
+        ``main.steps`` observations populated in stage 3.
+        """
+        subagent_dir = file_path.parent / file_path.stem / SUBAGENTS_DIR_NAME
+        if not subagent_dir.is_dir():
+            return []
+        agent_files = sorted(subagent_dir.glob("agent-*.jsonl"))
+        if not agent_files:
+            return []
+
+        # agent_session_id → (step_id, tool_call_id) recovered from in-step linkage.
+        spawn_locations: dict[str, tuple[str, str | None]] = {}
+        for step in main.steps:
+            if step.observation is None:
+                continue
+            for result in step.observation.results:
+                if not result.subagent_trajectory_ref:
+                    continue
+                for ref in result.subagent_trajectory_ref:
+                    spawn_locations[ref.session_id] = (step.step_id, result.source_call_id)
+
+        subs: list[Trajectory] = []
+        for agent_file in agent_files:
+            sub = self._parse_trajectory(agent_file)
+            if sub is None:
+                continue
+            step_id, tool_call_id = spawn_locations.get(agent_file.stem, (None, None))
+            sub.parent_trajectory_ref = TrajectoryRef(
+                session_id=main.session_id,
+                step_id=step_id,
+                tool_call_id=tool_call_id,
+                trajectory_path=str(file_path),
+            )
+            # Compaction agents flagged via filename prefix.
+            if COMPACTION_AGENT_PREFIX in agent_file.stem:
+                sub.extra = {**(sub.extra or {}), "is_compaction_agent": True}
+            subs.append(sub)
+
+        if subs:
+            _validate_subagent_linkage(main, subs)
+            main.extra = {**(main.extra or {}), "sub_agent_count": len(subs)}
+        return subs
 
     def parse_skeleton_for_file(self, jsonl_file: Path) -> Trajectory | None:
         """Read a session file until the first meaningful user message.
@@ -412,7 +447,7 @@ class ClaudeParser(BaseParser):
 
         return self.assemble_trajectory(
             session_id=agent_file.stem,
-            agent=self.build_agent(version=sub_meta.version, model=sub_meta.model_name),
+            agent=self.build_agent(version=sub_meta.version, model_name=sub_meta.model_name),
             steps=sub_steps,
             project_path=sub_meta.project_path,
             parent_trajectory_ref=TrajectoryRef(
@@ -1011,14 +1046,11 @@ def _decompose_raw_content(
             # Inject pre-scanned tool result if available
             result = tool_results.get(tool_call_id) if tool_call_id else None
             if result:
-                raw_output = result.get("output")
-                obs_content = _extract_tool_result_content(raw_output)
-                if result.get("is_error", False) and isinstance(obs_content, str):
-                    obs_content = mark_error_content(obs_content)
                 obs_results.append(
                     ObservationResult(
                         source_call_id=tool_call_id,
-                        content=obs_content,
+                        content=_extract_tool_result_content(result.get("output")),
+                        is_error=bool(result.get("is_error")),
                         extra=_extract_tool_result_metadata(result),
                     )
                 )
@@ -1029,12 +1061,11 @@ def _decompose_raw_content(
             # processing to prevent duplicate ObservationResults.
             if tool_results:
                 continue
-            result_content = _extract_tool_result_content(block.get("content"))
-            if block.get("is_error"):
-                result_content = mark_error_content(result_content)
             obs_results.append(
                 ObservationResult(
-                    source_call_id=block.get("tool_use_id", ""), content=result_content
+                    source_call_id=block.get("tool_use_id", ""),
+                    content=_extract_tool_result_content(block.get("content")),
+                    is_error=bool(block.get("is_error")),
                 )
             )
 

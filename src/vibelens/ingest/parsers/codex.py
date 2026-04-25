@@ -33,9 +33,7 @@ from vibelens.ingest.diagnostics import DiagnosticsCollector
 from vibelens.ingest.parsers.base import BaseParser
 from vibelens.ingest.parsers.helpers import (
     ROLE_TO_SOURCE,
-    build_diagnostics_extra,
     iter_jsonl_safe,
-    mark_error_content,
     parse_tool_arguments,
     truncate_first_message,
 )
@@ -160,140 +158,73 @@ class CodexParser(BaseParser):
         """Find Codex rollout session files."""
         return sorted(f for f in data_dir.rglob("*.jsonl") if f.stem.startswith("rollout-"))
 
-    def parse(self, content: str, source_path: str | None = None) -> list[Trajectory]:
-        """Parse a Codex rollout into a main trajectory plus its sub-agents.
-
-        When ``source_path`` is given and we can locate any sub-agent
-        rollouts spawned from this main session, those rollouts are read
-        off disk and returned alongside the main trajectory — the same
-        shape Claude's parser uses, so the frontend can render sub-agents
-        nested inline under their parent.
-
-        Two lookup paths, tried in order:
-
-        1. SQLite ``state_5.sqlite`` — primary, fast, used by interactive
-           Codex sessions.
-        2. Filesystem scan of ``~/.codex/sessions/`` for rollout files
-           whose stem ends with the spawn_agent output's ``agent_id``.
-           Fallback used by ``codex exec`` runs that don't write SQLite.
-
-        Args:
-            content: Raw JSONL content of the main rollout.
-            source_path: Optional file path. Used both as the
-                session-id fallback and to gate sub-agent discovery.
-
-        Returns:
-            ``[main]`` when no sub-agents are linked, otherwise
-            ``[main, *sub-agents]``. Empty list on parse failure.
-        """
-        main = self._parse_rollout(content, source_path)
-        if main is None:
-            return []
-        sub_trajectories: list[Trajectory] = []
-        if source_path:
-            sub_trajectories = self._load_subagent_trajectories(main.session_id, content)
-        return [main, *sub_trajectories]
-
-    def _parse_rollout(self, content: str, source_path: str | None) -> Trajectory | None:
-        """Parse a single rollout file's content into one Trajectory.
-
-        Used both for the main rollout and (recursively, via path) for
-        each sub-agent rollout. Strips the fork-context prelude so a
-        ``fork_context: true`` child's first message is the spawn task
-        rather than the parent's earliest prompt.
-        """
-        collector = DiagnosticsCollector()
-        entries = list(iter_jsonl_safe(content, diagnostics=collector))
+    # ---- 4-stage parsing ----
+    def _decode_file(self, file_path: Path, diagnostics: DiagnosticsCollector) -> list[dict] | None:
+        """Stage 1: read JSONL + drop fork-mode prelude (parent history before model_switch)."""
+        try:
+            content = file_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            logger.warning("Cannot read Codex rollout %s: %s", file_path, exc)
+            return None
+        entries = list(iter_jsonl_safe(content, diagnostics=diagnostics))
         if not entries:
             return None
+        return _strip_fork_prelude(entries)
 
-        # Drop the inherited parent history from fork-mode children so
-        # downstream logic only sees the sub-agent's own conversation.
-        entries = _strip_fork_prelude(entries)
+    def _extract_metadata(
+        self, raw: list[dict], file_path: Path, diagnostics: DiagnosticsCollector
+    ) -> Trajectory | None:
+        """Stage 2: session_meta scan → session_id, model, version, parent linkage.
 
-        meta = _scan_session_metadata(entries)
-        fallback_id = Path(source_path).stem if source_path else str(uuid4())
-        session_id = meta.session_id or fallback_id
-        steps = _build_steps(entries, session_id, collector)
-        if not steps:
-            return None
-
-        agent = self.build_agent(version=meta.cli_version, model=meta.model_name)
-
-        extra = build_diagnostics_extra(collector)
-
-        total_usage = _extract_final_token_usage(entries)
+        Three signals point a child at its parent, in order of strength:
+          1. ``forked_from_id`` on session_meta — fork-mode children only.
+          2. ``source.subagent.thread_spawn.parent_thread_id`` — both modes.
+          3. ``agent_role`` alone — confirms sub-agent status; parent stays unknown.
+        """
+        meta = _scan_session_metadata(raw)
+        session_id = meta.session_id or file_path.stem or str(uuid4())
+        parent_id = meta.forked_from_id or _parent_id_from_source(meta.source)
+        extra = _build_session_extra(meta)
+        total_usage = _extract_final_token_usage(raw)
         if total_usage:
             extra = extra or {}
             extra["total_token_usage"] = total_usage
-
-        session_extra = _build_session_extra(meta)
-        if session_extra:
-            extra = extra or {}
-            extra.update(session_extra)
-
-        # Three signals point a child at its parent, in order of strength:
-        #   1. ``forked_from_id`` on session_meta — fork-mode children only.
-        #   2. ``source.subagent.thread_spawn.parent_thread_id`` — present
-        #      in both fresh and fork mode for any sub-agent (Codex writes
-        #      this to the rollout itself, so it works without SQLite).
-        #   3. ``agent_role`` alone — confirms sub-agent status when neither
-        #      of the above is available; parent stays unknown.
-        parent_id = meta.forked_from_id or _parent_id_from_source(meta.source)
-        parent_ref = TrajectoryRef(session_id=parent_id) if parent_id else None
-
-        return self.assemble_trajectory(
+        return Trajectory(
             session_id=session_id,
-            agent=agent,
-            steps=steps,
+            agent=self.build_agent(version=meta.cli_version, model_name=meta.model_name),
             project_path=meta.project_path,
-            parent_trajectory_ref=parent_ref,
+            parent_trajectory_ref=TrajectoryRef(session_id=parent_id) if parent_id else None,
             extra=extra,
         )
 
-    def _load_subagent_trajectories(
-        self, parent_id: str, parent_content: str
-    ) -> list[Trajectory]:
-        """Find and parse direct sub-agent rollouts spawned from ``parent_id``.
+    def _build_steps(
+        self, raw: list[dict], traj: Trajectory, file_path: Path, diagnostics: DiagnosticsCollector
+    ) -> list[Step]:
+        """Stage 3: build steps; in-step linkage sets ``subagent_trajectory_ref`` on
+        ``spawn_agent`` function_call_output observations."""
+        return _build_steps(raw, traj.session_id, diagnostics)
 
-        Tries SQLite first (fast, present for interactive Codex). When
-        that returns nothing — typically ``codex exec`` runs that bypass
-        the database — falls back to scanning the parent's spawn_agent
-        outputs for child agent_ids and locating their rollout files
-        under ``~/.codex/sessions/``.
-
-        Recursion is one level: the frontend only renders direct
-        children inline.
-
-        Args:
-            parent_id: Session id of the main trajectory.
-            parent_content: Raw rollout content of the parent, used to
-                find spawn_agent outputs when the SQLite path returns
-                nothing.
-
-        Returns:
-            List of sub-agent Trajectories with ``parent_trajectory_ref``
-            populated.
-        """
-        rollout_paths = _find_subagent_rollouts(parent_id)
+    def _load_subagents(self, main: Trajectory, file_path: Path) -> list[Trajectory]:
+        """Find spawned rollout files via SQLite; fall back to filesystem scan
+        of parent content for ``codex exec`` mode where SQLite isn't written."""
+        rollout_paths = _find_subagent_rollouts(main.session_id)
         if not rollout_paths:
+            try:
+                parent_content = file_path.read_text(encoding="utf-8")
+            except OSError:
+                return []
             rollout_paths = _find_subagent_rollouts_via_filesystem(parent_content)
         if not rollout_paths:
             return []
         out: list[Trajectory] = []
         for path in rollout_paths:
-            try:
-                content = path.read_text(encoding="utf-8")
-            except OSError:
-                logger.debug("Cannot read sub-agent rollout %s", path)
-                continue
-            sub = self._parse_rollout(content, str(path))
+            sub = self._parse_trajectory(path)
             if sub is None:
                 continue
             if sub.parent_trajectory_ref is None:
-                # Last-resort: confirm linkage from caller side when
-                # neither rollout source nor forked_from_id was present.
-                sub.parent_trajectory_ref = TrajectoryRef(session_id=parent_id)
+                # Confirm linkage from caller side when neither rollout source
+                # nor forked_from_id was present.
+                sub.parent_trajectory_ref = TrajectoryRef(session_id=main.session_id)
             out.append(sub)
         return out
 
@@ -355,7 +286,7 @@ class CodexParser(BaseParser):
         parent_thread_id = _extract_parent_thread_id(row["source"] or "")
 
         timestamp = normalize_timestamp(row["created_at"])
-        agent = self.build_agent(version=row["cli_version"], model=row["model"])
+        agent = self.build_agent(version=row["cli_version"], model_name=row["model"])
 
         first_message = row["first_user_message"]
         if first_message:
@@ -801,16 +732,15 @@ def _handle_response_item(
         # Buffer observation result for the tool output
         if result:
             content = result.get("output")
-            if result.get("is_error", False):
-                content = mark_error_content(content)
-            obs_extra = result.get("metadata")
-            sub_ref = _extract_subagent_ref(payload.get("name", ""), content)
             state.pending_obs_results.append(
                 ObservationResult(
                     source_call_id=call_id,
                     content=content,
-                    extra=obs_extra,
-                    subagent_trajectory_ref=sub_ref,
+                    is_error=bool(result.get("is_error")),
+                    extra=result.get("metadata"),
+                    subagent_trajectory_ref=_extract_subagent_ref(
+                        payload.get("name", ""), content
+                    ),
                 )
             )
 

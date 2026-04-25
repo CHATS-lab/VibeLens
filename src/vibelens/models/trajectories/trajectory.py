@@ -53,19 +53,19 @@ class Trajectory(BaseModel):
     final_metrics: FinalMetrics | None = Field(
         default=None, description="Summary metrics for the entire trajectory."
     )
-    prev_trajectory_ref: TrajectoryRef | None = Field(
-        default=None,
-        description=(
-            "[VibeLens] Reference to the previous session this one continues from. "
-            "Only set on main sessions that are continuations of earlier conversations."
-        ),
-    )
     parent_trajectory_ref: TrajectoryRef | None = Field(
         default=None,
         description=(
             "[VibeLens] Reference to the parent trajectory that spawned this sub-agent. "
             "Includes step_id and tool_call_id of the spawning call. "
             "Only set on sub-agent trajectories."
+        ),
+    )
+    prev_trajectory_ref: TrajectoryRef | None = Field(
+        default=None,
+        description=(
+            "[VibeLens] Reference to the previous session this one continues from. "
+            "Only set on main sessions that are continuations of earlier conversations."
         ),
     )
     next_trajectory_ref: TrajectoryRef | None = Field(
@@ -77,7 +77,11 @@ class Trajectory(BaseModel):
     )
     extra: dict[str, Any] | None = Field(default=None, description="Custom root-level metadata.")
     steps: list[Step] = Field(
-        min_length=1, description="Complete interaction history as ordered Step objects."
+        default_factory=list,
+        description=(
+            "Complete interaction history as ordered Step objects. May be empty during "
+            "parser construction; populated by ``_build_steps`` and validated downstream."
+        ),
     )
 
     @field_validator("session_id")

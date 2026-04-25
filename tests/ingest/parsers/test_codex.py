@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 
 from vibelens.ingest.parsers.codex import CodexParser, _parse_structured_output
-from vibelens.ingest.parsers.helpers import is_error_content
 from vibelens.models.enums import StepSource
 from vibelens.models.trajectories import Trajectory
 
@@ -174,7 +173,7 @@ class TestParseFile:
                 _assistant_msg_entry("Hi there"),
             ],
         )
-        results = _parser.parse_file(rollout)
+        results = _parser.parse(rollout)
         assert len(results) == 1
         traj = results[0]
         assert isinstance(traj, Trajectory)
@@ -198,7 +197,7 @@ class TestParseFile:
                 _assistant_msg_entry("Done", timestamp="2025-01-15T10:05:00Z"),
             ],
         )
-        results = _parser.parse_file(rollout_meta)
+        results = _parser.parse(rollout_meta)
         traj = results[0]
 
         assert traj.session_id == "custom-id"
@@ -220,7 +219,7 @@ class TestParseFile:
                 _user_msg_entry(),
             ],
         )
-        fallback_traj = _parser.parse_file(rollout_fallback)[0]
+        fallback_traj = _parser.parse(rollout_fallback)[0]
         assert fallback_traj.session_id == "rollout-fallback"
 
     def test_edge_cases(self, tmp_path: Path):
@@ -228,15 +227,15 @@ class TestParseFile:
         # Empty file returns empty
         empty_rollout = tmp_path / "rollout-empty.jsonl"
         empty_rollout.write_text("")
-        assert _parser.parse_file(empty_rollout) == []
+        assert _parser.parse(empty_rollout) == []
 
         # Missing file returns empty
-        assert _parser.parse_file(tmp_path / "does-not-exist.jsonl") == []
+        assert _parser.parse(tmp_path / "does-not-exist.jsonl") == []
 
         # Meta-only (no messages) returns empty
         meta_only = tmp_path / "rollout-meta-only.jsonl"
         _write_rollout(meta_only, [_meta_entry()])
-        assert _parser.parse_file(meta_only) == []
+        assert _parser.parse(meta_only) == []
 
         # Developer role messages are filtered out
         dev_rollout = tmp_path / "rollout-dev.jsonl"
@@ -256,7 +255,7 @@ class TestParseFile:
                 _user_msg_entry("Hello"),
             ],
         )
-        dev_steps = _parser.parse_file(dev_rollout)[0].steps
+        dev_steps = _parser.parse(dev_rollout)[0].steps
         assert len(dev_steps) == 1
         assert dev_steps[0].source == StepSource.USER
 
@@ -289,7 +288,7 @@ class TestFunctionCallPairing:
                 _function_call_output_entry(call_id="fc-last", output="done", timestamp=f"{t}12Z"),
             ],
         )
-        results = _parser.parse_file(rollout)
+        results = _parser.parse(rollout)
         steps = results[0].steps
         agent_steps = [s for s in steps if s.source == StepSource.AGENT]
 
@@ -326,7 +325,7 @@ class TestFunctionCallPairing:
                 _user_msg_entry("next"),
             ],
         )
-        results = _parser.parse_file(rollout)
+        results = _parser.parse(rollout)
         steps = results[0].steps
         agent_step = steps[0]
         assert len(agent_step.tool_calls) == 1
@@ -350,7 +349,7 @@ class TestPerTurnModelTracking:
                 _assistant_msg_entry("second", timestamp="2025-01-15T10:00:04Z"),
             ],
         )
-        results = _parser.parse_file(rollout)
+        results = _parser.parse(rollout)
         steps = results[0].steps
         user_steps = [s for s in steps if s.source == StepSource.USER]
         agent_steps = [s for s in steps if s.source == StepSource.AGENT]
@@ -386,7 +385,7 @@ class TestTokenCountAttachment:
                 ),
             ],
         )
-        results = _parser.parse_file(rollout)
+        results = _parser.parse(rollout)
         steps = results[0].steps
         agent_step = [s for s in steps if s.source == StepSource.AGENT][0]
         user_step = [s for s in steps if s.source == StepSource.USER][0]
@@ -419,7 +418,7 @@ class TestTokenCountAttachment:
                 ),
             ],
         )
-        results = _parser.parse_file(rollout)
+        results = _parser.parse(rollout)
         agent_step = [s for s in results[0].steps if s.source == StepSource.AGENT][0]
         assert agent_step.metrics is not None
         assert agent_step.metrics.extra is not None
@@ -465,7 +464,7 @@ class TestMalformedInput:
             # Valid user message
             f.write(json.dumps(_user_msg_entry("valid")) + "\n")
 
-        results = _parser.parse_file(rollout)
+        results = _parser.parse(rollout)
         assert len(results) == 1
         steps = results[0].steps
         assert len(steps) == 1
@@ -498,7 +497,7 @@ class TestReasoningExtraction:
                 },
             ],
         )
-        results = _parser.parse_file(rollout)
+        results = _parser.parse(rollout)
         steps = results[0].steps
         agent_steps = [s for s in steps if s.source == StepSource.AGENT]
 
@@ -524,7 +523,7 @@ class TestReasoningExtraction:
                 _user_msg_entry("ok"),
             ],
         )
-        results = _parser.parse_file(rollout)
+        results = _parser.parse(rollout)
         steps = results[0].steps
         agent_step = steps[0]
         assert agent_step.reasoning_content is not None
@@ -602,18 +601,18 @@ class TestStructuredOutput:
                 _user_msg_entry("done", timestamp="2025-01-15T10:00:09Z"),
             ],
         )
-        results = _parser.parse_file(rollout)
+        results = _parser.parse(rollout)
         steps = results[0].steps
         agent_steps = [s for s in steps if s.source == StepSource.AGENT]
 
-        # Error case: marked with error prefix, content preserved
+        # Error case: is_error=True, content preserved verbatim
         err_obs = agent_steps[0].observation.results[0]
-        assert is_error_content(err_obs.content)
+        assert err_obs.is_error is True
         assert "command not found: foo" in err_obs.content
 
-        # Success case: no error prefix
+        # Success case: is_error=False
         ok_obs = agent_steps[1].observation.results[0]
-        assert not is_error_content(ok_obs.content)
+        assert ok_obs.is_error is False
         assert ok_obs.content == "file1.txt"
 
 
@@ -632,7 +631,7 @@ class TestSessionMetadata:
                 _assistant_msg_entry(),
             ],
         )
-        traj = _parser.parse_file(rollout)[0]
+        traj = _parser.parse(rollout)[0]
         assert traj.agent.version == "1.2.3"
         assert traj.agent.model_name == "gpt-5.4"
 
@@ -648,7 +647,7 @@ class TestSessionMetadata:
                 _assistant_msg_entry(),
             ],
         )
-        traj = _parser.parse_file(rollout)[0]
+        traj = _parser.parse(rollout)[0]
         assert traj.extra is not None
         assert traj.extra["source"] == "vscode"
         assert traj.extra["originator"] == "user-xyz"
@@ -665,7 +664,7 @@ class TestSessionMetadata:
                 _assistant_msg_entry(),
             ],
         )
-        traj = _parser.parse_file(rollout)[0]
+        traj = _parser.parse(rollout)[0]
         assert traj.extra is not None
         assert traj.extra["reasoning_effort"] == "high"
 
@@ -681,7 +680,7 @@ class TestSessionMetadata:
                 _assistant_msg_entry(),
             ],
         )
-        traj = _parser.parse_file(rollout)[0]
+        traj = _parser.parse(rollout)[0]
         assert traj.extra is not None
         assert traj.extra["sandbox_policy"] == "read-only"
         assert traj.extra["approval_policy"] == "on-failure"
@@ -698,7 +697,7 @@ class TestSessionMetadata:
                 _assistant_msg_entry(),
             ],
         )
-        traj = _parser.parse_file(rollout)[0]
+        traj = _parser.parse(rollout)[0]
         # No extra metadata, no diagnostics issues
         assert traj.extra is None
 
@@ -737,7 +736,7 @@ class TestCustomToolCall:
                 _user_msg_entry("ok", timestamp="2025-01-15T10:00:05Z"),
             ],
         )
-        traj = _parser.parse_file(rollout)[0]
+        traj = _parser.parse(rollout)[0]
         agent_step = [s for s in traj.steps if s.source == StepSource.AGENT][0]
         assert len(agent_step.tool_calls) == 1
         tc = agent_step.tool_calls[0]
@@ -769,7 +768,7 @@ class TestFinalTokenUsage:
                 _token_count_entry(total_token_usage=total_usage),
             ],
         )
-        traj = _parser.parse_file(rollout)[0]
+        traj = _parser.parse(rollout)[0]
         assert traj.extra is not None
         assert traj.extra["total_token_usage"] == total_usage
 
@@ -786,7 +785,7 @@ class TestFinalTokenUsage:
                 _token_count_entry(),
             ],
         )
-        traj = _parser.parse_file(rollout)[0]
+        traj = _parser.parse(rollout)[0]
         # No total_token_usage, no session extra, no diagnostics
         assert traj.extra is None
 
@@ -817,7 +816,7 @@ class TestFinalTokenUsage:
                 },
             ],
         )
-        trajectories = _parser.parse_file(rollout)
+        trajectories = _parser.parse(rollout)
         assert len(trajectories) == 1
         traj = trajectories[0]
         # No usage → no total_token_usage in extra
@@ -844,7 +843,7 @@ class TestToolResultMetadata:
                 _user_msg_entry("next", timestamp="2025-01-15T10:00:05Z"),
             ],
         )
-        traj = _parser.parse_file(rollout)[0]
+        traj = _parser.parse(rollout)[0]
         agent_step = [s for s in traj.steps if s.source == StepSource.AGENT][0]
         obs_result = agent_step.observation.results[0]
         assert obs_result.content == "result data"
@@ -866,7 +865,7 @@ class TestToolResultMetadata:
                 _user_msg_entry("next", timestamp="2025-01-15T10:00:05Z"),
             ],
         )
-        traj = _parser.parse_file(rollout)[0]
+        traj = _parser.parse(rollout)[0]
         agent_step = [s for s in traj.steps if s.source == StepSource.AGENT][0]
         obs_result = agent_step.observation.results[0]
         assert obs_result.content == "plain output"
@@ -890,7 +889,7 @@ class TestStepExtra:
                 _assistant_msg_entry(),
             ],
         )
-        traj = _parser.parse_file(rollout)[0]
+        traj = _parser.parse(rollout)[0]
         agent_step = [s for s in traj.steps if s.source == StepSource.AGENT][0]
         assert agent_step.extra is not None
         assert agent_step.extra["cwd"] == "/home/user/project"
@@ -908,7 +907,7 @@ class TestStepExtra:
                 _assistant_msg_entry(),
             ],
         )
-        traj = _parser.parse_file(rollout)[0]
+        traj = _parser.parse(rollout)[0]
         user_step = [s for s in traj.steps if s.source == StepSource.USER][0]
         assert user_step.extra is None
 
@@ -931,7 +930,7 @@ class TestSubAgentLinkage:
                 _assistant_msg_entry("Done"),
             ],
         )
-        traj = _parser.parse_file(rollout)[0]
+        traj = _parser.parse(rollout)[0]
         assert traj.session_id == "child-id"
         assert traj.parent_trajectory_ref is not None
         assert traj.parent_trajectory_ref.session_id == "parent-id"
@@ -954,7 +953,7 @@ class TestSubAgentLinkage:
                 _user_msg_entry("done", timestamp="2025-01-15T10:00:10Z"),
             ],
         )
-        traj = _parser.parse_file(rollout)[0]
+        traj = _parser.parse(rollout)[0]
         agent_steps = [s for s in traj.steps if s.source == StepSource.AGENT]
         assert agent_steps, "expected at least one agent step"
         # The spawn observation should be on the agent step that owns the spawn_agent tool call
@@ -985,7 +984,7 @@ class TestSubAgentLinkage:
                 _user_msg_entry("next", timestamp="2025-01-15T10:00:10Z"),
             ],
         )
-        traj = _parser.parse_file(rollout)[0]
+        traj = _parser.parse(rollout)[0]
         for step in traj.steps:
             if not step.observation:
                 continue
@@ -1007,7 +1006,7 @@ class TestSubAgentLinkage:
                 _user_msg_entry("next", timestamp="2025-01-15T10:00:10Z"),
             ],
         )
-        traj = _parser.parse_file(rollout)[0]
+        traj = _parser.parse(rollout)[0]
         # Output is preserved as content; the subagent ref is just None
         spawn_obs = [
             r
@@ -1064,7 +1063,7 @@ class TestForkPreludeStripping:
                 _assistant_msg_entry("sub-agent reply", timestamp="2025-01-15T10:00:06Z"),
             ],
         )
-        traj = _parser.parse_file(rollout)[0]
+        traj = _parser.parse(rollout)[0]
         assert traj.session_id == "child-id"
         assert traj.parent_trajectory_ref is not None
         assert traj.parent_trajectory_ref.session_id == "parent-id"
@@ -1086,7 +1085,7 @@ class TestForkPreludeStripping:
                 _assistant_msg_entry("hi"),
             ],
         )
-        traj = _parser.parse_file(rollout)[0]
+        traj = _parser.parse(rollout)[0]
         assert traj.session_id == "regular"
         assert traj.first_message == "hello"
         assert traj.parent_trajectory_ref is None
@@ -1107,7 +1106,7 @@ class TestForkPreludeStripping:
             ],
         )
         # Doesn't crash; first_message picks the inherited prompt.
-        traj = _parser.parse_file(rollout)[0]
+        traj = _parser.parse(rollout)[0]
         assert traj.first_message == "only message"
         assert traj.parent_trajectory_ref.session_id == "parent"
 
@@ -1161,7 +1160,7 @@ class TestAgentRoleSignal:
             rollout,
             [meta, _turn_context_entry(), _user_msg_entry("task"), _assistant_msg_entry("done")],
         )
-        traj = _parser.parse_file(rollout)[0]
+        traj = _parser.parse(rollout)[0]
         assert traj.extra is not None
         assert traj.extra.get("agent_role") == "worker"
         assert traj.extra.get("agent_nickname") == "Hegel"
@@ -1178,7 +1177,7 @@ class TestAgentRoleSignal:
             rollout,
             [meta, _turn_context_entry(), _user_msg_entry("hi"), _assistant_msg_entry("hello")],
         )
-        traj = _parser.parse_file(rollout)[0]
+        traj = _parser.parse(rollout)[0]
         assert traj.parent_trajectory_ref is not None
         assert traj.parent_trajectory_ref.session_id == "fresh-parent"
 
@@ -1189,6 +1188,6 @@ class TestAgentRoleSignal:
             rollout,
             [_meta_entry(), _turn_context_entry(), _user_msg_entry(), _assistant_msg_entry()],
         )
-        traj = _parser.parse_file(rollout)[0]
+        traj = _parser.parse(rollout)[0]
         assert (traj.extra or {}).get("agent_role") is None
         assert traj.parent_trajectory_ref is None
