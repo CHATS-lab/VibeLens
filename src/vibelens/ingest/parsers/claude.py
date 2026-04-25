@@ -81,30 +81,6 @@ _PERSISTED_PATH_PATTERN = re.compile(r"Full output saved to: (.+?)(?:\n|$)")
 MAX_PATH_LENGTH = 1024
 
 
-def _read_persisted_agent_id(content: str) -> str:
-    """Read a persisted tool output file to extract agentId.
-
-    When tool_result content contains a <persisted-output> pointer,
-    read the referenced file and return its tail (agentId is near the end).
-    Returns original content if the file cannot be read.
-    """
-    match = _PERSISTED_PATH_PATTERN.search(content)
-    if not match:
-        return content
-    raw_path = match.group(1).strip()
-    # Guard against regex capturing content blobs instead of real file paths
-    if len(raw_path) > MAX_PATH_LENGTH or "\n" in raw_path:
-        return content
-    path = Path(raw_path)
-    try:
-        if not path.is_file():
-            return content
-        text = path.read_text(encoding="utf-8", errors="replace")
-        # agentId is near the end of Agent tool output
-        TAIL_SIZE = 2000
-        return text[-TAIL_SIZE:] if len(text) > TAIL_SIZE else text
-    except OSError:
-        return content
 
 
 # XML tags injected by the system into user message content.
@@ -389,114 +365,132 @@ class ClaudeParser(BaseParser):
             _detect_orphans(seen_call_ids, tool_results, diagnostics)
         return steps
 
+def _scan_session_metadata(content: str) -> _SessionMeta:
+    """Extract all session-level metadata in a single JSONL pass.
 
-def classify_user_message(
-    text: str, entry: dict[str, Any]
-) -> tuple[StepSource, dict[str, Any] | None]:
-    """Classify a user-role message as real user, system, skill, or auto-generated.
-
-    Claude Code injects system content (XML tags, continuation notices),
-    skill output (after Skill tool_use), and plan mode output into user-type
-    entries. This function detects those patterns and returns the correct
-    source classification with metadata.
+    Collects sessionId, model, version, cwd (project path), and
+    gitBranch from raw JSONL entries. Project path probing respects
+    PROJECT_PATH_PROBE_LIMIT for consistency with the original behavior.
 
     Args:
-        text: The text content of a user-type message.
-        entry: Raw JSONL entry dict, used to extract sourceToolUseID for skills.
+        content: Raw JSONL content string.
 
     Returns:
-        Tuple of (source, extra_metadata). Extra is None for system/plain user,
-        {"is_skill_output": True} for skill content, or
-        {"is_auto_prompt": True} for auto-generated prompts (e.g. plan mode).
+        _SessionMeta with all extracted fields.
     """
-    if not text:
-        return StepSource.USER, None
+    session_counter: Counter[str] = Counter()
+    model_counter: Counter[str] = Counter()
+    version: str | None = None
+    cwd_values: list[str] = []
+    branches: set[str] = set()
 
-    stripped = text.lstrip()
-    if stripped.startswith(_SKILL_PREFIX):
-        extra: dict[str, Any] = {"is_skill_output": True}
-        source_tool_id = entry.get("sourceToolUseID")
-        if source_tool_id:
-            extra["sourceToolUseID"] = source_tool_id
-        return StepSource.USER, extra
+    for entry in iter_jsonl_safe(content):
+        sid = entry.get("sessionId", "")
+        if sid:
+            session_counter[sid] += 1
 
-    if _SYSTEM_TAG_PATTERN.match(stripped):
-        return StepSource.SYSTEM, None
+        if version is None:
+            raw_version = entry.get("version", "")
+            if raw_version:
+                version = str(raw_version)
 
-    for prefix in _SYSTEM_PREFIXES:
-        if stripped.startswith(prefix):
-            return StepSource.SYSTEM, None
+        # Project path: only probe first N entries that have cwd
+        if len(cwd_values) < PROJECT_PATH_PROBE_LIMIT:
+            cwd = entry.get("cwd", "")
+            if cwd:
+                cwd_values.append(cwd)
 
-    # Auto-generated prompts from plan mode or automated workflows
-    for prefix in _AUTO_PROMPT_PREFIXES:
-        if stripped.startswith(prefix):
-            return StepSource.USER, {"is_auto_prompt": True}
-    return StepSource.USER, None
+        branch = entry.get("gitBranch", "")
+        if branch:
+            branches.add(branch)
+
+        msg = entry.get("message", {})
+        if isinstance(msg, dict):
+            model = msg.get("model", "")
+            if model and not model.startswith("<"):
+                model_counter[model] += 1
+
+    session_id = session_counter.most_common(1)[0][0] if session_counter else None
+    last_session_id = None
+    for sid in session_counter:
+        if sid != session_id:
+            last_session_id = sid
+            break
+
+    model_name = model_counter.most_common(1)[0][0] if model_counter else None
+    project_path = Counter(cwd_values).most_common(1)[0][0] if cwd_values else None
+    git_branches = sorted(branches) if branches else None
+
+    return _SessionMeta(
+        session_id=session_id,
+        last_session_id=last_session_id,
+        model_name=model_name,
+        version=version,
+        project_path=project_path,
+        git_branches=git_branches,
+    )
 
 
-def _group_entries_by_step(entries: list[dict]) -> list[list[dict]]:
-    """Group entries by logical step using message.id for assistant entries.
+def _step_from_group(
+    group: list[dict],
+    tool_results: dict[str, dict],
+    canonical_sid: str | None,
+    seen_call_ids: set[str],
+    diagnostics: DiagnosticsCollector | None,
+) -> Step | None:
+    """Convert one entry group to a Step, or None for tool-relay user messages.
 
-    Assistant entries sharing a message.id are collected into a single group
-    even when separated by user tool-relay entries (which become their own
-    singleton groups). Groups are ordered by first appearance.
-
-    Args:
-        entries: Flat list of parsed JSONL entries.
-
-    Returns:
-        List of entry groups; each group becomes one Step.
+    Tool-relay = a ``type: "user"`` entry whose content is only ``tool_result``
+    blocks; its content is already injected into the preceding assistant step
+    via the pre-scanned ``tool_results`` map, so we drop it here to avoid
+    phantom user steps.
     """
-    groups: list[list[dict]] = []
-    msg_id_to_group: dict[str, list[dict]] = {}
+    entry = _merge_entry_group(group)
+    msg = entry.get("message", {})
+    role = msg.get("role", entry.get("type", ""))
+    source = ROLE_TO_SOURCE.get(role, StepSource.USER)
 
-    for entry in entries:
-        entry_type = entry.get("type")
-        msg_id = entry.get("message", {}).get("id", "")
+    message, reasoning_content, tool_calls, observation = _decompose_raw_content(
+        msg.get("content", ""), tool_results
+    )
+    if source == StepSource.USER and not message and not tool_calls and observation is None:
+        return None
 
-        if entry_type == "assistant" and msg_id:
-            if msg_id in msg_id_to_group:
-                msg_id_to_group[msg_id].append(entry)
-            else:
-                group: list[dict] = [entry]
-                groups.append(group)
-                msg_id_to_group[msg_id] = group
-        else:
-            groups.append([entry])
+    # Reclassify user-role messages that carry system / skill / auto-prompt content.
+    classify_extra: dict[str, Any] | None = None
+    if source == StepSource.USER and message and isinstance(message, str):
+        source, classify_extra = classify_user_message(message, entry)
 
-    return groups
+    for tc in tool_calls:
+        if tc.tool_call_id:
+            seen_call_ids.add(tc.tool_call_id)
+            if diagnostics:
+                diagnostics.record_tool_call()
 
+    # Assistant entries reuse ``message.id`` so streaming chunks collapse to one
+    # step_id; user entries fall back to entry.uuid to avoid colliding when a
+    # tool-relay shares an id.
+    if source == StepSource.AGENT:
+        step_id = msg.get("id") or entry.get("uuid", str(uuid4()))
+    else:
+        step_id = entry.get("uuid", str(uuid4()))
 
-def _merge_entry_group(group: list[dict]) -> dict:
-    """Merge a group of streaming chunks into a single pseudo-entry.
+    entry_sid = entry.get("sessionId", "")
+    is_copied = bool(canonical_sid and entry_sid and entry_sid != canonical_sid)
 
-    Concatenates message.content lists from all entries in the group.
-    Uses the first entry's uuid, timestamp, and metadata as the base.
-
-    Args:
-        group: One or more JSONL entries sharing the same message.id.
-
-    Returns:
-        Single merged entry dict.
-    """
-    if len(group) == 1:
-        return group[0]
-
-    merged = dict(group[0])
-    merged_msg = dict(merged.get("message", {}))
-
-    # Concatenate content lists from all chunks
-    all_content: list = []
-    for entry in group:
-        chunk_content = entry.get("message", {}).get("content", "")
-        if isinstance(chunk_content, list):
-            all_content.extend(chunk_content)
-        elif chunk_content:
-            all_content.append({"type": "text", "text": str(chunk_content)})
-
-    merged_msg["content"] = all_content
-    merged["message"] = merged_msg
-    return merged
+    return Step(
+        step_id=step_id,
+        source=source,
+        message=message,
+        reasoning_content=reasoning_content,
+        model_name=msg.get("model") or None,
+        timestamp=normalize_timestamp(entry.get("timestamp")),
+        metrics=_build_step_metrics(msg.get("usage")),
+        tool_calls=tool_calls,
+        observation=observation,
+        is_copied_context=True if is_copied else None,
+        extra=_build_step_extra(entry, classify_extra=classify_extra),
+    )
 
 
 def _parse_jsonl_content(
@@ -567,272 +561,6 @@ def _deduplicate_entries_by_uuid(entries: list[dict]) -> list[dict]:
     return deduped
 
 
-def _collect_dequeued_timestamps(all_parsed: list[dict]) -> set[str]:
-    """Return enqueue timestamps that were paired with a later dequeue.
-
-    Dequeue events don't reference the original enqueue — they only
-    record their own (delivery) timestamp, which lands a few ms after
-    the enqueue. Pair them FIFO by occurrence order so the matching
-    survives that drift.
-
-    Dequeued messages are delivered as normal ``type: "user"`` entries,
-    so creating a synthetic user entry would duplicate them.
-
-    Args:
-        all_parsed: All parsed JSONL entries (unfiltered).
-
-    Returns:
-        Set of enqueue timestamp strings that were paired with a dequeue.
-    """
-    pending_enqueue_ts: deque[str] = deque()
-    delivered: set[str] = set()
-    for entry in all_parsed:
-        if entry.get("type") != "queue-operation":
-            continue
-        op = entry.get("operation")
-        if op == "enqueue":
-            ts = entry.get("timestamp", "")
-            if ts:
-                pending_enqueue_ts.append(ts)
-        elif op == "dequeue" and pending_enqueue_ts:
-            delivered.add(pending_enqueue_ts.popleft())
-    return delivered
-
-
-def _make_enqueue_user_entry(entry: dict) -> dict:
-    """Transform a queue-operation enqueue event into a synthetic user entry.
-
-    When a user types a message while the assistant is still processing,
-    Claude Code queues it as an enqueue event. If the message is later
-    removed (not dequeued), no standalone user message exists — the
-    enqueue is the only record of the user's input.
-
-    Args:
-        entry: Raw queue-operation JSONL entry with operation="enqueue".
-
-    Returns:
-        Synthetic user entry compatible with _parse_content() processing.
-    """
-    ts = entry.get("timestamp", "")
-    unique_id = f"enqueue-{ts}-{uuid4().hex[:8]}" if ts else f"enqueue-{uuid4()}"
-    return {
-        "type": "user",
-        "uuid": unique_id,
-        "sessionId": entry.get("sessionId", ""),
-        "timestamp": entry.get("timestamp"),
-        "message": {"role": "user", "content": entry["content"]},
-        "_queue_operation": "enqueue",
-    }
-
-
-def _build_step_extra(
-    entry: dict, classify_extra: dict[str, Any] | None = None
-) -> dict[str, Any] | None:
-    """Build step-level extra dict from Claude Code entry fields.
-
-    Extracts format-specific metadata (is_sidechain, stop_reason, stop_sequence,
-    cwd, request_id, service_tier, user_type) and merges in any classifier
-    extras (is_skill_output / is_auto_prompt / sourceToolUseID) returned by
-    :func:`classify_user_message`.
-    """
-    extra: dict[str, Any] = {}
-    msg = entry.get("message", {})
-    if not isinstance(msg, dict):
-        msg = {}
-
-    if entry.get("_queue_operation"):
-        extra["is_queued_prompt"] = True
-
-    if entry.get("isSidechain", False):
-        extra["is_sidechain"] = True
-
-    if msg.get("stop_reason") is not None:
-        extra["stop_reason"] = msg["stop_reason"]
-
-    if msg.get("stop_sequence") is not None:
-        extra["stop_sequence"] = msg["stop_sequence"]
-
-    if entry.get("cwd"):
-        extra["cwd"] = entry["cwd"]
-
-    if msg.get("requestId"):
-        extra["request_id"] = msg["requestId"]
-
-    if msg.get("service_tier"):
-        extra["service_tier"] = msg["service_tier"]
-
-    if entry.get("userType") and entry["userType"] != "external":
-        extra["user_type"] = entry["userType"]
-
-    if classify_extra:
-        extra.update(classify_extra)
-
-    return extra or None
-
-
-def _build_step_metrics(usage_data: dict | None) -> Metrics | None:
-    """Build a :class:`Metrics` from an Anthropic-style ``usage`` dict, or None."""
-    if not usage_data:
-        return None
-    return Metrics.from_tokens(
-        input_tokens=usage_data.get("input_tokens") or 0,
-        output_tokens=usage_data.get("output_tokens") or 0,
-        cache_read_tokens=usage_data.get("cache_read_input_tokens") or 0,
-        cache_write_tokens=usage_data.get("cache_creation_input_tokens") or 0,
-    )
-
-
-def _step_from_group(
-    group: list[dict],
-    tool_results: dict[str, dict],
-    canonical_sid: str | None,
-    seen_call_ids: set[str],
-    diagnostics: DiagnosticsCollector | None,
-) -> Step | None:
-    """Convert one entry group to a Step, or None for tool-relay user messages.
-
-    Tool-relay = a ``type: "user"`` entry whose content is only ``tool_result``
-    blocks; its content is already injected into the preceding assistant step
-    via the pre-scanned ``tool_results`` map, so we drop it here to avoid
-    phantom user steps.
-    """
-    entry = _merge_entry_group(group)
-    msg = entry.get("message", {})
-    role = msg.get("role", entry.get("type", ""))
-    source = ROLE_TO_SOURCE.get(role, StepSource.USER)
-
-    message, reasoning_content, tool_calls, observation = _decompose_raw_content(
-        msg.get("content", ""), tool_results
-    )
-    if source == StepSource.USER and not message and not tool_calls and observation is None:
-        return None
-
-    # Reclassify user-role messages that carry system / skill / auto-prompt content.
-    classify_extra: dict[str, Any] | None = None
-    if source == StepSource.USER and message and isinstance(message, str):
-        source, classify_extra = classify_user_message(message, entry)
-
-    for tc in tool_calls:
-        if tc.tool_call_id:
-            seen_call_ids.add(tc.tool_call_id)
-            if diagnostics:
-                diagnostics.record_tool_call()
-
-    # Assistant entries reuse ``message.id`` so streaming chunks collapse to one
-    # step_id; user entries fall back to entry.uuid to avoid colliding when a
-    # tool-relay shares an id.
-    if source == StepSource.AGENT:
-        step_id = msg.get("id") or entry.get("uuid", str(uuid4()))
-    else:
-        step_id = entry.get("uuid", str(uuid4()))
-
-    entry_sid = entry.get("sessionId", "")
-    is_copied = bool(canonical_sid and entry_sid and entry_sid != canonical_sid)
-
-    return Step(
-        step_id=step_id,
-        source=source,
-        message=message,
-        reasoning_content=reasoning_content,
-        model_name=msg.get("model") or None,
-        timestamp=normalize_timestamp(entry.get("timestamp")),
-        metrics=_build_step_metrics(msg.get("usage")),
-        tool_calls=tool_calls,
-        observation=observation,
-        is_copied_context=True if is_copied else None,
-        extra=_build_step_extra(entry, classify_extra=classify_extra),
-    )
-
-
-def _scan_session_metadata(content: str) -> _SessionMeta:
-    """Extract all session-level metadata in a single JSONL pass.
-
-    Collects sessionId, model, version, cwd (project path), and
-    gitBranch from raw JSONL entries. Project path probing respects
-    PROJECT_PATH_PROBE_LIMIT for consistency with the original behavior.
-
-    Args:
-        content: Raw JSONL content string.
-
-    Returns:
-        _SessionMeta with all extracted fields.
-    """
-    session_counter: Counter[str] = Counter()
-    model_counter: Counter[str] = Counter()
-    version: str | None = None
-    cwd_values: list[str] = []
-    branches: set[str] = set()
-
-    for entry in iter_jsonl_safe(content):
-        sid = entry.get("sessionId", "")
-        if sid:
-            session_counter[sid] += 1
-
-        if version is None:
-            raw_version = entry.get("version", "")
-            if raw_version:
-                version = str(raw_version)
-
-        # Project path: only probe first N entries that have cwd
-        if len(cwd_values) < PROJECT_PATH_PROBE_LIMIT:
-            cwd = entry.get("cwd", "")
-            if cwd:
-                cwd_values.append(cwd)
-
-        branch = entry.get("gitBranch", "")
-        if branch:
-            branches.add(branch)
-
-        msg = entry.get("message", {})
-        if isinstance(msg, dict):
-            model = msg.get("model", "")
-            if model and not model.startswith("<"):
-                model_counter[model] += 1
-
-    session_id = session_counter.most_common(1)[0][0] if session_counter else None
-    last_session_id = None
-    for sid in session_counter:
-        if sid != session_id:
-            last_session_id = sid
-            break
-
-    model_name = model_counter.most_common(1)[0][0] if model_counter else None
-    project_path = Counter(cwd_values).most_common(1)[0][0] if cwd_values else None
-    git_branches = sorted(branches) if branches else None
-
-    return _SessionMeta(
-        session_id=session_id,
-        last_session_id=last_session_id,
-        model_name=model_name,
-        version=version,
-        project_path=project_path,
-        git_branches=git_branches,
-    )
-
-
-def _scan_user_text(content) -> str:
-    """Extract human-typed text from a raw user-message ``content`` field.
-
-    Handles both shapes Claude Code emits — string content and the
-    Anthropic content-block list — joining text blocks while skipping
-    image-source echoes and non-text blocks (images, tool_result). Used
-    by the lightweight index scan; full parsing goes through
-    :func:`_decompose_raw_content`.
-    """
-    if isinstance(content, str):
-        return content
-    if not isinstance(content, list):
-        return ""
-    parts: list[str] = []
-    for block in content:
-        if not isinstance(block, dict) or block.get("type") != "text":
-            continue
-        text = block.get("text", "")
-        if text and not _IMAGE_SOURCE_PLACEHOLDER_RE.match(text):
-            parts.append(text)
-    return "\n\n".join(parts)
-
-
 def _collect_tool_results(raw_entries: list[dict]) -> dict[str, dict]:
     """Build a mapping of tool_use_id -> result from user messages.
 
@@ -871,203 +599,37 @@ def _collect_tool_results(raw_entries: list[dict]) -> dict[str, dict]:
     return tool_results
 
 
-def _decompose_raw_content(
-    raw_content: str | list, tool_results: dict[str, dict] | None = None
-) -> tuple[str, str | None, list[ToolCall], Observation | None]:
-    """Decompose Anthropic Messages API content into separated Step fields.
+def _group_entries_by_step(entries: list[dict]) -> list[list[dict]]:
+    """Group entries by logical step using message.id for assistant entries.
 
-    Converts the polymorphic content block array from Claude Code API
-    responses into separated ATIF Step fields: message (text),
-    reasoning_content (thinking), tool_calls, and observation.
-
-    When tool_results is provided, injects matching tool results from
-    the pre-scan map to produce proper Observation objects.
+    Assistant entries sharing a message.id are collected into a single group
+    even when separated by user tool-relay entries (which become their own
+    singleton groups). Groups are ordered by first appearance.
 
     Args:
-        raw_content: Raw content from JSONL entry (str or list of dicts).
-        tool_results: Optional pre-scanned tool_use_id -> result mapping.
+        entries: Flat list of parsed JSONL entries.
 
     Returns:
-        Tuple of (message, reasoning_content, tool_calls, observation).
+        List of entry groups; each group becomes one Step.
     """
-    if isinstance(raw_content, str):
-        stripped = raw_content.strip()
-        return (stripped, None, [], None) if stripped else ("", None, [], None)
+    groups: list[list[dict]] = []
+    msg_id_to_group: dict[str, list[dict]] = {}
 
-    if not isinstance(raw_content, list):
-        return ("", None, [], None)
+    for entry in entries:
+        entry_type = entry.get("type")
+        msg_id = entry.get("message", {}).get("id", "")
 
-    text_parts: list[str] = []
-    image_parts: list[ContentPart] = []
-    thinking_parts: list[str] = []
-    tool_calls: list[ToolCall] = []
-    obs_results: list[ObservationResult] = []
-    tool_results = tool_results or {}
+        if entry_type == "assistant" and msg_id:
+            if msg_id in msg_id_to_group:
+                msg_id_to_group[msg_id].append(entry)
+            else:
+                group: list[dict] = [entry]
+                groups.append(group)
+                msg_id_to_group[msg_id] = group
+        else:
+            groups.append([entry])
 
-    for block in raw_content:
-        if not isinstance(block, dict):
-            continue
-        block_type = block.get("type", "text")
-
-        if block_type == "text":
-            text = block.get("text", "")
-            if text and not _IMAGE_SOURCE_PLACEHOLDER_RE.match(text):
-                text_parts.append(text)
-
-        elif block_type == "image":
-            source = block.get("source", {})
-            if isinstance(source, dict) and source.get("type") == "base64":
-                image_parts.append(
-                    ContentPart(
-                        type=ContentType.IMAGE,
-                        source=Base64Source(
-                            media_type=source.get("media_type", "image/png"),
-                            base64=source.get("data", ""),
-                        ),
-                    )
-                )
-
-        elif block_type == "thinking":
-            thinking = block.get("thinking", "")
-            if thinking:
-                thinking_parts.append(thinking)
-
-        elif block_type == "tool_use":
-            tool_call_id = block.get("id", "")
-            tool_calls.append(
-                ToolCall(
-                    tool_call_id=tool_call_id,
-                    function_name=block.get("name", ""),
-                    arguments=block.get("input"),
-                )
-            )
-            # Inject pre-scanned tool result if available
-            result = tool_results.get(tool_call_id) if tool_call_id else None
-            if result:
-                obs_results.append(
-                    ObservationResult(
-                        source_call_id=tool_call_id,
-                        content=_extract_tool_result_content(result.get("output")),
-                        is_error=bool(result.get("is_error")),
-                        extra=_extract_tool_result_metadata(result),
-                    )
-                )
-
-        elif block_type == "tool_result":
-            # When pre-scan results are available, tool_result blocks are
-            # already captured via the tool_use branch above. Skip direct
-            # processing to prevent duplicate ObservationResults.
-            if tool_results:
-                continue
-            obs_results.append(
-                ObservationResult(
-                    source_call_id=block.get("tool_use_id", ""),
-                    content=_extract_tool_result_content(block.get("content")),
-                    is_error=bool(block.get("is_error")),
-                )
-            )
-
-    # Build message: use list[ContentPart] when images are present
-    if image_parts:
-        content_parts: list[ContentPart] = []
-        joined_text = "\n\n".join(text_parts).strip()
-        if joined_text:
-            content_parts.append(ContentPart(type=ContentType.TEXT, text=joined_text))
-        content_parts.extend(image_parts)
-        message: str | list[ContentPart] = content_parts
-    else:
-        message = "\n\n".join(text_parts).strip() if text_parts else ""
-
-    reasoning_content = "\n\n".join(thinking_parts).strip() if thinking_parts else None
-    observation = Observation(results=obs_results) if obs_results else None
-
-    return message, reasoning_content, tool_calls, observation
-
-
-def _extract_tool_result_content(content: str | list | None) -> str | list[ContentPart] | None:
-    """Extract text (and optionally images) from a tool_result content field.
-
-    When the content list contains image blocks, returns a list[ContentPart]
-    combining text and image parts. Otherwise returns plain text string.
-
-    Args:
-        content: Raw content from a tool_result block (str, list, or None).
-
-    Returns:
-        Extracted content as str, list[ContentPart], or None if empty.
-    """
-    if content is None:
-        return None
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        text_parts: list[str] = []
-        image_parts: list[ContentPart] = []
-        for item in content:
-            if isinstance(item, str):
-                text_parts.append(item)
-            elif isinstance(item, dict):
-                if item.get("type") == "image":
-                    source = item.get("source", {})
-                    if isinstance(source, dict) and source.get("type") == "base64":
-                        image_parts.append(
-                            ContentPart(
-                                type=ContentType.IMAGE,
-                                source=Base64Source(
-                                    media_type=source.get("media_type", "image/png"),
-                                    base64=source.get("data", ""),
-                                ),
-                            )
-                        )
-                elif "text" in item:
-                    text_parts.append(str(item["text"]))
-        if image_parts:
-            parts: list[ContentPart] = []
-            joined = "\n".join(text_parts)
-            if joined:
-                parts.append(ContentPart(type=ContentType.TEXT, text=joined))
-            parts.extend(image_parts)
-            return parts
-        return "\n".join(text_parts) if text_parts else None
-    return str(content)
-
-
-def _extract_tool_result_metadata(result: dict) -> dict[str, Any] | None:
-    """Extract structured execution metadata from a cached tool result.
-
-    When the tool result cache contains a ``tool_use_result`` dict (captured
-    from the event-level ``toolUseResult`` field), extracts salient fields:
-    exit_code, stdout, stderr, and interrupted.
-
-    Args:
-        result: A single entry from the tool_results cache dict.
-
-    Returns:
-        Metadata dict, or None if no structured metadata is available.
-    """
-    tur = result.get("tool_use_result")
-    if not isinstance(tur, dict):
-        return None
-
-    meta: dict[str, Any] = {}
-    exit_code = tur.get("exitCode")
-    if exit_code is None:
-        exit_code = tur.get("exit_code")
-    if exit_code is not None:
-        meta["exit_code"] = exit_code
-
-    stdout = tur.get("stdout")
-    if isinstance(stdout, str):
-        meta["stdout"] = stdout
-
-    stderr = tur.get("stderr")
-    if isinstance(stderr, str):
-        meta["stderr"] = stderr
-
-    if tur.get("interrupted"):
-        meta["interrupted"] = True
-
-    return meta or None
+    return groups
 
 
 def _detect_orphans(
@@ -1255,3 +817,442 @@ def _validate_subagent_linkage(
                 main_trajectory.session_id,
                 regular,
             )
+
+
+def classify_user_message(
+    text: str, entry: dict[str, Any]
+) -> tuple[StepSource, dict[str, Any] | None]:
+    """Classify a user-role message as real user, system, skill, or auto-generated.
+
+    Claude Code injects system content (XML tags, continuation notices),
+    skill output (after Skill tool_use), and plan mode output into user-type
+    entries. This function detects those patterns and returns the correct
+    source classification with metadata.
+
+    Args:
+        text: The text content of a user-type message.
+        entry: Raw JSONL entry dict, used to extract sourceToolUseID for skills.
+
+    Returns:
+        Tuple of (source, extra_metadata). Extra is None for system/plain user,
+        {"is_skill_output": True} for skill content, or
+        {"is_auto_prompt": True} for auto-generated prompts (e.g. plan mode).
+    """
+    if not text:
+        return StepSource.USER, None
+
+    stripped = text.lstrip()
+    if stripped.startswith(_SKILL_PREFIX):
+        extra: dict[str, Any] = {"is_skill_output": True}
+        source_tool_id = entry.get("sourceToolUseID")
+        if source_tool_id:
+            extra["sourceToolUseID"] = source_tool_id
+        return StepSource.USER, extra
+
+    if _SYSTEM_TAG_PATTERN.match(stripped):
+        return StepSource.SYSTEM, None
+
+    for prefix in _SYSTEM_PREFIXES:
+        if stripped.startswith(prefix):
+            return StepSource.SYSTEM, None
+
+    # Auto-generated prompts from plan mode or automated workflows
+    for prefix in _AUTO_PROMPT_PREFIXES:
+        if stripped.startswith(prefix):
+            return StepSource.USER, {"is_auto_prompt": True}
+    return StepSource.USER, None
+
+
+def _decompose_raw_content(
+    raw_content: str | list, tool_results: dict[str, dict] | None = None
+) -> tuple[str, str | None, list[ToolCall], Observation | None]:
+    """Decompose Anthropic Messages API content into separated Step fields.
+
+    Converts the polymorphic content block array from Claude Code API
+    responses into separated ATIF Step fields: message (text),
+    reasoning_content (thinking), tool_calls, and observation.
+
+    When tool_results is provided, injects matching tool results from
+    the pre-scan map to produce proper Observation objects.
+
+    Args:
+        raw_content: Raw content from JSONL entry (str or list of dicts).
+        tool_results: Optional pre-scanned tool_use_id -> result mapping.
+
+    Returns:
+        Tuple of (message, reasoning_content, tool_calls, observation).
+    """
+    if isinstance(raw_content, str):
+        stripped = raw_content.strip()
+        return (stripped, None, [], None) if stripped else ("", None, [], None)
+
+    if not isinstance(raw_content, list):
+        return ("", None, [], None)
+
+    text_parts: list[str] = []
+    image_parts: list[ContentPart] = []
+    thinking_parts: list[str] = []
+    tool_calls: list[ToolCall] = []
+    obs_results: list[ObservationResult] = []
+    tool_results = tool_results or {}
+
+    for block in raw_content:
+        if not isinstance(block, dict):
+            continue
+        block_type = block.get("type", "text")
+
+        if block_type == "text":
+            text = block.get("text", "")
+            if text and not _IMAGE_SOURCE_PLACEHOLDER_RE.match(text):
+                text_parts.append(text)
+
+        elif block_type == "image":
+            source = block.get("source", {})
+            if isinstance(source, dict) and source.get("type") == "base64":
+                image_parts.append(
+                    ContentPart(
+                        type=ContentType.IMAGE,
+                        source=Base64Source(
+                            media_type=source.get("media_type", "image/png"),
+                            base64=source.get("data", ""),
+                        ),
+                    )
+                )
+
+        elif block_type == "thinking":
+            thinking = block.get("thinking", "")
+            if thinking:
+                thinking_parts.append(thinking)
+
+        elif block_type == "tool_use":
+            tool_call_id = block.get("id", "")
+            tool_calls.append(
+                ToolCall(
+                    tool_call_id=tool_call_id,
+                    function_name=block.get("name", ""),
+                    arguments=block.get("input"),
+                )
+            )
+            # Inject pre-scanned tool result if available
+            result = tool_results.get(tool_call_id) if tool_call_id else None
+            if result:
+                obs_results.append(
+                    ObservationResult(
+                        source_call_id=tool_call_id,
+                        content=_extract_tool_result_content(result.get("output")),
+                        is_error=bool(result.get("is_error")),
+                        extra=_extract_tool_result_metadata(result),
+                    )
+                )
+
+        elif block_type == "tool_result":
+            # When pre-scan results are available, tool_result blocks are
+            # already captured via the tool_use branch above. Skip direct
+            # processing to prevent duplicate ObservationResults.
+            if tool_results:
+                continue
+            obs_results.append(
+                ObservationResult(
+                    source_call_id=block.get("tool_use_id", ""),
+                    content=_extract_tool_result_content(block.get("content")),
+                    is_error=bool(block.get("is_error")),
+                )
+            )
+
+    # Build message: use list[ContentPart] when images are present
+    if image_parts:
+        content_parts: list[ContentPart] = []
+        joined_text = "\n\n".join(text_parts).strip()
+        if joined_text:
+            content_parts.append(ContentPart(type=ContentType.TEXT, text=joined_text))
+        content_parts.extend(image_parts)
+        message: str | list[ContentPart] = content_parts
+    else:
+        message = "\n\n".join(text_parts).strip() if text_parts else ""
+
+    reasoning_content = "\n\n".join(thinking_parts).strip() if thinking_parts else None
+    observation = Observation(results=obs_results) if obs_results else None
+
+    return message, reasoning_content, tool_calls, observation
+
+
+def _merge_entry_group(group: list[dict]) -> dict:
+    """Merge a group of streaming chunks into a single pseudo-entry.
+
+    Concatenates message.content lists from all entries in the group.
+    Uses the first entry's uuid, timestamp, and metadata as the base.
+
+    Args:
+        group: One or more JSONL entries sharing the same message.id.
+
+    Returns:
+        Single merged entry dict.
+    """
+    if len(group) == 1:
+        return group[0]
+
+    merged = dict(group[0])
+    merged_msg = dict(merged.get("message", {}))
+
+    # Concatenate content lists from all chunks
+    all_content: list = []
+    for entry in group:
+        chunk_content = entry.get("message", {}).get("content", "")
+        if isinstance(chunk_content, list):
+            all_content.extend(chunk_content)
+        elif chunk_content:
+            all_content.append({"type": "text", "text": str(chunk_content)})
+
+    merged_msg["content"] = all_content
+    merged["message"] = merged_msg
+    return merged
+
+
+def _build_step_metrics(usage_data: dict | None) -> Metrics | None:
+    """Build a :class:`Metrics` from an Anthropic-style ``usage`` dict, or None."""
+    if not usage_data:
+        return None
+    return Metrics.from_tokens(
+        input_tokens=usage_data.get("input_tokens") or 0,
+        output_tokens=usage_data.get("output_tokens") or 0,
+        cache_read_tokens=usage_data.get("cache_read_input_tokens") or 0,
+        cache_write_tokens=usage_data.get("cache_creation_input_tokens") or 0,
+    )
+
+
+def _build_step_extra(
+    entry: dict, classify_extra: dict[str, Any] | None = None
+) -> dict[str, Any] | None:
+    """Build step-level extra dict from Claude Code entry fields.
+
+    Extracts format-specific metadata (is_sidechain, stop_reason, stop_sequence,
+    cwd, request_id, service_tier, user_type) and merges in any classifier
+    extras (is_skill_output / is_auto_prompt / sourceToolUseID) returned by
+    :func:`classify_user_message`.
+    """
+    extra: dict[str, Any] = {}
+    msg = entry.get("message", {})
+    if not isinstance(msg, dict):
+        msg = {}
+
+    if entry.get("_queue_operation"):
+        extra["is_queued_prompt"] = True
+
+    if entry.get("isSidechain", False):
+        extra["is_sidechain"] = True
+
+    if msg.get("stop_reason") is not None:
+        extra["stop_reason"] = msg["stop_reason"]
+
+    if msg.get("stop_sequence") is not None:
+        extra["stop_sequence"] = msg["stop_sequence"]
+
+    if entry.get("cwd"):
+        extra["cwd"] = entry["cwd"]
+
+    if msg.get("requestId"):
+        extra["request_id"] = msg["requestId"]
+
+    if msg.get("service_tier"):
+        extra["service_tier"] = msg["service_tier"]
+
+    if entry.get("userType") and entry["userType"] != "external":
+        extra["user_type"] = entry["userType"]
+
+    if classify_extra:
+        extra.update(classify_extra)
+
+    return extra or None
+
+
+def _collect_dequeued_timestamps(all_parsed: list[dict]) -> set[str]:
+    """Return enqueue timestamps that were paired with a later dequeue.
+
+    Dequeue events don't reference the original enqueue — they only
+    record their own (delivery) timestamp, which lands a few ms after
+    the enqueue. Pair them FIFO by occurrence order so the matching
+    survives that drift.
+
+    Dequeued messages are delivered as normal ``type: "user"`` entries,
+    so creating a synthetic user entry would duplicate them.
+
+    Args:
+        all_parsed: All parsed JSONL entries (unfiltered).
+
+    Returns:
+        Set of enqueue timestamp strings that were paired with a dequeue.
+    """
+    pending_enqueue_ts: deque[str] = deque()
+    delivered: set[str] = set()
+    for entry in all_parsed:
+        if entry.get("type") != "queue-operation":
+            continue
+        op = entry.get("operation")
+        if op == "enqueue":
+            ts = entry.get("timestamp", "")
+            if ts:
+                pending_enqueue_ts.append(ts)
+        elif op == "dequeue" and pending_enqueue_ts:
+            delivered.add(pending_enqueue_ts.popleft())
+    return delivered
+
+
+def _make_enqueue_user_entry(entry: dict) -> dict:
+    """Transform a queue-operation enqueue event into a synthetic user entry.
+
+    When a user types a message while the assistant is still processing,
+    Claude Code queues it as an enqueue event. If the message is later
+    removed (not dequeued), no standalone user message exists — the
+    enqueue is the only record of the user's input.
+
+    Args:
+        entry: Raw queue-operation JSONL entry with operation="enqueue".
+
+    Returns:
+        Synthetic user entry compatible with _parse_content() processing.
+    """
+    ts = entry.get("timestamp", "")
+    unique_id = f"enqueue-{ts}-{uuid4().hex[:8]}" if ts else f"enqueue-{uuid4()}"
+    return {
+        "type": "user",
+        "uuid": unique_id,
+        "sessionId": entry.get("sessionId", ""),
+        "timestamp": entry.get("timestamp"),
+        "message": {"role": "user", "content": entry["content"]},
+        "_queue_operation": "enqueue",
+    }
+
+
+def _scan_user_text(content) -> str:
+    """Extract human-typed text from a raw user-message ``content`` field.
+
+    Handles both shapes Claude Code emits — string content and the
+    Anthropic content-block list — joining text blocks while skipping
+    image-source echoes and non-text blocks (images, tool_result). Used
+    by the lightweight index scan; full parsing goes through
+    :func:`_decompose_raw_content`.
+    """
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return ""
+    parts: list[str] = []
+    for block in content:
+        if not isinstance(block, dict) or block.get("type") != "text":
+            continue
+        text = block.get("text", "")
+        if text and not _IMAGE_SOURCE_PLACEHOLDER_RE.match(text):
+            parts.append(text)
+    return "\n\n".join(parts)
+
+
+def _read_persisted_agent_id(content: str) -> str:
+    """Read a persisted tool output file to extract agentId.
+
+    When tool_result content contains a <persisted-output> pointer,
+    read the referenced file and return its tail (agentId is near the end).
+    Returns original content if the file cannot be read.
+    """
+    match = _PERSISTED_PATH_PATTERN.search(content)
+    if not match:
+        return content
+    raw_path = match.group(1).strip()
+    # Guard against regex capturing content blobs instead of real file paths
+    if len(raw_path) > MAX_PATH_LENGTH or "\n" in raw_path:
+        return content
+    path = Path(raw_path)
+    try:
+        if not path.is_file():
+            return content
+        text = path.read_text(encoding="utf-8", errors="replace")
+        # agentId is near the end of Agent tool output
+        TAIL_SIZE = 2000
+        return text[-TAIL_SIZE:] if len(text) > TAIL_SIZE else text
+    except OSError:
+        return content
+
+
+def _extract_tool_result_content(content: str | list | None) -> str | list[ContentPart] | None:
+    """Extract text (and optionally images) from a tool_result content field.
+
+    When the content list contains image blocks, returns a list[ContentPart]
+    combining text and image parts. Otherwise returns plain text string.
+
+    Args:
+        content: Raw content from a tool_result block (str, list, or None).
+
+    Returns:
+        Extracted content as str, list[ContentPart], or None if empty.
+    """
+    if content is None:
+        return None
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        text_parts: list[str] = []
+        image_parts: list[ContentPart] = []
+        for item in content:
+            if isinstance(item, str):
+                text_parts.append(item)
+            elif isinstance(item, dict):
+                if item.get("type") == "image":
+                    source = item.get("source", {})
+                    if isinstance(source, dict) and source.get("type") == "base64":
+                        image_parts.append(
+                            ContentPart(
+                                type=ContentType.IMAGE,
+                                source=Base64Source(
+                                    media_type=source.get("media_type", "image/png"),
+                                    base64=source.get("data", ""),
+                                ),
+                            )
+                        )
+                elif "text" in item:
+                    text_parts.append(str(item["text"]))
+        if image_parts:
+            parts: list[ContentPart] = []
+            joined = "\n".join(text_parts)
+            if joined:
+                parts.append(ContentPart(type=ContentType.TEXT, text=joined))
+            parts.extend(image_parts)
+            return parts
+        return "\n".join(text_parts) if text_parts else None
+    return str(content)
+
+
+def _extract_tool_result_metadata(result: dict) -> dict[str, Any] | None:
+    """Extract structured execution metadata from a cached tool result.
+
+    When the tool result cache contains a ``tool_use_result`` dict (captured
+    from the event-level ``toolUseResult`` field), extracts salient fields:
+    exit_code, stdout, stderr, and interrupted.
+
+    Args:
+        result: A single entry from the tool_results cache dict.
+
+    Returns:
+        Metadata dict, or None if no structured metadata is available.
+    """
+    tur = result.get("tool_use_result")
+    if not isinstance(tur, dict):
+        return None
+
+    meta: dict[str, Any] = {}
+    exit_code = tur.get("exitCode")
+    if exit_code is None:
+        exit_code = tur.get("exit_code")
+    if exit_code is not None:
+        meta["exit_code"] = exit_code
+
+    stdout = tur.get("stdout")
+    if isinstance(stdout, str):
+        meta["stdout"] = stdout
+
+    stderr = tur.get("stderr")
+    if isinstance(stderr, str):
+        meta["stderr"] = stderr
+
+    if tur.get("interrupted"):
+        meta["interrupted"] = True
+
+    return meta or None
