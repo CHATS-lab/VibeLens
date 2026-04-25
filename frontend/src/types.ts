@@ -47,6 +47,7 @@ export interface ContentPart {
 export interface ObservationResult {
   source_call_id?: string | null;
   content?: string | ContentPart[] | null;
+  is_error?: boolean;
   subagent_trajectory_ref?: TrajectoryRef[] | null;
 }
 

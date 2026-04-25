@@ -6,13 +6,13 @@ import { MarkdownRenderer } from "../ui/markdown-renderer";
 import { ContentRenderer } from "./content-renderer";
 import { CopyButton } from "../ui/copy-button";
 
-const ERROR_PREFIX = "[ERROR] ";
 const AUTO_EXPAND_LINE_THRESHOLD = 20;
 const MAX_COLLAPSED_LINES = 8;
 
 export function ToolResultBlock({ result }: { result: ObservationResult }) {
   const rawContent = result.content;
   if (!rawContent) return null;
+  const isError = result.is_error ?? false;
 
   // Handle multimodal content (images in tool results)
   if (Array.isArray(rawContent)) {
@@ -23,9 +23,7 @@ export function ToolResultBlock({ result }: { result: ObservationResult }) {
     );
   }
 
-  const isError = rawContent.startsWith(ERROR_PREFIX);
-  const content = isError ? rawContent.slice(ERROR_PREFIX.length) : rawContent;
-  if (!content) return null;
+  const content = rawContent;
 
   const lineCount = content.split("\n").length;
   const isShort = lineCount <= AUTO_EXPAND_LINE_THRESHOLD;
