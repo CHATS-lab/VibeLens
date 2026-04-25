@@ -388,7 +388,7 @@ def compute_dashboard_stats_from_metadata(metadata_list: list[dict]) -> Dashboar
     """Compute dashboard stats from enriched metadata without loading trajectories.
 
     Uses pre-computed final_metrics stored in the metadata cache (populated
-    by ``parser.parse_file`` during index build). This avoids reloading
+    by ``parser.parse`` during index build). This avoids reloading
     every trajectory at request time — the cache holds session-level
     aggregates so the dashboard hot path stays in the tens of milliseconds.
 

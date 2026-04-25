@@ -345,7 +345,7 @@ class LocalTrajectoryStore(BaseTrajectoryStore):
                 meta["filepath"] = str(self._index[sid][0])
                 self._metadata_cache[sid] = meta
 
-        # Re-parse changed + new. Both go through parser.parse_file in
+        # Re-parse changed + new. Both go through parser.parse in
         # _enrich; we no longer try to do a fast-scanner incremental on
         # appended files because the dashboard needs len(steps) truth and
         # that cannot be merged from a delta without re-running parser
@@ -520,4 +520,4 @@ def _enrich_skeleton_metrics(
         enriched += 1
 
     if enriched:
-        logger.info("Enriched %d skeletons via parser.parse_file", enriched)
+        logger.info("Enriched %d skeletons via parser.parse", enriched)

@@ -25,7 +25,7 @@ logger = get_logger(__name__)
 # v10 invalidates v9 caches whose ``final_metrics.total_steps`` was
 # populated from the fast scanner's ``message_count`` (JSONL line count,
 # structurally larger than ``len(steps)``). v10 entries are written via
-# ``parser.parse_file`` so ``total_steps == len(traj.steps)`` and
+# ``parser.parse`` so ``total_steps == len(traj.steps)`` and
 # ``daily_breakdown.messages`` sums to the same — the contract the
 # dashboard relies on.
 CACHE_VERSION = 10

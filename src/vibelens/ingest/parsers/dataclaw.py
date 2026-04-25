@@ -6,7 +6,7 @@ histories exported as structured JSONL.
 Unlike the local CLI parsers (claude_code, codex, gemini) where each file
 holds one session, dataclaw packs **one complete session per JSONL line**.
 Each line is a self-contained JSON object with session metadata, message
-array, and pre-computed stats — so ``parse_file`` can return multiple
+array, and pre-computed stats — so ``parse`` can return multiple
 Trajectory objects from a single file.
 
 The format is a third-party export format (dataclaw tool), not a native
