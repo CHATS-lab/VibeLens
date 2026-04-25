@@ -1,9 +1,7 @@
-import { DollarSign } from "lucide-react";
-import { useState } from "react";
+import { BarChart3, DollarSign } from "lucide-react";
 import type { Trajectory } from "../../types";
 import { formatTokens, formatCost } from "../../utils";
 import { Tooltip } from "../ui/tooltip";
-import { METRIC_LABEL } from "../../styles";
 import { SESSION_ID_SHORT, PREVIEW_SHORT } from "../../constants";
 
 export function MetaPill({
@@ -18,7 +16,7 @@ export function MetaPill({
   label: string;
   color: string;
   bg?: string;
-  tooltip?: string;
+  tooltip?: React.ReactNode;
   /** Optional click handler. Presence makes the pill a real button. */
   onClick?: (event: React.MouseEvent) => void;
 }) {
@@ -42,55 +40,68 @@ export function MetaPill({
   return <Tooltip text={tooltip}>{pill}</Tooltip>;
 }
 
-export function TokenStat({
-  icon,
-  label,
-  value,
-  color,
-  tooltip,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: number;
-  color: string;
-  tooltip?: string;
-}) {
-  const [show, setShow] = useState(false);
+interface MetricsPillProps {
+  cost: number | null;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  totalTokens: number;
+}
 
-  return (
-    <div
-      className="relative bg-subtle rounded px-2 py-1.5"
-      onMouseEnter={() => setShow(true)}
-      onMouseLeave={() => setShow(false)}
-    >
-      <p className={`${METRIC_LABEL} flex items-center gap-1`}>{icon}{label}</p>
-      <p className={`${color} font-mono`}>{formatTokens(value)}</p>
-      {tooltip && show && (
-        <span className="absolute left-1/2 -translate-x-1/2 top-full mt-1 z-[100] px-2.5 py-1.5 rounded-md bg-canvas border border-card text-[11px] text-secondary whitespace-nowrap shadow-lg pointer-events-none">
-          {tooltip}
-        </span>
+/** Compact pill that surfaces the session's cost (or total tokens when cost is
+ * unavailable) and reveals the full input/output/cache breakdown on hover.
+ */
+export function MetricsPill({
+  cost,
+  inputTokens,
+  outputTokens,
+  cacheReadTokens,
+  cacheWriteTokens,
+  totalTokens,
+}: MetricsPillProps) {
+  const tooltip = (
+    <div className="grid grid-cols-[auto_auto] gap-x-3 gap-y-0.5 text-left font-mono tabular-nums">
+      <span className="text-muted">Input</span>
+      <span className="text-cyan-700 dark:text-cyan-300">{formatTokens(inputTokens)}</span>
+      <span className="text-muted">Output</span>
+      <span className="text-cyan-700 dark:text-cyan-300">{formatTokens(outputTokens)}</span>
+      <span className="text-muted">Cache read</span>
+      <span className="text-emerald-700 dark:text-emerald-300">{formatTokens(cacheReadTokens)}</span>
+      <span className="text-muted">Cache write</span>
+      <span className="text-violet-700 dark:text-violet-300">{formatTokens(cacheWriteTokens)}</span>
+      <span className="text-muted">Total</span>
+      <span className="text-amber-700 dark:text-amber-300">{formatTokens(totalTokens)}</span>
+      {cost != null && (
+        <>
+          <span className="text-muted">Est. cost</span>
+          <span className="text-emerald-700 dark:text-emerald-300">{formatCost(cost)}</span>
+        </>
       )}
     </div>
   );
-}
 
-export function CostStat({ value }: { value: number }) {
-  const [show, setShow] = useState(false);
+  const showCost = cost != null;
+  const icon = showCost ? (
+    <DollarSign className="w-3 h-3" />
+  ) : (
+    <BarChart3 className="w-3 h-3" />
+  );
+  // Strip the leading $ from formatCost — the DollarSign icon already carries the unit.
+  const label = showCost ? formatCost(cost).replace(/\$/g, "") : formatTokens(totalTokens);
+  const colorClass = showCost
+    ? "text-emerald-700 dark:text-emerald-300"
+    : "text-amber-700 dark:text-amber-300";
 
   return (
-    <div
-      className="relative bg-subtle rounded px-2 py-1.5"
-      onMouseEnter={() => setShow(true)}
-      onMouseLeave={() => setShow(false)}
-    >
-      <p className={`${METRIC_LABEL} flex items-center gap-1`}><DollarSign className="w-3 h-3" />Est. Cost</p>
-      <p className="text-emerald-700 dark:text-emerald-300 font-mono">{formatCost(value)}</p>
-      {show && (
-        <span className="absolute left-1/2 -translate-x-1/2 top-full mt-1 z-[100] px-2.5 py-1.5 rounded-md bg-canvas border border-card text-[11px] text-secondary whitespace-nowrap shadow-lg pointer-events-none">
-          Estimated cost based on API pricing
-        </span>
-      )}
-    </div>
+    <Tooltip text={tooltip}>
+      <span
+        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-mono tabular-nums bg-control border border-card hover:bg-control-hover transition-colors ${colorClass}`}
+      >
+        {icon}
+        <span>{label}</span>
+      </span>
+    </Tooltip>
   );
 }
 

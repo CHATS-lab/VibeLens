@@ -1,6 +1,6 @@
 import { CheckSquare, Square, ShieldCheck, Link2 } from "lucide-react";
 import type { Trajectory } from "../../types";
-import { formatTime, truncate, baseProjectName } from "../../utils";
+import { formatTime, truncate, baseProjectName, tildifyPath } from "../../utils";
 
 export interface SessionRowProps {
   session: Trajectory;
@@ -53,7 +53,7 @@ export function SessionRow({
       >
         {showProject && (
           <div className="flex items-center justify-between mb-0.5 min-w-0">
-            <span className="text-xs text-muted uppercase tracking-wide truncate" title={session.project_path || ""}>
+            <span className="text-xs text-muted uppercase tracking-wide truncate" title={tildifyPath(session.project_path || "")}>
               {baseProjectName(session.project_path || "")}
             </span>
             <div className="flex items-center gap-1 shrink-0 ml-2">

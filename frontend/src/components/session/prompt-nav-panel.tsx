@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Bot, Compass, Layers, MessageSquare, ScrollText, User, PanelRightClose, PanelRightOpen, Wrench } from "lucide-react";
+import { Bot, Compass, Layers, ScrollText, User, PanelRightClose, PanelRightOpen, Wrench } from "lucide-react";
 import { Tooltip } from "../ui/tooltip";
-import { extractMessageText, extractUserText, truncate } from "../../utils";
+import { extractMessageText, extractUserText, formatStepTime, truncate } from "../../utils";
 import { ResizeHandle } from "../ui/resize-handle";
 import type { Step, Trajectory } from "../../types";
 import type { FlowPhaseGroup, FlowSection } from "./flow-layout";
@@ -19,6 +19,39 @@ interface PromptEntry {
   stepId: string;
   preview: string;
   isPlan: boolean;
+  timestamp: string | null;
+}
+
+/** Compact header for a nav row: color-coded icon, dimmed "#N", right-aligned time.
+ * Replaces the chunky `Icon + "User #N"` pattern with something quieter.
+ */
+function NavRowHeader({
+  icon,
+  index,
+  timestamp,
+  sessionStart,
+  badge,
+}: {
+  icon: React.ReactNode;
+  index: number;
+  timestamp: string | null;
+  sessionStart: string | null;
+  badge?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2 mb-1">
+      <div className="flex items-center gap-1.5 min-w-0">
+        {icon}
+        <span className="text-[11px] tabular-nums text-dimmed">#{index}</span>
+        {badge}
+      </div>
+      {timestamp && (
+        <span className="text-[10px] tabular-nums text-dimmed shrink-0">
+          {formatStepTime(timestamp, sessionStart)}
+        </span>
+      )}
+    </div>
+  );
 }
 
 interface PromptNavPanelProps {
@@ -58,6 +91,7 @@ function buildPromptEntries(steps: Step[]): PromptEntry[] {
         stepId: step.step_id,
         preview: truncate(text.replace(/\n/g, " "), PREVIEW_LONG),
         isPlan: true,
+        timestamp: step.timestamp ?? null,
       });
       continue;
     }
@@ -70,6 +104,7 @@ function buildPromptEntries(steps: Step[]): PromptEntry[] {
       stepId: step.step_id,
       preview: truncate(text.replace(/\n/g, " "), PREVIEW_LONG),
       isPlan: false,
+      timestamp: step.timestamp ?? null,
     });
   }
 
@@ -97,6 +132,7 @@ export function PromptNavPanel({
   const hasPrompts = entries.length >= MIN_PROMPTS_FOR_NAV;
   const hasSubAgents = subAgents.length > 0;
   const hasFlowPhases = viewMode === "workflow" && flowPhases && flowPhases.length > 0;
+  const sessionStart = steps[0]?.timestamp ?? null;
   const [activeSubAgentId, setActiveSubAgentId] = useState<string | null>(null);
 
   if (!hasPrompts && !hasSubAgents && !hasFlowPhases) return null;
@@ -149,9 +185,6 @@ export function PromptNavPanel({
                 const iconColor = isAuto
                   ? (isActive ? "text-accent-teal" : "text-accent-teal/60 group-hover:text-accent-teal")
                   : (isActive ? "text-accent-cyan" : "text-accent-cyan/60 group-hover:text-accent-cyan");
-                const labelColor = isAuto
-                  ? (isActive ? "text-accent-teal" : "text-accent-teal/70 group-hover:text-accent-teal")
-                  : (isActive ? "text-accent-cyan" : "text-accent-cyan/70 group-hover:text-accent-cyan");
                 const previewColor = isActive
                   ? "text-secondary"
                   : "text-secondary group-hover:text-secondary";
@@ -164,17 +197,19 @@ export function PromptNavPanel({
                       isActive ? "bg-control" : "hover:bg-control"
                     }`}
                   >
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                      <User className={`w-3.5 h-3.5 shrink-0 ${iconColor}`} />
-                      <span className={`font-mono font-semibold text-xs ${labelColor}`}>
-                        User #{anchor.promptIndex}
-                      </span>
-                      {isAuto && (
-                        <span className="text-[9px] uppercase tracking-wider text-amber-500/50 font-semibold">
-                          auto
-                        </span>
-                      )}
-                    </div>
+                    <NavRowHeader
+                      icon={<User className={`w-3.5 h-3.5 shrink-0 ${iconColor}`} />}
+                      index={anchor.promptIndex}
+                      timestamp={anchor.timestamp}
+                      sessionStart={sessionStart}
+                      badge={
+                        isAuto ? (
+                          <span className="text-[9px] uppercase tracking-wider text-amber-500/50 font-semibold">
+                            auto
+                          </span>
+                        ) : undefined
+                      }
+                    />
                     <p className={`line-clamp-2 leading-snug ${previewColor}`}>
                       {truncate(anchor.label, PREVIEW_LONG)}
                     </p>
@@ -284,20 +319,20 @@ export function PromptNavPanel({
                       isActive ? "bg-control" : "hover:bg-control"
                     }`}
                   >
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                      <ScrollText
-                        className={`w-3.5 h-3.5 shrink-0 ${
-                          isActive ? "text-accent-teal" : "text-accent-teal/70 group-hover:text-accent-teal"
-                        }`}
-                      />
-                      <span
-                        className={`font-mono font-semibold text-xs shrink-0 ${
-                          isActive ? "text-accent-teal" : "text-accent-teal/70 group-hover:text-accent-teal"
-                        }`}
-                      >
-                        Plan #{entry.turnNumber}
-                      </span>
-                    </div>
+                    <NavRowHeader
+                      icon={
+                        <ScrollText
+                          className={`w-3.5 h-3.5 shrink-0 ${
+                            isActive
+                              ? "text-accent-teal"
+                              : "text-accent-teal/70 group-hover:text-accent-teal"
+                          }`}
+                        />
+                      }
+                      index={entry.turnNumber}
+                      timestamp={entry.timestamp}
+                      sessionStart={sessionStart}
+                    />
                     <p
                       className={`line-clamp-2 leading-snug ${
                         isActive ? "text-secondary" : "text-secondary group-hover:text-secondary"
@@ -316,20 +351,20 @@ export function PromptNavPanel({
                     isActive ? "bg-control" : "hover:bg-control"
                   }`}
                 >
-                  <div className="flex items-center gap-1.5 mb-0.5">
-                    <User
-                      className={`w-3.5 h-3.5 shrink-0 ${
-                        isActive ? "text-accent-cyan" : "text-accent-cyan/60 group-hover:text-accent-cyan"
-                      }`}
-                    />
-                    <span
-                      className={`font-mono font-semibold text-xs shrink-0 ${
-                        isActive ? "text-accent-cyan" : "text-accent-cyan/70 group-hover:text-accent-cyan"
-                      }`}
-                    >
-                      User #{entry.turnNumber}
-                    </span>
-                  </div>
+                  <NavRowHeader
+                    icon={
+                      <User
+                        className={`w-3.5 h-3.5 shrink-0 ${
+                          isActive
+                            ? "text-accent-cyan"
+                            : "text-accent-cyan/60 group-hover:text-accent-cyan"
+                        }`}
+                      />
+                    }
+                    index={entry.turnNumber}
+                    timestamp={entry.timestamp}
+                    sessionStart={sessionStart}
+                  />
                   <p
                     className={`line-clamp-2 leading-snug ${
                       isActive ? "text-secondary" : "text-secondary group-hover:text-secondary"
@@ -361,30 +396,29 @@ export function PromptNavPanel({
                     isActive ? "bg-control" : "hover:bg-control"
                   }`}
                 >
-                  <div className="flex items-center gap-1.5 mb-0.5">
-                    <Bot
-                      className={`w-3.5 h-3.5 shrink-0 ${
-                        isActive ? "text-accent-violet" : "text-accent-violet/70 group-hover:text-accent-violet"
-                      }`}
-                    />
-                    <span
-                      className={`font-mono font-semibold text-xs shrink-0 ${
-                        isActive ? "text-accent-violet" : "text-accent-violet/70 group-hover:text-accent-violet"
-                      }`}
-                    >
-                      Sub-Agent #{idx + 1}
-                    </span>
-                  </div>
-                  <div className={`flex items-center gap-2 text-[11px] ${isActive ? "text-secondary" : "text-muted"}`}>
-                    <span className="inline-flex items-center gap-0.5">
-                      <MessageSquare className="w-3 h-3" />
-                      {stepCount} steps
-                    </span>
-                    <span className="inline-flex items-center gap-0.5">
-                      <Wrench className="w-3 h-3" />
-                      {toolCount} tools
-                    </span>
-                  </div>
+                  <NavRowHeader
+                    icon={
+                      <Bot
+                        className={`w-3.5 h-3.5 shrink-0 ${
+                          isActive
+                            ? "text-accent-violet"
+                            : "text-accent-violet/70 group-hover:text-accent-violet"
+                        }`}
+                      />
+                    }
+                    index={idx + 1}
+                    timestamp={sub.timestamp ?? null}
+                    sessionStart={sessionStart}
+                    badge={
+                      <span
+                        className={`text-[11px] whitespace-nowrap ${
+                          isActive ? "text-muted" : "text-dimmed"
+                        }`}
+                      >
+                        {stepCount} steps · {toolCount} tools
+                      </span>
+                    }
+                  />
                   {sub.first_message && (
                     <p
                       className={`line-clamp-2 leading-snug ${
@@ -424,23 +458,25 @@ export function PromptNavPanel({
                       isActive ? "bg-control" : "hover:bg-control"
                     }`}
                   >
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                      <Bot
-                        className={`w-3.5 h-3.5 shrink-0 ${
-                          isActive ? "text-accent-violet" : "text-accent-violet/70 group-hover:text-accent-violet"
-                        }`}
-                      />
-                      <span
-                        className={`font-mono font-semibold text-xs shrink-0 ${
-                          isActive ? "text-accent-violet" : "text-accent-violet/70 group-hover:text-accent-violet"
-                        }`}
-                      >
-                        Sub-Agent #{idx + 1}
-                      </span>
-                      <span className={`text-[11px] ${isActive ? "text-muted" : "text-dimmed"}`}>
-                        {stepCount} steps · {toolCount} tools
-                      </span>
-                    </div>
+                    <NavRowHeader
+                      icon={
+                        <Bot
+                          className={`w-3.5 h-3.5 shrink-0 ${
+                            isActive
+                              ? "text-accent-violet"
+                              : "text-accent-violet/70 group-hover:text-accent-violet"
+                          }`}
+                        />
+                      }
+                      index={idx + 1}
+                      timestamp={sub.timestamp ?? null}
+                      sessionStart={sessionStart}
+                      badge={
+                        <span className={`text-[11px] ${isActive ? "text-muted" : "text-dimmed"}`}>
+                          {stepCount} steps · {toolCount} tools
+                        </span>
+                      }
+                    />
                     {sub.first_message && (
                       <p
                         className={`line-clamp-2 leading-snug ${

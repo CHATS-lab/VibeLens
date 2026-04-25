@@ -34,6 +34,7 @@ export interface FlowUserCardData {
   stepIndex: number;
   promptIndex: number;
   isAutoPrompt: boolean;
+  timestamp: string | null;
 }
 
 export type FlowCard =
@@ -166,6 +167,7 @@ function buildCards(steps: Step[]): CardSplit {
         stepIndex: stepIdx,
         promptIndex: promptNumber,
         isAutoPrompt: isAuto,
+        timestamp: step.timestamp ?? null,
       });
     }
 

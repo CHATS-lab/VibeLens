@@ -72,6 +72,20 @@ export function baseProjectName(path: string): string {
   return tail.join("/");
 }
 
+/** Replace a per-OS home prefix with `~`. Browser-side display only — we
+ * cannot read the user's actual $HOME, so we match the conventional
+ * shapes: macOS (`/Users/<name>`), Linux (`/home/<name>`, `/root`),
+ * Windows (`<drive>:\Users\<name>` or `<drive>:/Users/<name>`).
+ */
+export function tildifyPath(path: string): string {
+  if (!path) return path;
+  let result = path.replace(/^\/Users\/[^/]+(?=\/|$)/, "~");
+  result = result.replace(/^\/home\/[^/]+(?=\/|$)/, "~");
+  result = result.replace(/^\/root(?=\/|$)/, "~");
+  result = result.replace(/^[A-Za-z]:[\\/]Users[\\/][^\\/]+(?=[\\/]|$)/, "~");
+  return result;
+}
+
 export function formatElapsed(totalSeconds: number): string {
   const hours = Math.floor(totalSeconds / HOUR);
   const minutes = Math.floor((totalSeconds % HOUR) / MINUTE);

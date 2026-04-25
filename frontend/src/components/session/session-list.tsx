@@ -17,7 +17,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppContext } from "../../app";
 import { sessionsClient } from "../../api/sessions";
 import type { Trajectory } from "../../types";
-import { baseProjectName } from "../../utils";
+import { baseProjectName, tildifyPath } from "../../utils";
 import { Tooltip } from "../ui/tooltip";
 import { EmptyState } from "../ui/empty-state";
 import { SESSIONS_PER_PAGE, SEARCH_DEBOUNCE_MS } from "../../constants";
@@ -377,7 +377,7 @@ export function SessionList({
                       <ChevronRight className="w-3.5 h-3.5 shrink-0" />
                     )}
                     <FolderOpen className="w-3.5 h-3.5 shrink-0 text-dimmed" />
-                    <span className="truncate font-medium" title={projectName}>
+                    <span className="truncate font-medium" title={tildifyPath(projectName)}>
                       {baseProjectName(projectName)}
                     </span>
                     <span className="ml-auto text-dimmed shrink-0">

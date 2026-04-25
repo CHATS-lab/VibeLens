@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 interface TooltipProps {
-  text: string;
+  text: React.ReactNode;
   children: React.ReactNode;
   className?: string;
 }
@@ -14,7 +14,7 @@ interface TooltipProps {
  */
 export function Tooltip({ text, children, className }: TooltipProps) {
   const [visible, setVisible] = useState(false);
-  const [coords, setCoords] = useState<{ top: number; left: number; flipped: boolean } | null>(null);
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
   const triggerRef = useRef<HTMLSpanElement>(null);
   const tooltipRef = useRef<HTMLSpanElement>(null);
 
@@ -22,16 +22,10 @@ export function Tooltip({ text, children, className }: TooltipProps) {
     if (!visible || !triggerRef.current) return;
 
     const rect = triggerRef.current.getBoundingClientRect();
-    const tooltipHeight = tooltipRef.current?.offsetHeight ?? 32;
     const tooltipWidth = tooltipRef.current?.offsetWidth ?? 200;
     const GAP = 6;
 
-    // Reserve clearance for fixed headers (tab bar, nav, etc.)
-    const TOP_CLEARANCE = 48;
-    const fitsAbove = rect.top - tooltipHeight - GAP > TOP_CLEARANCE;
-    const top = fitsAbove
-      ? rect.top - GAP + window.scrollY
-      : rect.bottom + GAP + window.scrollY;
+    const top = rect.bottom + GAP + window.scrollY;
 
     // Clamp horizontal position so the tooltip stays within viewport
     const rawLeft = rect.left + rect.width / 2 + window.scrollX;
@@ -40,7 +34,7 @@ export function Tooltip({ text, children, className }: TooltipProps) {
     const maxLeft = window.innerWidth - halfWidth - 8;
     const left = Math.max(minLeft, Math.min(maxLeft, rawLeft));
 
-    setCoords({ top, left, flipped: !fitsAbove });
+    setCoords({ top, left });
   }, [visible]);
 
   return (
@@ -59,9 +53,7 @@ export function Tooltip({ text, children, className }: TooltipProps) {
               position: "absolute",
               top: coords?.top ?? -9999,
               left: coords?.left ?? -9999,
-              transform: coords?.flipped
-                ? "translateX(-50%)"
-                : "translateX(-50%) translateY(-100%)",
+              transform: "translateX(-50%)",
               visibility: coords ? "visible" : "hidden",
             }}
             className="z-[9999] px-3 py-2 text-xs leading-relaxed text-primary bg-white dark:bg-control border border-default dark:border-hover rounded-lg shadow-lg dark:shadow-2xl max-w-[300px] w-max text-center pointer-events-none break-words"
