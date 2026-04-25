@@ -1,19 +1,12 @@
 # Writing a new agent parser
 
-Procedural guide. For the architecture overview see [README.md](README.md);
-for each existing parser's specifics read its `<parser>.md` neighbour. Read
-this end-to-end **before** writing code — most parser bugs trace to an
-assumption made without inspecting actual session files.
+Procedural guide. For the architecture overview see [README.md](README.md); for each existing parser's specifics read its `<parser>.md` neighbour. Read this end-to-end **before** writing code — most parser bugs trace to an assumption made without inspecting actual session files.
 
 A parser is **done** when:
 
-1. **Fidelity** — every ATIF field the source data can populate is populated.
-   No invented values; no silent data loss.
-2. **Robustness** — every session file on disk parses without raising,
-   including stale snapshots, duplicates, format drift, malformed lines.
-   Failures become diagnostics, not exceptions.
-3. **Shape** — sub-agents link to parents, continuations to predecessors,
-   sessions deduplicate against the format's ground-truth index.
+1. **Fidelity** — every ATIF field the source data can populate is populated. No invented values; no silent data loss.
+2. **Robustness** — every session file on disk parses without raising, including stale snapshots, duplicates, format drift, malformed lines. Failures become diagnostics, not exceptions.
+3. **Shape** — sub-agents link to parents, continuations to predecessors, sessions deduplicate against the format's ground-truth index.
 
 ---
 
@@ -30,10 +23,7 @@ A parser is **done** when:
 
 ### 0 — Data collection
 
-Install the agent locally. Run sessions covering: short, long (50+ turns,
-ideally with compaction), with sub-agents / spawn calls, with a tool error,
-resumed if applicable. Open the on-disk files. Note total count, file
-extensions, filename patterns, paired siblings, index files.
+Install the agent locally. Run sessions covering: short, long (50+ turns, ideally with compaction), with sub-agents / spawn calls, with a tool error, resumed if applicable. Open the on-disk files. Note total count, file extensions, filename patterns, paired siblings, index files.
 
 ### 1 — Format research
 
@@ -54,8 +44,7 @@ Answer these for the spec:
 
 ### 2 — Design (write the spec doc)
 
-Use [openclaw.md](openclaw.md) (simple) or [hermes.md](hermes.md) (complex,
-multiple sources) as a template. Required sections:
+Use [openclaw.md](openclaw.md) (simple) or [hermes.md](hermes.md) (complex, multiple sources) as a template. Required sections:
 
 - File layout (directory tree with example filenames)
 - Wire format (annotated JSON/JSONL example)
@@ -86,62 +75,36 @@ parse(file_path)                              ← BaseParser, no override
 
 Two parser shapes:
 
-- **Single-session-per-file** (claude, codex, gemini, hermes, openclaw):
-  implement the three abstract hooks. Don't override `parse`.
-- **Multi-session-per-file** (dataclaw, claude_web, parsed): override
-  `parse(file_path)` directly. Iterate records → build per-record
-  `Trajectory` → call `self._finalize(traj, diagnostics)` so derived fields
-  stay consistent.
+- **Single-session-per-file** (claude, codex, gemini, hermes, openclaw): implement the three abstract hooks. Don't override `parse`.
+- **Multi-session-per-file** (dataclaw, claude_web, parsed): override `parse(file_path)` directly. Iterate records → build per-record `Trajectory` → call `self._finalize(traj, diagnostics)` so derived fields stay consistent.
 
 ### Hook contracts
 
 **`_decode_file(file_path, diagnostics) → raw | None`**
 
-Read + parse the wire format. Return `None` on read failure or empty
-content. Catch only specific exceptions (`OSError`, `UnicodeDecodeError`,
-`json.JSONDecodeError`, `sqlite3.Error`).
+Read + parse the wire format. Return `None` on read failure or empty content. Catch only specific exceptions (`OSError`, `UnicodeDecodeError`, `json.JSONDecodeError`, `sqlite3.Error`).
 
 **`_extract_metadata(raw, file_path, diagnostics) → Trajectory | None`**
 
-Build a Trajectory **header**: `session_id`, `agent`, `project_path`,
-`parent_trajectory_ref`, `prev_trajectory_ref`, `extra`. Leave `steps=[]`.
-**Don't** set `timestamp`, `first_message`, or `final_metrics` — `_finalize`
-derives them.
+Build a Trajectory **header**: `session_id`, `agent`, `project_path`, `parent_trajectory_ref`, `prev_trajectory_ref`, `extra`. Leave `steps=[]`. **Don't** set `timestamp`, `first_message`, or `final_metrics` — `_finalize` derives them.
 
-For sub-agent files that reuse the parent's session id (Claude's
-`<sid>/subagents/agent-*.jsonl`, Gemini's `kind: subagent`), use a
-**synthetic id** (filename stem) and put the parent's id in
-`parent_trajectory_ref`. The synthetic id avoids index collisions.
+For sub-agent files that reuse the parent's session id (Claude's `<sid>/subagents/agent-*.jsonl`, Gemini's `kind: subagent`), use a **synthetic id** (filename stem) and put the parent's id in `parent_trajectory_ref`. The synthetic id avoids index collisions.
 
-`Trajectory.session_id` validates against path traversal (no `/`, `\`, `..`,
-null bytes).
+`Trajectory.session_id` validates against path traversal (no `/`, `\`, `..`, null bytes).
 
 **`_build_steps(raw, traj, file_path, diagnostics) → list[Step]`**
 
-Walk raw data, build ordered Steps. May mutate `traj` when fields legitimately
-depend on per-step content (e.g. gemini backfills `traj.agent.model_name`
-from the most recent step model).
+Walk raw data, build ordered Steps. May mutate `traj` when fields legitimately depend on per-step content (e.g. gemini backfills `traj.agent.model_name` from the most recent step model).
 
-Set `ObservationResult.is_error` from the format's **native** error signal
-(`tool_result.is_error`, `msg.isError`, `status == "error"`). Never bake
-`[ERROR] ` into content.
+Set `ObservationResult.is_error` from the format's **native** error signal (`tool_result.is_error`, `msg.isError`, `status == "error"`). Never bake `[ERROR] ` into content.
 
-When the format embeds child IDs inside tool_results (Claude's
-`agentId: <hex>`, Codex's `spawn_agent` JSON output), set
-`result.subagent_trajectory_ref` directly here. `_load_subagents` then only
-**locates** files.
+When the format embeds child IDs inside tool_results (Claude's `agentId: <hex>`, Codex's `spawn_agent` JSON output), set `result.subagent_trajectory_ref` directly here. `_load_subagents` then only **locates** files.
 
-**Copied-context detection** (Claude's `--resume`): compare each entry's
-sessionId against the **in-file canonical** sessionId from
-`_scan_session_metadata`, **not** `traj.session_id`. Sub-agent files use a
-synthetic `traj.session_id` (filename stem) but their entries carry the
-parent's id; comparing wrong blanks `first_message`.
+**Copied-context detection** (Claude's `--resume`): compare each entry's sessionId against the **in-file canonical** sessionId from `_scan_session_metadata`, **not** `traj.session_id`. Sub-agent files use a synthetic `traj.session_id` (filename stem) but their entries carry the parent's id; comparing wrong blanks `first_message`.
 
 **`_load_subagents(main, file_path) → list[Trajectory]`**
 
-Override when the format records parent→child linkage. Discover children,
-parse each via `self._parse_trajectory(child_path)`, set
-`parent_trajectory_ref`. Return `[]` if no sub-agents.
+Override when the format records parent→child linkage. Discover children, parse each via `self._parse_trajectory(child_path)`, set `parent_trajectory_ref`. Return `[]` if no sub-agents.
 
 ### Reference template (single-session)
 
@@ -174,10 +137,7 @@ class MyAgentParser(BaseParser):
 
 ### Discovery
 
-Set `DISCOVER_GLOB` (`*.jsonl`, `session-*.json`, etc.). Override
-`discover_session_files` only when the layout is non-trivial: stale-snapshot
-dedup (hermes), sub-dir carve-outs (claude's `subagents/`), filtered files
-(openclaw's reset/clean files).
+Set `DISCOVER_GLOB` (`*.jsonl`, `session-*.json`, etc.). Override `discover_session_files` only when the layout is non-trivial: stale-snapshot dedup (hermes), sub-dir carve-outs (claude's `subagents/`), filtered files (openclaw's reset/clean files).
 
 ### Required helpers
 
@@ -203,9 +163,7 @@ dedup (hermes), sub-dir carve-outs (claude's `subagents/`), filtered files
 7. Second-tier module functions: deep helpers
 ```
 
-Inside the class, methods follow lifecycle: `discover_session_files` →
-`get_session_files` → `parse_session_index` → `parse_skeleton_for_file` →
-`_decode_file` → `_extract_metadata` → `_build_steps` → `_load_subagents`.
+Inside the class, methods follow lifecycle: `discover_session_files` → `get_session_files` → `parse_session_index` → `parse_skeleton_for_file` → `_decode_file` → `_extract_metadata` → `_build_steps` → `_load_subagents`.
 
 ---
 
@@ -224,19 +182,13 @@ Inside the class, methods follow lifecycle: `discover_session_files` →
 
 **Hard rules:**
 
-- `parse(file_path)` and `_decode_file` **never raise**. Failure modes
-  return `None` / `[]`. Exceptions bypass diagnostics and look like real
-  breakage.
-- Don't invent fields — `None` is truthful when the source doesn't carry
-  the value.
-- Don't mutate `Trajectory` after `_finalize`. Stage 3 is the only allowed
-  mutation point (for backfills like `agent.model_name`).
+- `parse(file_path)` and `_decode_file` **never raise**. Failure modes return `None` / `[]`. Exceptions bypass diagnostics and look like real breakage.
+- Don't invent fields — `None` is truthful when the source doesn't carry the value.
+- Don't mutate `Trajectory` after `_finalize`. Stage 3 is the only allowed mutation point (for backfills like `agent.model_name`).
 - Use `is_error: bool`, not string prefixes.
 - Catch specific exceptions, never bare `except`.
-- Keep agent-specific constants in your parser file. `helpers.py` is for
-  what's identical across parsers.
-- Prefer `deterministic_id(...)` over `uuid4()` so re-parsing yields stable
-  IDs.
+- Keep agent-specific constants in your parser file. `helpers.py` is for what's identical across parsers.
+- Prefer `deterministic_id(...)` over `uuid4()` so re-parsing yields stable IDs.
 
 ---
 
@@ -244,23 +196,19 @@ Inside the class, methods follow lifecycle: `discover_session_files` →
 
 Project [`CLAUDE.md`](../../../CLAUDE.md) global rules apply. Parser-specific:
 
-- **Constants:** `ALL_CAPS`, module-private with `_` prefix, comment **why**
-  if non-obvious (don't comment what `re.compile(...)` does).
-- **Docstrings:** class 2–3 lines; public method one line; internal helper
-  one line if non-obvious else nothing. WHY not WHAT.
+- **Constants:** `ALL_CAPS`, module-private with `_` prefix, comment **why** if non-obvious (don't comment what `re.compile(...)` does).
+- **Docstrings:** class 2–3 lines; public method one line; internal helper one line if non-obvious else nothing. WHY not WHAT.
 - **Function length:** ~30 lines max; extract a helper when longer.
-- **Naming:** variables nouns, functions verbs, booleans questions, no
-  abbreviations unless universal.
+- **Naming:** variables nouns, functions verbs, booleans questions, no abbreviations unless universal.
 - **Imports:** grouped (stdlib, third-party, vibelens). No `from __future__`.
-- **Comments:** WHY only. Don't narrate the change, don't reference the PR,
-  don't restate what well-named code already says.
+- **Comments:** WHY only. Don't narrate the change, don't reference the PR, don't restate what well-named code already says.
+- **Markdown paragraphs:** one source line per paragraph in this doc and any spec doc you write — no soft-wrapping inside a paragraph.
 
 ---
 
 ## Testing
 
-`tests/ingest/parsers/test_<agent>.py`, pytest with `tmp_path`. Always test
-through `parser.parse(path)`:
+`tests/ingest/parsers/test_<agent>.py`, pytest with `tmp_path`. Always test through `parser.parse(path)`:
 
 ```python
 def test_basic(tmp_path):
@@ -270,22 +218,15 @@ def test_basic(tmp_path):
     assert len(trajs) == 1
 ```
 
-Per project convention, use `print()` for diagnostic output and run with
-`-v -s`.
+Per project convention, use `print()` for diagnostic output and run with `-v -s`.
 
-**Minimum cases:** basic parse, tool-call/result pairing, tool error
-(`result.is_error is True`, content verbatim), missing session_id, malformed
-JSONL (`parse(corrupt) == []`), sub-agent linkage if applicable.
+**Minimum cases:** basic parse, tool-call/result pairing, tool error (`result.is_error is True`, content verbatim), missing session_id, malformed JSONL (`parse(corrupt) == []`), sub-agent linkage if applicable.
 
-**Real-data coverage audit** (recommended): a throwaway script that runs
-`parser.parse` over every session in `~/.<agent>/`, counts errors, and prints
-ATIF-field coverage. Reading the table:
+**Real-data coverage audit** (recommended): a throwaway script that runs `parser.parse` over every session in `~/.<agent>/`, counts errors, and prints ATIF-field coverage. Reading the table:
 
 - **100%** — expected.
-- **Partial** — usually expected for optional fields (`parent_trajectory_ref`
-  only on sub-agents). Document the shortfall.
-- **Partial / 0% when source has the data** — bug. Add a failing unit test,
-  fix the parser, re-run. Coverage should only go up.
+- **Partial** — usually expected for optional fields (`parent_trajectory_ref` only on sub-agents). Document the shortfall.
+- **Partial / 0% when source has the data** — bug. Add a failing unit test, fix the parser, re-run. Coverage should only go up.
 
 ---
 
@@ -318,10 +259,8 @@ ATIF-field coverage. Reading the table:
 
 - [ ] `uv run pytest tests/ingest/ tests/storage/ -q` — green.
 - [ ] `uv run ruff check src/ tests/` — clean.
-- [ ] `CACHE_VERSION` bumped in `index_cache.py` if cached `Trajectory`
-      shape changed (additive optional fields don't need a bump).
-- [ ] `frontend/src/types.ts` updated if a new field surfaces in UI;
-      `cd frontend && npm run build` ran.
+- [ ] `CACHE_VERSION` bumped in `index_cache.py` if cached `Trajectory` shape changed (additive optional fields don't need a bump).
+- [ ] `frontend/src/types.ts` updated if a new field surfaces in UI; `cd frontend && npm run build` ran.
 
 **Docs**
 
