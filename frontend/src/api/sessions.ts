@@ -44,7 +44,7 @@ export function sessionsClient(fetchWithToken: FetchWithToken): SessionsClient {
       return jsonOrThrow(await fetchWithToken(`/api/sessions/search?${params}`));
     },
     stats: async (sessionId) => {
-      const res = await fetchWithToken(`/api/analysis/sessions/${sessionId}/stats`);
+      const res = await fetchWithToken(`/api/sessions/${sessionId}/stats`);
       return res.ok ? res.json() : null;
     },
     flow: async (sessionId, shareToken) => {

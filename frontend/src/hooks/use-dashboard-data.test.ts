@@ -50,7 +50,7 @@ describe("useDashboardData", () => {
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.stats).not.toBeNull();
-    expect(fetchSpy.mock.calls[0]![0]).toBe("/api/analysis/dashboard");
+    expect(fetchSpy.mock.calls[0]![0]).toBe("/api/dashboard");
   });
 
   it("refetches with filters when a project filter is set", async () => {

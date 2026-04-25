@@ -6,7 +6,7 @@ describe("dashboardClient", () => {
     const fetchSpy = vi.fn(async () => ({ ok: true, json: async () => ({ totals: {} }) }));
     const api = dashboardClient(fetchSpy as never);
     await api.stats();
-    expect(fetchSpy).toHaveBeenCalledWith("/api/analysis/dashboard");
+    expect(fetchSpy).toHaveBeenCalledWith("/api/dashboard");
   });
 
   it("stats includes project_path and agent_name when filters are set", async () => {
@@ -22,7 +22,7 @@ describe("dashboardClient", () => {
     const fetchSpy = vi.fn(async () => ({ ok: true, json: async () => ({ totals: {} }) }));
     const api = dashboardClient(fetchSpy as never);
     await api.stats(undefined, { refresh: true });
-    expect(fetchSpy).toHaveBeenCalledWith("/api/analysis/dashboard?refresh=true");
+    expect(fetchSpy).toHaveBeenCalledWith("/api/dashboard?refresh=true");
   });
 
   it("toolUsage returns [] on non-OK", async () => {

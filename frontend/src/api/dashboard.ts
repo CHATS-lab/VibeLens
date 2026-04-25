@@ -39,12 +39,12 @@ export function dashboardClient(fetchWithToken: FetchWithToken): DashboardClient
       if (opts?.refresh) params.set("refresh", "true");
       const qs = params.toString();
       return jsonOrThrow(
-        await fetchWithToken(`/api/analysis/dashboard${qs ? `?${qs}` : ""}`),
+        await fetchWithToken(`/api/dashboard${qs ? `?${qs}` : ""}`),
       );
     },
     toolUsage: async (filters) => {
       const qs = filterParams(filters).toString();
-      const res = await fetchWithToken(`/api/analysis/tool-usage${qs ? `?${qs}` : ""}`);
+      const res = await fetchWithToken(`/api/tool-usage${qs ? `?${qs}` : ""}`);
       return res.ok ? res.json() : [];
     },
     refreshSessions: async () => {
@@ -53,7 +53,7 @@ export function dashboardClient(fetchWithToken: FetchWithToken): DashboardClient
     export: async (format, filters) => {
       const params = filterParams(filters);
       params.set("format", format);
-      const res = await fetchWithToken(`/api/analysis/dashboard/export?${params}`);
+      const res = await fetchWithToken(`/api/dashboard/export?${params}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return res.blob();
     },

@@ -253,14 +253,14 @@ export function App() {
 
     // Fetch stats first (fast, from metadata) so dashboard renders immediately.
     // Tool usage loads all sessions and arrives later.
-    fetchWithToken("/api/analysis/dashboard")
+    fetchWithToken("/api/dashboard")
       .then((r) => (r.ok ? r.json() : null))
       .then((stats: DashboardStats | null) => {
         if (stats) setDashboardCache({ stats, toolUsage: [] });
       })
       .catch((err) => console.error("Failed to preload dashboard:", err));
 
-    fetchWithToken("/api/analysis/tool-usage")
+    fetchWithToken("/api/tool-usage")
       .then((r) => (r.ok ? r.json() : []))
       .then((toolUsage: ToolUsageStat[]) => {
         setDashboardCache((prev) =>

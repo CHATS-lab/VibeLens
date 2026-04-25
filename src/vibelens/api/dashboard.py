@@ -21,10 +21,10 @@ from vibelens.services.dashboard.loader import (
     invalidate_cache,
 )
 
-router = APIRouter(tags=["analysis"])
+router = APIRouter(tags=["dashboard"])
 
 
-@router.get("/analysis/dashboard")
+@router.get("/dashboard")
 def dashboard_stats(
     project_path: str | None = None,
     date_from: str | None = None,
@@ -43,7 +43,7 @@ def dashboard_stats(
     return get_dashboard_stats(project_path, date_from, date_to, x_session_token, agent_name)
 
 
-@router.get("/analysis/tool-usage")
+@router.get("/tool-usage")
 def tool_usage(
     project_path: str | None = None,
     date_from: str | None = None,
@@ -55,7 +55,7 @@ def tool_usage(
     return get_tool_usage(project_path, date_from, date_to, x_session_token, agent_name)
 
 
-@router.get("/analysis/sessions/{session_id}/stats")
+@router.get("/sessions/{session_id}/stats")
 def session_analytics(
     session_id: str, x_session_token: str | None = Header(None)
 ) -> SessionAnalytics:
@@ -66,7 +66,7 @@ def session_analytics(
     return result
 
 
-@router.get("/analysis/dashboard/export")
+@router.get("/dashboard/export")
 def export_dashboard(
     format: str = Query("csv", pattern="^(csv|json)$"),
     project_path: str | None = None,
