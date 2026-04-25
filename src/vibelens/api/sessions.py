@@ -7,7 +7,9 @@ import zipfile
 from fastapi import APIRouter, Header, HTTPException, Query
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from vibelens.models.dashboard.dashboard import SessionAnalytics
 from vibelens.schemas.session import DownloadRequest
+from vibelens.services.dashboard.loader import get_session_analytics
 from vibelens.services.session.crud import get_session, list_projects, list_sessions
 from vibelens.services.session.flow import get_session_flow
 from vibelens.services.session.search import search_sessions
@@ -132,6 +134,17 @@ async def session_flow(session_id: str, x_session_token: str | None = Header(Non
         Dict with session_id, tool_graph, and phase_segments.
     """
     result = get_session_flow(session_id, x_session_token)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return result
+
+
+@router.get("/sessions/{session_id}/stats")
+def session_analytics(
+    session_id: str, x_session_token: str | None = Header(None)
+) -> SessionAnalytics:
+    """Compute detailed analytics for a single session."""
+    result = get_session_analytics(session_id, x_session_token)
     if result is None:
         raise HTTPException(status_code=404, detail="Session not found")
     return result

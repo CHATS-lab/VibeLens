@@ -2,21 +2,16 @@
 
 from datetime import datetime
 
-from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi import APIRouter, Header, Query
 from fastapi.responses import StreamingResponse
 
-from vibelens.models.dashboard.dashboard import (
-    DashboardStats,
-    SessionAnalytics,
-    ToolUsageStat,
-)
+from vibelens.models.dashboard.dashboard import DashboardStats, ToolUsageStat
 from vibelens.services.dashboard.export import (
     export_dashboard_csv,
     export_dashboard_json,
 )
 from vibelens.services.dashboard.loader import (
     get_dashboard_stats,
-    get_session_analytics,
     get_tool_usage,
     invalidate_cache,
 )
@@ -53,17 +48,6 @@ def tool_usage(
 ) -> list[ToolUsageStat]:
     """Compute per-tool usage statistics (cached)."""
     return get_tool_usage(project_path, date_from, date_to, x_session_token, agent_name)
-
-
-@router.get("/sessions/{session_id}/stats")
-def session_analytics(
-    session_id: str, x_session_token: str | None = Header(None)
-) -> SessionAnalytics:
-    """Compute detailed analytics for a single session."""
-    result = get_session_analytics(session_id, x_session_token)
-    if result is None:
-        raise HTTPException(status_code=404, detail="Session not found")
-    return result
 
 
 @router.get("/dashboard/export")
