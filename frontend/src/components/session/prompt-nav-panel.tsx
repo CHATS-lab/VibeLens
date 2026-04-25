@@ -273,7 +273,7 @@ export function PromptNavPanel({
 
       {/* Mode Toggle */}
       {hasPrompts && hasSubAgents && (
-        <div className="shrink-0 px-3 pb-2">
+        <div className="shrink-0 px-3 pb-1">
           <div className="flex rounded-lg bg-control p-0.5">
             <Tooltip text="Navigate user prompts and plan entries" className="flex-1 min-w-0">
               <button
@@ -304,7 +304,11 @@ export function PromptNavPanel({
       )}
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto px-3 py-3">
+      <div
+        className={`flex-1 overflow-y-auto px-3 pb-3 ${
+          hasPrompts && hasSubAgents ? "pt-1" : "pt-3"
+        }`}
+      >
         {/* Prompts view: all entries interleaved (user prompts + plans) */}
         {(navMode === "prompts" || !hasSubAgents) && hasPrompts && (
           <div className="divide-y divide-card">
