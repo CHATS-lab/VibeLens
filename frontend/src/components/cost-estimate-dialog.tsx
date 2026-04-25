@@ -1,4 +1,4 @@
-import { Coins, Layers, Play, Sparkles } from "lucide-react";
+import { Coins, Info, Layers, Play, Sparkles } from "lucide-react";
 import { useState } from "react";
 import type { CostEstimate } from "../types";
 import { ConsentSection } from "./consent-section";
@@ -10,12 +10,14 @@ export function CostEstimateDialog({
   onConfirm,
   onCancel,
   backendId,
+  multipleProjects = false,
 }: {
   estimate: CostEstimate;
   sessionCount: number;
   onConfirm: () => void;
   onCancel: () => void;
   backendId?: string | null;
+  multipleProjects?: boolean;
 }) {
   const [agreed, setAgreed] = useState(false);
 
@@ -56,6 +58,14 @@ export function CostEstimateDialog({
               </p>
             )}
           </div>
+          {multipleProjects && (
+            <div className="flex items-start gap-2 px-4 py-3 bg-sky-50 dark:bg-sky-900/20 border border-sky-200 dark:border-sky-700/30 rounded-lg">
+              <Info className="w-4 h-4 mt-0.5 shrink-0 text-sky-600 dark:text-sky-400" />
+              <p className="text-xs text-sky-800 dark:text-sky-200">
+                Selected sessions span multiple projects. Results are usually sharper when sessions come from the same project.
+              </p>
+            </div>
+          )}
           <ConsentSection agreed={agreed} onAgreeChange={setAgreed} backendId={backendId} />
         </div>
       </ModalBody>

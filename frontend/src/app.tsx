@@ -270,6 +270,17 @@ export function App() {
       .catch(() => {});
   }, [fetchWithToken, sessions]);
 
+  const selectedProjectCount = useMemo(() => {
+    if (checkedIds.size === 0) return 0;
+    const projects = new Set<string>();
+    for (const session of sessions) {
+      if (checkedIds.has(session.session_id)) {
+        projects.add(session.project_path ?? "");
+      }
+    }
+    return projects.size;
+  }, [checkedIds, sessions]);
+
   const handleSelectSession = useCallback((id: string | null) => {
     setSelectedSessionId(id);
     if (id) {
@@ -573,9 +584,9 @@ export function App() {
           <div className="flex-1 min-h-0 relative">
             <Suspense fallback={<LoadingSpinner />}>
             {mainView === "skills" ? (
-              <PersonalizationPanel checkedIds={checkedIds} resetKey={skillsResetKey} />
+              <PersonalizationPanel checkedIds={checkedIds} selectedProjectCount={selectedProjectCount} resetKey={skillsResetKey} />
             ) : mainView === "friction" ? (
-              <FrictionPanel checkedIds={checkedIds} activeJobId={frictionJobId} onJobIdChange={setFrictionJobId} />
+              <FrictionPanel checkedIds={checkedIds} selectedProjectCount={selectedProjectCount} activeJobId={frictionJobId} onJobIdChange={setFrictionJobId} />
             ) : mainView === "analyze" ? (
               <DashboardView key={refreshKey} cache={dashboardCache} />
             ) : selectedSessionId ? (

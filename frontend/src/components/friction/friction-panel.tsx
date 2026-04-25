@@ -35,13 +35,14 @@ import { FrictionTypesSection } from "./friction-types";
 
 interface FrictionPanelProps {
   checkedIds: Set<string>;
+  selectedProjectCount: number;
   activeJobId: string | null;
   onJobIdChange: (id: string | null) => void;
 }
 
 const FRICTION_API_BASE = "/api/analysis/friction";
 
-export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: FrictionPanelProps) {
+export function FrictionPanel({ checkedIds, selectedProjectCount, activeJobId, onJobIdChange }: FrictionPanelProps) {
   const { fetchWithToken, appMode, maxSessions } = useAppContext();
   const api = useMemo(
     () => analysisClient(fetchWithToken, FRICTION_API_BASE),
@@ -258,6 +259,7 @@ export function FrictionPanel({ checkedIds, activeJobId, onJobIdChange }: Fricti
       onConfirm={handleConfirmAnalysis}
       onCancel={clearEstimate}
       backendId={llmStatus?.backend_id}
+      multipleProjects={selectedProjectCount > 1}
     />
   );
 
