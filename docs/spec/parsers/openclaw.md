@@ -42,21 +42,22 @@ Important quirks vs Claude:
 ## Parsing strategy
 
 ```
-parse(content)
-  ├─ iter_jsonl_safe                # raw JSONL parse
-  ├─ _extract_session_meta          # one pass: id, cwd, model, provider
-  │     ├─ first session event      → id, cwd
-  │     ├─ first model_change       → "{provider}/{model}"
-  │     ├─ first model-snapshot     → fallback model
-  │     └─ first real assistant msg → final fallback model
+parse(file_path)                       # BaseParser orchestrates 4 stages
+  ├─ _decode_file                      # iter_jsonl_safe → list[dict]
+  ├─ _extract_metadata
+  │    └─ _extract_session_meta        # one pass: id, cwd, model, provider
+  │         ├─ first session event      → id, cwd
+  │         ├─ first model_change       → "{provider}/{model}"
+  │         ├─ first model-snapshot     → fallback model
+  │         └─ first real assistant msg → final fallback model
   ├─ _build_steps
-  │     ├─ pre-scan toolResult role messages → toolCallId map
-  │     ├─ for each role=user|assistant message:
-  │     │   ├─ _decompose_content   → text, thinking, tool_calls
-  │     │   ├─ _build_metrics       → usage with cost.total
-  │     │   └─ _build_observation   → link tool_calls to results
-  │     └─ orphan detection (toolCalls vs toolResults)
-  └─ assemble_trajectory
+  │    ├─ pre-scan toolResult role messages → toolCallId map
+  │    ├─ for each role=user|assistant message:
+  │    │   ├─ _decompose_content   → text, thinking, tool_calls
+  │    │   ├─ _build_metrics       → usage with cost.total
+  │    │   └─ _build_observation   → link tool_calls to results
+  │    └─ orphan detection (toolCalls vs toolResults)
+  └─ _finalize                         # timestamp, first_message, final_metrics
 ```
 
 ### Per-step cost

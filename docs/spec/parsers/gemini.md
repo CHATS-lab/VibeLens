@@ -47,13 +47,15 @@ Important format differences from Claude/Codex:
 ## Parsing strategy
 
 ```
-parse(content)
-  ├─ json.loads(content)           # whole-file JSON
-  ├─ _build_steps(messages)
+parse(file_path)                       # BaseParser orchestrates 4 stages
+  ├─ _decode_file                      # whole-file json.loads → dict
+  ├─ _extract_metadata
+  │    └─ _resolve_project             # 4-strategy chain (see below)
+  ├─ _build_steps
   │    ├─ user messages    → coerce content list to text
   │    └─ gemini messages  → text + thoughts + toolCalls (with embedded results)
-  ├─ _resolve_project              # 4-strategy chain (see below)
-  └─ assemble_trajectory
+  ├─ _finalize                         # timestamp, first_message, final_metrics
+  └─ _load_subagents                   # sibling-file scan (no per-call linkage)
 ```
 
 ### Project path resolution
@@ -77,7 +79,7 @@ A future fast-index option would be a head-of-document scan: load just `sessionI
 
 **Bidirectional**, via the shared `sessionId` on disk. Sub-agent files are identified by `kind: "subagent"` (vs `kind: "main"`) and share the parent's `sessionId`. The frontend places each sub-agent at the chronologically-correct main step using its `timestamp` (Phase 2 of `session-view.tsx`'s placement logic) since Gemini doesn't emit a per-tool-call spawn id.
 
-**Child → parent**: a sub-agent file's `parse_session` gives the trajectory a **synthetic session_id from the filename stem** (e.g. `session-2026-03-14T16-41-97253fa9`) and writes the original in-file `sessionId` into `parent_trajectory_ref.session_id`. The synthetic id is needed because main and sub share the in-file `sessionId` — using it directly would collide in the index.
+**Child → parent**: a sub-agent file's `_parse_decoded` gives the trajectory a **synthetic session_id from the filename stem** (e.g. `session-2026-03-14T16-41-97253fa9`) and writes the original in-file `sessionId` into `parent_trajectory_ref.session_id`. The synthetic id is needed because main and sub share the in-file `sessionId` — using it directly would collide in the index.
 
 ```python
 if data["kind"] == "subagent":

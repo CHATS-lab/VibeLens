@@ -46,14 +46,14 @@ Key differences from native Claude/Codex/Gemini:
 ## Parsing strategy
 
 ```
-parse(content)
-  └─ for each non-empty line:
-       └─ parse_session(record)
+parse(file_path)                                  # multi-session-per-file: overrides parse()
+  └─ for each non-empty JSONL line:
+       └─ _record_to_trajectory(record)
             ├─ session_id from record OR deterministic_id(project, start_time)
             ├─ _build_steps (per message)
             │    ├─ deterministic step_id = id(msg, sid, idx, role)
             │    └─ _build_tool_calls   # name + input only, no result
-            └─ assemble_trajectory(extra={"source_type": "huggingface"})
+            └─ self._finalize(traj, diagnostics)  # per-record finalize
 ```
 
 ## Index path (skeleton listing)
@@ -69,7 +69,7 @@ Not applicable. Dataclaw isn't local-discoverable; sessions are loaded only when
 - **Memory streaming**: `iter_trajectories(file_path)` yields one Trajectory at a time so multi-GB datasets don't have to fit in memory. `parse_file` materialises into a list for the standard parser API.
 - **Missing session_id**: derive a deterministic one from project + start_time. Same input → same output across re-parses.
 - **Per-step model**: only assistant steps get `model_name`; user steps leave it `None` (consistent with how the live Claude parser treats user turns).
-- **Diagnostics on parse_session**: a malformed record records `"invalid record"` in the diagnostics collector but doesn't fail the whole file.
+- **Diagnostics per record**: a malformed record records `"invalid record"` in the diagnostics collector but doesn't fail the whole file.
 
 ## Tests
 

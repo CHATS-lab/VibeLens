@@ -24,9 +24,9 @@ Whatever `Trajectory.model_dump()` produces. The only convention is that the JSO
 ## Parsing strategy
 
 ```
-parse(content)
-  ├─ json.loads(content)                  # array or single dict
-  └─ for each item: Trajectory(**item)    # Pydantic deserialise
+parse(file_path)                                # multi-session-per-file: overrides parse()
+  ├─ json.loads(file_path.read_text())          # array or single dict
+  └─ for each item: Trajectory(**item)          # Pydantic deserialise
 ```
 
 That's it. No format-specific logic.

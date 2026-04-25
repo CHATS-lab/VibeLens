@@ -49,10 +49,10 @@ Most `tool_use` blocks have an `id`; some pairs have `None` for both the `tool_u
 ## Parsing strategy
 
 ```
-parse(content)
-  ├─ json.loads(content)               # one big JSON array
+parse(file_path)                                  # multi-session-per-file: overrides parse()
+  ├─ json.loads(file_path.read_text())            # one big JSON array
   └─ for each conversation:
-       └─ _parse_conversation
+       └─ _conversation_to_trajectory
             ├─ steps = _build_steps(chat_messages)
             │     ├─ human    → _build_human_step (text + attachments)
             │     └─ assistant→ _build_assistant_step
@@ -60,7 +60,7 @@ parse(content)
             │                 ├─ tool_use_counter for deterministic call IDs
             │                 ├─ tool_id_map[native_id] = generated_id
             │                 └─ tool_result blocks paired in order
-            └─ assemble_trajectory
+            └─ self._finalize(traj, diagnostics)  # per-record finalize
 ```
 
 ### Inline tool-result pairing

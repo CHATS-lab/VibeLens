@@ -45,19 +45,23 @@ Anthropic Messages API content blocks appear inside `message.content`:
 ## Parsing strategy
 
 ```
-parse(content)
-  ├─ _scan_session_metadata    # one pass: sessionId, model, version, cwd, gitBranch
-  ├─ _parse_content
-  │    ├─ iter_jsonl_safe       # raw JSONL parse
-  │    ├─ queue-operation       # synthetic user entries for enqueue+remove pairs
-  │    ├─ deduplicate_by_uuid   # drop replayed lines (compaction)
-  │    ├─ _collect_tool_results # pre-scan user messages for tool_result blocks
-  │    ├─ _group_entries_by_step  # streaming-chunk merge by message.id
-  │    ├─ _decompose_raw_content  # text / images / thinking / tool_calls / observation
-  │    └─ classify_user_message   # system / skill / auto-prompt / real user
-  └─ _parse_subagent_trajectories
-       ├─ _build_agent_spawn_map  # raw scan: tool_use(name=Task|Agent) → agentId regex
-       │                          # in tool_result text (or persisted-output file)
+parse(file_path)                       # BaseParser orchestrates 4 stages
+  ├─ _decode_file                      # read JSONL text
+  ├─ _extract_metadata
+  │    └─ _scan_session_metadata       # one pass: sessionId, model, version, cwd, gitBranch
+  ├─ _build_steps
+  │    └─ _parse_content
+  │         ├─ iter_jsonl_safe         # raw JSONL parse
+  │         ├─ queue-operation         # synthetic user entries for enqueue+remove pairs
+  │         ├─ deduplicate_by_uuid     # drop replayed lines (compaction)
+  │         ├─ _collect_tool_results   # pre-scan user messages for tool_result blocks
+  │         ├─ _group_entries_by_step  # streaming-chunk merge by message.id
+  │         ├─ _decompose_raw_content  # text / images / thinking / tool_calls / observation
+  │         └─ classify_user_message   # system / skill / auto-prompt / real user
+  ├─ _finalize                         # timestamp, first_message, final_metrics
+  └─ _load_subagents
+       ├─ _build_agent_spawn_map       # raw scan: tool_use(name=Task|Agent) → agentId regex
+       │                               # in tool_result text (or persisted-output file)
        ├─ parse each agent-*.jsonl as its own Trajectory
        └─ link parent step's observation back via subagent_trajectory_ref
 ```

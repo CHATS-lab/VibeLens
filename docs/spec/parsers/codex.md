@@ -39,11 +39,12 @@ Codex follows the OpenAI Responses API. Important payload types:
 ## Parsing strategy
 
 ```
-parse(content)
-  ├─ iter_jsonl_safe                # raw JSONL parse
-  ├─ _scan_session_metadata         # one pass: id, cli_version, model, cwd, source, forked_from_id
+parse(file_path)                       # BaseParser orchestrates 4 stages
+  ├─ _decode_file                      # iter_jsonl_safe → list[dict]
+  ├─ _extract_metadata
+  │    └─ _scan_session_metadata       # one pass: id, cli_version, model, cwd, source, forked_from_id
   ├─ _build_steps
-  │    ├─ _collect_tool_outputs     # OrderedDict bounded at MAX_TOOL_RESULT_CACHE
+  │    ├─ _collect_tool_outputs        # OrderedDict bounded at MAX_TOOL_RESULT_CACHE
   │    ├─ for each entry:
   │    │    ├─ turn_context  → update parse state (model, cwd, effort)
   │    │    ├─ response_item → _handle_response_item:
@@ -51,8 +52,9 @@ parse(content)
   │    │    │     ├─ function_call(_output) → buffer in pending_tools
   │    │    │     └─ reasoning  → dedup-by-md5, buffer in pending_thinking
   │    │    └─ event_msg(token_count) → attach Metrics to last AGENT step
-  │    └─ _flush_pending            # final flush at EOF
-  └─ assemble_trajectory             # parent_ref from forked_from_id, extras from session_meta
+  │    └─ _flush_pending               # final flush at EOF
+  ├─ _finalize                         # timestamp, first_message, final_metrics; parent_ref from forked_from_id
+  └─ _load_subagents                   # 3-way signal: forked_from_id / source.subagent / agent_role
 ```
 
 ### Buffer / flush model

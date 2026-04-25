@@ -61,6 +61,24 @@ Sections below.
 
 ---
 
+## Design principles
+
+These distinguish a parser that holds up over years of format drift from one that merely passes its first test run. Every item below is something a previous parser got wrong before we tightened it up.
+
+**Trust the source, then the index, then yourself.** Most agents write multiple views of the same session: a raw stream (JSONL), a periodic snapshot (JSON), an authoritative index (SQLite, JSON manifest). These views disagree. Pick an explicit priority order in the file-level docstring. The narrowest, most authoritative source wins: if `state.db` lists 16 sessions and the directory has 39 files, the db is right. If a JSONL records a model change mid-session and the snapshot only the final model, trust the per-turn value for `Step.model_name` and the snapshot for `Agent.model_name`.
+
+**Populate, don't invent.** Every field you set is a claim about the source data. Hardcoding `agent.base_url = "https://api.anthropic.com"` for every Claude session leaks a constant into thousands of trajectories. If deleting the line that sets a field doesn't lose information that was actually in the source, delete the line. `None` is a truthful answer when the data isn't there.
+
+**Idempotency.** Parsing the same file twice yields equal `Trajectory` objects. Sort `discover_session_files` results so test fixtures agree across OSes. Prefer `deterministic_id` over `uuid4()`. Don't iterate `set()` where emission order matters; sort or use an `OrderedDict`. Dashboards that cache by `session_id` depend on this — non-determinism makes cache invalidation impossible.
+
+**`extra` is a pressure valve, not a dumping ground.** If a field is useful enough to surface in the UI for this agent, it goes in `Trajectory.extra` or `Step.extra` with a named key (`platform`, `chat_id`, `finish_reason`). If it's not useful, don't capture it — a noisy `extra` dict is worse than a missing field because downstream consumers start relying on it and then you can never delete it. Each key should be either universally meaningful across agents or clearly namespaced (`hermes_`, `codex_`).
+
+**Format drift is inevitable.** Agents version their formats: Gemini added `projectHash`, Claude renamed `Agent` to `Task`, Codex added new tool-call types mid-year. Two defences: accept old and new field names side by side (Claude does `{"Agent", "Task"}`); skip unknown block / event types silently. A parser that crashes on the first unfamiliar type blocks ingestion the day the agent ships a new feature.
+
+**Diagnostics > exceptions.** `parse()` should never let an exception escape. Every skippable problem (bad line, orphaned tool result, missing timestamp) gets recorded on the `DiagnosticsCollector` so it surfaces in the UI as a quality warning. Exceptions bypass diagnostics and look like real breakage.
+
+---
+
 ## Implementation
 
 ```
@@ -135,6 +153,67 @@ class MyAgentParser(BaseParser):
         ...  # format-specific
 ```
 
+### Reference template (multi-session-per-file)
+
+When one file contains many sessions (export dumps, JSONL-of-conversations), override `parse(file_path)` and call `_finalize` per record:
+
+```python
+class MyExportParser(BaseParser):
+    AGENT_TYPE = AgentType.MY_EXPORT
+    LOCAL_DATA_DIR = None  # manual import only
+
+    def parse(self, file_path: Path) -> list[Trajectory]:
+        try:
+            raw = json.loads(file_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning("Cannot parse %s: %s", file_path, exc)
+            return []
+        diagnostics = DiagnosticsCollector()
+        out: list[Trajectory] = []
+        for record in raw if isinstance(raw, list) else [raw]:
+            traj = self._record_to_trajectory(record)
+            if traj is not None and traj.steps:
+                out.append(self._finalize(traj, diagnostics))
+        return out
+
+    def _record_to_trajectory(self, record: dict) -> Trajectory | None:
+        ...  # build header + steps; return None if invalid
+```
+
+### Multi-source data: collect once in stage 1
+
+When the source format spans multiple files (a primary jsonl plus paired snapshot, plus state.db row, plus a sessions index — see hermes), don't re-hit disk in every stage. Have `_decode_file` build a small dataclass that carries everything decoded once:
+
+```python
+@dataclass
+class _MyAgentRaw:
+    session_id: str
+    records: list[dict] | None     # JSONL records
+    snapshot: dict | None          # paired snapshot
+    db_row: dict | None            # state.db row
+    origin: dict | None            # sessions.json index entry
+```
+
+Later stages destructure this in O(1) without re-reading. Hermes uses exactly this shape; cuts the per-parse I/O by ~3x compared to letting each stage open the db separately.
+
+### Skipping a re-decode in `_load_subagents`
+
+When `_load_subagents` already parsed a candidate sibling file's JSON (to filter by some header field like `kind: subagent`), don't pass the file path to `self._parse_trajectory(...)` because that re-decodes. Add a tiny shortcut that runs stages 2 → 3 → finalize on the already-parsed dict:
+
+```python
+def _parse_decoded(self, data: dict, file_path: Path) -> Trajectory | None:
+    diagnostics = DiagnosticsCollector()
+    traj = self._extract_metadata(data, file_path, diagnostics)
+    if traj is None:
+        return None
+    traj.steps = self._build_steps(data, traj, file_path, diagnostics)
+    if not traj.steps:
+        return None
+    return self._finalize(traj, diagnostics)
+```
+
+Gemini does this — siblings get one read instead of two.
+
 ### Discovery
 
 Set `DISCOVER_GLOB` (`*.jsonl`, `session-*.json`, etc.). Override `discover_session_files` only when the layout is non-trivial: stale-snapshot dedup (hermes), sub-dir carve-outs (claude's `subagents/`), filtered files (openclaw's reset/clean files).
@@ -189,20 +268,6 @@ Inside the class, methods follow lifecycle: `discover_session_files` → `get_se
 - Catch specific exceptions, never bare `except`.
 - Keep agent-specific constants in your parser file. `helpers.py` is for what's identical across parsers.
 - Prefer `deterministic_id(...)` over `uuid4()` so re-parsing yields stable IDs.
-
----
-
-## Code style
-
-Project [`CLAUDE.md`](../../../CLAUDE.md) global rules apply. Parser-specific:
-
-- **Constants:** `ALL_CAPS`, module-private with `_` prefix, comment **why** if non-obvious (don't comment what `re.compile(...)` does).
-- **Docstrings:** class 2–3 lines; public method one line; internal helper one line if non-obvious else nothing. WHY not WHAT.
-- **Function length:** ~30 lines max; extract a helper when longer.
-- **Naming:** variables nouns, functions verbs, booleans questions, no abbreviations unless universal.
-- **Imports:** grouped (stdlib, third-party, vibelens). No `from __future__`.
-- **Comments:** WHY only. Don't narrate the change, don't reference the PR, don't restate what well-named code already says.
-- **Markdown paragraphs:** one source line per paragraph in this doc and any spec doc you write — no soft-wrapping inside a paragraph.
 
 ---
 
