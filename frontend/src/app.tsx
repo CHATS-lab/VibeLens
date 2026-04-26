@@ -400,7 +400,7 @@ export function App() {
               <span className="text-sm text-accent-violet font-medium">Shared session</span>
             </div>
             <div className="flex items-center gap-2">
-              <a href="https://github.com/CHATS-lab/VibeLens" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:bg-control/30 rounded px-1 -mx-1 transition">
+              <a href="https://github.com/CHATS-lab/VibeLens" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 hover:bg-control/30 rounded px-1 -mx-1 transition">
                 <img src="/logo.svg" alt="" className="w-6 h-6" />
                 <img src="/logo-text.png" alt="VibeLens" className="h-4 w-auto" />
               </a>
@@ -428,7 +428,7 @@ export function App() {
             <ResizeHandle side="left" onResize={handleSidebarResize} />
             <div data-tour="sidebar-header" className="flex items-center justify-between px-4 h-[75px] border-b border-default sticky top-0">
               <div className="flex items-center gap-3">
-                <a href="https://github.com/CHATS-lab/VibeLens" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 hover:bg-control/30 rounded px-1 -mx-1 transition">
+                <a href="https://github.com/CHATS-lab/VibeLens" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 hover:bg-control/30 rounded px-1 -mx-1 transition">
                   <img src="/logo.svg" alt="" className="w-12 h-12" />
                   <img src="/logo-text.png" alt="VibeLens" className="h-6 w-auto" />
                 </a>
