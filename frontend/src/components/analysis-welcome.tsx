@@ -1,5 +1,5 @@
-import { ArrowLeft, Lightbulb, Play, Settings } from "lucide-react";
-import { useState } from "react";
+import { ArrowLeft, Lightbulb, Play, Settings, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import type { LLMStatus } from "../types";
 import { DemoBanner } from "./demo-banner";
 import { InstallLocallyDialog } from "./install-locally-dialog";
@@ -226,7 +226,30 @@ export function AnalysisWelcomePage({
   );
 }
 
-export function TutorialBanner({ tutorial, accentColor }: { tutorial: Tutorial; accentColor: AccentColor }) {
+export function TutorialBanner({
+  tutorial,
+  accentColor,
+  dismissKey,
+}: {
+  tutorial: Tutorial;
+  accentColor: AccentColor;
+  dismissKey?: string;
+}) {
+  const [hidden, setHidden] = useState(() =>
+    dismissKey ? localStorage.getItem(dismissKey) === "1" : false,
+  );
+
+  useEffect(() => {
+    setHidden(dismissKey ? localStorage.getItem(dismissKey) === "1" : false);
+  }, [dismissKey]);
+
+  if (hidden) return null;
+
+  const handleDismiss = () => {
+    if (dismissKey) localStorage.setItem(dismissKey, "1");
+    setHidden(true);
+  };
+
   const s = ACCENT_TUTORIAL[accentColor];
   return (
     <div className={`relative w-full px-4 py-3.5 rounded-lg border ${s.border} ${s.bg} overflow-hidden text-left`}>
@@ -238,6 +261,16 @@ export function TutorialBanner({ tutorial, accentColor }: { tutorial: Tutorial; 
           <p className={`text-base font-bold ${s.title}`}>{tutorial.title}</p>
           <p className={`text-sm ${s.desc} mt-0.5`}>{tutorial.description}</p>
         </div>
+        {dismissKey && (
+          <button
+            type="button"
+            onClick={handleDismiss}
+            aria-label="Hide tutorial"
+            className="shrink-0 p-1 -m-1 text-muted hover:text-primary hover:bg-control/40 rounded transition"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
       </div>
     </div>
   );

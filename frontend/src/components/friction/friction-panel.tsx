@@ -267,7 +267,11 @@ export function FrictionPanel({ checkedIds, selectedProjectCount, activeJobId, o
     return (
       <div className="h-full flex flex-col">
         <div className="px-6 pt-5 pb-2">
-          <TutorialBanner tutorial={FRICTION_TUTORIAL} accentColor="cyan" />
+          <TutorialBanner
+            tutorial={FRICTION_TUTORIAL}
+            accentColor="cyan"
+            dismissKey="vibelens-tutorial-friction-dismissed"
+          />
         </div>
         <AnalysisLoadingScreen
           accent="amber"
@@ -285,7 +289,11 @@ export function FrictionPanel({ checkedIds, selectedProjectCount, activeJobId, o
       <div className="h-full flex">
         <div className="flex-1 overflow-y-auto">
           <div className="px-6 pt-5 pb-2">
-            <TutorialBanner tutorial={FRICTION_TUTORIAL} accentColor="cyan" />
+            <TutorialBanner
+              tutorial={FRICTION_TUTORIAL}
+              accentColor="cyan"
+              dismissKey="vibelens-tutorial-friction-dismissed"
+            />
           </div>
           <AnalysisWelcomePage
             icon={<Sparkles className="w-12 h-12 text-amber-600 dark:text-amber-400" />}
@@ -312,7 +320,11 @@ export function FrictionPanel({ checkedIds, selectedProjectCount, activeJobId, o
     <div className="h-full flex">
       <div className="flex-1 overflow-y-auto">
         <div className="px-6 pt-5 pb-2">
-          <TutorialBanner tutorial={FRICTION_TUTORIAL} accentColor="cyan" />
+          <TutorialBanner
+            tutorial={FRICTION_TUTORIAL}
+            accentColor="cyan"
+            dismissKey="vibelens-tutorial-friction-dismissed"
+          />
         </div>
         <div className="max-w-4xl mx-auto px-6 py-8 space-y-8">
           {result.backend === "mock" && <DemoBanner />}

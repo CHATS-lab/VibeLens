@@ -566,7 +566,11 @@ export function PersonalizationPanel({ checkedIds, selectedProjectCount, resetKe
         <div className="flex-1 min-h-0 overflow-y-auto">
           {isAnalysisTab && !analysisDetailItem && (
             <div className="px-6 pt-5 pb-2">
-              <TutorialBanner tutorial={MODE_DESCRIPTIONS[currentMode].tutorial} accentColor="teal" />
+              <TutorialBanner
+                tutorial={MODE_DESCRIPTIONS[currentMode].tutorial}
+                accentColor="teal"
+                dismissKey={`vibelens-tutorial-personalization-${currentMode}-dismissed`}
+              />
             </div>
           )}
           {activeTab === "local" && (
