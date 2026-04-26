@@ -62,5 +62,5 @@ Quick-reference for executing a release:
 2. **CHANGELOG**: Add high-level items with the format of **{TITLE}: {CONTENT}**.
 3. **Frontend** (only if `frontend/src/` changed): `cd frontend && npm run build && cd ..`. Commit `src/vibelens/static/`.
 4. **Verify**: `uv run ruff check src/ tests/ && uv run pytest tests/ && uv build`.
-5. **Tag and push**: `git commit -am "Release vX.Y.Z" && git tag vX.Y.Z && git push origin main --tags`. Trusted publishing on PyPI (`.github/workflows/publish.yml`) takes over from the tag push — no token, no `twine`.
+5. **Tag and push** (push main FIRST, tag SECOND — never `--tags`): `git commit -am "Release vX.Y.Z" && git tag vX.Y.Z && git push origin main && git push origin vX.Y.Z`. `git push origin main --tags` is a footgun: if main is rejected (non-fast-forward, e.g. an automated bot commit landed on remote), the tag still goes through, triggers PyPI + npm publish, and the upload can't be undone. If main is rejected, `git pull --rebase`, push main, *then* push the tag. Trusted publishing on PyPI (`.github/workflows/publish.yml`) takes over from the tag push — no token, no `twine`.
 6. **GitHub Release** (use the CHANGELOG entry as the body): `gh release create vX.Y.Z --title "vX.Y.Z" --notes "$(...)"`.

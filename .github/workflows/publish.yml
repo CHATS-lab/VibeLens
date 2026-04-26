@@ -44,6 +44,11 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # Idempotent re-runs: if a tag was force-updated after a rebase
+          # (or the workflow re-ran for any reason), don't fail when the
+          # files are already on PyPI — just skip them.
+          skip-existing: true
 
       - name: Extract changelog for this version
         id: changelog

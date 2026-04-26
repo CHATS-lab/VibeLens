@@ -31,13 +31,30 @@ jobs:
           registry-url: "https://registry.npmjs.org"
 
       - name: Sync version from tag
+        id: ver
         run: |
           RAW="${{ inputs.tag || github.ref_name }}"
           TAG="${RAW#v}"
           cd npm
           npm version "$TAG" --no-git-tag-version --allow-same-version
+          echo "version=$TAG" >> "$GITHUB_OUTPUT"
+
+      # Idempotent re-runs: if a tag was force-updated after a rebase (or
+      # the workflow re-ran for any reason), don't fail when the version
+      # is already on the registry — skip the publish step.
+      - name: Check if version is already published
+        id: check
+        run: |
+          PKG=$(node -p "require('./npm/package.json').name")
+          if npm view "${PKG}@${{ steps.ver.outputs.version }}" version >/dev/null 2>&1; then
+            echo "already=true" >> "$GITHUB_OUTPUT"
+            echo "${PKG}@${{ steps.ver.outputs.version }} is already on the registry; skipping publish."
+          else
+            echo "already=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Publish
+        if: steps.check.outputs.already != 'true'
         run: cd npm && npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
