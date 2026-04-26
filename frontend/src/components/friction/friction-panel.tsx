@@ -469,7 +469,7 @@ function NoIssuesEmptyState({
             No productivity tips found
           </h3>
           <p className="text-sm text-secondary leading-relaxed">
-            Pick more or longer sessions for richer signal, or try the tools below.
+            Your sessions ran smoothly. Pick more or longer sessions for richer signal, or try the tools below.
           </p>
         </div>
       </div>
@@ -478,14 +478,14 @@ function NoIssuesEmptyState({
         <EmptyStateAction
           icon={Compass}
           label="Browse Explore"
-          description="Skills, agents, and hooks from the community."
+          description="Skills, sub-agents, and hooks from the community."
           onClick={() => onNavigate?.("explore")}
           disabled={!onNavigate}
         />
         <EmptyStateAction
           icon={Search}
           label="Try Recommend"
-          description="Match your sessions to skills that fit."
+          description="Match your sessions to skills that fit your workflow."
           onClick={() => onNavigate?.("retrieve")}
           disabled={!onNavigate}
         />
