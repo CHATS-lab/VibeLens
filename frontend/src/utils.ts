@@ -48,6 +48,11 @@ export function formatDuration(seconds: number | null | undefined): string {
   return parts.join(" ");
 }
 
+export function formatDurationHours(seconds: number | null | undefined): string {
+  if (!seconds || seconds <= 0) return "0.0h";
+  return `${(seconds / HOUR).toFixed(1)}h`;
+}
+
 export function extractMessageText(message: string | ContentPart[]): string {
   if (typeof message === "string") return sanitizeText(message);
   return sanitizeText(

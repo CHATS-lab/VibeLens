@@ -19,7 +19,7 @@ import { DASHBOARD_POLL_INTERVAL_MS } from "../../constants";
 import { useDashboardData } from "../../hooks/use-dashboard-data";
 import { useDashboardExport } from "../../hooks/use-dashboard-export";
 import type { DashboardStats, ToolUsageStat } from "../../types";
-import { formatTokens, formatDuration, formatCost, baseProjectName } from "../../utils";
+import { formatTokens, formatDurationHours, formatCost, baseProjectName } from "../../utils";
 import { LoadingSpinnerRings } from "../ui/loading-spinner";
 import { ActivityHeatmap } from "./activity-heatmap";
 import { BarChartRow } from "./bar-chart-row";
@@ -333,29 +333,29 @@ export function DashboardView({ cache }: DashboardViewProps) {
             icon={<Clock className="w-4 h-4" />}
             label="Duration"
             description="Total session time"
-            value={formatDuration(stats.total_duration)}
+            value={formatDurationHours(stats.total_duration)}
             rows={[
               {
                 label: "This Year",
-                value: formatDuration(stats.this_year.duration),
+                value: formatDurationHours(stats.this_year.duration),
               },
               {
                 label: "This Month",
-                value: formatDuration(stats.this_month.duration),
+                value: formatDurationHours(stats.this_month.duration),
               },
               {
                 label: "Avg/Session",
-                value: formatDuration(stats.avg_duration_per_session),
+                value: formatDurationHours(stats.avg_duration_per_session),
               },
             ]}
             tooltipText={
               <MetricList
                 header="Session wall-clock duration"
                 rows={[
-                  { label: "All time", value: formatDuration(stats.total_duration), tone: "total" },
-                  { label: "This year", value: formatDuration(stats.this_year.duration) },
-                  { label: "This month", value: formatDuration(stats.this_month.duration) },
-                  { label: "Avg / session", value: formatDuration(stats.avg_duration_per_session), tone: "muted" },
+                  { label: "All time", value: formatDurationHours(stats.total_duration), tone: "total" },
+                  { label: "This year", value: formatDurationHours(stats.this_year.duration) },
+                  { label: "This month", value: formatDurationHours(stats.this_month.duration) },
+                  { label: "Avg / session", value: formatDurationHours(stats.avg_duration_per_session), tone: "muted" },
                 ]}
               />
             }
