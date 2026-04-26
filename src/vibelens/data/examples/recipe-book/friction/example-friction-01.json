@@ -12,7 +12,7 @@
       ]
     },
     {
-      "title": "Click Every Button Before Completion",
+      "title": "Check Every Button Before Completion",
       "action": "Before showing the site, click each button and close-mark. If anything does nothing, fix it first.",
       "rationale": "The close-mark looked right but did nothing.\n- A short click-through catches missing wiring\n- Keeps the user from getting stuck in a pop-up",
       "confidence": 0.88,
