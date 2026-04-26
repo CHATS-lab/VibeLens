@@ -71,6 +71,7 @@ def serve(
     """Start the VibeLens server."""
     from vibelens.deps import set_settings
     from vibelens.utils.log import configure_logging
+    from vibelens.utils.startup import PROGRESS, render_banner, start_spinner, stop_spinner
 
     settings = load_settings(config_path=config)
     configure_logging(settings.logging)
@@ -82,19 +83,28 @@ def serve(
     settings.server.port = bind_port
     set_settings(settings)
 
-    typer.echo(f"VibeLens v{__version__}")
-    typer.echo(f"VibeLens running at http://{bind_host}:{bind_port}")
+    url = f"http://{bind_host}:{bind_port}"
+    render_banner(version=__version__, url=url)
+    PROGRESS.start(url=url, open_browser=open_browser)
+    spinner = start_spinner()
 
     if open_browser:
-        url = f"http://{bind_host}:{bind_port}"
         thread = threading.Thread(
             target=_open_browser_when_ready, args=[bind_host, bind_port, url], daemon=True
         )
         thread.start()
 
-    uvicorn.run(
-        "vibelens.app:create_app", factory=True, host=bind_host, port=bind_port, reload=False
-    )
+    try:
+        uvicorn.run(
+            "vibelens.app:create_app",
+            factory=True,
+            host=bind_host,
+            port=bind_port,
+            reload=False,
+            log_level="warning",
+        )
+    finally:
+        stop_spinner(spinner)
 
 
 @app.command()

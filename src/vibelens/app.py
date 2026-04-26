@@ -1,6 +1,7 @@
 """FastAPI application factory."""
 
 import asyncio
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -41,6 +42,7 @@ from vibelens.services.session.search import (
 from vibelens.storage.extension.catalog import _clear_user_catalog, load_catalog
 from vibelens.utils import get_logger
 from vibelens.utils.log import configure_logging
+from vibelens.utils.startup import PROGRESS, Status, quiet_vibelens_logger
 
 logger = get_logger(__name__)
 
@@ -63,59 +65,74 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """
     settings = get_settings()
     configure_logging(settings.logging)
-
-    _clear_user_catalog()
-    load_catalog()
-
-    # Initialize the trajectory store (local or disk)
-    store = get_trajectory_store()
-    store.initialize()
-    _log_startup_summary(settings, store)
-
-    # Load example sessions (demo: required, self: for example analyses)
-    if settings.demo.session_paths:
-        example_store = get_example_store()
-        example_store.initialize()
-        loaded = load_demo_examples(settings, example_store)
-        if loaded:
-            logger.info("Loaded %d example trajectory groups", loaded)
-
-    if settings.mode == AppMode.DEMO:
-        reconstruct_upload_registry()
-
-    # All heavy work runs in background so the server accepts connections immediately
-    loop = asyncio.get_event_loop()
-    loop.run_in_executor(None, _run_background_startup)
+    # configure_logging resets the vibelens logger level, undoing the WARNING
+    # quiet that start_spinner installed in cli.py. Re-apply it while startup
+    # is still running so INFO chatter does not leak into the banner.
+    if PROGRESS.status is Status.RUNNING:
+        quiet_vibelens_logger()
 
     search_refresh_task: asyncio.Task | None = None
-    if settings.search.enabled:
-        # Tier 1 search index runs synchronously — triggers lazy session
-        # indexing which the dashboard and session list APIs depend on at
-        # first request. Tier 2 (full text BM25F) builds in background.
-        build_search_index()
-        asyncio.create_task(_async_build_full_search_index())
-        # Periodic incremental search index refresh (diff-based, <1s typical)
-        search_refresh_task = asyncio.create_task(_periodic_search_refresh())
-    else:
-        logger.info(
-            "Session search index disabled (settings.search.enabled=false); "
-            "skipping Tier 1/2 build to save ~2-3 GB RSS"
-        )
+    cleanup_task: asyncio.Task | None = None
 
-    # Dashboard cache warming runs in background regardless of search.
-    asyncio.create_task(_async_warm_cache())
-    # Extension catalog search index (~0.5s cold build on 28K items) is
-    # independent of session search and stays on.
-    asyncio.create_task(_async_warm_extension_index())
+    try:
+        PROGRESS.set("Loading extension catalog…")
+        _clear_user_catalog()
+        catalog = load_catalog()
 
-    # Periodic cleanup of finished job tracker entries to prevent memory leak
-    cleanup_task = asyncio.create_task(_periodic_job_cleanup())
+        PROGRESS.set("Building session index…")
+        store = get_trajectory_store()
+        store.initialize()
+        # Eagerly trigger the lazy index build so the spinner reflects real
+        # progress; session_count() calls _ensure_index() under the hood.
+        session_count = await asyncio.to_thread(store.session_count)
+        _log_startup_summary(settings, store)
+
+        if settings.demo.session_paths:
+            example_store = get_example_store()
+            example_store.initialize()
+            loaded = load_demo_examples(settings, example_store)
+            if loaded:
+                logger.info("Loaded %d example trajectory groups", loaded)
+
+        if settings.mode == AppMode.DEMO:
+            reconstruct_upload_registry()
+
+        loop = asyncio.get_event_loop()
+        loop.run_in_executor(None, _run_background_startup)
+
+        if settings.search.enabled:
+            build_search_index()
+            asyncio.create_task(_async_build_full_search_index())
+            search_refresh_task = asyncio.create_task(_periodic_search_refresh())
+        else:
+            logger.info(
+                "Session search index disabled (settings.search.enabled=false); "
+                "skipping Tier 1/2 build to save ~2-3 GB RSS"
+            )
+
+        PROGRESS.set("Warming dashboard cache…")
+        await asyncio.to_thread(warm_cache)
+
+        asyncio.create_task(_async_warm_extension_index())
+        cleanup_task = asyncio.create_task(_periodic_job_cleanup())
+
+        extension_count = catalog.manifest.total if catalog else None
+        PROGRESS.totals(sessions=session_count, extensions=extension_count)
+        PROGRESS.mark_ready()
+
+        # Restore uvicorn loggers so request access logs resume after ready.
+        logging.getLogger("uvicorn.access").setLevel(logging.INFO)
+        logging.getLogger("uvicorn.error").setLevel(logging.INFO)
+    except Exception:
+        PROGRESS.mark_failed()
+        raise
 
     yield
 
     if search_refresh_task is not None:
         search_refresh_task.cancel()
-    cleanup_task.cancel()
+    if cleanup_task is not None:
+        cleanup_task.cancel()
 
 
 async def _periodic_job_cleanup() -> None:
@@ -128,14 +145,6 @@ async def _periodic_job_cleanup() -> None:
             raise
         except Exception:
             logger.warning("Job cleanup failed", exc_info=True)
-
-
-async def _async_warm_cache() -> None:
-    """Warm the dashboard cache in a background thread."""
-    try:
-        await asyncio.to_thread(warm_cache)
-    except Exception:
-        logger.warning("Dashboard cache warming failed", exc_info=True)
 
 
 async def _async_build_full_search_index() -> None:
