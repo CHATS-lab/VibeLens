@@ -87,25 +87,34 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     loop = asyncio.get_event_loop()
     loop.run_in_executor(None, _run_background_startup)
 
-    # Tier 1 search index runs synchronously — triggers lazy session indexing
-    # which the dashboard and session list APIs depend on at first request
-    build_search_index()
+    search_refresh_task: asyncio.Task | None = None
+    if settings.search.enabled:
+        # Tier 1 search index runs synchronously — triggers lazy session
+        # indexing which the dashboard and session list APIs depend on at
+        # first request. Tier 2 (full text BM25F) builds in background.
+        build_search_index()
+        asyncio.create_task(_async_build_full_search_index())
+        # Periodic incremental search index refresh (diff-based, <1s typical)
+        search_refresh_task = asyncio.create_task(_periodic_search_refresh())
+    else:
+        logger.info(
+            "Session search index disabled (settings.search.enabled=false); "
+            "skipping Tier 1/2 build to save ~2-3 GB RSS"
+        )
 
-    # Dashboard cache warming and full-text search run in background
+    # Dashboard cache warming runs in background regardless of search.
     asyncio.create_task(_async_warm_cache())
-    asyncio.create_task(_async_build_full_search_index())
-    # Extension catalog search index (~0.5s cold build on 28K items)
+    # Extension catalog search index (~0.5s cold build on 28K items) is
+    # independent of session search and stays on.
     asyncio.create_task(_async_warm_extension_index())
-
-    # Periodic incremental search index refresh (diff-based, <1s typical)
-    search_refresh_task = asyncio.create_task(_periodic_search_refresh())
 
     # Periodic cleanup of finished job tracker entries to prevent memory leak
     cleanup_task = asyncio.create_task(_periodic_job_cleanup())
 
     yield
 
-    search_refresh_task.cancel()
+    if search_refresh_task is not None:
+        search_refresh_task.cancel()
     cleanup_task.cancel()
 
 

@@ -20,8 +20,16 @@ from vibelens.services.session.search import (
 
 
 @pytest.fixture
-def client() -> TestClient:
-    """Minimal FastAPI TestClient. Tests patch the module-level index."""
+def client(monkeypatch) -> TestClient:
+    """Minimal FastAPI TestClient with search.enabled forced True.
+
+    Search defaults to disabled (settings.search.enabled=False) to keep
+    the base memory footprint low; these tests exercise the endpoint
+    contract so they need it on.
+    """
+    from vibelens.deps import get_settings
+
+    monkeypatch.setattr(get_settings().search, "enabled", True)
     return TestClient(create_app())
 
 

@@ -12,6 +12,31 @@ A VibeLens user may accumulate thousands of sessions totalling ~100M tokens. The
 
 The new design replaces substring filtering with field-weighted BM25 ranking, shares its core engine with the extension catalog search, and reduces memory by dropping trajectories immediately after extraction. It does **not** persist any on-disk cache — cold build cost is accepted as a one-time-per-process startup tax.
 
+## Memory budget — search is off by default
+
+The full-text Tier 2 index dominates the process's RSS. Default off; flip on only if the search box gets used.
+
+Cost on a 1.5 K session corpus (measured 2026-04-25):
+
+- **Four `BM25Okapi` instances** (one per indexed field: `session_id`, `user_prompts`, `agent_messages`, `tool_calls`), each ≈ 500 MB → **~2.2 GB** total.
+- **Per-session token cache (`_SessionEntry.tokens_per_field`)** retained for incremental rebuild → **~0.6–1 GB**.
+- **Tier 2 alone accounts for ~80–90 % of the running process's RSS**.
+
+A new setting `search.enabled` (defaulting to `False`) gates the entire path:
+
+- Lifespan startup skips both Tier 1 and Tier 2 builds and the periodic refresh task. The "Session search index disabled" log line announces the skip.
+- `GET /api/sessions/search` returns an empty list immediately, never touching the engine, so a stale or partial index can't leak.
+- `GET /api/settings` echoes `search_enabled` so the frontend can hide the sidebar's search input. The session list renders normally with no user-visible affordance.
+
+To enable, set in `config/self-use.yaml`:
+
+```yaml
+search:
+  enabled: true
+```
+
+or via the env var `VIBELENS_SEARCH__ENABLED=true`. Restart required.
+
 ## Non-goals
 
 Explicitly out of scope for v1 so the change stays reviewable:
@@ -330,3 +355,56 @@ No new runtime dependencies. `rank-bm25>=0.2.2` is already in `pyproject.toml` f
 3. **Recency rescoring.** Blend BM25 with `recency_signal` similar to extension DEFAULT mode. Requires UX decision on whether recent-but-weak-match should beat old-but-strong-match.
 4. **Snippet highlighting.** Return matched spans so the frontend can bold them in result cards.
 5. **Tier 2 readiness UX.** If users find the silent "agent_messages queries return nothing during build" confusing, add a `/api/sessions/search/status` endpoint + a small frontend badge ("full search available in ~15 s…").
+
+---
+
+## Implementation update — search disabled by default (2026-04-25)
+
+Profiling the running self-use server on a 1,480-session corpus revealed the search index Tier 2 was responsible for most of the process's RSS. macOS `vmmap -summary` for the running pid:
+
+```
+Physical footprint:         3.7G
+Physical footprint (peak):  5.4G   (during Tier 2 build)
+VM_ALLOCATE                 2.0G   (4 BM25Okapi instances)
+MALLOC_MEDIUM               413M   (per-session string + token storage)
+```
+
+A synthetic benchmark (`BM25Okapi` over 1,480 docs × ~2,000 tokens each) confirms ~546 MB per field instance; four fields stack to ~2.2 GB. The `_SessionEntry.tokens_per_field` cache, kept around so incremental add/refresh can rebuild without re-tokenising, adds another ~0.6–1 GB by holding every token list a second time alongside the inverted index.
+
+Since most users never type into the sidebar's search box, the right default is to skip the build entirely and reclaim the memory. The `search.enabled` setting (Memory budget section above) controls it; default is `False`.
+
+### Measured before / after
+
+Same machine (macOS Darwin 24.6.0, arm64), same corpus (1,480 sessions), same git commit aside from the new setting toggle.
+
+| Scenario | Before (`search.enabled=true`) | After (`search.enabled=false`, default) |
+|---|---|---|
+| Physical footprint, post-warm | **~3.7 GB** | **~739 MB** |
+| Physical footprint, peak | **~5.4 GB** | **~1.2 GB** |
+| Tier 2 build duration | ~50 s background | skipped |
+| Tier 1 metadata index build | <1 s | skipped |
+| Periodic search refresh task | every 300 s | skipped |
+| Cold start, server-accept time | ~1 s | ~1 s (unchanged) |
+| Cold start, dashboard cache warm | ~30 s background | ~30 s background (unchanged) |
+
+The dashboard's cold-start cost (`parser.parse_file × 1480` for the metadata cache) is unaffected — the search index is independent of that path. The save is purely on the search side.
+
+### What stays available with search off
+
+- Sidebar still lists every session, sorted by recency.
+- Project / agent filters still work.
+- Dashboard, per-session analytics, friction, personalization — all untouched.
+- The frontend hides the search input entirely; users see the same sidebar minus that one box.
+
+### When to flip it on
+
+Turn on if the sidebar's search box would actually be used routinely. The cost is fixed: ~3 GB extra RSS for the life of the process, plus a one-off ~50 s background build at startup. If the corpus is small (<200 sessions), the absolute memory cost is much smaller and toggling on is essentially free.
+
+### Future memory work (if Tier 2 stays on by default again)
+
+Two follow-ups would shrink Tier 2 itself:
+
+1. **Retire `tokens_per_field`** (~600 MB-1 GB save). Re-tokenise the cached per-field strings on incremental rebuild instead of caching tokens. Adds 1–3 s to `add_sessions` and `refresh` paths; functionally identical results.
+2. **Switch `rank_bm25` → `bm25s`** (~1.5 GB save). `bm25s` uses scipy sparse matrices and reports 10–100× lower memory than `rank_bm25` at equivalent recall. Drop-in replacement; needs an evaluation pass against the existing `test_search_quality.py` golden cases.
+
+Either of these alone would let Tier 2 default back to on without the 3 GB tax. Until one ships, off-by-default is the right behaviour.

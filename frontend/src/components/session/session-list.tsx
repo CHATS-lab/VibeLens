@@ -69,7 +69,7 @@ export function SessionList({
   loading,
   isDemo = false,
 }: SessionListProps) {
-  const { fetchWithToken } = useAppContext();
+  const { fetchWithToken, searchEnabled } = useAppContext();
   const api = useMemo(() => sessionsClient(fetchWithToken), [fetchWithToken]);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
@@ -248,20 +248,22 @@ export function SessionList({
           <DonateButton onClick={onDonate} disabled={!!donateDisabled} tooltip={donateTooltip} />
         ) : null}
 
-        <div className="relative">
-          {searchLoading ? (
-            <Loader2 className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-accent-cyan animate-spin" />
-          ) : (
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-dimmed" />
-          )}
-          <input
-            type="text"
-            placeholder="Search sessions..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-control text-secondary text-sm rounded pl-7 pr-3 py-1.5 border border-card focus:outline-none focus:border-accent-cyan-focus placeholder:text-dimmed"
-          />
-        </div>
+        {searchEnabled && (
+          <div className="relative">
+            {searchLoading ? (
+              <Loader2 className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-accent-cyan animate-spin" />
+            ) : (
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-dimmed" />
+            )}
+            <input
+              type="text"
+              placeholder="Search sessions..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full bg-control text-secondary text-sm rounded pl-7 pr-3 py-1.5 border border-card focus:outline-none focus:border-accent-cyan-focus placeholder:text-dimmed"
+            />
+          </div>
+        )}
 
         {/* Agent Filter */}
         {availableAgents.length > 0 && (

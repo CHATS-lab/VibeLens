@@ -40,6 +40,7 @@ async def get_server_settings() -> dict:
         "app_mode": settings.mode.value,
         "max_zip_bytes": settings.upload.max_zip_bytes,
         "max_sessions": settings.inference.max_sessions,
+        "search_enabled": settings.search.enabled,
     }
 
 

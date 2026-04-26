@@ -143,6 +143,29 @@ class DonationConfig(BaseModel):
     )
 
 
+class SearchConfig(BaseModel):
+    """Session search index configuration.
+
+    The full-text (Tier 2) BM25F index across user prompts, agent
+    messages and tool calls costs ~2-3 GB RSS on a 1.5 K session
+    corpus because rank_bm25 keeps the tokenized corpus in memory
+    per field. Off by default — enable only if you actively use the
+    sidebar's session search box. See
+    ``docs/spec/session/spec-session-search.md`` for the full
+    breakdown.
+    """
+
+    enabled: bool = Field(
+        default=False,
+        description=(
+            "When False, the search index is never built, the search "
+            "endpoint returns an empty result, and the frontend hides "
+            "the sidebar search box. Default off to keep base memory "
+            "footprint under ~1 GB."
+        ),
+    )
+
+
 class InferenceConfig(BaseModel):
     """LLM inference backend configuration. Mutable at runtime."""
 
@@ -232,6 +255,9 @@ class Settings(BaseSettings):
     donation: DonationConfig = Field(default_factory=DonationConfig, description="Donation server.")
     inference: InferenceConfig = Field(
         default_factory=InferenceConfig, description="LLM inference backend."
+    )
+    search: SearchConfig = Field(
+        default_factory=SearchConfig, description="Session search index settings."
     )
     logging: LoggingConfig = Field(
         default_factory=LoggingConfig, description="Log system configuration."

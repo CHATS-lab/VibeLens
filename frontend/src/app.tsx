@@ -65,6 +65,7 @@ interface AppContextValue {
   appMode: AppMode;
   maxZipBytes: number;
   maxSessions: number;
+  searchEnabled: boolean;
   fetchWithToken: (url: string, init?: RequestInit) => Promise<Response>;
   extensionsClient: ExtensionsClient;
   setSidebarOpen: (open: boolean) => void;
@@ -80,6 +81,7 @@ const AppContext = createContext<AppContextValue>({
   appMode: "self",
   maxZipBytes: DEFAULT_MAX_ZIP_BYTES,
   maxSessions: DEFAULT_MAX_SESSIONS,
+  searchEnabled: false,
   fetchWithToken: defaultFetch,
   extensionsClient: createExtensionsClient(defaultFetch),
   setSidebarOpen: () => {},
@@ -111,6 +113,7 @@ export function App() {
   const [appMode, setAppMode] = useState<AppMode>("self");
   const [maxZipBytes, setMaxZipBytes] = useState(DEFAULT_MAX_ZIP_BYTES);
   const [maxSessions, setMaxSessions] = useState(DEFAULT_MAX_SESSIONS);
+  const [searchEnabled, setSearchEnabled] = useState(false);
   const [agentFilter, setAgentFilter] = useState("all");
   const [mainView, setMainView] = useState<MainView>("browse");
   const [skillsResetKey, setSkillsResetKey] = useState(0);
@@ -167,6 +170,7 @@ export function App() {
     appMode,
     maxZipBytes,
     maxSessions,
+    searchEnabled,
     fetchWithToken,
     extensionsClient,
     setSidebarOpen,
@@ -182,10 +186,11 @@ export function App() {
   useEffect(() => {
     fetchWithToken("/api/settings")
       .then((r) => r.json())
-      .then((data: { app_mode?: string; max_zip_bytes?: number; max_sessions?: number }) => {
+      .then((data: { app_mode?: string; max_zip_bytes?: number; max_sessions?: number; search_enabled?: boolean }) => {
         if (data.app_mode === "demo") setAppMode("demo");
         if (data.max_zip_bytes) setMaxZipBytes(data.max_zip_bytes);
         if (data.max_sessions) setMaxSessions(data.max_sessions);
+        if (typeof data.search_enabled === "boolean") setSearchEnabled(data.search_enabled);
         setSettingsLoaded(true);
       })
       .catch((err) => {

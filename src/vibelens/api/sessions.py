@@ -7,6 +7,7 @@ import zipfile
 from fastapi import APIRouter, Header, HTTPException, Query
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from vibelens.deps import get_settings
 from vibelens.models.dashboard.dashboard import SessionAnalytics
 from vibelens.schemas.session import DownloadRequest
 from vibelens.services.dashboard.loader import get_session_analytics
@@ -68,6 +69,11 @@ async def search_sessions_endpoint(
         best first. ``score`` is 0.0 for Tier 1 fallback matches.
     """
     if not search_text:
+        return []
+    if not get_settings().search.enabled:
+        # The index is never built when search is off, so a query would
+        # see Tier 1 fallback only. Return empty so the frontend (which
+        # also hides the search box) never relies on stale data.
         return []
     hits = search_sessions(search_text, session_token=x_session_token)
     return [{"session_id": h.session_id, "score": h.composite_score} for h in hits]
