@@ -273,12 +273,12 @@ export function PromptNavPanel({
 
       {/* Mode Toggle */}
       {hasPrompts && hasSubAgents && (
-        <div className="shrink-0 px-3 pb-1">
-          <div className="flex rounded-lg bg-control p-0.5">
+        <div className="shrink-0 pb-1">
+          <div className="flex bg-control p-0.5">
             <Tooltip text="Navigate user prompts and plan entries" className="flex-1 min-w-0">
               <button
                 onClick={() => onNavModeChange("prompts")}
-                className={`w-full flex items-center justify-center text-xs py-1.5 rounded-md transition ${
+                className={`w-full flex items-center justify-center text-xs py-1.5 transition ${
                   navMode === "prompts"
                     ? "bg-panel text-primary font-semibold shadow-sm"
                     : "text-muted hover:text-secondary"
@@ -290,7 +290,7 @@ export function PromptNavPanel({
             <Tooltip text="Navigate sub-agent trajectories spawned by this session" className="flex-1 min-w-0">
               <button
                 onClick={() => onNavModeChange("sub-agents")}
-                className={`w-full flex items-center justify-center text-xs py-1.5 rounded-md transition ${
+                className={`w-full flex items-center justify-center text-xs py-1.5 transition ${
                   navMode === "sub-agents"
                     ? "bg-panel text-primary font-semibold shadow-sm"
                     : "text-muted hover:text-secondary"
@@ -305,7 +305,7 @@ export function PromptNavPanel({
 
       {/* Content */}
       <div
-        className={`flex-1 overflow-y-auto px-3 pb-3 ${
+        className={`flex-1 overflow-y-auto pl-2 pb-3 ${
           hasPrompts && hasSubAgents ? "pt-1" : "pt-3"
         }`}
       >
@@ -503,7 +503,7 @@ export function PromptNavPanel({
 
 function NavHeader({ onCollapse }: { onCollapse: () => void }) {
   return (
-    <div className="shrink-0 flex items-center justify-between px-3 pt-3 pb-2 border-b border-card">
+    <div className="shrink-0 flex items-center justify-between pl-2 pr-3 pt-3 pb-2 border-b border-card">
       <div className="flex items-center gap-1.5">
         <Compass className="w-3.5 h-3.5 text-accent-cyan" />
         <span className="text-xs font-semibold text-secondary tracking-wide uppercase">
