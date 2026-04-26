@@ -59,9 +59,8 @@ Canonical flow: [`docs/release.md`](docs/release.md). User-facing entry points: 
 Quick-reference for executing a release:
 
 1. **Version bump**: update `version` in `pyproject.toml` and `__version__` in `src/vibelens/__init__.py`. They must match.
-2. **CHANGELOG**: promote `[Unreleased]` entries into a new `## [X.Y.Z] - YYYY-MM-DD` section. Keep the `[Unreleased]` heading empty for the next cycle.
-3. **Catalog**: Skip.
-4. **Frontend** (only if `frontend/src/` changed): `cd frontend && npm run build && cd ..`. Commit `src/vibelens/static/`.
-5. **Verify**: `uv run ruff check src/ tests/ && uv run pytest tests/ && uv build`.
-6. **Tag and push**: `git commit -am "Release vX.Y.Z" && git tag vX.Y.Z && git push origin main --tags`. Trusted publishing on PyPI (`.github/workflows/publish.yml`) takes over from the tag push — no token, no `twine`.
-7. **GitHub Release** (use the CHANGELOG entry as the body): `gh release create vX.Y.Z --title "vX.Y.Z" --notes "$(...)"`.
+2. **CHANGELOG**: Add high-level items with the format of **{TITLE}: {CONTENT}**.
+3. **Frontend** (only if `frontend/src/` changed): `cd frontend && npm run build && cd ..`. Commit `src/vibelens/static/`.
+4. **Verify**: `uv run ruff check src/ tests/ && uv run pytest tests/ && uv build`.
+5. **Tag and push**: `git commit -am "Release vX.Y.Z" && git tag vX.Y.Z && git push origin main --tags`. Trusted publishing on PyPI (`.github/workflows/publish.yml`) takes over from the tag push — no token, no `twine`.
+6. **GitHub Release** (use the CHANGELOG entry as the body): `gh release create vX.Y.Z --title "vX.Y.Z" --notes "$(...)"`.

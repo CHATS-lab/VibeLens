@@ -2,6 +2,28 @@
 
 ## [Unreleased]
 
+## [1.0.7] - 2026-04-25
+
+### Added
+- **Search disabled by default**: `SearchConfig.enabled` (default `false`) gates the BM25F session-search index. Profiling on a 1.5 K-session corpus showed the index owned 80-90% of process RSS (3.7 GB → 739 MB after this change); most users never type into the sidebar search box, so the build is now skipped on startup. Lifespan, `/api/sessions/search`, and `/api/settings` all honour the flag; restart with `settings.search.enabled = true` (or `VIBELENS_SEARCH__ENABLED=true`) to opt back in.
+
+### Changed
+- **Trajectory schema**: `Trajectory.timestamp` is split into `Trajectory.created_at` (session start, derived from the first step) and `Trajectory.updated_at` (last activity, derived from the last step). The parser pipeline backfills both, and the model validator does the same on direct construction.
+- **Session list time**: the sidebar now shows `updated_at` instead of `created_at`, and rows sort by `updated_at` (with `created_at` fallback) so the most-recently-active session surfaces first.
+- **Search index recency tie-breaker**: ranks by `updated_at` (with `created_at` fallback) so a long-running active session out-ranks a freshly-started one with no edits.
+- **Cross-agent overlap correlator**: interval end uses `updated_at` for accurate bounds, falling back to `created_at + duration` only when `updated_at` is absent.
+- **Dashboard CSV export**: gains an `updated_at` column alongside `created_at`. Period bucketing, daily anchoring, hourly heatmap, and date-range filters keep `created_at` semantics ("session started in this period").
+- **LLM digest and context formatter headers**: emit `STARTED:` always and `LAST_ACTIVE:` only when it differs, so prompts don't carry redundant timestamps.
+- **Session view header**: adds a "Last activity" pill next to the existing "Session start time" pill, shown only when the two differ.
+- **Internal renames for clarity**: `SessionAggregate.timestamp` / `SessionContext.timestamp` / `_Chain.timestamp` are renamed to `created_at` to match the schema; `SessionContext` also gains an `updated_at` field used by the sampler's recency score.
+- **Dashboard tooltips**: every chart and stat card switches to a `MetricList` two-column `label: value` layout with monospace right-aligned values and a tone palette (input / output / cache_read / cache_write / total / cost / count / percent / muted). Wording cleanups in the same pass: `Total → All time`, `Cache` is split into `Cache read` + `Cache write`, per-day `Sessions` becomes `Sessions started`, `Cost → Est. cost`, and percent values move to a dedicated `Share` row.
+- **Session view nav panel polish**: the right-side prompt-nav panel drops outer `px-3` padding (~24 px narrower), the User/Sub-Agents toggle becomes a square pill flush to both edges, and content keeps a small `pl-2` gutter matching the left sidebar.
+
+### Fixed
+- **Skeleton parsers (claude, codex)**: head-of-file scans only saw the first event, so both `created_at` and `updated_at` collapsed to the same value and the session list rendered creation time as if it were activity time. Both parsers now derive `updated_at` from the source file's `mtime` (JSONL files are append-only, so mtime is the timestamp of the latest event).
+- **OpenClaw skeleton**: now reads `createdAt` from `sessions.json` separately from `updatedAt` instead of mapping both fields to one value.
+- **Index cache version bumped to v12**: forces a clean rebuild so existing v11 caches (whose entries lacked `created_at` / `updated_at` or had them collapsed) repopulate from source files. Restart `vibelens serve` once after upgrade.
+
 ## [1.0.6] - 2026-04-24
 
 ### Added
