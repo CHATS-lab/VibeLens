@@ -47,7 +47,7 @@ class _Chain:
     contexts: list[SessionContext]
     tokens: int
     project: str
-    timestamp: datetime | None
+    created_at: datetime | None
 
 
 def build_batches(
@@ -195,7 +195,8 @@ def _split_session_at_steps(
             trajectory_group=ctx.trajectory_group,
             prev_trajectory_ref_id=ctx.prev_trajectory_ref_id,
             next_trajectory_ref_id=ctx.next_trajectory_ref_id,
-            timestamp=ctx.timestamp,
+            created_at=ctx.created_at,
+            updated_at=ctx.updated_at,
             step_index2id=ctx.step_index2id,
         )
         result.append(part_ctx)
@@ -227,16 +228,16 @@ def _group_into_chains(contexts: list[SessionContext]) -> list[_Chain]:
     visited: set[str] = set()
     chains: list[_Chain] = []
 
-    sorted_contexts = sorted(contexts, key=lambda c: c.timestamp or datetime.min)
+    sorted_contexts = sorted(contexts, key=lambda c: c.created_at or datetime.min)
     for ctx in sorted_contexts:
         if ctx.session_id in visited:
             continue
         chain_ctxs = _collect_linked_sessions(ctx, by_id, visited)
         tokens = sum(count_tokens(c.context_text) for c in chain_ctxs)
         project = chain_ctxs[0].project_path or NO_PROJECT
-        earliest = min((c.timestamp for c in chain_ctxs if c.timestamp), default=None)
+        earliest = min((c.created_at for c in chain_ctxs if c.created_at), default=None)
         chains.append(
-            _Chain(contexts=chain_ctxs, tokens=tokens, project=project, timestamp=earliest)
+            _Chain(contexts=chain_ctxs, tokens=tokens, project=project, created_at=earliest)
         )
     return chains
 
@@ -301,7 +302,7 @@ def _enforce_chain_budget(chains: list[_Chain], budget: int) -> list[_Chain]:
                         contexts=[ctx],
                         tokens=count_tokens(ctx.context_text),
                         project=ctx.project_path or NO_PROJECT,
-                        timestamp=ctx.timestamp,
+                        created_at=ctx.created_at,
                     )
                 )
     return result
@@ -311,7 +312,7 @@ def _assemble_batches(chains: list[_Chain], budget: int) -> list[SessionContextB
     """Pack chains into batches using affinity-based greedy packing.
 
     Algorithm:
-    1. Sort all chains by (project, timestamp) for deterministic ordering
+    1. Sort all chains by (project, created_at) for deterministic ordering
     2. Pop the first unplaced chain as the batch seed
     3. Rank remaining chains by affinity: same-project time-nearest
        first, then cross-project time-nearest
@@ -327,7 +328,7 @@ def _assemble_batches(chains: list[_Chain], budget: int) -> list[SessionContextB
     Returns:
         List of SessionContextBatch objects.
     """
-    unplaced = sorted(chains, key=lambda c: (c.project, c.timestamp or datetime.min))
+    unplaced = sorted(chains, key=lambda c: (c.project, c.created_at or datetime.min))
     batches: list[SessionContextBatch] = []
 
     while unplaced:
@@ -374,12 +375,12 @@ def _select_batch_candidates(candidates: list[_Chain], seed: _Chain, budget: int
     Returns:
         Chains selected to add (caller removes from unplaced).
     """
-    seed_time = seed.timestamp or datetime.min
+    seed_time = seed.created_at or datetime.min
 
     def affinity_key(chain: _Chain) -> tuple[int, float]:
         is_cross_project = 0 if chain.project == seed.project else 1
-        if chain.timestamp and seed_time != datetime.min:
-            time_dist = abs((chain.timestamp - seed_time).total_seconds())
+        if chain.created_at and seed_time != datetime.min:
+            time_dist = abs((chain.created_at - seed_time).total_seconds())
         else:
             time_dist = float("inf")
         return (is_cross_project, time_dist)

@@ -173,14 +173,42 @@ export function SessionViewHeader({
 
         {headerExpanded && (
           <>
-            {/* Row 2: Meta Pills — ordered: Date, Model, Prompts (with sub-stats), Duration, Cost, Path. */}
+            {/* Row 2: Meta Pills — ordered: Path, Date, Model, Prompts (with sub-stats), Duration, Cost. */}
             <div className="flex flex-wrap items-center gap-1.5 mb-3 pl-7">
-              {main.timestamp && (
+              {main.project_path && (
+                <MetaPill
+                  icon={
+                    pathCopied ? (
+                      <Check className="w-3 h-3" />
+                    ) : (
+                      <FolderOpen className="w-3 h-3" />
+                    )
+                  }
+                  label={baseProjectName(main.project_path)}
+                  color="text-secondary"
+                  tooltip={
+                    pathCopied ? "Copied!" : `Click to copy: ${tildifyPath(main.project_path)}`
+                  }
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void copyPath(tildifyPath(main.project_path!));
+                  }}
+                />
+              )}
+              {main.created_at && (
                 <MetaPill
                   icon={<Calendar className="w-3 h-3" />}
-                  label={formatCreatedTime(main.timestamp)}
+                  label={formatCreatedTime(main.created_at)}
                   color="text-secondary"
                   tooltip="Session start time"
+                />
+              )}
+              {main.updated_at && main.updated_at !== main.created_at && (
+                <MetaPill
+                  icon={<Clock className="w-3 h-3" />}
+                  label={formatCreatedTime(main.updated_at)}
+                  color="text-secondary"
+                  tooltip="Last activity time"
                 />
               )}
               {main.agent.model_name && (
@@ -226,26 +254,6 @@ export function SessionViewHeader({
                   cacheReadTokens={metrics?.total_cache_read_tokens || 0}
                   cacheWriteTokens={metrics?.total_cache_write_tokens || 0}
                   totalTokens={totalTokens}
-                />
-              )}
-              {main.project_path && (
-                <MetaPill
-                  icon={
-                    pathCopied ? (
-                      <Check className="w-3 h-3" />
-                    ) : (
-                      <FolderOpen className="w-3 h-3" />
-                    )
-                  }
-                  label={baseProjectName(main.project_path)}
-                  color="text-secondary"
-                  tooltip={
-                    pathCopied ? "Copied!" : `Click to copy: ${tildifyPath(main.project_path)}`
-                  }
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    void copyPath(tildifyPath(main.project_path!));
-                  }}
                 />
               )}
               {subAgents.length > 0 && (

@@ -44,7 +44,8 @@ _PATH_ARG_KEYS = {"file_path", "path"}
 def build_metadata_block(
     main: Trajectory, session_index: int | None = None, include_details: bool = False
 ) -> str:
-    """Build shared metadata header: session ID, project, timestamp, and optional details.
+    """Build shared metadata header: session ID, project, creation time, last-activity time,
+    and optional details.
 
     Args:
         main: The main (non-sub-agent) trajectory.
@@ -60,8 +61,10 @@ def build_metadata_block(
     if main.project_path:
         lines.append(f"PROJECT: {main.project_path}")
 
-    if main.timestamp:
-        lines.append(f"TIMESTAMP: {main.timestamp.strftime('%Y-%m-%d %H:%M')}")
+    if main.created_at:
+        lines.append(f"STARTED: {main.created_at.strftime('%Y-%m-%d %H:%M')}")
+    if main.updated_at and main.updated_at != main.created_at:
+        lines.append(f"LAST_ACTIVE: {main.updated_at.strftime('%Y-%m-%d %H:%M')}")
 
     if include_details:
         user_count = sum(1 for s in main.steps if s.source == StepSource.USER)

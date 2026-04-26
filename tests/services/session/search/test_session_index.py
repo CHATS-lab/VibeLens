@@ -95,7 +95,7 @@ def test_build_full_uses_loaded_trajectories():
         make_user_step("hi"),
         make_agent_step("react components are cool"),
     ])]}
-    meta = [{"session_id": target, "first_message": "hi", "timestamp": None}]
+    meta = [{"session_id": target, "first_message": "hi", "created_at": None}]
     filler_text = [
         "postgres index optimization",
         "docker multi-stage build",
@@ -109,7 +109,7 @@ def test_build_full_uses_loaded_trajectories():
     for i, text in enumerate(filler_text):
         sid = f"filler-{i}"
         trajs[sid] = [make_trajectory(sid, [make_user_step(text)])]
-        meta.append({"session_id": sid, "first_message": text, "timestamp": None})
+        meta.append({"session_id": sid, "first_message": text, "created_at": None})
 
     def fake_list_all_metadata(_token):
         return meta
@@ -148,7 +148,7 @@ def test_invalidate_preserves_tier1_and_clears_tier2():
 
 def _make_meta(sid: str, first_message: str = "") -> dict:
     """Minimal metadata-summary shape used by list_all_metadata callers."""
-    return {"session_id": sid, "first_message": first_message, "timestamp": None}
+    return {"session_id": sid, "first_message": first_message, "created_at": None}
 
 
 def _filler_pair(prefix: str) -> tuple[list[dict], dict]:

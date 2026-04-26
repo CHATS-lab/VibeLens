@@ -99,8 +99,7 @@ class _StepBucket:
     Populated from per-step timestamps; lets a cross-day session
     distribute messages / tokens / cost across the days its steps
     actually landed on, while session_count / heatmap / peak hours
-    stay anchored to ``Trajectory.timestamp`` (the session's creation
-    time).
+    stay anchored to ``Trajectory.created_at``.
     """
 
     __slots__ = ("messages", "tokens", "cost_usd")
@@ -124,7 +123,8 @@ class SessionAggregate:
         "duration",
         "model",
         "project",
-        "timestamp",
+        "created_at",
+        "updated_at",
         "agent_name",
         "cost_usd",
         "daily_breakdown",
@@ -140,7 +140,8 @@ class SessionAggregate:
         self.duration: int = 0
         self.model: str = UNKNOWN_MODEL
         self.project: str = NO_PROJECT
-        self.timestamp: datetime | None = None
+        self.created_at: datetime | None = None
+        self.updated_at: datetime | None = None
         self.agent_name: str = "unknown"
         self.cost_usd: float = 0.0
         # local_date_key -> _StepBucket; None when the aggregator had no
@@ -221,7 +222,7 @@ class _StatsAccumulator:
         """Accumulate one session's metrics.
 
         Session-level dimensions (session_count, daily_activity, hourly,
-        heatmap, duration) anchor on ``session.timestamp``. Messages /
+        heatmap, duration) anchor on ``session.created_at``. Messages /
         tokens / cost are bucketed per-day from ``session.daily_breakdown``
         so a session spanning yesterday 23:30 → today 00:30 shows
         activity on both daily bars.
@@ -250,10 +251,10 @@ class _StatsAccumulator:
         if session.project != NO_PROJECT:
             self.projects_seen.add(session.project)
 
-        if not session.timestamp:
+        if not session.created_at:
             return
 
-        session_ts = session.timestamp
+        session_ts = session.created_at
         if session_ts.tzinfo is None:
             session_ts = session_ts.replace(tzinfo=timezone.utc)
         # ``.astimezone()`` with no args honours DST for the actual
@@ -426,7 +427,8 @@ def _aggregate_metadata(meta: dict) -> SessionAggregate:
     agg = SessionAggregate()
     agg.project = meta.get("project_path") or NO_PROJECT
     agg.agent_name = agent.get("name") or "unknown"
-    agg.timestamp = parse_metadata_timestamp(meta)
+    agg.created_at = parse_metadata_timestamp(meta)
+    agg.updated_at = parse_metadata_timestamp(meta, key="updated_at")
 
     if _is_real_model(agent.get("model_name")):
         agg.model = agent["model_name"]
@@ -492,7 +494,7 @@ def _breakdown_from_metadata(
         if out:
             return out
 
-    day = _to_local_date_key(agg.timestamp)
+    day = _to_local_date_key(agg.created_at)
     if not day:
         return None
     bucket = _StepBucket()
@@ -521,7 +523,7 @@ def aggregate_session(traj: Trajectory) -> SessionAggregate:
     per-local-date breakdown of messages / tokens / cost. The breakdown
     lets a cross-day session split its activity across the days its
     steps actually landed on; session_count / heatmap / peak hours and
-    duration still anchor to ``traj.timestamp`` at the caller.
+    duration still anchor to ``traj.created_at`` at the caller.
 
     Per-step cost is read from ``step.metrics.cost_usd`` when populated
     (ingest writes it there for every agent step) and computed on the
@@ -530,13 +532,14 @@ def aggregate_session(traj: Trajectory) -> SessionAggregate:
     """
     agg = SessionAggregate()
     agg.project = traj.project_path or NO_PROJECT
-    agg.timestamp = traj.timestamp
+    agg.created_at = traj.created_at
+    agg.updated_at = traj.updated_at
     agg.agent_name = (traj.agent.name if traj.agent else None) or "unknown"
     session_model = traj.agent.model_name if traj.agent else None
     agg.model = _resolve_model(session_model, traj.steps)
 
     # Local-date fallback for steps that lack their own timestamp.
-    fallback_date = _to_local_date_key(traj.timestamp)
+    fallback_date = _to_local_date_key(traj.created_at)
 
     breakdown: dict[str, _StepBucket] = {}
     any_cost_found = False

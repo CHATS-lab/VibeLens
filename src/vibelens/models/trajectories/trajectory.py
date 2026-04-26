@@ -41,8 +41,11 @@ class Trajectory(BaseModel):
     )
     session_id: str = Field(description="Unique identifier for the entire agent run.")
     agent: Agent = Field(description="Agent system configuration.")
-    timestamp: datetime | None = Field(
-        default=None, description="[VibeLens] Session start timestamp, derived from first step."
+    created_at: datetime | None = Field(
+        default=None, description="[VibeLens] Session creation time, derived from first step."
+    )
+    updated_at: datetime | None = Field(
+        default=None, description="[VibeLens] Last activity time, derived from last step."
     )
     project_path: str | None = Field(
         default=None, description="[VibeLens] Working directory inferred from conversation data."
@@ -105,10 +108,16 @@ class Trajectory(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def backfill_timestamp(self) -> "Trajectory":
-        """Derive timestamp from the first step if not already set."""
-        if not self.timestamp and self.steps and self.steps[0].timestamp:
-            self.timestamp = self.steps[0].timestamp
+    def backfill_created_updated_at(self) -> "Trajectory":
+        """Derive ``created_at`` / ``updated_at`` from step timestamps when not set."""
+        if not self.steps:
+            return self
+        if self.created_at is None:
+            self.created_at = next((s.timestamp for s in self.steps if s.timestamp), None)
+        if self.updated_at is None:
+            self.updated_at = next(
+                (s.timestamp for s in reversed(self.steps) if s.timestamp), None
+            )
         return self
 
     def to_summary(self) -> dict:

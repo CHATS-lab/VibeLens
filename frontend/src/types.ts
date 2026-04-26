@@ -80,7 +80,8 @@ export interface Trajectory {
   parent_trajectory_ref?: TrajectoryRef | null;
   extra?: Record<string, unknown> | null;
   steps?: Step[];
-  timestamp?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
   _upload_id?: string;
 }
 

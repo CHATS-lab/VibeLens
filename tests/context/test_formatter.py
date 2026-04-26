@@ -33,7 +33,7 @@ def _make_trajectory(
         session_id=session_id,
         agent=Agent(name="claude-code"),
         project_path=project_path,
-        timestamp=timestamp,
+        created_at=timestamp,
         steps=steps,
     )
 
@@ -143,11 +143,11 @@ def test_build_metadata_block_with_index() -> None:
 
 
 def test_build_metadata_block_timestamp() -> None:
-    """Metadata block includes timestamp in YYYY-MM-DD HH:MM format."""
+    """Metadata block includes session start time in YYYY-MM-DD HH:MM format."""
     ts = datetime(2024, 6, 15, 12, 0, 0)
     traj = _make_trajectory(timestamp=ts)
     block = build_metadata_block(traj)
-    assert "TIMESTAMP: 2024-06-15 12:00" in block
+    assert "STARTED: 2024-06-15 12:00" in block
     print(f"PASS: timestamp present — {block}")
 
 
@@ -304,7 +304,7 @@ def _make_mixed_steps(count: int = 10) -> list[Step]:
 
 
 def test_compact_header_omits_steps_and_tools() -> None:
-    """Default (include_details=False) emits only SESSION, PROJECT, TIMESTAMP."""
+    """Default (include_details=False) emits only SESSION, PROJECT, STARTED."""
     traj = _make_trajectory(
         session_id="test-session-001",
         project_path="/home/user/myproject",
@@ -315,7 +315,7 @@ def test_compact_header_omits_steps_and_tools() -> None:
 
     assert "SESSION: test-session-001" in header
     assert "PROJECT:" in header
-    assert "TIMESTAMP:" in header
+    assert "STARTED:" in header
     assert "STEPS:" not in header
     assert "TOOLS:" not in header
     print(f"Compact header:\n{header}")
@@ -349,7 +349,7 @@ def test_compact_timestamp_format() -> None:
     assert "2026-04-14 10:30" in header
     # Should NOT contain full ISO with seconds and timezone
     assert "+00:00" not in header
-    ts_lines = [line for line in header.splitlines() if "TIMESTAMP" in line]
+    ts_lines = [line for line in header.splitlines() if "STARTED" in line]
     print(f"Timestamp line: {ts_lines}")
 
 

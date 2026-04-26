@@ -36,7 +36,7 @@ def _enriched_meta(sid: str, prompt_tokens: int = 100) -> dict:
     return {
         "session_id": sid,
         "project_path": "/p",
-        "timestamp": "2026-04-10T10:00:00+00:00",
+        "created_at": "2026-04-10T10:00:00+00:00",
         "agent": {"name": "claude-code", "model_name": "claude-opus-4-7"},
         "final_metrics": {"total_prompt_tokens": prompt_tokens, "total_completion_tokens": 0},
     }
@@ -46,7 +46,7 @@ def _bare_meta(sid: str) -> dict:
     return {
         "session_id": sid,
         "project_path": "/p",
-        "timestamp": "2026-04-10T10:00:00+00:00",
+        "created_at": "2026-04-10T10:00:00+00:00",
         "agent": {"name": "claude-code", "model_name": "claude-opus-4-7"},
     }
 
@@ -133,7 +133,7 @@ class TestReconcileSessionCounts:
         traj = Trajectory(
             session_id="s1",
             project_path="/p",
-            timestamp=datetime(2026, 4, 10, 10, 0, tzinfo=timezone.utc),
+            created_at=datetime(2026, 4, 10, 10, 0, tzinfo=timezone.utc),
             agent=Agent(name="claude-code"),
             steps=[Step(step_id="u", source="user", message="x")],
         )
@@ -150,9 +150,9 @@ class TestReconcileSessionCounts:
         recent = (now - timedelta(days=1)).isoformat()
         old = (now - timedelta(days=400)).isoformat()
         metadata = [
-            {**_bare_meta("recent-1"), "timestamp": recent},
-            {**_bare_meta("recent-2"), "timestamp": recent},
-            {**_bare_meta("old"), "timestamp": old},
+            {**_bare_meta("recent-1"), "created_at": recent},
+            {**_bare_meta("recent-2"), "created_at": recent},
+            {**_bare_meta("old"), "created_at": old},
         ]
         _reconcile_session_counts(stats, trajectories=[], metadata=metadata)
         assert stats.this_year.sessions >= 2

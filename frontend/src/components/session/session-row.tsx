@@ -67,7 +67,7 @@ export function SessionRow({
                 <span title="Part of continuation chain"><Link2 className="w-3 h-3 text-accent-violet" /></span>
               )}
               <span className="text-xs text-muted whitespace-nowrap">
-                {formatTime(session.timestamp ?? null)}
+                {formatTime(session.updated_at ?? null)}
               </span>
             </div>
           </div>
@@ -88,7 +88,7 @@ export function SessionRow({
             )}
             {!showProject && (
               <span className="text-xs text-muted whitespace-nowrap">
-                {formatTime(session.timestamp ?? null)}
+                {formatTime(session.updated_at ?? null)}
               </span>
             )}
           </div>

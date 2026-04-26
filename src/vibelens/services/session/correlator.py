@@ -14,8 +14,9 @@ from vibelens.models.trajectories import Trajectory
 def correlate_sessions(trajectories: list[Trajectory]) -> list[CorrelatedGroup]:
     """Group trajectories by project and overlapping time windows.
 
-    Two trajectories overlap when their ``[timestamp, timestamp+duration]``
-    intervals intersect.  Trajectories are grouped by ``project_path``.
+    Two trajectories overlap when their ``[created_at, updated_at]``
+    intervals intersect.  ``updated_at`` is the actual end of activity;
+    falls back to ``created_at + duration`` when missing.
 
     Args:
         trajectories: Trajectory objects from any combination of parsers.
@@ -25,7 +26,7 @@ def correlate_sessions(trajectories: list[Trajectory]) -> list[CorrelatedGroup]:
     """
     by_project: dict[str, list[Trajectory]] = {}
     for traj in trajectories:
-        if not traj.project_path or not traj.timestamp:
+        if not traj.project_path or not traj.created_at:
             continue
         by_project.setdefault(traj.project_path, []).append(traj)
 
@@ -43,18 +44,21 @@ def _find_overlapping(trajectories: list[Trajectory]) -> CorrelatedGroup | None:
     """Find trajectories with overlapping time intervals within one project.
 
     Args:
-        trajectories: Trajectories for a single project, all with timestamps.
+        trajectories: Trajectories for a single project, all with ``created_at`` set.
 
     Returns:
         CorrelatedGroup if overlaps found, else None.
     """
     intervals = []
     for traj in trajectories:
-        if not traj.timestamp:
+        if not traj.created_at:
             continue
-        start = traj.timestamp
-        duration = traj.final_metrics.duration if traj.final_metrics else 1
-        end = start + timedelta(seconds=max(duration, 1))
+        start = traj.created_at
+        if traj.updated_at and traj.updated_at >= start:
+            end = traj.updated_at
+        else:
+            duration = traj.final_metrics.duration if traj.final_metrics else 1
+            end = start + timedelta(seconds=max(duration, 1))
         agent_name = traj.agent.name if traj.agent else "unknown"
         intervals.append((start, end, agent_name, traj.session_id))
 

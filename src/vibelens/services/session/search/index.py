@@ -70,8 +70,9 @@ class _SessionEntry:
     # Tokens used to insert into the inverted index. Kept so incremental
     # add_sessions can rebuild the index without re-parsing every session.
     tokens_per_field: dict[str, list[str]] = field(default_factory=dict)
-    # Session creation timestamp, used as the final tiebreaker (desc).
-    # None for entries that lack a metadata timestamp.
+    # Last-activity timestamp (``updated_at``), used as the final tiebreaker (desc).
+    # Falls back to ``created_at`` when the session has no recorded activity time.
+    # None for entries that lack any metadata timestamp.
     timestamp: datetime | None = None
 
 
@@ -304,7 +305,9 @@ def _tier1_entry_from_summary(summary: dict) -> _SessionEntry:
         user_prompts=first_msg,
         agent_messages="",
         tool_calls="",
-        timestamp=parse_iso_timestamp(summary.get("timestamp")),
+        timestamp=parse_iso_timestamp(
+            summary.get("updated_at") or summary.get("created_at")
+        ),
     )
 
 
@@ -326,7 +329,10 @@ def _parse_entries_parallel(
                 _build_entry,
                 sid,
                 session_token,
-                parse_iso_timestamp((meta_by_id.get(sid) or {}).get("timestamp")),
+                parse_iso_timestamp(
+                    (meta_by_id.get(sid) or {}).get("updated_at")
+                    or (meta_by_id.get(sid) or {}).get("created_at")
+                ),
             )
             for sid in session_ids
         ]

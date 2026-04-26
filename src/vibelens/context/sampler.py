@@ -144,7 +144,7 @@ def _score_sessions(contexts: list[SessionContext]) -> list[float]:
 
     scores: list[float] = []
     for ctx, steps in zip(contexts, step_counts, strict=True):
-        recency = _recency_score(ctx.timestamp, now)
+        recency = _recency_score(ctx.updated_at or ctx.created_at, now)
         richness = min(steps, RICHNESS_STEP_CEILING) / max(max_steps, 1)
         diversity = 1.0 / project_counts.get(ctx.project_path or "unknown", 1)
         composite = (

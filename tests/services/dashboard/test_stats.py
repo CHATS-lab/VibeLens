@@ -29,7 +29,7 @@ def _make_metadata(
     return {
         "session_id": session_id,
         "project_path": project,
-        "timestamp": timestamp,
+        "created_at": timestamp,
         "agent": {"name": "claude-code", "model_name": model},
     }
 
@@ -542,7 +542,12 @@ class TestFilterMetadata:
         """Sessions without timestamp excluded with date filters."""
         metadata = [
             _make_metadata("s1", timestamp="2026-03-15T10:00:00+00:00"),
-            {"session_id": "s2", "project_path": "p", "timestamp": None, "agent": {"name": "test"}},
+            {
+                "session_id": "s2",
+                "project_path": "p",
+                "created_at": None,
+                "agent": {"name": "test"},
+            },
         ]
         result = filter_metadata(metadata, date_from="2026-03-01")
 
@@ -761,7 +766,7 @@ class TestFastPathDailyBreakdown:
         return {
             "session_id": session_id,
             "project_path": "/p",
-            "timestamp": timestamp,
+            "created_at": timestamp,
             "agent": {"name": "claude-code", "model_name": "claude-opus-4-7"},
             "final_metrics": {
                 "total_prompt_tokens": sum(b["tokens"] for b in breakdown.values()),
@@ -813,7 +818,7 @@ class TestFastPathDailyBreakdown:
         meta = {
             "session_id": "s2",
             "project_path": "/p",
-            "timestamp": "2026-04-22T23:00:00+00:00",
+            "created_at": "2026-04-22T23:00:00+00:00",
             "agent": {"name": "claude-code", "model_name": "claude-opus-4-7"},
             "final_metrics": {
                 "total_prompt_tokens": 1500,
@@ -900,7 +905,7 @@ class TestMessageCountInvariant:
         meta = {
             "session_id": "s1",
             "project_path": "/p",
-            "timestamp": "2026-04-10T10:00:00+00:00",
+            "created_at": "2026-04-10T10:00:00+00:00",
             "agent": {"name": "claude-code", "model_name": "claude-opus-4-7"},
             "final_metrics": {
                 "total_prompt_tokens": 1000,
@@ -935,7 +940,7 @@ class TestMessageCountInvariant:
         meta = {
             "session_id": "s2",
             "project_path": "/p",
-            "timestamp": "2026-04-10T10:00:00+00:00",
+            "created_at": "2026-04-10T10:00:00+00:00",
             "agent": {"name": "claude-code", "model_name": "claude-opus-4-7"},
             "final_metrics": {
                 "total_prompt_tokens": 500,

@@ -47,7 +47,7 @@ def _make_trajectory(
         prev_trajectory_ref=prev_trajectory_ref,
         next_trajectory_ref=next_trajectory_ref,
         extra=extra,
-        timestamp=timestamp,
+        created_at=timestamp,
     )
 
 

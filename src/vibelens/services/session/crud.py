@@ -40,7 +40,9 @@ def list_sessions(
         len(summaries),
         session_token[:8] if session_token else "none",
     )
-    summaries.sort(key=lambda s: s.get("timestamp") or "", reverse=True)
+    summaries.sort(
+        key=lambda s: s.get("updated_at") or s.get("created_at") or "", reverse=True
+    )
     if project_name:
         summaries = [s for s in summaries if s.get("project_path") == project_name]
     if limit > 0:

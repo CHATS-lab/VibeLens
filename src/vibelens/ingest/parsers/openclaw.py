@@ -85,17 +85,20 @@ class OpenClawParser(BaseParser):
             session_id = entry.get("sessionId")
             if not session_id:
                 continue
-            timestamp = normalize_timestamp(entry.get("updatedAt"))
+            updated_at = normalize_timestamp(entry.get("updatedAt"))
+            created_at = normalize_timestamp(entry.get("createdAt")) or updated_at
             trajectories.append(
                 Trajectory(
                     session_id=session_id,
                     agent=Agent(name=self.AGENT_TYPE.value),
+                    created_at=created_at,
+                    updated_at=updated_at,
                     steps=[
                         Step(
                             step_id="index-0",
                             source=StepSource.USER,
                             message="",
-                            timestamp=timestamp,
+                            timestamp=created_at,
                         )
                     ],
                     final_metrics=FinalMetrics(),

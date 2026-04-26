@@ -26,14 +26,14 @@ def _make_context(
     traj = Trajectory(
         session_id=session_id,
         project_path=project_path,
-        timestamp=timestamp,
+        created_at=timestamp,
         agent=_TEST_AGENT,
         steps=steps,
     )
     return SessionContext(
         session_id=session_id,
         project_path=project_path,
-        timestamp=timestamp,
+        created_at=timestamp,
         context_text="x" * text_chars,
         trajectory_group=[traj],
     )

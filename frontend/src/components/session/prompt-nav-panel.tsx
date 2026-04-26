@@ -411,7 +411,7 @@ export function PromptNavPanel({
                       />
                     }
                     index={idx + 1}
-                    timestamp={sub.timestamp ?? null}
+                    timestamp={sub.created_at ?? null}
                     sessionStart={sessionStart}
                     badge={
                       <span
@@ -473,7 +473,7 @@ export function PromptNavPanel({
                         />
                       }
                       index={idx + 1}
-                      timestamp={sub.timestamp ?? null}
+                      timestamp={sub.created_at ?? null}
                       sessionStart={sessionStart}
                       badge={
                         <span className={`text-[11px] ${isActive ? "text-muted" : "text-dimmed"}`}>

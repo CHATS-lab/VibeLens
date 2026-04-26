@@ -109,7 +109,8 @@ class ContextExtractor(ABC):
             next_trajectory_ref_id=(
                 main.next_trajectory_ref.session_id if main.next_trajectory_ref else None
             ),
-            timestamp=main.timestamp,
+            created_at=main.created_at,
+            updated_at=main.updated_at,
             session_index=session_index,
             step_index2id=tracker.index_to_real_id,
         )
@@ -147,7 +148,7 @@ class ContextExtractor(ABC):
         return trajectory_group[0]
 
     def _find_compaction_agents(self, trajectory_group: list[Trajectory]) -> list[Trajectory]:
-        """Find compaction sub-agents sorted by timestamp.
+        """Find compaction sub-agents sorted by creation time.
 
         Compaction agents are detected via the ``extra["is_compaction_agent"]`` flag
         set by parsers during ingestion.
@@ -156,10 +157,10 @@ class ContextExtractor(ABC):
             trajectory_group: All trajectories in the session group.
 
         Returns:
-            Compaction agent trajectories sorted by timestamp.
+            Compaction agent trajectories sorted by ``created_at``.
         """
         compaction = [t for t in trajectory_group if (t.extra or {}).get("is_compaction_agent")]
-        compaction.sort(key=lambda t: t.timestamp or datetime.min)
+        compaction.sort(key=lambda t: t.created_at or datetime.min)
         return compaction
 
     def _extract_steps(
@@ -258,10 +259,10 @@ class ContextExtractor(ABC):
         """Extract timestamped summaries from compaction agents.
 
         Each compaction agent's first AGENT step is used as the summary.
-        The trajectory timestamp marks when the compaction occurred.
+        The compaction agent's ``created_at`` marks when the compaction occurred.
 
         Args:
-            compaction_agents: Compaction sub-agents sorted by timestamp.
+            compaction_agents: Compaction sub-agents sorted by ``created_at``.
 
         Returns:
             Sorted list of (timestamp, summary_text) pairs.
@@ -272,7 +273,7 @@ class ContextExtractor(ABC):
                 if step.source == StepSource.AGENT:
                     summary = content_to_text(step.message)
                     if summary.strip():
-                        boundaries.append((agent.timestamp, summary.strip()))
+                        boundaries.append((agent.created_at, summary.strip()))
                     break
         boundaries.sort(key=lambda b: b[0] or datetime.min)
         return boundaries

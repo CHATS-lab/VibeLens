@@ -69,8 +69,8 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
       trajectories
         .filter((t) => !!t.parent_trajectory_ref)
         .sort((a, b) => {
-          const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
-          const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+          const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+          const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
           return ta - tb;
         }),
     [trajectories]
@@ -110,10 +110,10 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
     }
 
     // Place unlinked sub-agents at the last main step whose timestamp
-    // is <= the sub-agent's start timestamp. Falls back to orphans
-    // only when no timestamp is available.
+    // is <= the sub-agent's created_at. Falls back to orphans only when
+    // no timestamp is available.
     for (const sub of unlinked) {
-      const subTs = sub.timestamp ? new Date(sub.timestamp).getTime() : NaN;
+      const subTs = sub.created_at ? new Date(sub.created_at).getTime() : NaN;
       if (!isNaN(subTs) && main?.steps) {
         let bestStepId: string | null = null;
         for (const step of main.steps) {
@@ -360,11 +360,11 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
                         };
                       })}
                     sessionStartMs={
-                      main.timestamp
-                        ? new Date(main.timestamp).getTime()
+                      main.created_at
+                        ? new Date(main.created_at).getTime()
                         : null
                     }
-                    sessionStartTimestamp={main.timestamp}
+                    sessionStartTimestamp={main.created_at}
                   />
                   {subAgentsByStep.orphans.map((sub) => (
                     <div key={sub.session_id} id={`subagent-${sub.session_id}`}>

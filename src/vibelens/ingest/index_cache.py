@@ -28,7 +28,14 @@ logger = get_logger(__name__)
 # ``parser.parse`` so ``total_steps == len(traj.steps)`` and
 # ``daily_breakdown.messages`` sums to the same — the contract the
 # dashboard relies on.
-CACHE_VERSION = 10
+# v11 invalidates v10 caches written before ``Trajectory.timestamp`` was
+# split into ``created_at`` and ``updated_at``. Old entries lack the new
+# fields and would render the session list with empty time labels.
+# v12 invalidates v11 caches whose ``updated_at`` was backfilled equal to
+# ``created_at`` because the head-of-file skeleton parsers (claude, codex)
+# only saw the first event. v12 derives ``updated_at`` from the source
+# file's mtime so the session list shows true last-activity time.
+CACHE_VERSION = 12
 
 # User-home path for the persistent session index cache
 DEFAULT_CACHE_PATH = Path.home() / ".vibelens" / "session_index.json"

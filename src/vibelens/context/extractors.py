@@ -83,7 +83,8 @@ class MetadataExtractor(ContextExtractor):
             next_trajectory_ref_id=(
                 main.next_trajectory_ref.session_id if main.next_trajectory_ref else None
             ),
-            timestamp=main.timestamp,
+            created_at=main.created_at,
+            updated_at=main.updated_at,
             session_index=session_index,
             step_index2id=tracker.index_to_real_id,
         )
@@ -180,7 +181,8 @@ class SummaryExtractor(ContextExtractor):
             next_trajectory_ref_id=(
                 main.next_trajectory_ref.session_id if main.next_trajectory_ref else None
             ),
-            timestamp=main.timestamp,
+            created_at=main.created_at,
+            updated_at=main.updated_at,
             session_index=session_index,
             step_index2id=tracker.index_to_real_id,
         )
@@ -224,7 +226,7 @@ class SummaryExtractor(ContextExtractor):
         """Get the AGENT step summary from the last compaction agent.
 
         Args:
-            compaction_agents: Compaction sub-agents sorted by timestamp.
+            compaction_agents: Compaction sub-agents sorted by ``created_at``.
 
         Returns:
             Summary text from the last compaction agent's first AGENT step.

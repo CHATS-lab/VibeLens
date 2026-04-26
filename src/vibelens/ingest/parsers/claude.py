@@ -14,7 +14,7 @@ a pre-scan to build the result map before constructing ToolCall objects.
 
 import re
 from collections import Counter, deque
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, NamedTuple
 from uuid import uuid4
@@ -298,11 +298,20 @@ class ClaudeParser(BaseParser):
         if not first_message:
             return None
 
+        # File mtime is a reliable proxy for last activity: Claude Code
+        # appends to the JSONL on every event, so the file modification
+        # time is the timestamp of the most recent event in the session.
+        try:
+            mtime = datetime.fromtimestamp(jsonl_file.stat().st_mtime, tz=timezone.utc)
+        except OSError:
+            mtime = None
+
         return Trajectory(
             schema_version=DEFAULT_ATIF_VERSION,
             session_id=jsonl_file.stem,
             project_path=project_path,
-            timestamp=start_ts,
+            created_at=start_ts,
+            updated_at=mtime or start_ts,
             first_message=first_message,
             agent=Agent(name=self.AGENT_TYPE.value),
             steps=[

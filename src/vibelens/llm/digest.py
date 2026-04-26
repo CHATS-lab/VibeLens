@@ -80,8 +80,10 @@ def _format_header(trajectory: Trajectory) -> str:
         lines.append(f"MODEL: {trajectory.agent.model_name}")
     if trajectory.project_path:
         lines.append(f"PROJECT: {trajectory.project_path}")
-    if trajectory.timestamp:
-        lines.append(f"TIME: {trajectory.timestamp.isoformat()}")
+    if trajectory.created_at:
+        lines.append(f"STARTED: {trajectory.created_at.isoformat()}")
+    if trajectory.updated_at and trajectory.updated_at != trajectory.created_at:
+        lines.append(f"LAST_ACTIVE: {trajectory.updated_at.isoformat()}")
     lines.append(f"STEPS: {len(trajectory.steps)}")
 
     if trajectory.parent_trajectory_ref:

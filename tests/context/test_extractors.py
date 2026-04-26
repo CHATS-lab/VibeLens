@@ -35,7 +35,7 @@ def _make_trajectory(
         steps=steps,
         parent_trajectory_ref=parent_trajectory_ref,
         extra=extra,
-        timestamp=timestamp,
+        created_at=timestamp,
         project_path=project_path,
     )
 

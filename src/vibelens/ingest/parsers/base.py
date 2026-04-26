@@ -5,8 +5,8 @@ Every parser follows a 4-stage pipeline:
     1. ``_decode_file``      file_path → raw (dict / list[dict] / format-specific)
     2. ``_extract_metadata`` raw       → Trajectory header (steps stay [])
     3. ``_build_steps``      raw + traj → list[Step]
-    4. ``_finalize``         (provided) backfill timestamp / first_message /
-                             final_metrics, merge diagnostics into extra
+    4. ``_finalize``         (provided) backfill created_at / updated_at /
+                             first_message / final_metrics, merge diagnostics
 
 After stage 4, ``_load_subagents`` runs to discover and parse direct children.
 
@@ -139,8 +139,13 @@ class BaseParser(ABC):
         Used by both the 4-stage template and multi-session parsers that
         override ``parse`` directly.
         """
-        if traj.timestamp is None and traj.steps and traj.steps[0].timestamp:
-            traj.timestamp = traj.steps[0].timestamp
+        if traj.steps:
+            if traj.created_at is None:
+                traj.created_at = next((s.timestamp for s in traj.steps if s.timestamp), None)
+            if traj.updated_at is None:
+                traj.updated_at = next(
+                    (s.timestamp for s in reversed(traj.steps) if s.timestamp), None
+                )
         if traj.first_message is None:
             traj.first_message = find_first_user_text(traj.steps)
         if traj.final_metrics is None:

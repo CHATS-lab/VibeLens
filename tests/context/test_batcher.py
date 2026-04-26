@@ -28,7 +28,7 @@ def _make_context(
         trajectory_group=[],
         prev_trajectory_ref_id=prev_ref,
         next_trajectory_ref_id=next_ref,
-        timestamp=timestamp,
+        created_at=timestamp,
     )
 
 

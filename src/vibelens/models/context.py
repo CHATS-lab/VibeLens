@@ -41,7 +41,12 @@ class SessionContext(BaseModel):
     next_trajectory_ref_id: str | None = Field(
         default=None, description="Next session ID in continuation chain."
     )
-    timestamp: datetime | None = Field(default=None, description="Session start timestamp.")
+    created_at: datetime | None = Field(
+        default=None, description="Session start time (``Trajectory.created_at``)."
+    )
+    updated_at: datetime | None = Field(
+        default=None, description="Last activity time (``Trajectory.updated_at``)."
+    )
     step_index2id: dict[int, str] = Field(
         default_factory=dict, description="0-based step index to real step UUID mapping."
     )

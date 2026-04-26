@@ -112,20 +112,22 @@ def normalize_timestamp(value: int | float | str | None) -> datetime | None:
         return None
 
 
-def parse_metadata_timestamp(meta: dict) -> datetime | None:
-    """Extract and parse a timestamp from a metadata dict.
+def parse_metadata_timestamp(meta: dict, key: str = "created_at") -> datetime | None:
+    """Extract and parse a timestamp field from a trajectory metadata dict.
 
     Handles datetime objects directly and delegates string values
     to ``parse_iso_timestamp``. Ensures the result is timezone-aware
     (naive datetimes are assumed UTC).
 
     Args:
-        meta: Metadata dict potentially containing a "timestamp" key.
+        meta: Metadata dict from ``Trajectory.to_summary()``.
+        key: Field to read; defaults to ``created_at`` (session start).
+            Pass ``"updated_at"`` to read the last-activity time instead.
 
     Returns:
         Timezone-aware datetime, or None if missing or unparseable.
     """
-    ts = meta.get("timestamp")
+    ts = meta.get(key)
     if ts is None:
         return None
     if isinstance(ts, datetime):

@@ -234,7 +234,7 @@ class BaseTrajectoryStore(ABC):
 
     @staticmethod
     def _sort_trajectories(trajectories: list[Trajectory]) -> list[Trajectory]:
-        """Sort trajectories: main first, then sub-agents by timestamp.
+        """Sort trajectories: main first, then sub-agents by creation time.
 
         Args:
             trajectories: Unsorted trajectory list.
@@ -245,7 +245,7 @@ class BaseTrajectoryStore(ABC):
         main = [t for t in trajectories if not t.parent_trajectory_ref]
         subs = sorted(
             (t for t in trajectories if t.parent_trajectory_ref),
-            key=lambda t: t.timestamp or datetime.min,
+            key=lambda t: t.created_at or datetime.min,
         )
         return main + subs
 

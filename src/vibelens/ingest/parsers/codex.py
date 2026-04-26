@@ -22,6 +22,7 @@ import hashlib
 import re
 import sqlite3
 from collections import OrderedDict
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import NamedTuple
 from uuid import uuid4
@@ -321,10 +322,22 @@ class CodexParser(BaseParser):
 
         parent_ref = TrajectoryRef(session_id=parent_thread_id) if parent_thread_id else None
 
+        # Rollout file mtime is a reliable proxy for last activity time:
+        # Codex appends to the rollout JSONL on every event.
+        updated_at: datetime | None = None
+        if row["rollout_path"]:
+            try:
+                updated_at = datetime.fromtimestamp(
+                    Path(row["rollout_path"]).stat().st_mtime, tz=timezone.utc
+                )
+            except OSError:
+                updated_at = None
+
         return Trajectory(
             session_id=session_id,
             project_path=row["cwd"],
-            timestamp=timestamp,
+            created_at=timestamp,
+            updated_at=updated_at or timestamp,
             first_message=first_message,
             agent=agent,
             steps=[skeleton_step],
