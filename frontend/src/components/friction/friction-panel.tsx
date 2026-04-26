@@ -466,10 +466,10 @@ function NoIssuesEmptyState({
         </div>
         <div className="space-y-1.5 max-w-md">
           <h3 className="text-base font-semibold text-primary">
-            No productivity tips this round
+            No productivity tips found
           </h3>
           <p className="text-sm text-secondary leading-relaxed">
-            Your sessions ran smoothly, so we did not surface any friction. For richer signal, pick more or longer sessions and re-run, or jump into the tools below.
+            Pick more or longer sessions for richer signal, or try the tools below.
           </p>
         </div>
       </div>
@@ -478,14 +478,14 @@ function NoIssuesEmptyState({
         <EmptyStateAction
           icon={Compass}
           label="Browse Explore"
-          description="Find ready-made skills, agents, and hooks from the community catalog."
+          description="Skills, agents, and hooks from the community."
           onClick={() => onNavigate?.("explore")}
           disabled={!onNavigate}
         />
         <EmptyStateAction
           icon={Search}
           label="Try Recommend"
-          description="Match your sessions against the catalog to find skills that fit your workflow."
+          description="Match your sessions to skills that fit."
           onClick={() => onNavigate?.("retrieve")}
           disabled={!onNavigate}
         />
