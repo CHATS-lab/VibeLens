@@ -1,12 +1,16 @@
 import {
   Activity,
+  ArrowRight,
   ClipboardList,
+  Compass,
   History,
   PanelRightClose,
   PanelRightOpen,
   Plus,
+  Search,
   Sparkles,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppContext } from "../../app";
 import type {
@@ -14,6 +18,7 @@ import type {
   FrictionMeta,
   LLMStatus,
 } from "../../types";
+import type { PersonalizationTab } from "../personalization/personalization-view";
 import { formatCost } from "../../utils";
 import { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH } from "../../styles";
 import { SHOW_ANALYSIS_DETAIL_SECTIONS } from "../../constants";
@@ -38,11 +43,12 @@ interface FrictionPanelProps {
   selectedProjectCount: number;
   activeJobId: string | null;
   onJobIdChange: (id: string | null) => void;
+  onNavigateToPersonalization?: (tab: PersonalizationTab) => void;
 }
 
 const FRICTION_API_BASE = "/api/analysis/friction";
 
-export function FrictionPanel({ checkedIds, selectedProjectCount, activeJobId, onJobIdChange }: FrictionPanelProps) {
+export function FrictionPanel({ checkedIds, selectedProjectCount, activeJobId, onJobIdChange, onNavigateToPersonalization }: FrictionPanelProps) {
   const { fetchWithToken, appMode, maxSessions } = useAppContext();
   const api = useMemo(
     () => analysisClient(fetchWithToken, FRICTION_API_BASE),
@@ -332,8 +338,10 @@ export function FrictionPanel({ checkedIds, selectedProjectCount, activeJobId, o
           {result.warnings && result.warnings.length > 0 && (
             <WarningsBanner warnings={result.warnings} />
           )}
-          {result.mitigations.length > 0 && (
+          {result.mitigations.length > 0 ? (
             <MitigationsSection mitigations={result.mitigations} frictionTypes={result.friction_types} />
+          ) : (
+            <NoIssuesEmptyState onNavigate={onNavigateToPersonalization} />
           )}
           {SHOW_ANALYSIS_DETAIL_SECTIONS && result.friction_types.length > 0 && (
             <FrictionTypesSection frictionTypes={result.friction_types} />
@@ -442,5 +450,80 @@ function AnalysisMeta({ result }: { result: FrictionAnalysisResult }) {
         <span className="shrink-0">{dateStr} {timeStr}</span>
       </div>
     </Tooltip>
+  );
+}
+
+function NoIssuesEmptyState({
+  onNavigate,
+}: {
+  onNavigate?: (tab: PersonalizationTab) => void;
+}) {
+  return (
+    <div className="relative w-full rounded-lg border border-amber-300 dark:border-tutorial-amber-border bg-amber-50 dark:bg-tutorial-amber-bg px-6 py-8 overflow-hidden">
+      <div className="flex flex-col items-center text-center gap-3 mb-6">
+        <div className="shrink-0 p-3 rounded-xl bg-amber-100 dark:bg-amber-500/15 border border-amber-200 dark:border-amber-500/20">
+          <Activity className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+        </div>
+        <div className="space-y-1.5 max-w-md">
+          <h3 className="text-base font-semibold text-primary">
+            No productivity tips this round
+          </h3>
+          <p className="text-sm text-secondary leading-relaxed">
+            Your sessions ran smoothly, so we did not surface any friction. For richer signal, pick more or longer sessions and re-run, or jump into the tools below.
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl mx-auto">
+        <EmptyStateAction
+          icon={Compass}
+          label="Browse Explore"
+          description="Find ready-made skills, agents, and hooks from the community catalog."
+          onClick={() => onNavigate?.("explore")}
+          disabled={!onNavigate}
+        />
+        <EmptyStateAction
+          icon={Search}
+          label="Try Recommend"
+          description="Match your sessions against the catalog to find skills that fit your workflow."
+          onClick={() => onNavigate?.("retrieve")}
+          disabled={!onNavigate}
+        />
+      </div>
+    </div>
+  );
+}
+
+function EmptyStateAction({
+  icon: Icon,
+  label,
+  description,
+  onClick,
+  disabled,
+}: {
+  icon: LucideIcon;
+  label: string;
+  description: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="group flex items-start gap-3 px-4 py-3 text-left rounded-lg border border-amber-200 dark:border-amber-500/20 bg-panel hover:border-amber-400 dark:hover:border-amber-400/40 hover:bg-amber-50/80 dark:hover:bg-amber-500/10 transition disabled:opacity-40 disabled:cursor-not-allowed"
+    >
+      <div className="shrink-0 p-2 rounded-lg bg-amber-100 dark:bg-amber-500/15 border border-amber-200 dark:border-amber-500/20">
+        <Icon className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          <span className="text-sm font-semibold text-primary">{label}</span>
+          <ArrowRight className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition" />
+        </div>
+        <p className="text-xs text-secondary mt-0.5 leading-relaxed">{description}</p>
+      </div>
+    </button>
   );
 }

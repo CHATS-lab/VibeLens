@@ -591,7 +591,16 @@ export function App() {
             {mainView === "skills" ? (
               <PersonalizationPanel checkedIds={checkedIds} selectedProjectCount={selectedProjectCount} resetKey={skillsResetKey} />
             ) : mainView === "friction" ? (
-              <FrictionPanel checkedIds={checkedIds} selectedProjectCount={selectedProjectCount} activeJobId={frictionJobId} onJobIdChange={setFrictionJobId} />
+              <FrictionPanel
+                checkedIds={checkedIds}
+                selectedProjectCount={selectedProjectCount}
+                activeJobId={frictionJobId}
+                onJobIdChange={setFrictionJobId}
+                onNavigateToPersonalization={(tab) => {
+                  localStorage.setItem("vibelens-personalization-tab", tab);
+                  setMainView("skills");
+                }}
+              />
             ) : mainView === "analyze" ? (
               <DashboardView key={refreshKey} cache={dashboardCache} />
             ) : selectedSessionId ? (
