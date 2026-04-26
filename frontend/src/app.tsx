@@ -401,8 +401,8 @@ export function App() {
             </div>
             <div className="flex items-center gap-2">
               <a href="https://github.com/CHATS-lab/VibeLens" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:bg-control/30 rounded px-1 -mx-1 transition">
-                <img src="/logo.svg" alt="VibeLens" className="w-6 h-6" />
-                <span className="text-sm font-bold text-accent-cyan">VibeLens</span>
+                <img src="/logo.svg" alt="" className="w-6 h-6" />
+                <img src="/logo-text.png" alt="VibeLens" className="h-4 w-auto" />
               </a>
             </div>
           </div>
@@ -429,8 +429,8 @@ export function App() {
             <div data-tour="sidebar-header" className="flex items-center justify-between px-4 h-[75px] border-b border-default sticky top-0">
               <div className="flex items-center gap-3">
                 <a href="https://github.com/CHATS-lab/VibeLens" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 hover:bg-control/30 rounded px-1 -mx-1 transition">
-                  <img src="/logo.svg" alt="VibeLens" className="w-12 h-12" />
-                  <h1 className="text-2xl font-bold text-accent-cyan">VibeLens</h1>
+                  <img src="/logo.svg" alt="" className="w-12 h-12" />
+                  <img src="/logo-text.png" alt="VibeLens" className="h-6 w-auto" />
                 </a>
               </div>
               <div className="flex items-center gap-0.5">
