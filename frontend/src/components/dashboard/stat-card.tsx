@@ -1,9 +1,10 @@
 import { CARD_DESCRIPTION } from "../../styles";
+import type { TooltipContent } from "./chart-tooltip";
 
 export interface StatCardRow {
   label: string;
   value: string;
-  tooltipText?: string;
+  tooltipText?: TooltipContent;
 }
 
 export interface StatCardProps {
@@ -12,8 +13,8 @@ export interface StatCardProps {
   description?: string;
   value: string;
   rows: StatCardRow[];
-  tooltipText: string;
-  onHover: (e: React.MouseEvent, text: string) => void;
+  tooltipText: TooltipContent;
+  onHover: (e: React.MouseEvent, content: TooltipContent) => void;
   onMove: (e: React.MouseEvent) => void;
   onLeave: () => void;
 }

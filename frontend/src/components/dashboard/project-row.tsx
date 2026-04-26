@@ -1,6 +1,7 @@
 import { Hash, BarChart3 } from "lucide-react";
 import type { ProjectDetail } from "../../types";
 import { baseProjectName, formatTokens, formatCost } from "../../utils";
+import { MetricList, type TooltipContent } from "./chart-tooltip";
 
 export const DEFAULT_PROJECT_COUNT = 10;
 
@@ -11,7 +12,7 @@ interface ProjectRowProps {
   max: number;
   totalSessions: number;
   onClick: () => void;
-  onHover: (e: React.MouseEvent, text: string) => void;
+  onHover: (e: React.MouseEvent, content: TooltipContent) => void;
   onMove: (e: React.MouseEvent) => void;
   onLeave: () => void;
 }
@@ -29,24 +30,32 @@ export function ProjectRow({
 }: ProjectRowProps) {
   const pct = max > 0 ? (count / max) * 100 : 0;
   const name = baseProjectName(project);
-  const tooltipLines = [
-    name,
-    `${count} session${count !== 1 ? "s" : ""}`,
-    `${((count / totalSessions) * 100).toFixed(1)}% of total`,
-  ];
-  if (detail) {
-    tooltipLines.push(
-      `${detail.messages.toLocaleString()} messages`,
-      `${formatTokens(detail.tokens)} tokens`,
-      `${formatCost(detail.cost_usd)} est. cost`,
-    );
-  }
+  const tooltip = (
+    <MetricList
+      header={name}
+      rows={[
+        { label: "Sessions", value: count.toLocaleString(), tone: "total" },
+        {
+          label: "Share",
+          value: `${((count / totalSessions) * 100).toFixed(1)}%`,
+          tone: "percent",
+        },
+        ...(detail
+          ? [
+              { label: "Messages", value: detail.messages.toLocaleString() },
+              { label: "Tokens", value: formatTokens(detail.tokens), tone: "tokens" as const },
+              { label: "Est. cost", value: formatCost(detail.cost_usd), tone: "cost" as const },
+            ]
+          : []),
+      ]}
+    />
+  );
 
   return (
     <button
       onClick={onClick}
       className="flex flex-col gap-1 w-full text-left hover:bg-control/60 px-3 py-2 rounded-lg transition group"
-      onMouseEnter={(e) => onHover(e, tooltipLines.join("\n"))}
+      onMouseEnter={(e) => onHover(e, tooltip)}
       onMouseMove={onMove}
       onMouseLeave={onLeave}
     >

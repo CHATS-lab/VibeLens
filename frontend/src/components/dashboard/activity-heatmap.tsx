@@ -18,9 +18,11 @@ function toLocalDateStr(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
+import { MetricList, type TooltipContent } from "./chart-tooltip";
+
 interface ActivityHeatmapProps {
   data: Record<string, number>;
-  onHover: (e: React.MouseEvent, text: string) => void;
+  onHover: (e: React.MouseEvent, content: TooltipContent) => void;
   onMove: (e: React.MouseEvent) => void;
   onLeave: () => void;
 }
@@ -167,7 +169,16 @@ export function ActivityHeatmap({
                   onMouseEnter={(e) =>
                     onHover(
                       e,
-                      `${formatDate(day.date)}\n${day.count} session${day.count !== 1 ? "s" : ""}`
+                      <MetricList
+                        header={formatDate(day.date)}
+                        rows={[
+                          {
+                            label: "Sessions started",
+                            value: day.count.toLocaleString(),
+                            tone: "total",
+                          },
+                        ]}
+                      />
                     )
                   }
                   onMouseMove={onMove}

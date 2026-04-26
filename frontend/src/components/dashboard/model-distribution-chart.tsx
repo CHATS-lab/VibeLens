@@ -1,12 +1,25 @@
 import { useMemo } from "react";
+import { MetricList, type TooltipContent } from "./chart-tooltip";
 import { MODEL_COLORS } from "./chart-constants";
 import { displayModelName } from "./chart-utils";
 
 interface ModelDistributionProps {
   data: Record<string, number>;
-  onHover: (e: React.MouseEvent, text: string) => void;
+  onHover: (e: React.MouseEvent, content: TooltipContent) => void;
   onMove: (e: React.MouseEvent) => void;
   onLeave: () => void;
+}
+
+function modelTooltip(model: string, count: number, pct: string): TooltipContent {
+  return (
+    <MetricList
+      header={displayModelName(model)}
+      rows={[
+        { label: "Sessions", value: count.toLocaleString(), tone: "total" },
+        { label: "Share", value: `${pct}%`, tone: "percent" },
+      ]}
+    />
+  );
 }
 
 export function ModelDistribution({
@@ -36,12 +49,7 @@ export function ModelDistribution({
             key={seg.model}
             className={`h-full ${seg.color} cursor-default`}
             style={{ width: `${seg.pct}%` }}
-            onMouseEnter={(e) =>
-              onHover(
-                e,
-                `${displayModelName(seg.model)}\n${seg.count} session${seg.count !== 1 ? "s" : ""} (${seg.pct.toFixed(1)}%)`
-              )
-            }
+            onMouseEnter={(e) => onHover(e, modelTooltip(seg.model, seg.count, seg.pct.toFixed(1)))}
             onMouseMove={onMove}
             onMouseLeave={onLeave}
           />
@@ -56,12 +64,7 @@ export function ModelDistribution({
             <div
               key={model}
               className="flex items-center gap-2.5 text-[13px] cursor-default"
-              onMouseEnter={(e) =>
-                onHover(
-                  e,
-                  `${displayModelName(model)}\n${count} session${count !== 1 ? "s" : ""} (${pct}%)`
-                )
-              }
+              onMouseEnter={(e) => onHover(e, modelTooltip(model, count, pct))}
               onMouseMove={onMove}
               onMouseLeave={onLeave}
             >

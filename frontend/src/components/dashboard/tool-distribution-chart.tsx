@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { ToolUsageStat } from "../../types";
+import { MetricList, type MetricRow, type TooltipContent } from "./chart-tooltip";
 import { TOOL_COLORS } from "./chart-constants";
 
 const MAX_TOOLS = 12;
@@ -10,7 +11,7 @@ export function totalToolCalls(data: ToolUsageStat[]): number {
 
 interface ToolDistributionProps {
   data: ToolUsageStat[];
-  onHover: (e: React.MouseEvent, text: string) => void;
+  onHover: (e: React.MouseEvent, content: TooltipContent) => void;
   onMove: (e: React.MouseEvent) => void;
   onLeave: () => void;
 }
@@ -52,18 +53,26 @@ export function ToolDistribution({
     return segs;
   }, [visible, otherCount, total]);
 
-  const buildTooltip = (seg: (typeof segments)[0]) => {
-    const lines = [
-      seg.name,
-      `${seg.count.toLocaleString()} calls (${seg.pct.toFixed(1)}%)`,
+  const buildTooltip = (seg: (typeof segments)[0]): TooltipContent => {
+    const rows: MetricRow[] = [
+      { label: "Calls", value: seg.count.toLocaleString(), tone: "total" },
+      { label: "Share", value: `${seg.pct.toFixed(1)}%`, tone: "percent" },
     ];
     if (seg.avgPerSession > 0) {
-      lines.push(`Avg ${seg.avgPerSession}/session`);
+      rows.push({
+        label: "Avg / session",
+        value: seg.avgPerSession.toFixed(1),
+        tone: "muted",
+      });
     }
     if (seg.errorRate > 0) {
-      lines.push(`Error rate: ${(seg.errorRate * 100).toFixed(1)}%`);
+      rows.push({
+        label: "Error rate",
+        value: `${(seg.errorRate * 100).toFixed(1)}%`,
+        tone: "muted",
+      });
     }
-    return lines.join("\n");
+    return <MetricList header={seg.name} rows={rows} />;
   };
 
   if (data.length === 0) {

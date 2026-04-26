@@ -27,7 +27,7 @@ import { ModelDistribution } from "./model-distribution-chart";
 import { PeakHoursChart } from "./peak-hours-chart";
 import { StatCard } from "./stat-card";
 import { ToolDistribution, totalToolCalls } from "./tool-distribution-chart";
-import { Tooltip, useTooltip } from "./chart-tooltip";
+import { MetricList, Tooltip, useTooltip } from "./chart-tooltip";
 import { UsageOverTimeChart } from "./usage-over-time-chart";
 import { ProjectRow, DEFAULT_PROJECT_COUNT } from "./project-row";
 
@@ -207,13 +207,18 @@ export function DashboardView({ cache }: DashboardViewProps) {
                 value: stats.this_week.sessions.toLocaleString(),
               },
             ]}
-            tooltipText={[
-              `Total: ${stats.total_sessions} sessions`,
-              `${stats.project_count} projects`,
-              `This Year: ${stats.this_year.sessions}`,
-              `This Month: ${stats.this_month.sessions}`,
-              `This Week: ${stats.this_week.sessions}`,
-            ].join("\n")}
+            tooltipText={
+              <MetricList
+                header="Sessions"
+                rows={[
+                  { label: "All time", value: stats.total_sessions.toLocaleString(), tone: "total" },
+                  { label: "This year", value: stats.this_year.sessions.toLocaleString() },
+                  { label: "This month", value: stats.this_month.sessions.toLocaleString() },
+                  { label: "This week", value: stats.this_week.sessions.toLocaleString() },
+                  { label: "Projects", value: stats.project_count.toLocaleString(), tone: "muted" },
+                ]}
+              />
+            }
             onHover={show}
             onMove={move}
             onLeave={hide}
@@ -237,11 +242,17 @@ export function DashboardView({ cache }: DashboardViewProps) {
                 value: stats.avg_messages_per_session.toFixed(1),
               },
             ]}
-            tooltipText={[
-              `Total: ${stats.total_messages.toLocaleString()} messages`,
-              `This Year: ${stats.this_year.messages.toLocaleString()}`,
-              `Avg: ${stats.avg_messages_per_session.toFixed(1)} per session`,
-            ].join("\n")}
+            tooltipText={
+              <MetricList
+                header="Messages"
+                rows={[
+                  { label: "All time", value: stats.total_messages.toLocaleString(), tone: "total" },
+                  { label: "This year", value: stats.this_year.messages.toLocaleString() },
+                  { label: "This month", value: stats.this_month.messages.toLocaleString() },
+                  { label: "Avg / session", value: stats.avg_messages_per_session.toFixed(1), tone: "muted" },
+                ]}
+              />
+            }
             onHover={show}
             onMove={move}
             onLeave={hide}
@@ -255,43 +266,65 @@ export function DashboardView({ cache }: DashboardViewProps) {
               {
                 label: "This Year",
                 value: formatTokens(stats.this_year.tokens),
-                tooltipText: [
-                  `This Year: ${stats.this_year.tokens.toLocaleString()}`,
-                  `Input: ${stats.this_year.input_tokens.toLocaleString()}`,
-                  `Output: ${stats.this_year.output_tokens.toLocaleString()}`,
-                  `Cache Read: ${stats.this_year.cache_read_tokens.toLocaleString()}`,
-                  `Cache Write: ${stats.this_year.cache_write_tokens.toLocaleString()}`,
-                ].join("\n"),
+                tooltipText: (
+                  <MetricList
+                    header="Tokens — this year"
+                    rows={[
+                      { label: "Input", value: stats.this_year.input_tokens.toLocaleString(), tone: "input" },
+                      { label: "Output", value: stats.this_year.output_tokens.toLocaleString(), tone: "output" },
+                      { label: "Cache read", value: stats.this_year.cache_read_tokens.toLocaleString(), tone: "cache_read" },
+                      { label: "Cache write", value: stats.this_year.cache_write_tokens.toLocaleString(), tone: "cache_write" },
+                      { label: "Total", value: stats.this_year.tokens.toLocaleString(), tone: "total" },
+                    ]}
+                  />
+                ),
               },
               {
                 label: "This Month",
                 value: formatTokens(stats.this_month.tokens),
-                tooltipText: [
-                  `This Month: ${stats.this_month.tokens.toLocaleString()}`,
-                  `Input: ${stats.this_month.input_tokens.toLocaleString()}`,
-                  `Output: ${stats.this_month.output_tokens.toLocaleString()}`,
-                  `Cache Read: ${stats.this_month.cache_read_tokens.toLocaleString()}`,
-                  `Cache Write: ${stats.this_month.cache_write_tokens.toLocaleString()}`,
-                ].join("\n"),
+                tooltipText: (
+                  <MetricList
+                    header="Tokens — this month"
+                    rows={[
+                      { label: "Input", value: stats.this_month.input_tokens.toLocaleString(), tone: "input" },
+                      { label: "Output", value: stats.this_month.output_tokens.toLocaleString(), tone: "output" },
+                      { label: "Cache read", value: stats.this_month.cache_read_tokens.toLocaleString(), tone: "cache_read" },
+                      { label: "Cache write", value: stats.this_month.cache_write_tokens.toLocaleString(), tone: "cache_write" },
+                      { label: "Total", value: stats.this_month.tokens.toLocaleString(), tone: "total" },
+                    ]}
+                  />
+                ),
               },
               {
                 label: "Avg/Session",
                 value: formatTokens(Math.round(stats.avg_tokens_per_session)),
-                tooltipText: [
-                  `Avg/Session: ${Math.round(stats.avg_tokens_per_session).toLocaleString()}`,
-                  `Total Input: ${stats.total_input_tokens.toLocaleString()}`,
-                  `Total Output: ${stats.total_output_tokens.toLocaleString()}`,
-                  `Total Cache Read: ${stats.total_cache_read_tokens.toLocaleString()}`,
-                  `Total Cache Write: ${stats.total_cache_write_tokens.toLocaleString()}`,
-                ].join("\n"),
+                tooltipText: (
+                  <MetricList
+                    header="Tokens — all time"
+                    rows={[
+                      { label: "Input", value: stats.total_input_tokens.toLocaleString(), tone: "input" },
+                      { label: "Output", value: stats.total_output_tokens.toLocaleString(), tone: "output" },
+                      { label: "Cache read", value: stats.total_cache_read_tokens.toLocaleString(), tone: "cache_read" },
+                      { label: "Cache write", value: stats.total_cache_write_tokens.toLocaleString(), tone: "cache_write" },
+                      { label: "Total", value: stats.total_tokens.toLocaleString(), tone: "total" },
+                      { label: "Avg / session", value: Math.round(stats.avg_tokens_per_session).toLocaleString(), tone: "muted" },
+                    ]}
+                  />
+                ),
               },
             ]}
-            tooltipText={[
-              `Total: ${stats.total_tokens.toLocaleString()}`,
-              `Input: ${stats.total_input_tokens.toLocaleString()}`,
-              `Output: ${stats.total_output_tokens.toLocaleString()}`,
-              `Cache: ${stats.total_cache_tokens.toLocaleString()}`,
-            ].join("\n")}
+            tooltipText={
+              <MetricList
+                header="Tokens — all time"
+                rows={[
+                  { label: "Input", value: stats.total_input_tokens.toLocaleString(), tone: "input" },
+                  { label: "Output", value: stats.total_output_tokens.toLocaleString(), tone: "output" },
+                  { label: "Cache read", value: stats.total_cache_read_tokens.toLocaleString(), tone: "cache_read" },
+                  { label: "Cache write", value: stats.total_cache_write_tokens.toLocaleString(), tone: "cache_write" },
+                  { label: "Total", value: stats.total_tokens.toLocaleString(), tone: "total" },
+                ]}
+              />
+            }
             onHover={show}
             onMove={move}
             onLeave={hide}
@@ -315,12 +348,17 @@ export function DashboardView({ cache }: DashboardViewProps) {
                 value: formatDuration(stats.avg_duration_per_session),
               },
             ]}
-            tooltipText={[
-              `Total: ${formatDuration(stats.total_duration)}`,
-              `This Year: ${formatDuration(stats.this_year.duration)}`,
-              `This Month: ${formatDuration(stats.this_month.duration)}`,
-              `Avg/Session: ${formatDuration(stats.avg_duration_per_session)}`,
-            ].join("\n")}
+            tooltipText={
+              <MetricList
+                header="Session wall-clock duration"
+                rows={[
+                  { label: "All time", value: formatDuration(stats.total_duration), tone: "total" },
+                  { label: "This year", value: formatDuration(stats.this_year.duration) },
+                  { label: "This month", value: formatDuration(stats.this_month.duration) },
+                  { label: "Avg / session", value: formatDuration(stats.avg_duration_per_session), tone: "muted" },
+                ]}
+              />
+            }
             onHover={show}
             onMove={move}
             onLeave={hide}
@@ -344,12 +382,17 @@ export function DashboardView({ cache }: DashboardViewProps) {
                 value: formatCost(stats.avg_cost_per_session),
               },
             ]}
-            tooltipText={[
-              `Total: ${formatCost(stats.total_cost_usd)}`,
-              `This Year: ${formatCost(stats.this_year.cost_usd)}`,
-              `This Month: ${formatCost(stats.this_month.cost_usd)}`,
-              `Avg/Session: ${formatCost(stats.avg_cost_per_session)}`,
-            ].join("\n")}
+            tooltipText={
+              <MetricList
+                header="Estimated cost (USD)"
+                rows={[
+                  { label: "All time", value: formatCost(stats.total_cost_usd), tone: "cost" },
+                  { label: "This year", value: formatCost(stats.this_year.cost_usd) },
+                  { label: "This month", value: formatCost(stats.this_month.cost_usd) },
+                  { label: "Avg / session", value: formatCost(stats.avg_cost_per_session), tone: "muted" },
+                ]}
+              />
+            }
             onHover={show}
             onMove={move}
             onLeave={hide}
@@ -495,11 +538,19 @@ export function DashboardView({ cache }: DashboardViewProps) {
                       label={agent}
                       value={count}
                       max={maxAgentCount}
-                      tooltipText={[
-                        agent,
-                        `${count} session${count !== 1 ? "s" : ""}`,
-                        `${((count / stats.total_sessions) * 100).toFixed(1)}% of total`,
-                      ].join("\n")}
+                      tooltipText={
+                        <MetricList
+                          header={agent}
+                          rows={[
+                            { label: "Sessions", value: count.toLocaleString(), tone: "total" },
+                            {
+                              label: "Share",
+                              value: `${((count / stats.total_sessions) * 100).toFixed(1)}%`,
+                              tone: "percent",
+                            },
+                          ]}
+                        />
+                      }
                       onClick={() => setSelectedAgent(agent)}
                       onHover={show}
                       onMove={move}

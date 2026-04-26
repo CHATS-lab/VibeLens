@@ -3,12 +3,13 @@ import { BarChart3 } from "lucide-react";
 import type { DailyStat } from "../../types";
 import { formatTokens, formatCost } from "../../utils";
 import { TOGGLE_ACTIVE, TOGGLE_INACTIVE, CHART } from "../../styles";
+import { MetricList, type TooltipContent } from "./chart-tooltip";
 import type { ChartMetric, TimeGroup } from "./chart-utils";
 import { fillDateGaps, groupDailyStats } from "./chart-utils";
 
 interface UsageOverTimeChartProps {
   data: DailyStat[];
-  onHover: (e: React.MouseEvent, text: string) => void;
+  onHover: (e: React.MouseEvent, content: TooltipContent) => void;
   onMove: (e: React.MouseEvent) => void;
   onLeave: () => void;
 }
@@ -112,14 +113,18 @@ export function UsageOverTimeChart({
       if (idx === null) return;
       setActiveIndex(idx);
       const d = grouped[idx];
-      const lines = [
-        d.date,
-        `Sessions: ${d.session_count}`,
-        `Messages: ${d.total_messages.toLocaleString()}`,
-        `Tokens: ${d.total_tokens.toLocaleString()}`,
-        `Cost: ${formatCost(d.total_cost_usd)}`,
-      ];
-      onHover(e, lines.join("\n"));
+      onHover(
+        e,
+        <MetricList
+          header={d.date}
+          rows={[
+            { label: "Sessions started", value: d.session_count.toLocaleString() },
+            { label: "Messages", value: d.total_messages.toLocaleString() },
+            { label: "Tokens", value: d.total_tokens.toLocaleString(), tone: "tokens" },
+            { label: "Est. cost", value: formatCost(d.total_cost_usd), tone: "cost" },
+          ]}
+        />
+      );
       onMove(e);
     },
     [findNearestIndex, grouped, onHover, onMove]

@@ -1,10 +1,12 @@
+import type { TooltipContent } from "./chart-tooltip";
+
 export interface BarChartRowProps {
   label: string;
   value: number;
   max: number;
-  tooltipText: string;
+  tooltipText: TooltipContent;
   onClick?: () => void;
-  onHover: (e: React.MouseEvent, text: string) => void;
+  onHover: (e: React.MouseEvent, content: TooltipContent) => void;
   onMove: (e: React.MouseEvent) => void;
   onLeave: () => void;
 }

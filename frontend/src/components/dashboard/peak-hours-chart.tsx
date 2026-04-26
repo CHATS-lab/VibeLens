@@ -1,9 +1,10 @@
 import { useMemo } from "react";
+import { MetricList, type TooltipContent } from "./chart-tooltip";
 import { PEAK_HOUR_BINS } from "./chart-constants";
 
 interface PeakHoursChartProps {
   data: Record<number, number>;
-  onHover: (e: React.MouseEvent, text: string) => void;
+  onHover: (e: React.MouseEvent, content: TooltipContent) => void;
   onMove: (e: React.MouseEvent) => void;
   onLeave: () => void;
 }
@@ -41,7 +42,16 @@ export function PeakHoursChart({
               onMouseEnter={(e) =>
                 onHover(
                   e,
-                  `${bin.rangeLabel}\n${bin.count} session${bin.count !== 1 ? "s" : ""}`
+                  <MetricList
+                    header={bin.rangeLabel}
+                    rows={[
+                      {
+                        label: "Sessions started",
+                        value: bin.count.toLocaleString(),
+                        tone: "total",
+                      },
+                    ]}
+                  />
                 )
               }
               onMouseMove={onMove}
