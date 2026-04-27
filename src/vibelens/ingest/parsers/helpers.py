@@ -6,13 +6,18 @@ small surface they need.
 
 Public surface, grouped by lifecycle phase:
 
-* Constants — ``MAX_FIRST_MESSAGE_LENGTH``, ``ROLE_TO_SOURCE``.
+* Constants — ``MAX_FIRST_MESSAGE_LENGTH``, ``ROLE_TO_SOURCE``,
+  ``SKILL_TOOL_NAMES``.
 * JSONL iteration — ``iter_jsonl_safe``.
 * Tool-arg decoding — ``parse_tool_arguments``.
 * First-message detection — ``is_meaningful_prompt``,
   ``step_text_only``, ``find_first_user_text``,
   ``truncate_first_message``.
+* Multimodal assembly — ``build_multimodal_message``,
+  ``data_url_to_image_content_part``.
 * Trajectory rollup — ``compute_final_metrics``.
+* Synthetic boundary steps — ``make_compaction_step``.
+* Skills — ``is_skill_tool``.
 * Diagnostics — ``build_diagnostics_extra``.
 
 Helpers prefixed with ``_`` are intentionally private to this module.
@@ -20,14 +25,16 @@ Helpers prefixed with ``_`` are intentionally private to this module.
 
 import json
 from collections.abc import Iterable, Iterator
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import orjson
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
-from vibelens.models.enums import StepSource
+from vibelens.models.enums import ContentType, StepSource
 from vibelens.models.trajectories import DailyBucket, FinalMetrics, Step
+from vibelens.models.trajectories.content import Base64Source, ContentPart
 from vibelens.utils.log import get_logger
 from vibelens.utils.timestamps import local_date_key
 
@@ -39,6 +46,9 @@ MAX_FIRST_MESSAGE_LENGTH = 200
 
 # ATIF source mapping shared across parsers that use standard role names.
 ROLE_TO_SOURCE: dict[str, StepSource] = {"user": StepSource.USER, "assistant": StepSource.AGENT}
+
+# Prefix marking inline data URLs in agent payloads (OpenCode/Codex/etc.).
+_DATA_URL_PREFIX = "data:"
 
 # System-XML-tag prefixes are agent-specific (observed via actual session scans):
 #   claude  -> <local-command-caveat, <command-name, <command-message,
@@ -73,6 +83,23 @@ _ALL_KNOWN_SYSTEM_TAG_PREFIXES = (
 # "Base directory for this skill: ..." as the first line of its result).
 # Unique enough that the agent-agnostic check costs nothing for other agents.
 _SKILL_OUTPUT_PREFIX = "Base directory for this skill:"
+
+# Tool names that invoke a "skill" (a packaged prompt + reference assets) across
+# every agent that ships the feature. Used by parsers to tag the corresponding
+# ToolCall with ``extra.is_skill = True`` so the UI can distinguish skill
+# invocations from regular tool calls regardless of vendor naming.
+SKILL_TOOL_NAMES: frozenset[str] = frozenset(
+    {
+        "skill",  # OpenCode/Kilo
+        "Skill",  # CodeBuddy / Claude
+        "activate_skill",  # Gemini
+    }
+)
+
+
+def is_skill_tool(function_name: str) -> bool:
+    """Return True if ``function_name`` matches one of the known skill tools."""
+    return function_name in SKILL_TOOL_NAMES
 
 
 def is_meaningful_prompt(text: str, extra_system_prefixes: tuple[str, ...] = ()) -> bool:
@@ -312,3 +339,133 @@ def compute_final_metrics(steps: list[Step], session_model: str | None) -> Final
         total_cache_read_tokens=total_cache_read_tokens,
         daily_breakdown=breakdown or None,
     )
+
+
+def build_multimodal_message(text: str, image_parts: list[ContentPart]) -> str | list[ContentPart]:
+    """Assemble a ``Step.message`` value from text and (optional) image parts.
+
+    Returns the plain ``text`` string when no images are present so the cache
+    payload stays compact for text-only turns. When at least one image is
+    present, returns a ``list[ContentPart]`` with the text first (if non-empty)
+    followed by each image — the canonical ATIF multimodal shape.
+
+    Used by every parser that surfaces images: claude, codex, codebuddy,
+    copilot, gemini, opencode/kilo, openclaw. Centralising the assembly here
+    means the renderer never sees a parser-specific quirk like a stray empty
+    text part or an image-then-text ordering inversion.
+    """
+    if not image_parts:
+        return text
+    parts: list[ContentPart] = []
+    if text:
+        parts.append(ContentPart(type=ContentType.TEXT, text=text))
+    parts.extend(image_parts)
+    return parts
+
+
+def data_url_to_image_content_part(
+    data_url: str, fallback_mime: str = "image/png"
+) -> ContentPart | None:
+    """Decode a ``data:<mime>;base64,<...>`` URL into an inline image ContentPart.
+
+    Returns ``None`` for non-data URLs, missing ``;base64`` markers, and
+    non-image mime types — callers can record those as diagnostics. The
+    ``fallback_mime`` is used only when the URL header omits a mime type;
+    it should match the agent's documented default (``image/png`` is the
+    universal fallback in observed data).
+
+    Used by parsers whose images arrive embedded in URL form (OpenCode /
+    Kilo ``part.url``, Codex ``input_image.image_url``).
+    """
+    if not data_url.startswith(_DATA_URL_PREFIX) or "," not in data_url:
+        return None
+    header, _, payload = data_url.partition(",")
+    if ";base64" not in header:
+        return None
+    mime = header[len(_DATA_URL_PREFIX) :].split(";", 1)[0] or fallback_mime
+    if not mime.startswith("image/"):
+        return None
+    return ContentPart(
+        type=ContentType.IMAGE,
+        source=Base64Source(media_type=mime, base64=payload),
+    )
+
+
+def make_compaction_step(
+    step_id: str,
+    timestamp: datetime | None,
+    message: str = "[Context compacted]",
+    extra: dict | None = None,
+) -> Step:
+    """Build a synthetic SYSTEM Step marking a compaction / truncation boundary.
+
+    Sets the typed ``Step.is_compaction = True`` flag so the dashboard and
+    UI can detect the marker without looking at the message text. Callers
+    may pass additional ``extra`` keys (e.g. token counts, summary length)
+    — those stay in the polymorphic ``extra`` dict; they are not promoted
+    because they are vendor-specific.
+
+    Used by parsers that surface compaction as a discrete event: codex
+    (``event_msg.context_compacted``), copilot (``session.compaction_complete``),
+    gemini (``/compress`` slash command in ``logs.json``), kiro
+    (``kind: Compaction`` envelope), cursor (``providerOptions.cursor.isSummary``
+    flag in SQLite blobs). Parsers whose compaction is in-stream (codebuddy
+    ``providerData.agent="compact"``, opencode ``part.type=compaction``) tag
+    existing steps directly via :func:`tag_step_compaction` instead.
+    """
+    return Step(
+        step_id=step_id,
+        source=StepSource.SYSTEM,
+        message=message,
+        timestamp=timestamp,
+        is_compaction=True,
+        extra=extra or None,
+    )
+
+
+def attach_subagent_ref(
+    parent_steps: list[Step], source_call_id: str, child_session_id: str
+) -> bool:
+    """Wire a child trajectory's session_id onto the parent's spawning observation.
+
+    Walks ``parent_steps`` looking for an ``ObservationResult`` whose
+    ``source_call_id`` matches the spawning tool call id; appends a
+    ``TrajectoryRef(session_id=child_session_id)`` to that observation's
+    ``subagent_trajectory_ref`` list (creating it if absent). De-duplicates
+    by ``session_id`` so re-running the link step is a no-op.
+
+    Used by parsers that build the parent → child link after both sides have
+    been parsed: copilot (events grouped by ``agentId``), gemini (inline
+    sub-agent synthesised from a tool-result text). Returns ``True`` when a
+    match is found, so callers can record a diagnostic when the parent
+    can't be located.
+    """
+    # Local import keeps helpers.py free of agent-domain types at import time.
+    from vibelens.models.trajectories.trajectory_ref import TrajectoryRef
+
+    new_ref = TrajectoryRef(session_id=child_session_id)
+    for step in parent_steps:
+        if step.observation is None:
+            continue
+        for obs_result in step.observation.results:
+            if obs_result.source_call_id != source_call_id:
+                continue
+            existing = obs_result.subagent_trajectory_ref or []
+            if all(r.session_id != child_session_id for r in existing):
+                obs_result.subagent_trajectory_ref = [*existing, new_ref]
+            return True
+    return False
+
+
+def tag_step_compaction(step: Step, **extra_fields: Any) -> Step:
+    """Return a copy of ``step`` with the compaction flag set.
+
+    Sets the typed ``Step.is_compaction = True`` field. Additional keyword
+    arguments are merged into ``extra`` for format-specific metadata
+    (``agent_role="compact"`` for CodeBuddy, etc.). The original step is
+    left untouched (Pydantic ``model_copy``).
+    """
+    update: dict[str, Any] = {"is_compaction": True}
+    if extra_fields:
+        update["extra"] = {**(step.extra or {}), **extra_fields}
+    return step.model_copy(update=update)

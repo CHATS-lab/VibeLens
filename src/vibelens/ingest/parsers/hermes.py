@@ -29,6 +29,22 @@ always 0 in observed data. The db totals are attached both to
 ``Trajectory.final_metrics`` (for direct access) and as a synthetic
 ``Metrics`` on the last assistant step (for the dashboard aggregator,
 which sums per-step metrics rather than reading ``final_metrics``).
+
+Capability vs Claude reference parser:
+  - text content                   ✓
+  - reasoning content              ✗ Hermes records no thinking/reasoning
+                                     stream; the gateway sees the final
+                                     turn only. Future work: re-evaluate
+                                     when the upstream provider exposes
+                                     reasoning to Hermes.
+  - tool calls + observations      ✓
+  - sub-agents (parent linkage)    ✓ via state.db ``parent_session_id``
+  - multimodal images (inline)     ✗ // TODO(hermes-images): observed
+                                     transcripts are text only; mirror
+                                     Claude's image block handling once
+                                     the gateway forwards image content.
+  - persistent output files        ✗ no large-output split.
+  - continuation refs (prev/next)  ✗ no resume workflow.
 """
 
 import json
@@ -120,6 +136,14 @@ class HermesParser(BaseParser):
 
     AGENT_TYPE = AgentType.HERMES
     LOCAL_DATA_DIR: Path | None = Path.home() / ".hermes"
+    # Hermes session ids are ``YYYYMMDD_HHMMSS_<hash>``. ``.jsonl`` files use
+    # the bare id; ``.json`` snapshots embed it as ``session_<id>``. Both
+    # collapse to the bare id via ``_namespace_session_id``.
+    NAMESPACE_SESSION_IDS = False
+
+    def _namespace_session_id(self, file_path: Path) -> str:
+        """Return the canonical Hermes session_id for either jsonl or snapshot files."""
+        return _session_id_from_path(file_path) or file_path.stem
 
     def discover_session_files(self, data_dir: Path) -> list[Path]:
         """Return one file per unique Hermes session_id, excluding stale snapshots.
@@ -240,8 +264,7 @@ class HermesParser(BaseParser):
         )
 
         agent = self.build_agent(
-            model_name=model,
-            tool_definitions=tools if isinstance(tools, list) else None,
+            model_name=model, tool_definitions=tools if isinstance(tools, list) else None
         )
 
         parent_ref = None
@@ -787,8 +810,7 @@ def _build_tool_calls_and_observation(
         if result is not None:
             results.append(
                 ObservationResult(
-                    source_call_id=tool_call_id,
-                    content=result.get("content", "") or "",
+                    source_call_id=tool_call_id, content=result.get("content", "") or ""
                 )
             )
     observation = Observation(results=results) if results else None

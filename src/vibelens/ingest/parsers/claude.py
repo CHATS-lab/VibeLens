@@ -58,7 +58,7 @@ SUBAGENTS_DIR_NAME = "subagents"
 PROJECT_PATH_PROBE_LIMIT = 10
 
 # Directories excluded from recursive session file discovery
-_SKIP_DIR_NAMES = {SUBAGENTS_DIR_NAME, "parsed"}
+_SKIP_DIR_NAMES = {SUBAGENTS_DIR_NAME, "parsed", "plugins"}
 
 # Tool names that spawn sub-agent JSONL files in subagents/ directory.
 # Claude Code renamed "Agent" to "Task" in later versions.
@@ -76,12 +76,8 @@ _AGENT_ID_PATTERN = re.compile(r"agentId:\s*([a-f0-9]+)")
 # Claude Code saves tool results >100KB to external .txt files.
 _PERSISTED_PATH_PATTERN = re.compile(r"Full output saved to: (.+?)(?:\n|$)")
 
-
 # Reject paths longer than this to avoid pathological file reads
 MAX_PATH_LENGTH = 1024
-
-
-
 
 # XML tags injected by the system into user message content.
 # Their presence means the "user" entry is actually system-generated.
@@ -138,6 +134,9 @@ class ClaudeParser(BaseParser):
 
     AGENT_TYPE = AgentType.CLAUDE
     LOCAL_DATA_DIR: Path | None = Path.home() / ".claude"
+    # Claude Code names every session file with a globally-unique UUID, so we
+    # use the bare stem as session_id. Keeps share/bookmark URLs stable.
+    NAMESPACE_SESSION_IDS = False
 
     def discover_session_files(self, data_dir: Path) -> list[Path]:
         """Find Claude Code session JSONL files, excluding sub-agents and history index."""
@@ -373,6 +372,7 @@ class ClaudeParser(BaseParser):
         if diagnostics:
             _detect_orphans(seen_call_ids, tool_results, diagnostics)
         return steps
+
 
 def _scan_session_metadata(content: str) -> _SessionMeta:
     """Extract all session-level metadata in a single JSONL pass.

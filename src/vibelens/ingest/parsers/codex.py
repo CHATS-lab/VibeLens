@@ -16,9 +16,23 @@ The rollout also has a ``turn_context`` entry per turn carrying the
 active model name, which can change mid-session (e.g. switching between
 gpt-5.4 and a lighter model), so model tracking is per-turn rather than
 per-session.
+
+Capability vs Claude reference parser:
+  - text content                   ✓
+  - reasoning content              ✓ (separate ``reasoning`` items)
+  - tool calls + observations      ✓
+  - sub-agents (sibling files)     ✓ (rollouts spawned via spawn_agent)
+  - multimodal images (inline)     ✓ ``input_image`` content blocks with
+                                     ``data:image/<mime>;base64,...`` URLs.
+  - persistent output files        ✗ Codex doesn't split large tool outputs.
+  - continuation refs (prev/next)  ✓ via fork-mode ``forked_from_id``.
+  - compaction sessions            ✓ ``event_msg.context_compacted`` boundary
+                                     surfaced as a synthetic SYSTEM step.
+  - skills tagging                 n/a Codex has no Skill tool.
 """
 
 import hashlib
+import json
 import re
 import sqlite3
 from collections import OrderedDict
@@ -31,14 +45,17 @@ import orjson
 from pydantic import BaseModel, Field
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
-from vibelens.ingest.parsers.base import BaseParser
+from vibelens.ingest.parsers.base import BaseParser, DiscoveredSession
 from vibelens.ingest.parsers.helpers import (
     ROLE_TO_SOURCE,
+    build_multimodal_message,
+    data_url_to_image_content_part,
     iter_jsonl_safe,
+    make_compaction_step,
     parse_tool_arguments,
     truncate_first_message,
 )
-from vibelens.models.enums import AgentType, StepSource
+from vibelens.models.enums import AgentType, ContentType, StepSource
 from vibelens.models.trajectories import (
     FinalMetrics,
     Metrics,
@@ -49,6 +66,7 @@ from vibelens.models.trajectories import (
     Trajectory,
     TrajectoryRef,
 )
+from vibelens.models.trajectories.content import ContentPart
 from vibelens.utils import (
     coerce_to_string,
     get_logger,
@@ -154,10 +172,47 @@ class CodexParser(BaseParser):
 
     AGENT_TYPE = AgentType.CODEX
     LOCAL_DATA_DIR: Path | None = Path.home() / ".codex"
+    # Filenames embed the canonical UUID alongside a timestamp prefix; the
+    # real session_id comes from ``session_meta.id`` (or ``state_5.sqlite``).
+    # ``_namespace_session_id`` returns that real id so default
+    # ``discover_sessions`` produces what ``parse()`` will set.
+    NAMESPACE_SESSION_IDS = False
 
     def discover_session_files(self, data_dir: Path) -> list[Path]:
         """Find Codex rollout session files."""
         return sorted(f for f in data_dir.rglob("*.jsonl") if f.stem.startswith("rollout-"))
+
+    def discover_sessions(self, data_dir: Path) -> list[DiscoveredSession]:
+        """Use ``state_5.sqlite`` to map rollout paths → canonical session ids.
+
+        For files not in the index (older rollouts, ``codex exec`` mode),
+        falls back to scanning the file's first line for ``session_meta.id``.
+        Yields one ``DiscoveredSession`` per rollout file.
+        """
+        db_path = data_dir / "state_5.sqlite"
+        path_to_sid: dict[str, str] = {}
+        if db_path.is_file():
+            try:
+                conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+                try:
+                    rows = conn.execute("SELECT id, rollout_path FROM threads").fetchall()
+                    path_to_sid = {p: sid for sid, p in rows if p and sid}
+                finally:
+                    conn.close()
+            except sqlite3.Error as exc:
+                logger.debug("Cannot read Codex state index: %s", exc)
+
+        out: list[DiscoveredSession] = []
+        for fpath in self.discover_session_files(data_dir):
+            try:
+                mtime = fpath.stat().st_mtime_ns
+            except OSError:
+                continue
+            sid = path_to_sid.get(str(fpath)) or _scan_first_line_session_id(fpath)
+            if not sid:
+                continue
+            out.append(DiscoveredSession(path=fpath, session_id=sid, mtime_ns=mtime))
+        return out
 
     # ---- 4-stage parsing ----
     def _decode_file(self, file_path: Path, diagnostics: DiagnosticsCollector) -> list[dict] | None:
@@ -347,6 +402,31 @@ class CodexParser(BaseParser):
         )
 
 
+def _scan_first_line_session_id(file_path: Path) -> str | None:
+    """Read the first line of a rollout file and extract ``session_meta.payload.id``.
+
+    Used for orphan rollouts not tracked in ``state_5.sqlite``. Cheap —
+    one line, ~1KB typical. Returns None if the file is unreadable, the
+    first line isn't valid JSON, or no session id is present.
+    """
+    try:
+        with open(file_path, encoding="utf-8") as fh:
+            first_line = fh.readline()
+    except OSError:
+        return None
+    if not first_line:
+        return None
+    try:
+        entry = json.loads(first_line)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(entry, dict) or entry.get("type") != "session_meta":
+        return None
+    payload = entry.get("payload") or {}
+    sid = payload.get("id")
+    return sid if isinstance(sid, str) else None
+
+
 def _scan_session_metadata(entries: list[dict]) -> _CodexSessionMeta:
     """Extract session metadata from a single pass over entries.
 
@@ -499,6 +579,14 @@ def _build_steps(
             if metrics:
                 _attach_metrics_to_last_agent(steps, metrics)
 
+        # Codex emits ``event_msg.context_compacted`` (no payload data) when
+        # the rollout's prior turns are summarised in-place. We surface it
+        # as a synthetic SYSTEM step so the UI can render a boundary without
+        # losing the position relative to other steps.
+        if entry_type == "event_msg" and payload.get("type") == "context_compacted":
+            _flush_pending(steps, state)
+            steps.append(make_compaction_step(step_id=str(uuid4()), timestamp=timestamp))
+
     # Flush any trailing tool calls / thinking from the last agent turn.
     _flush_pending(steps, state)
     return steps
@@ -522,11 +610,19 @@ def _handle_response_item(
         # A new message boundary: flush any tool calls / thinking buffered
         # from the preceding agent turn before creating the next step.
         _flush_pending(steps, state)
-        content_text = _extract_message_text(payload)
+        message_content = _extract_message_content(payload)
+        text_for_routing = (
+            message_content
+            if isinstance(message_content, str)
+            else next(
+                (cp.text for cp in message_content if cp.type == ContentType.TEXT),
+                "",
+            )
+        )
         source = ROLE_TO_SOURCE.get(role, StepSource.USER)
         # Reclassify agent-injected context (e.g. <environment_context>)
         # that arrives as role=user but is system boilerplate.
-        if source == StepSource.USER and content_text.lstrip().startswith(
+        if source == StepSource.USER and text_for_routing.lstrip().startswith(
             _CODEX_SYSTEM_TAG_PREFIXES
         ):
             source = StepSource.SYSTEM
@@ -540,7 +636,7 @@ def _handle_response_item(
             Step(
                 step_id=str(uuid4()),
                 source=source,
-                message=content_text,
+                message=message_content,
                 model_name=(state.current_model or None) if role == "assistant" else None,
                 timestamp=timestamp,
                 extra=extra,
@@ -845,6 +941,8 @@ def _extract_message_text(payload: dict) -> str:
 
     Codex uses ``input_text`` for user messages and ``output_text`` for
     assistant messages (following the OpenAI Responses API content types).
+    Image blocks are ignored here — :func:`_extract_message_content` is the
+    multimodal-aware variant used when assembling user steps.
     """
     content = payload.get("content", [])
     if isinstance(content, str):
@@ -860,6 +958,47 @@ def _extract_message_text(payload: dict) -> str:
             if text:
                 parts.append(text)
     return "\n".join(parts)
+
+
+def _extract_message_content(payload: dict) -> str | list[ContentPart]:
+    """Extract user-visible content from a response_item message, including images.
+
+    Codex represents pasted images as
+    ``{"type": "input_image", "image_url": "data:image/png;base64,..."}``
+    blocks alongside ``input_text`` blocks. When at least one image is
+    present we return a list of ContentParts so the renderer can display
+    both; pure-text messages stay as a string for backward compatibility.
+    """
+    content = payload.get("content")
+    if not isinstance(content, list):
+        return _extract_message_text(payload)
+
+    text_chunks: list[str] = []
+    images: list[ContentPart] = []
+    for block in content:
+        if not isinstance(block, dict):
+            continue
+        block_type = block.get("type")
+        if block_type in ("input_text", "output_text"):
+            text = block.get("text") or ""
+            if text:
+                text_chunks.append(text)
+        elif block_type == "input_image":
+            image_part = _input_image_to_content_part(block)
+            if image_part is not None:
+                images.append(image_part)
+
+    return build_multimodal_message("\n".join(text_chunks), images)
+
+
+def _input_image_to_content_part(block: dict) -> ContentPart | None:
+    """Decode a Codex ``input_image`` block into an inline image ContentPart.
+
+    Codex serializes pasted screenshots as a single ``image_url`` field
+    holding a ``data:image/<mime>;base64,<...>`` URL — handed to the shared
+    :func:`data_url_to_image_content_part` decoder.
+    """
+    return data_url_to_image_content_part(block.get("image_url") or "")
 
 
 def _parse_structured_output(raw: str) -> tuple[str, bool, dict | None]:

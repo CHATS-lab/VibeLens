@@ -11,16 +11,35 @@ Format quirks vs Claude Code:
   - Tool results are separate ``role: "toolResult"`` messages linked by ``toolCallId``.
   - Usage uses short keys (``input``/``output``/``cacheRead``/``cacheWrite``) and
     cost is in source under ``usage.cost.total``.
+
+Capability vs Claude reference parser:
+  - text content                   ✓
+  - reasoning content              ✓ (``thinking`` content blocks)
+  - tool calls + observations      ✓
+  - sub-agents                     ✗ // TODO(openclaw-subagent): observed
+                                     OpenClaw runs are flat; if a future
+                                     build introduces a Task-style spawner
+                                     (sibling files or in-stream linkage),
+                                     mirror Claude's ``_load_subagents``.
+  - multimodal images (inline)     ✓ ``{type:"image", data:"<base64>"}``
+                                     blocks decoded into ContentParts.
+  - persistent output files        ✗ no large-output split.
+  - continuation refs (prev/next)  ✗ no resume workflow.
 """
 
 import json
+import re
 from pathlib import Path
 from uuid import uuid4
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
 from vibelens.ingest.parsers.base import BaseParser
-from vibelens.ingest.parsers.helpers import ROLE_TO_SOURCE, iter_jsonl_safe
-from vibelens.models.enums import AgentType, StepSource
+from vibelens.ingest.parsers.helpers import (
+    ROLE_TO_SOURCE,
+    build_multimodal_message,
+    iter_jsonl_safe,
+)
+from vibelens.models.enums import AgentType, ContentType, StepSource
 from vibelens.models.trajectories import (
     Agent,
     FinalMetrics,
@@ -31,6 +50,7 @@ from vibelens.models.trajectories import (
     ToolCall,
     Trajectory,
 )
+from vibelens.models.trajectories.content import Base64Source, ContentPart
 from vibelens.utils import coerce_to_string, get_logger, normalize_timestamp
 
 logger = get_logger(__name__)
@@ -40,12 +60,28 @@ SESSIONS_INDEX_FILENAME = "sessions.json"
 # Non-session JSONL files that may share the sessions/ directory.
 _EXCLUDED_SUFFIXES = ("-clean.jsonl",)
 
+# UUID at the start of a filename — OpenClaw nests files as
+# ``<uuid>-topic-<timestamp>.jsonl`` and the canonical session_id from the
+# parsed file content is just the leading UUID.
+_LEADING_UUID_PATTERN = re.compile(
+    r"^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"
+)
+
 
 class OpenClawParser(BaseParser):
     """Parser for OpenClaw's native JSONL session format."""
 
     AGENT_TYPE = AgentType.OPENCLAW
     LOCAL_DATA_DIR: Path | None = Path.home() / ".openclaw"
+    # Filenames either are pure UUID stems or ``<uuid>-topic-<timestamp>``;
+    # both reduce to the leading UUID via ``_namespace_session_id`` so the
+    # discovery sid matches the canonical session_id from parsed file content.
+    NAMESPACE_SESSION_IDS = False
+
+    def _namespace_session_id(self, file_path: Path) -> str:
+        """Return the leading UUID from the filename, falling back to the full stem."""
+        match = _LEADING_UUID_PATTERN.match(file_path.stem)
+        return match.group(1) if match else file_path.stem
 
     # ---- Discovery ----
     def discover_session_files(self, data_dir: Path) -> list[Path]:
@@ -228,8 +264,18 @@ def _collect_tool_results(message_entries: list[dict]) -> dict[str, dict]:
     return results
 
 
-def _decompose_content(raw_content: str | list) -> tuple[str, str | None, list[ToolCall]]:
-    """Split content blocks into (text, reasoning, tool_calls)."""
+def _decompose_content(
+    raw_content: str | list,
+) -> tuple[str | list[ContentPart], str | None, list[ToolCall]]:
+    """Split content blocks into ``(message, reasoning, tool_calls)``.
+
+    ``message`` is a plain string for text-only content; when one or more
+    ``image`` blocks appear, it becomes a ``list[ContentPart]`` so the
+    renderer can show text and images together. OpenClaw stores images as
+    ``{"type": "image", "data": "<base64>"}`` (PNG in observed data); we
+    surface them via :class:`ContentPart` with ``image/png`` as the default
+    media type unless ``mime`` / ``mediaType`` is explicitly provided.
+    """
     if isinstance(raw_content, str):
         return raw_content.strip(), None, []
     if not isinstance(raw_content, list):
@@ -238,6 +284,7 @@ def _decompose_content(raw_content: str | list) -> tuple[str, str | None, list[T
     text_parts: list[str] = []
     thinking_parts: list[str] = []
     tool_calls: list[ToolCall] = []
+    image_parts: list[ContentPart] = []
     for block in raw_content:
         if not isinstance(block, dict):
             continue
@@ -246,6 +293,10 @@ def _decompose_content(raw_content: str | list) -> tuple[str, str | None, list[T
             text_parts.append(block["text"])
         elif block_type == "thinking" and block.get("thinking"):
             thinking_parts.append(block["thinking"])
+        elif block_type == "image":
+            image_part = _openclaw_image_to_content_part(block)
+            if image_part is not None:
+                image_parts.append(image_part)
         elif block_type == "toolCall":
             tool_calls.append(
                 ToolCall(
@@ -254,10 +305,33 @@ def _decompose_content(raw_content: str | list) -> tuple[str, str | None, list[T
                     arguments=block.get("arguments"),
                 )
             )
+
     return (
-        "\n\n".join(text_parts).strip(),
+        build_multimodal_message("\n\n".join(text_parts).strip(), image_parts),
         "\n\n".join(thinking_parts).strip() or None,
         tool_calls,
+    )
+
+
+def _openclaw_image_to_content_part(block: dict) -> ContentPart | None:
+    """Decode an OpenClaw ``image`` block into an inline image ContentPart.
+
+    OpenClaw serializes pasted screenshots as ``{"type": "image", "data": "<base64>"}``
+    with no media-type field. Observed payloads are PNG, so we default to
+    ``image/png`` unless an explicit mime is present.
+    """
+    payload = block.get("data") or ""
+    if not payload:
+        return None
+    media_type = (
+        block.get("mime")
+        or block.get("mediaType")
+        or block.get("media_type")
+        or "image/png"
+    )
+    return ContentPart(
+        type=ContentType.IMAGE,
+        source=Base64Source(media_type=media_type, base64=payload),
     )
 
 
