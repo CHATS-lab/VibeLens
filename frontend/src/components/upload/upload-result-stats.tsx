@@ -52,14 +52,27 @@ export function ResultStats({ result }: { result: UploadResult }) {
       {hasErrors && (
         <div className="p-3 bg-accent-rose-subtle border border-rose-200 dark:border-rose-800/40 rounded-lg text-xs text-accent-rose space-y-1">
           <p className="font-semibold text-rose-700 dark:text-rose-200">
-            {result.sessions_parsed > 0 ? "Some files had errors:" : "Errors:"}
+            {result.sessions_parsed > 0
+              ? `${result.errors.length} file${result.errors.length !== 1 ? "s" : ""} had errors:`
+              : `${result.errors.length} error${result.errors.length !== 1 ? "s" : ""}:`}
           </p>
-          {result.errors.slice(0, 5).map((e, i) => (
-            <p key={i} className="text-rose-600 dark:text-rose-400">
-              {e.filename ? `${e.filename}: ` : ""}
-              {e.error}
-            </p>
-          ))}
+          <div className="max-h-48 overflow-y-auto space-y-1 pr-1">
+            {result.errors.map((e, i) => (
+              <details key={i} className="group">
+                <summary className="cursor-pointer list-none text-rose-600 dark:text-rose-400 marker:hidden">
+                  <span className="font-mono text-[11px] mr-1 text-rose-400 dark:text-rose-500/70 group-open:rotate-90 inline-block transition-transform">▸</span>
+                  {e.filename ? <span className="font-medium">{e.filename}</span> : null}
+                  {e.filename ? ": " : ""}
+                  {(e as { summary?: string }).summary ?? e.error}
+                </summary>
+                {(e as { details?: string }).details && (
+                  <pre className="text-[10px] text-rose-500 dark:text-rose-500/80 whitespace-pre-wrap mt-1 ml-4 p-2 bg-rose-100 dark:bg-rose-950/30 rounded">
+                    {(e as { details?: string }).details}
+                  </pre>
+                )}
+              </details>
+            ))}
+          </div>
         </div>
       )}
     </div>

@@ -102,15 +102,19 @@ def _iter_supporting(extension_type: AgentExtensionType) -> Iterator[tuple[str, 
 
 
 def _build_simple_stores(
-    extension_type: AgentExtensionType, dir_attr: str, store_class: Callable[..., Any]
+    extension_type: AgentExtensionType, store_class: Callable[..., Any]
 ) -> dict[str, Any]:
     """Build a per-agent store dict for extension types with a single source dir.
 
-    Skips platforms whose ``dir_attr`` is None.
+    The platform field is looked up via the canonical
+    :data:`EXTENSION_TYPE_DIR_FIELD` mapping; platforms whose specific
+    field is None are skipped.
     """
+    from vibelens.services.extensions.platforms import platform_dir_for
+
     stores: dict[str, Any] = {}
     for key, platform in _iter_supporting(extension_type):
-        source_dir = getattr(platform, dir_attr)
+        source_dir = platform_dir_for(platform, extension_type)
         if source_dir is None:
             continue
         stores[key] = store_class(source_dir.expanduser().resolve(), create=True)
@@ -126,7 +130,7 @@ def get_skill_service():
 
         settings = get_settings()
         central = SkillStore(settings.storage.managed_skills_dir, create=True)
-        agents = _build_simple_stores(AgentExtensionType.SKILL, "skills_dir", SkillStore)
+        agents = _build_simple_stores(AgentExtensionType.SKILL, SkillStore)
         return SkillService(central=central, agents=agents)
 
     return _get_or_create("skill_service", _create)
@@ -141,7 +145,7 @@ def get_command_service():
 
         settings = get_settings()
         central = CommandStore(settings.storage.managed_commands_dir, create=True)
-        agents = _build_simple_stores(AgentExtensionType.COMMAND, "commands_dir", CommandStore)
+        agents = _build_simple_stores(AgentExtensionType.COMMAND, CommandStore)
         return CommandService(central=central, agents=agents)
 
     return _get_or_create("command_service", _create)
@@ -156,7 +160,7 @@ def get_subagent_service():
 
         settings = get_settings()
         central = SubagentStore(settings.storage.managed_subagents_dir, create=True)
-        agents = _build_simple_stores(AgentExtensionType.SUBAGENT, "subagents_dir", SubagentStore)
+        agents = _build_simple_stores(AgentExtensionType.SUBAGENT, SubagentStore)
         return SubagentService(central=central, agents=agents)
 
     return _get_or_create("subagent_service", _create)
@@ -366,6 +370,38 @@ def register_upload_store(session_token: str, store: DiskTrajectoryStore) -> Non
         "Registered upload store for token=%s root=%s (total=%d)",
         session_token[:8],
         store.root,
+        len(_upload_registry[session_token]),
+    )
+
+
+def share_prior_upload_with_token(upload_id: str, session_token: str) -> None:
+    """Register a previously-uploaded store under a NEW ``session_token``.
+
+    Called from the dedupe path so a second user (different browser tab,
+    different token) who uploads the same content sees the same sessions
+    via ``/api/sessions``. Without this, dedup hides the data from the new
+    token because :func:`reconstruct_upload_registry` only registers under
+    the *original* uploader's token.
+
+    No-op when the new token already has a store rooted at the same dir
+    (idempotent across repeat hits).
+    """
+    settings = get_settings()
+    store_root = settings.upload.dir / upload_id
+    if not store_root.is_dir():
+        return
+    existing = _upload_registry.get(session_token, [])
+    for store in existing:
+        if store.root == store_root:
+            return
+    tags = {"_upload_id": upload_id, "_session_token": session_token}
+    store = DiskTrajectoryStore(root=store_root, default_tags=tags)
+    store.initialize()
+    _upload_registry.setdefault(session_token, []).append(store)
+    logger.info(
+        "Shared prior upload %s with token=%s (total=%d)",
+        upload_id,
+        session_token[:8],
         len(_upload_registry[session_token]),
     )
 

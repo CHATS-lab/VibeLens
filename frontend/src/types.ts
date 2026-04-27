@@ -4,8 +4,13 @@ export type AgentType =
   | "codebuddy"
   | "codex"
   | "copilot"
+  | "cursor"
+  | "dataclaw"
   | "gemini"
+  | "hermes"
   | "kilo"
+  | "kiro"
+  | "openclaw"
   | "opencode";
 export type OSPlatform = "macos" | "linux" | "windows";
 
@@ -118,6 +123,11 @@ export interface UploadResult {
   paths_anonymized: number;
   pii_redacted: number;
   errors: Array<{ filename: string; error: string }>;
+  upload_id?: string;
+  zip_sha256?: string;
+  deduplicated?: boolean;
+  original_upload_id?: string | null;
+  original_uploaded_at?: string | null;
 }
 
 export interface ToolUsageStat {

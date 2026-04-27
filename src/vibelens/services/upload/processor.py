@@ -15,16 +15,26 @@ discovered automatically via rglob.
 """
 
 import asyncio
+import contextlib
+import hashlib
+import json
 import shutil
+import sqlite3
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import HTTPException, UploadFile
 
 from vibelens.config.anonymize import AnonymizeConfig
-from vibelens.deps import get_settings, is_demo_mode, register_upload_store
+from vibelens.deps import (
+    get_settings,
+    is_demo_mode,
+    register_upload_store,
+    share_prior_upload_with_token,
+)
 from vibelens.ingest.anonymize.rule_anonymizer.anonymizer import RuleAnonymizer
-from vibelens.ingest.discovery import discover_session_files, get_parser
+from vibelens.ingest.parsers import get_parser
 from vibelens.ingest.parsers.base import BaseParser
 from vibelens.schemas.upload import UploadResult
 from vibelens.services.dashboard.loader import (
@@ -45,6 +55,48 @@ EXTRACTED_SUBDIR = "_extracted"
 # Append-only log of all uploads under the upload directory
 METADATA_FILENAME = "metadata.jsonl"
 
+# Map raw exceptions to user-readable summaries while preserving the raw
+# string in `details`. Order matters — first match wins. String key matches
+# the exception class name (avoids importing every concrete error class).
+_FRIENDLY_ERRORS: list[tuple[type[Exception] | str, str]] = [
+    (
+        json.JSONDecodeError,
+        "The session file isn't valid JSON. It may have been truncated mid-write.",
+    ),
+    (
+        "UnicodeDecodeError",
+        "The session file isn't UTF-8. The agent may use a different encoding.",
+    ),
+    (
+        "FileNotFoundError",
+        "Expected file is missing from the zip. Re-run the zip command.",
+    ),
+    (
+        sqlite3.DatabaseError,
+        "The SQLite database is corrupt or locked. Quit the agent and re-zip.",
+    ),
+    (
+        "PermissionError",
+        "Couldn't read the file (permission denied). Check the agent's data directory permissions.",
+    ),
+]
+
+
+def to_friendly_error(exc: Exception) -> dict:
+    """Map a raw exception to ``{summary, details}`` for upload errors.
+
+    ``summary`` is a one-line user-readable message; ``details`` is the
+    raw ``str(exc)`` for the optional collapsible "raw error" panel.
+    Falls back to a generic summary when nothing matches.
+    """
+    raw = str(exc) or exc.__class__.__name__
+    for kind, msg in _FRIENDLY_ERRORS:
+        if isinstance(kind, type) and isinstance(exc, kind):
+            return {"summary": msg, "details": raw}
+        if isinstance(kind, str) and exc.__class__.__name__ == kind:
+            return {"summary": msg, "details": raw}
+    return {"summary": "Couldn't process this file. See details below.", "details": raw}
+
 
 @dataclass
 class _ProcessingContext:
@@ -56,34 +108,29 @@ class _ProcessingContext:
     result: UploadResult
 
 
-async def receive_zip(file: UploadFile, dest_dir: Path) -> Path:
-    """Stream an uploaded zip file to disk.
+async def receive_zip(
+    file: UploadFile, dest_dir: Path, expected_sha256: str | None = None
+) -> tuple[Path, str]:
+    """Stream an uploaded zip file to disk while accumulating its SHA-256.
 
-    Writes to ``{dest_dir}/{dest_dir.name}.zip``, reading in
-    fixed-size chunks to keep memory bounded. Reads size limits
-    from application settings.
-
-    Args:
-        file: The uploaded file from FastAPI.
-        dest_dir: Directory to store the zip (created if missing).
-
-    Returns:
-        Path to the saved zip file.
-
-    Raises:
-        HTTPException: If file exceeds size limit.
+    Writes to ``{dest_dir}/{dest_dir.name}.zip``. Returns the path plus
+    the hex digest. If ``expected_sha256`` is provided, raises 400 on
+    mismatch — protects against torn uploads where the client computed
+    the hash but the bytes corrupted in transit.
     """
     settings = get_settings()
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     zip_path = dest_dir / f"{dest_dir.name}.zip"
     total_written = 0
+    hasher = hashlib.sha256()
 
     with open(zip_path, "wb") as f:
         while True:
             chunk = await file.read(settings.upload.stream_chunk_size)
             if not chunk:
                 break
+            hasher.update(chunk)
             total_written += len(chunk)
             if total_written > settings.upload.max_zip_bytes:
                 zip_path.unlink(missing_ok=True)
@@ -91,7 +138,69 @@ async def receive_zip(file: UploadFile, dest_dir: Path) -> Path:
                 raise HTTPException(status_code=400, detail=f"File exceeds {max_mb} MB limit")
             f.write(chunk)
 
-    return zip_path
+    sha = hasher.hexdigest()
+    if expected_sha256 and expected_sha256.lower() != sha:
+        zip_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=400,
+            detail="X-Zip-Sha256 header doesn't match streamed bytes",
+        )
+    return zip_path, sha
+
+
+def find_prior_upload(zip_sha256: str, agent_type: str) -> dict | None:
+    """Look up a previously processed upload by ``(zip_sha256, agent_type)``.
+
+    Returns the metadata.jsonl line dict if a prior matching upload exists
+    *and* that upload actually stored some sessions. Failed uploads (parser
+    crash, zero sessions, validation errors) are not considered cacheable —
+    the user must be allowed to retry once we've fixed the underlying issue.
+
+    Older lines without ``zip_sha256`` are treated as not-deduplicable
+    (forward compatible).
+    """
+    settings = get_settings()
+    metadata = settings.upload.dir / METADATA_FILENAME
+    if not metadata.is_file():
+        return None
+    try:
+        with open(metadata, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if entry.get("zip_sha256") != zip_sha256:
+                    continue
+                if entry.get("agent_type") != agent_type:
+                    continue
+                totals = entry.get("totals") or {}
+                if totals.get("sessions_parsed", 0) <= 0:
+                    continue
+                if totals.get("errors", 0) > 0:
+                    continue
+                return entry
+    except OSError:
+        return None
+    return None
+
+
+def load_prior_result(entry: dict) -> UploadResult | None:
+    """Load the ``result.json`` referenced by a metadata.jsonl entry."""
+    settings = get_settings()
+    rel = entry.get("result_path")
+    if not rel:
+        return None
+    full = settings.upload.dir / rel
+    if not full.is_file():
+        return None
+    try:
+        return UploadResult.model_validate_json(full.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
 
 
 def extract_and_discover(zip_path: Path, agent_type: str) -> list[Path]:
@@ -118,7 +227,7 @@ def extract_and_discover(zip_path: Path, agent_type: str) -> list[Path]:
     extracted_dir = zip_path.parent / EXTRACTED_SUBDIR
     extract_zip(zip_path=zip_path, dest_dir=extracted_dir)
 
-    return discover_session_files(extracted_dir=extracted_dir, agent_type=agent_type)
+    return get_parser(agent_type).discover_session_files(extracted_dir)
 
 
 def cleanup_extraction(extraction_dir: Path) -> None:
@@ -135,7 +244,10 @@ def cleanup_extraction(extraction_dir: Path) -> None:
 
 
 async def process_zip(
-    file: UploadFile, agent_type: str, session_token: str | None = None
+    file: UploadFile,
+    agent_type: str,
+    session_token: str | None = None,
+    expected_sha256: str | None = None,
 ) -> UploadResult:
     """Full upload orchestration: stream -> validate -> extract -> parse -> store.
 
@@ -148,6 +260,8 @@ async def process_zip(
         file: Uploaded zip file.
         agent_type: Agent CLI identifier.
         session_token: Browser tab token for upload ownership (demo mode).
+        expected_sha256: Optional client-provided SHA-256; verified against
+            the streamed bytes. Mismatch → 400.
 
     Returns:
         UploadResult with counts and any errors.
@@ -159,6 +273,7 @@ async def process_zip(
     filename = file.filename or "upload.zip"
     result = UploadResult(files_received=1)
     upload_id = generate_timestamped_id()
+    result.upload_id = upload_id
     token_short = session_token[:8] if session_token else "none"
     dest_dir = settings.upload.dir / upload_id
 
@@ -172,8 +287,45 @@ async def process_zip(
     )
 
     try:
-        zip_path = await receive_zip(file=file, dest_dir=dest_dir)
-        logger.info("Received zip: %s (%d bytes)", zip_path, zip_path.stat().st_size)
+        zip_path, zip_sha256 = await receive_zip(
+            file=file, dest_dir=dest_dir, expected_sha256=expected_sha256
+        )
+        result.zip_sha256 = zip_sha256
+        logger.info(
+            "Received zip: %s (%d bytes, sha256=%s)",
+            zip_path,
+            zip_path.stat().st_size,
+            zip_sha256[:12],
+        )
+
+        # If we already imported this exact zip under the same agent, return
+        # the prior result and discard the freshly streamed copy. This is
+        # the body-side dedupe path: it kicks in even when the client didn't
+        # send X-Zip-Sha256 (no extra hashing on the client). The header-
+        # based early dedupe in api/upload.py avoids reading the body at all
+        # when the client did pre-hash.
+        prior = await asyncio.to_thread(find_prior_upload, zip_sha256, agent_type)
+        if prior is not None:
+            prior_result = await asyncio.to_thread(load_prior_result, prior)
+            if prior_result is not None:
+                logger.info(
+                    "Deduplicated against prior upload %s (sha256=%s)",
+                    prior.get("upload_id"),
+                    zip_sha256[:12],
+                )
+                # Drop the freshly streamed dest_dir so we don't accumulate
+                # duplicate copies of the same content.
+                await asyncio.to_thread(shutil.rmtree, dest_dir, True)
+                prior_result.deduplicated = True
+                prior_result.original_upload_id = prior.get("upload_id")
+                uploaded_at = prior.get("uploaded_at")
+                if uploaded_at:
+                    with contextlib.suppress(TypeError, ValueError):
+                        prior_result.original_uploaded_at = datetime.fromisoformat(uploaded_at)
+                # Make the prior data visible to *this* token too.
+                if session_token and prior.get("upload_id"):
+                    share_prior_upload_with_token(prior["upload_id"], session_token)
+                return prior_result
 
         session_files = await asyncio.to_thread(
             extract_and_discover, zip_path=zip_path, agent_type=agent_type
@@ -194,7 +346,7 @@ async def process_zip(
 
         ctx = _ProcessingContext(
             store=upload_store,
-            parser=get_parser(agent_type=agent_type),
+            parser=get_parser(agent_type),
             anonymizer=RuleAnonymizer(AnonymizeConfig(enabled=True)),
             result=result,
         )
@@ -217,6 +369,19 @@ async def process_zip(
             "session_token": session_token,
         }
         metadata = _build_upload_metadata(upload_info, session_details, result)
+        # Idempotency: include zip_sha256 + result_path so repeated uploads
+        # of the same content can dedupe via find_prior_upload().
+        metadata["zip_sha256"] = result.zip_sha256
+        metadata["uploaded_at"] = datetime.now(tz=timezone.utc).isoformat()
+        result_rel_path = f"{upload_id}/result.json"
+        metadata["result_path"] = result_rel_path
+
+        # Persist the full result alongside the zip for later replay on dedupe.
+        result_full_path = settings.upload.dir / result_rel_path
+        await asyncio.to_thread(
+            result_full_path.write_text, result.model_dump_json(indent=2), "utf-8"
+        )
+
         await asyncio.to_thread(
             locked_jsonl_append, path=settings.upload.dir / METADATA_FILENAME, data=metadata
         )
@@ -229,7 +394,10 @@ async def process_zip(
         logger.info("Registered upload store %s for token=%s", upload_store.root, token_short)
     except Exception as exc:
         logger.warning("Upload processing failed for %s: %s", filename, exc, exc_info=True)
-        result.errors.append({"filename": filename, "error": str(exc)})
+        err = to_friendly_error(exc)
+        err["filename"] = filename
+        err["error"] = err["summary"]
+        result.errors.append(err)
         # Failed upload is not usable. Drop the whole per-upload dir
         # (which contains the zip and any partial extraction) so failed
         # uploads do not accumulate under settings.upload.dir.
@@ -267,7 +435,10 @@ def _parse_and_store_files(session_files: list[Path], ctx: _ProcessingContext) -
             trajectories = ctx.parser.parse(file_path=file_path)
         except Exception as exc:
             logger.warning("Failed to parse %s: %s", file_path.name, exc)
-            ctx.result.errors.append({"filename": file_path.name, "error": str(exc)})
+            err = to_friendly_error(exc)
+            err["filename"] = file_path.name
+            err["error"] = err["summary"]  # legacy field for older clients
+            ctx.result.errors.append(err)
             continue
 
         if not trajectories:
@@ -310,7 +481,10 @@ def _store_batches(batches: list[list], file_path: Path, ctx: _ProcessingContext
             ctx.store.save(trajectories=anonymized)
         except Exception as exc:
             logger.warning("Failed to store %s: %s", file_path.name, exc)
-            ctx.result.errors.append({"filename": file_path.name, "error": str(exc)})
+            err = to_friendly_error(exc)
+            err["filename"] = file_path.name
+            err["error"] = err["summary"]
+            ctx.result.errors.append(err)
             continue
 
         main = next(t for t in anonymized if not t.parent_trajectory_ref)

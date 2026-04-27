@@ -1,7 +1,9 @@
 import {
   ArrowLeft,
   AlertCircle,
+  Check,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
   ExternalLink,
   FileArchive,
@@ -12,19 +14,92 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppContext } from "../../app";
-import { uploadClient } from "../../api/upload";
+import { AgentIcon } from "../../agents";
+import { uploadClient, type AgentSpec } from "../../api/upload";
 import type { AgentType, OSPlatform, UploadCommands, UploadResult } from "../../types";
 import { CopyButton } from "../ui/copy-button";
 import {
-  AGENT_LABELS,
-  AGENT_OPTIONS,
   DEFAULT_AGENT,
   DEFAULT_OS,
   OS_OPTIONS,
   type UploadStep,
-  WEB_EXPORT_STEPS,
 } from "./upload-constants";
 import { ResultStats } from "./upload-result-stats";
+
+const WEB_EXPORT_STEPS = [
+  { num: "1", text: "Open claude.ai and go to Settings" },
+  { num: "2", text: 'Scroll to "Export Data" and click Export' },
+  { num: "3", text: "Wait for the email, then download the zip" },
+  { num: "4", text: "Upload the downloaded zip below" },
+];
+
+function AgentDropdown({
+  value,
+  onChange,
+  agents,
+}: {
+  value: AgentType;
+  onChange: (v: AgentType) => void;
+  agents: AgentSpec[];
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  const activeMeta = agents.find((a) => a.agent_type === value);
+
+  return (
+    <div className="relative flex-1 min-w-0" ref={ref}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-2 bg-control text-secondary text-sm rounded px-2.5 py-1.5 border border-card hover:border-hover transition cursor-pointer"
+      >
+        <AgentIcon agent={value} />
+        <span className="flex-1 text-left truncate">{activeMeta?.display_name ?? value}</span>
+        <ChevronDown
+          className={`w-3.5 h-3.5 text-dimmed shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+      {open && (
+        <div className="absolute z-50 mt-1 w-full bg-control border border-card rounded-md shadow-xl overflow-hidden max-h-72 overflow-y-auto">
+          {agents.map((spec) => (
+            <button
+              key={spec.agent_type}
+              onClick={() => {
+                onChange(spec.agent_type as AgentType);
+                setOpen(false);
+              }}
+              className={`w-full flex items-center gap-2 px-2.5 py-1.5 text-sm transition ${
+                value === spec.agent_type
+                  ? "bg-accent-cyan-subtle text-cyan-700 dark:text-cyan-200"
+                  : "text-secondary hover:bg-control-hover hover:text-primary"
+              }`}
+            >
+              {value === spec.agent_type ? (
+                <Check className="w-3.5 h-3.5 text-accent-cyan shrink-0" />
+              ) : (
+                <span className="w-3.5 shrink-0" />
+              )}
+              <AgentIcon agent={spec.agent_type} />
+              <span className="flex-1 truncate text-left">{spec.display_name}</span>
+              <span className="text-[11px] text-dimmed truncate ml-2 hidden sm:inline">
+                {spec.description}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface UploadDialogProps {
   onClose: () => void;
@@ -38,8 +113,7 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
   const [step, setStep] = useState<UploadStep>("select");
   const [agentType, setAgentType] = useState<AgentType>(DEFAULT_AGENT);
   const [osPlatform, setOsPlatform] = useState<OSPlatform>(DEFAULT_OS);
-  const [commands, setCommands] = useState<UploadCommands | null>(null);
-  const [commandLoading, setCommandLoading] = useState(false);
+  const [agentSpecs, setAgentSpecs] = useState<AgentSpec[] | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -49,18 +123,29 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const isWebExport = agentType === "claude_web";
 
-  // Fetch command when entering upload step (skip for web exports)
+  // Fetch the user-facing agent registry once when the dialog opens.
+  // The registry inlines per-OS commands, so no per-(agent, os) round trip.
   useEffect(() => {
-    if (step !== "upload" || isWebExport) return;
-    setCommandLoading(true);
+    if (agentSpecs) return;
     api
-      .commands(agentType, osPlatform)
-      .then(setCommands)
-      .catch(() =>
-        setCommands({ command: "# Failed to load command", description: "" }),
-      )
-      .finally(() => setCommandLoading(false));
-  }, [step, agentType, osPlatform, isWebExport, api]);
+      .agents()
+      .then(setAgentSpecs)
+      .catch(() => setAgentSpecs([]));
+  }, [api, agentSpecs]);
+
+  const currentSpec = useMemo(
+    () => agentSpecs?.find((s) => s.agent_type === agentType) ?? null,
+    [agentSpecs, agentType],
+  );
+  const commandLoading = agentSpecs === null;
+  const commands: UploadCommands | null = currentSpec
+    ? currentSpec.commands[osPlatform]
+      ? {
+          command: currentSpec.commands[osPlatform].command,
+          description: `Output: ${currentSpec.commands[osPlatform].output}`,
+        }
+      : { command: `# ${currentSpec.display_name} doesn't run on ${osPlatform}.`, description: "" }
+    : null;
 
   const fileTooLarge = file ? file.size > maxZipBytes : false;
 
@@ -86,13 +171,32 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
     []
   );
 
-  const handleUpload = useCallback(() => {
+  const handleUpload = useCallback(async () => {
     if (!file) return;
     setStep("result");
     setUploading(true);
     setResult(null);
     setUploadProgress(0);
     setUploadPhase("sending");
+
+    // Hash the zip on the client (when small enough) so the server can
+    // dedupe against prior identical uploads without reading the body.
+    // crypto.subtle.digest needs the full ArrayBuffer; we cap at ~2 GB
+    // to avoid OOMing the browser. Past that we just skip the header
+    // and the server falls back to the body-side dedupe path.
+    const MAX_HASH_BYTES = 2_000_000_000;
+    let zipSha256: string | null = null;
+    if (file.size <= MAX_HASH_BYTES) {
+      try {
+        const buf = await file.arrayBuffer();
+        const digest = await crypto.subtle.digest("SHA-256", buf);
+        zipSha256 = [...new Uint8Array(digest)]
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("");
+      } catch {
+        zipSha256 = null;
+      }
+    }
 
     const formData = new FormData();
     formData.append("file", file);
@@ -101,6 +205,7 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "/api/upload/zip");
     xhr.setRequestHeader("X-Session-Token", sessionToken);
+    if (zipSha256) xhr.setRequestHeader("X-Zip-Sha256", zipSha256);
 
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) {
@@ -211,16 +316,15 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
                   : "Which agent and OS are you using?"}
               </p>
 
-              {/* Agent selector */}
-              <SelectorRow
-                label="Source"
-                options={AGENT_OPTIONS.map((o) => ({
-                  value: o.type,
-                  label: o.label,
-                }))}
-                selected={agentType}
-                onSelect={(v) => setAgentType(v as AgentType)}
-              />
+              {/* Agent selector — dropdown so 13+ agents fit. */}
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-muted w-14 shrink-0">Source</span>
+                <AgentDropdown
+                  value={agentType}
+                  onChange={setAgentType}
+                  agents={agentSpecs ?? []}
+                />
+              </div>
 
               {/* OS selector — hidden for web exports */}
               {!isWebExport && (
@@ -361,7 +465,7 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
                 </div>
                 <div className="flex items-center gap-4 text-xs text-muted">
                   <span>{(file.size / (1024 * 1024)).toFixed(1)} MB</span>
-                  <span>{AGENT_LABELS[agentType]}</span>
+                  <span>{currentSpec?.display_name ?? agentType}</span>
                 </div>
               </div>
 
@@ -424,7 +528,22 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
                 </div>
               ) : result ? (
                 <div className="space-y-4">
-                  {result.errors.length > 0 && result.sessions_parsed === 0 ? (
+                  {result.deduplicated ? (
+                    <div className="flex flex-col items-center gap-2 py-4">
+                      <div className="w-14 h-14 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+                        <CheckCircle2 className="w-7 h-7 text-amber-500" />
+                      </div>
+                      <p className="text-base font-semibold text-primary">Already imported</p>
+                      <p className="text-xs text-muted text-center">
+                        This zip was imported{" "}
+                        {result.original_uploaded_at
+                          ? `on ${new Date(result.original_uploaded_at).toLocaleDateString()}`
+                          : "earlier"}
+                        . Showing the existing {result.sessions_parsed}{" "}
+                        {result.sessions_parsed === 1 ? "session" : "sessions"}.
+                      </p>
+                    </div>
+                  ) : result.errors.length > 0 && result.sessions_parsed === 0 ? (
                     <div className="flex flex-col items-center gap-2 py-4">
                       <div className="w-14 h-14 rounded-full bg-rose-500/10 border border-rose-500/20 flex items-center justify-center">
                         <AlertCircle className="w-7 h-7 text-accent-rose" />
