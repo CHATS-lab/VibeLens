@@ -14,44 +14,21 @@ class AgentType(StrEnum):
     ANTIGRAVITY = "antigravity"
     CLAUDE = "claude"
     CLAUDE_WEB = "claude_web"
+    CODEBUDDY = "codebuddy"
     CODEX = "codex"
     COPILOT = "copilot"
     CURSOR = "cursor"
     DATACLAW = "dataclaw"
     GEMINI = "gemini"
     HERMES = "hermes"
+    KILO = "kilo"
     KIMI = "kimi"
+    KIRO = "kiro"
     OPENCODE = "opencode"
     OPENCLAW = "openclaw"
     OPENHANDS = "openhands"
     QWEN = "qwen"
     PARSED = "parsed"
-
-
-class ExtensionSource(StrEnum):
-    """Unified source/store type for extensions.
-
-    Values must be plain strings matching AgentType values.  Using
-    ``AgentType.XXX`` as values causes StrEnum to store the *repr*
-    (e.g. ``"AgentType.CLAUDE"``) instead of the plain value on some
-    Python versions, breaking platform key lookups.
-    """
-
-    AIDER = "aider"
-    ANTIGRAVITY = "antigravity"
-    CLAUDE = "claude"
-    CODEX = "codex"
-    COPILOT = "copilot"
-    CURSOR = "cursor"
-    DATACLAW = "dataclaw"
-    GEMINI = "gemini"
-    HERMES = "hermes"
-    KIMI = "kimi"
-    OPENCODE = "opencode"
-    OPENCLAW = "openclaw"
-    OPENHANDS = "openhands"
-    QWEN = "qwen"
-    CENTRAL = "central"
 
 
 class AgentExtensionType(StrEnum):
