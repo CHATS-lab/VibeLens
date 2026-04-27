@@ -66,11 +66,7 @@ from typing import Any
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
 from vibelens.ingest.parsers.base import BaseParser
-from vibelens.ingest.parsers.helpers import (
-    is_skill_tool,
-    iter_jsonl_safe,
-    tag_step_compaction,
-)
+from vibelens.ingest.parsers.helpers import iter_jsonl_safe, tag_step_compaction
 from vibelens.models.enums import AgentType, ContentType, StepSource
 from vibelens.models.trajectories import (
     Metrics,
@@ -90,6 +86,10 @@ logger = get_logger(__name__)
 _SUBAGENTS_DIR_NAME = "subagents"
 _TASK_ID_PATTERN = re.compile(r"task_id:\s*(agent-\w+)")
 _TEAMMATE_MESSAGE_PREFIX = "<teammate-message"
+
+# CodeBuddy's dedicated skill-activation tool. Activation only — reading a
+# SKILL.md via Read/Bash doesn't count.
+_SKILL_TOOL_NAMES: frozenset[str] = frozenset({"Skill"})
 
 # Code Buddy uses Claude-Code-style XML tags to record CLI command echoes,
 # system reminders, and stdout dumps as user messages. They have content but
@@ -399,7 +399,7 @@ class _AgentTurnBuilder:
                 tool_call_id=call_id,
                 function_name=function_name,
                 arguments=arguments,
-                is_skill=True if is_skill_tool(function_name) else None,
+                is_skill=True if function_name in _SKILL_TOOL_NAMES else None,
                 extra=tc_extra or None,
             )
         )
@@ -421,9 +421,16 @@ class _AgentTurnBuilder:
             extra["message_id"] = self.message_id
         if self.is_compaction:
             extra["agent_role"] = "compact"
+        # CodeBuddy reuses the top-level ``id`` across every event of one
+        # assistant turn (``message`` + multiple ``function_call`` events all
+        # share the same ``id``). ``providerData.messageId`` is the only
+        # field that's truly turn-unique, so prefer it for ``step_id``.
+        # Fall back to the event id, then to a deterministic synthesis,
+        # for the rare event without a messageId.
         return Step(
-            step_id=self.first_event_id
-            or deterministic_id("codebuddy_agent", self.message_id or ""),
+            step_id=self.message_id
+            or self.first_event_id
+            or deterministic_id("codebuddy_agent", str(self.first_timestamp)),
             timestamp=self.first_timestamp,
             source=StepSource.AGENT,
             model_name=self.model,

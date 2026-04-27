@@ -24,7 +24,11 @@ logger = get_logger(__name__)
 # polymorphic ``extra`` dicts to typed first-class fields. Cached entries
 # from v16 still carry the old values inside ``extra`` and would render
 # without the typed flag set, so we force a rebuild.
-CACHE_VERSION = 17
+# v18 renames ``Trajectory.extra.is_compaction_agent`` → ``is_compaction``
+# (claude compaction sub-agents). Old cached entries carry the obsolete
+# key; the bump invalidates them so the consumer's ``extra.is_compaction``
+# lookup repopulates correctly on first read.
+CACHE_VERSION = 18
 
 # User-home path for the persistent session index cache
 DEFAULT_CACHE_PATH = Path.home() / ".vibelens" / "session_index.json"

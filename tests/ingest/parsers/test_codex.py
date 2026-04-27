@@ -1191,3 +1191,30 @@ class TestAgentRoleSignal:
         traj = _parser.parse(rollout)[0]
         assert (traj.extra or {}).get("agent_role") is None
         assert traj.parent_trajectory_ref is None
+
+
+def test_codex_does_not_tag_skill_via_path(tmp_path: Path) -> None:
+    """Codex has no dedicated activation tool; reading a SKILL.md via
+    ``read_file`` is working-memory access, not activation, so we leave
+    ``is_skill`` unset. This test pins that contract.
+    """
+    rollout = tmp_path / "rollout.jsonl"
+    _write_rollout(
+        rollout,
+        [
+            _meta_entry(),
+            _turn_context_entry(),
+            _assistant_msg_entry("reading skill"),
+            _function_call_entry(
+                call_id="cs1",
+                name="read_file",
+                arguments=json.dumps({"file_path": "/Users/x/.codex/skills/foo/SKILL.md"}),
+                timestamp="2025-01-15T10:00:03Z",
+            ),
+            _function_call_output_entry(call_id="cs1", output="..."),
+        ],
+    )
+    trajs = _parser.parse(rollout)
+    tcs = [tc for s in trajs[0].steps for tc in s.tool_calls]
+    print(f"is_skill: {[(tc.function_name, tc.is_skill) for tc in tcs]}")
+    assert all(tc.is_skill is None for tc in tcs)

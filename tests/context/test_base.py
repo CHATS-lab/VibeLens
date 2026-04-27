@@ -98,13 +98,13 @@ def test_extract_finds_main_trajectory() -> None:
 
 
 def test_extract_detects_compaction_agents() -> None:
-    """extract() detects compaction agents via extra['is_compaction_agent'] flag."""
+    """extract() detects compaction agents via extra['is_compaction'] flag."""
     compaction_step = _make_step("cs1", source=StepSource.AGENT, message="Compacted summary text")
     compaction_traj = _make_trajectory(
         session_id="sess-compact",
         steps=[compaction_step],
         parent_trajectory_ref=TrajectoryRef(session_id="sess-main"),
-        extra={"is_compaction_agent": True},
+        extra={"is_compaction": True},
         timestamp=datetime(2024, 1, 1, 0, 0, 0),
     )
     main_step = _make_step(

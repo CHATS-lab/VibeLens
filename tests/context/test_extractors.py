@@ -68,7 +68,7 @@ def _make_compaction_agent(
         session_id=session_id,
         steps=[agent_step],
         parent_trajectory_ref=TrajectoryRef(session_id=parent_session_id),
-        extra={"is_compaction_agent": True},
+        extra={"is_compaction": True},
         timestamp=ts,
         project_path=None,
     )

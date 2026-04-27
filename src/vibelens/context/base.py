@@ -150,7 +150,7 @@ class ContextExtractor(ABC):
     def _find_compaction_agents(self, trajectory_group: list[Trajectory]) -> list[Trajectory]:
         """Find compaction sub-agents sorted by creation time.
 
-        Compaction agents are detected via the ``extra["is_compaction_agent"]`` flag
+        Compaction agents are detected via the ``extra["is_compaction"]`` flag
         set by parsers during ingestion.
 
         Args:
@@ -159,7 +159,7 @@ class ContextExtractor(ABC):
         Returns:
             Compaction agent trajectories sorted by ``created_at``.
         """
-        compaction = [t for t in trajectory_group if (t.extra or {}).get("is_compaction_agent")]
+        compaction = [t for t in trajectory_group if (t.extra or {}).get("is_compaction")]
         compaction.sort(key=lambda t: t.created_at or datetime.min)
         return compaction
 

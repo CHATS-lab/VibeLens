@@ -68,6 +68,11 @@ _SUBAGENT_TOOL_NAMES = {"Agent", "Task"}
 # not spawned via Agent/Task tool_use, so parent linkage never exists.
 COMPACTION_AGENT_PREFIX = "acompact-"
 
+# Tool names that invoke a skill in Claude Code. Activation only — reading
+# a SKILL.md via Read/Bash/Grep doesn't count (that's just file content
+# access, not skill activation).
+_SKILL_TOOL_NAMES: frozenset[str] = frozenset({"Skill"})
+
 # Pattern to extract agentId from Task/Agent tool_result content.
 # Claude Code embeds "agentId: {hex_hash}" in the tool output text.
 _AGENT_ID_PATTERN = re.compile(r"agentId:\s*([a-f0-9]+)")
@@ -220,13 +225,18 @@ class ClaudeParser(BaseParser):
         return steps
 
     def _load_subagents(self, main: Trajectory, file_path: Path) -> list[Trajectory]:
-        """Locate ``<sid>/subagents/agent-*.jsonl`` files and parse each.
+        """Locate ``<sid>/subagents/{agent,acompact}-*.jsonl`` files and parse each.
         Per-call linkage (step_id + tool_call_id) is recovered from
-        ``main.steps`` observations populated in stage 3.
+        ``main.steps`` observations populated in stage 3. Compaction
+        sub-agents (``acompact-*``) have no parent linkage by design.
         """
         subagent_dir = file_path.parent / file_path.stem / SUBAGENTS_DIR_NAME
         if not subagent_dir.is_dir():
             return []
+        # Compaction sub-agents are named ``agent-acompact-*.jsonl`` in real
+        # data (not bare ``acompact-*``), so the standard ``agent-*`` glob
+        # picks them up. The compaction-prefix substring check below
+        # distinguishes them from regular sub-agents.
         agent_files = sorted(subagent_dir.glob("agent-*.jsonl"))
         if not agent_files:
             return []
@@ -254,9 +264,15 @@ class ClaudeParser(BaseParser):
                 tool_call_id=tool_call_id,
                 trajectory_path=str(file_path),
             )
-            # Compaction agents flagged via filename prefix.
+            # Compaction agents flagged via filename prefix substring (real-data
+            # filenames are ``agent-acompact-{hex}``, so a startswith check
+            # would miss them). One trajectory-level flag, no per-step tagging:
+            # the typical compaction is 2 events (summary prompt + summary
+            # response) but pathological sessions (broken Stop hooks, runaway
+            # loops) bloat to thousands of events — tagging every step would
+            # inflate the cross-parser ``is_compaction`` count for one event.
             if COMPACTION_AGENT_PREFIX in agent_file.stem:
-                sub.extra = {**(sub.extra or {}), "is_compaction_agent": True}
+                sub.extra = {**(sub.extra or {}), "is_compaction": True}
             subs.append(sub)
 
         if subs:
@@ -810,8 +826,7 @@ def _validate_subagent_linkage(
         compaction = {
             sid
             for sid in unreferenced
-            if (sub_by_id[sid].extra or {}).get("is_compaction_agent")
-            or COMPACTION_AGENT_PREFIX in sid
+            if (sub_by_id[sid].extra or {}).get("is_compaction") or COMPACTION_AGENT_PREFIX in sid
         }
         regular = unreferenced - compaction
         if compaction:
@@ -935,11 +950,13 @@ def _decompose_raw_content(
 
         elif block_type == "tool_use":
             tool_call_id = block.get("id", "")
+            tool_name = block.get("name", "")
             tool_calls.append(
                 ToolCall(
                     tool_call_id=tool_call_id,
-                    function_name=block.get("name", ""),
+                    function_name=tool_name,
                     arguments=block.get("input"),
+                    is_skill=True if tool_name in _SKILL_TOOL_NAMES else None,
                 )
             )
             # Inject pre-scanned tool result if available

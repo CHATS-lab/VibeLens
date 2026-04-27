@@ -58,7 +58,6 @@ from vibelens.ingest.parsers.base import BaseParser
 from vibelens.ingest.parsers.helpers import (
     attach_subagent_ref,
     build_multimodal_message,
-    is_skill_tool,
     make_compaction_step,
 )
 from vibelens.models.enums import AgentType, ContentType, StepSource
@@ -107,6 +106,10 @@ _KIND_SUBAGENT = "subagent"
 # and never persist the child conversation as a separate file. We synthesise a
 # minimal child Trajectory from the summary so the UI can navigate to it.
 _INLINE_SUBAGENT_TOOL_NAMES = frozenset({"codebase_investigator"})
+
+# Gemini's dedicated skill-activation tool. Activation only — reading SKILL.md
+# via run_shell_command/read_file does not count.
+_SKILL_TOOL_NAMES: frozenset[str] = frozenset({"activate_skill"})
 
 
 class GeminiParser(BaseParser):
@@ -584,7 +587,7 @@ def _build_tool_calls_and_observation(
                 tool_call_id=tc_id,
                 function_name=tool_name,
                 arguments=tool.get("args"),
-                is_skill=True if is_skill_tool(tool_name) else None,
+                is_skill=True if tool_name in _SKILL_TOOL_NAMES else None,
             )
         )
         obs_results.append(

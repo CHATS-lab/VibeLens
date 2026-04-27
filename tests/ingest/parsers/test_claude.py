@@ -1131,3 +1131,194 @@ class TestErrorHandling:
         assert len(trajectories) == 1
         step_ids = [s.step_id for s in trajectories[0].steps]
         assert len(step_ids) == len(set(step_ids)), f"duplicate step_ids: {step_ids}"
+
+
+def test_skill_tool_tagged(tmp_path: Path) -> None:
+    """A `Skill` tool_use produces ToolCall.is_skill=True; non-skill tools stay None."""
+    sid = "11111111-1111-1111-1111-111111111111"
+    jsonl = tmp_path / f"{sid}.jsonl"
+    events = [
+        {
+            "type": "user",
+            "uuid": "u1",
+            "sessionId": sid,
+            "timestamp": "2026-04-27T00:00:00Z",
+            "message": {"role": "user", "content": [{"type": "text", "text": "hi"}]},
+        },
+        {
+            "type": "assistant",
+            "uuid": "a1",
+            "sessionId": sid,
+            "timestamp": "2026-04-27T00:00:01Z",
+            "message": {
+                "role": "assistant",
+                "id": "msg_1",
+                "model": "claude-x",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "tc_1",
+                        "name": "Skill",
+                        "input": {"path": "~/.claude/skills/foo/SKILL.md"},
+                    },
+                    {
+                        "type": "tool_use",
+                        "id": "tc_2",
+                        "name": "Read",
+                        "input": {"file_path": "/tmp/x.py"},
+                    },
+                ],
+            },
+        },
+    ]
+    with jsonl.open("w") as f:
+        for e in events:
+            f.write(json.dumps(e) + "\n")
+    trajs = _parser.parse(jsonl)
+    assert trajs, "parser returned no trajectories"
+    main = trajs[0]
+    tool_calls = [tc for s in main.steps for tc in s.tool_calls]
+    by_name = {tc.function_name: tc for tc in tool_calls}
+    print(f"tool_calls: {[(tc.function_name, tc.is_skill) for tc in tool_calls]}")
+    assert by_name["Skill"].is_skill is True
+    assert by_name["Read"].is_skill is None
+
+
+def test_compaction_subagent_flagged(tmp_path: Path) -> None:
+    """An acompact-* sub-agent gets traj.extra.is_compaction=True. Internal
+    steps are NOT tagged — typical compaction is 2 events (summary prompt +
+    response) but pathological sessions (broken Stop hooks) bloat to thousands
+    of events; tagging every step would inflate cross-parser ``is_compaction``
+    counts. The trajectory-level flag is the canonical event marker.
+    """
+    sid = "22222222-2222-2222-2222-222222222222"
+    main = tmp_path / f"{sid}.jsonl"
+    sub_dir = tmp_path / sid / "subagents"
+    sub_dir.mkdir(parents=True)
+    # Real Claude session filenames are agent-acompact-{hex}, not bare
+    # acompact-{hex}; the substring check in the parser handles both.
+    sub = sub_dir / "agent-acompact-c0c0.jsonl"
+
+    main_events = [
+        {
+            "type": "user",
+            "uuid": "u1",
+            "sessionId": sid,
+            "timestamp": "2026-04-27T00:00:00Z",
+            "message": {"role": "user", "content": [{"type": "text", "text": "hi"}]},
+        },
+    ]
+    sub_events = [
+        {
+            "type": "user",
+            "uuid": "su1",
+            "sessionId": "acompact-c0c0",
+            "timestamp": "2026-04-27T00:00:10Z",
+            "message": {"role": "user", "content": [{"type": "text", "text": "Summarize so far."}]},
+        },
+        {
+            "type": "assistant",
+            "uuid": "sa1",
+            "sessionId": "acompact-c0c0",
+            "timestamp": "2026-04-27T00:00:11Z",
+            "message": {
+                "role": "assistant",
+                "id": "smsg_1",
+                "model": "claude-x",
+                "content": [{"type": "text", "text": "Summary."}],
+            },
+        },
+    ]
+    for path, evs in [(main, main_events), (sub, sub_events)]:
+        with path.open("w") as f:
+            for e in evs:
+                f.write(json.dumps(e) + "\n")
+
+    trajs = _parser.parse(main)
+    sub_trajs = [t for t in trajs if t.parent_trajectory_ref is not None]
+    assert len(sub_trajs) == 1, "expected exactly one sub-agent"
+    sub_traj = sub_trajs[0]
+    print(f"sub.extra: {sub_traj.extra}")
+    print(f"sub steps is_compaction: {[s.is_compaction for s in sub_traj.steps]}")
+    assert sub_traj.extra is not None
+    assert sub_traj.extra.get("is_compaction") is True
+    assert all(s.is_compaction is None for s in sub_traj.steps), (
+        "internal steps should NOT be tagged; the trajectory flag is the marker"
+    )
+
+
+def test_non_compaction_subagent_clean(tmp_path: Path) -> None:
+    """Regular agent-* sub-agent has no compaction flags anywhere."""
+    sid = "33333333-3333-3333-3333-333333333333"
+    main = tmp_path / f"{sid}.jsonl"
+    sub_dir = tmp_path / sid / "subagents"
+    sub_dir.mkdir(parents=True)
+    sub = sub_dir / "agent-deadbeef.jsonl"
+
+    main_events = [
+        {
+            "type": "user",
+            "uuid": "u1",
+            "sessionId": sid,
+            "timestamp": "2026-04-27T00:00:00Z",
+            "message": {"role": "user", "content": [{"type": "text", "text": "delegate"}]},
+        },
+        {
+            "type": "assistant",
+            "uuid": "a1",
+            "sessionId": sid,
+            "timestamp": "2026-04-27T00:00:01Z",
+            "message": {
+                "role": "assistant",
+                "id": "msg_1",
+                "model": "claude-x",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "tc_1",
+                        "name": "Task",
+                        "input": {"description": "do X"},
+                    },
+                ],
+            },
+        },
+        {
+            "type": "user",
+            "uuid": "u2",
+            "sessionId": sid,
+            "timestamp": "2026-04-27T00:00:02Z",
+            "message": {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "tc_1",
+                        "content": "agentId: deadbeef\nDone.",
+                    }
+                ],
+            },
+        },
+    ]
+    sub_events = [
+        {
+            "type": "user",
+            "uuid": "su1",
+            "sessionId": "agent-deadbeef",
+            "timestamp": "2026-04-27T00:00:10Z",
+            "message": {"role": "user", "content": [{"type": "text", "text": "child task"}]},
+        },
+    ]
+    for path, evs in [(main, main_events), (sub, sub_events)]:
+        with path.open("w") as f:
+            for e in evs:
+                f.write(json.dumps(e) + "\n")
+
+    trajs = _parser.parse(main)
+    sub_trajs = [t for t in trajs if t.parent_trajectory_ref is not None]
+    print(f"sub_trajs: {len(sub_trajs)}")
+    assert sub_trajs, "expected at least one sub-agent"
+    for t in sub_trajs:
+        extra = t.extra or {}
+        assert "is_compaction" not in extra, f"unexpected is_compaction key in extra: {extra}"
+        assert "is_compaction_agent" not in extra, "old key must not appear"
+        assert all(not s.is_compaction for s in t.steps), "no step should be tagged compaction"

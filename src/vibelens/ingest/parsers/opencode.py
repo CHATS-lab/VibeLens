@@ -76,7 +76,6 @@ from vibelens.ingest.parsers.base import BaseParser, DiscoveredSession
 from vibelens.ingest.parsers.helpers import (
     build_multimodal_message,
     data_url_to_image_content_part,
-    is_skill_tool,
 )
 from vibelens.models.enums import AgentType, StepSource
 from vibelens.models.trajectories import (
@@ -99,6 +98,10 @@ _TASK_OUTPUT_SESSION_ID_RE = re.compile(r"task_id:\s*(ses_\w+)")
 
 # Optional columns we might select that may not exist on older Kilo databases.
 _PROJECT_OPTIONAL_COLUMNS = ("icon_url_override",)
+
+# OpenCode's (and inheriting Kilo's) dedicated skill-activation tool. Activation
+# only — reading a SKILL.md via read/bash doesn't count.
+_SKILL_TOOL_NAMES: frozenset[str] = frozenset({"skill"})
 
 
 class OpencodeParser(BaseParser):
@@ -672,7 +675,7 @@ def _build_tool_pair(part_data: dict) -> tuple[ToolCall | None, ObservationResul
         tool_call_id=call_id,
         function_name=function_name,
         arguments=state.get("input"),
-        is_skill=True if is_skill_tool(function_name) else None,
+        is_skill=True if function_name in _SKILL_TOOL_NAMES else None,
         extra=tc_extra or None,
     )
 

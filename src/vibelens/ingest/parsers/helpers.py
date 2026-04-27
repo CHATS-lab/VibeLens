@@ -6,8 +6,7 @@ small surface they need.
 
 Public surface, grouped by lifecycle phase:
 
-* Constants — ``MAX_FIRST_MESSAGE_LENGTH``, ``ROLE_TO_SOURCE``,
-  ``SKILL_TOOL_NAMES``.
+* Constants — ``MAX_FIRST_MESSAGE_LENGTH``, ``ROLE_TO_SOURCE``.
 * JSONL iteration — ``iter_jsonl_safe``.
 * Tool-arg decoding — ``parse_tool_arguments``.
 * First-message detection — ``is_meaningful_prompt``,
@@ -17,7 +16,7 @@ Public surface, grouped by lifecycle phase:
   ``data_url_to_image_content_part``.
 * Trajectory rollup — ``compute_final_metrics``.
 * Synthetic boundary steps — ``make_compaction_step``.
-* Skills — ``is_skill_tool``.
+* Skills — none here. Each parser owns its own activation-tool constant.
 * Diagnostics — ``build_diagnostics_extra``.
 
 Helpers prefixed with ``_`` are intentionally private to this module.
@@ -83,24 +82,6 @@ _ALL_KNOWN_SYSTEM_TAG_PREFIXES = (
 # "Base directory for this skill: ..." as the first line of its result).
 # Unique enough that the agent-agnostic check costs nothing for other agents.
 _SKILL_OUTPUT_PREFIX = "Base directory for this skill:"
-
-# Tool names that invoke a "skill" (a packaged prompt + reference assets) across
-# every agent that ships the feature. Used by parsers to tag the corresponding
-# ToolCall with ``extra.is_skill = True`` so the UI can distinguish skill
-# invocations from regular tool calls regardless of vendor naming.
-SKILL_TOOL_NAMES: frozenset[str] = frozenset(
-    {
-        "skill",  # OpenCode/Kilo
-        "Skill",  # CodeBuddy / Claude
-        "activate_skill",  # Gemini
-    }
-)
-
-
-def is_skill_tool(function_name: str) -> bool:
-    """Return True if ``function_name`` matches one of the known skill tools."""
-    return function_name in SKILL_TOOL_NAMES
-
 
 def is_meaningful_prompt(text: str, extra_system_prefixes: tuple[str, ...] = ()) -> bool:
     """Return True if text looks like a real user prompt, not system chatter.
