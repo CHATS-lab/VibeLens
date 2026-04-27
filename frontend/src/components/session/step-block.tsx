@@ -15,8 +15,8 @@ import { PREVIEW_LONG } from "../../constants";
 import { CopyButton } from "../ui/copy-button";
 import { MarkdownRenderer } from "../ui/markdown-renderer";
 import { ContentRenderer } from "./content-renderer";
-import { ToolUseBlock } from "./tool-input-renderers";
 import { ToolResultBlock } from "./tool-output-renderers";
+import { ToolCallBlock } from "./tool-call-block";
 
 const USER_PROMPT_COLLAPSE_LINE_THRESHOLD = 15;
 
@@ -275,15 +275,13 @@ function AgentStep({ step, concise }: { step: Step; concise?: boolean }) {
           {hasConcurrentCalls ? (
             <ConcurrentToolsBlock toolCalls={step.tool_calls} obsMap={obsMap} />
           ) : (
-            step.tool_calls.map((tc, i) => {
-              const result = obsMap.get(tc.tool_call_id);
-              return (
-                <div key={`tc-${i}`}>
-                  <ToolUseBlock toolCall={tc} />
-                  {result && <ToolResultBlock result={result} />}
-                </div>
-              );
-            })
+            step.tool_calls.map((tc, i) => (
+              <ToolCallBlock
+                key={`tc-${i}`}
+                toolCall={tc}
+                result={obsMap.get(tc.tool_call_id)}
+              />
+            ))
           )}
           {orphanResults.map((r, i) => (
             <ToolResultBlock key={`orphan-${i}`} result={r} />
@@ -324,15 +322,13 @@ function ConcurrentToolsBlock({
       {open && (
         <div className="border-t border-cyan-500/20">
           <div className="ml-3 pl-3 py-2 space-y-1">
-            {toolCalls.map((tc, i) => {
-              const result = obsMap.get(tc.tool_call_id);
-              return (
-                <div key={`tc-${i}`}>
-                  <ToolUseBlock toolCall={tc} />
-                  {result && <ToolResultBlock result={result} />}
-                </div>
-              );
-            })}
+            {toolCalls.map((tc, i) => (
+              <ToolCallBlock
+                key={`tc-${i}`}
+                toolCall={tc}
+                result={obsMap.get(tc.tool_call_id)}
+              />
+            ))}
           </div>
         </div>
       )}

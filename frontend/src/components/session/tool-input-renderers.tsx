@@ -127,7 +127,7 @@ export function ToolUseBlock({ toolCall }: { toolCall: ToolCall }) {
   );
 }
 
-function ToolInputRenderer({
+export function ToolInputRenderer({
   name,
   input,
 }: {
@@ -218,6 +218,12 @@ function ToolInputRenderer({
   const jsonStr = JSON.stringify(data, null, 2);
   return (
     <div className="bg-panel/30 border border-default rounded-lg overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-1 bg-control/40 border-b border-card">
+        <span className="text-[10px] font-medium text-dimmed uppercase tracking-wider">
+          arguments
+        </span>
+        <CopyButton text={jsonStr} />
+      </div>
       <MarkdownRenderer
         content={`\`\`\`json\n${jsonStr}\n\`\`\``}
         className="[&>div]:my-0 [&>div]:border-0 [&>div]:rounded-none"

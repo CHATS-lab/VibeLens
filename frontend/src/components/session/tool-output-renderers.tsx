@@ -76,7 +76,15 @@ function tryFormatJson(text: string): string | null {
   }
 }
 
-function ToolOutput({ text, isError }: { text: string; isError: boolean }) {
+export function ToolOutput({
+  text,
+  isError,
+  headerLabel,
+}: {
+  text: string;
+  isError: boolean;
+  headerLabel?: string;
+}) {
   const [expanded, setExpanded] = useState(false);
   const formattedJson = tryFormatJson(text);
   const displayText = formattedJson || text;
@@ -86,39 +94,35 @@ function ToolOutput({ text, isError }: { text: string; isError: boolean }) {
     !expanded && shouldTruncate
       ? lines.slice(0, MAX_COLLAPSED_LINES).join("\n") + "\n..."
       : displayText;
+  const isJson = !!formattedJson;
+  const labelText = headerLabel ?? (isJson ? "json" : null);
+  const copyText = formattedJson || text;
 
-  if (formattedJson) {
-    return (
-      <div className="relative">
+  return (
+    <div className="relative">
+      {labelText && (
         <div className="flex items-center justify-between px-3 py-1 bg-control/40 border-b border-card">
-          <span className="text-[10px] font-medium text-dimmed uppercase tracking-wider">json</span>
-          <CopyButton text={formattedJson} />
+          <span className="text-[10px] font-medium text-dimmed uppercase tracking-wider">
+            {labelText}
+            <span className="ml-1.5 normal-case tracking-normal">({lines.length} {lines.length === 1 ? "line" : "lines"})</span>
+          </span>
+          <CopyButton text={copyText} />
         </div>
+      )}
+      {isJson ? (
         <MarkdownRenderer
           content={`\`\`\`json\n${displayed}\n\`\`\``}
           className="tool-output-json [&>div]:my-0 [&>div]:border-0 [&>div]:rounded-none [&_pre]:max-h-96 [&_pre]:overflow-y-auto"
         />
-        {shouldTruncate && !expanded && (
-          <button
-            onClick={() => setExpanded(true)}
-            className="text-[10px] text-muted hover:text-secondary hover:bg-control/30 rounded px-3 pb-2"
-          >
-            Show all ({lines.length} lines)
-          </button>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="relative">
-      <pre
-        className={`text-xs p-3 overflow-x-auto whitespace-pre-wrap break-words max-h-96 overflow-y-auto ${
-          isError ? "text-rose-800 dark:text-rose-200" : "text-teal-800 dark:text-teal-100"
-        }`}
-      >
-        {displayed}
-      </pre>
+      ) : (
+        <pre
+          className={`text-xs p-3 overflow-x-auto whitespace-pre-wrap break-words max-h-96 overflow-y-auto ${
+            isError ? "text-rose-800 dark:text-rose-200" : "text-teal-800 dark:text-teal-100"
+          }`}
+        >
+          {displayed}
+        </pre>
+      )}
       {shouldTruncate && !expanded && (
         <button
           onClick={() => setExpanded(true)}
