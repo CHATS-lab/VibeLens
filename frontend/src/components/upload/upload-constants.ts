@@ -6,7 +6,11 @@ export const AGENT_OPTIONS: { type: AgentType; label: string }[] = [
   { type: "claude", label: "Claude Code" },
   { type: "claude_web", label: "Claude Web" },
   { type: "codex", label: "Codex CLI" },
+  { type: "codebuddy", label: "Code Buddy" },
+  { type: "copilot", label: "GitHub Copilot CLI" },
   { type: "gemini", label: "Gemini CLI" },
+  { type: "kilo", label: "Kilo" },
+  { type: "opencode", label: "OpenCode" },
 ];
 
 export const OS_OPTIONS: { platform: OSPlatform; label: string }[] = [
@@ -19,7 +23,11 @@ export const AGENT_LABELS: Record<AgentType, string> = {
   claude: "Claude Code",
   claude_web: "Claude Web",
   codex: "Codex CLI",
+  codebuddy: "Code Buddy",
+  copilot: "GitHub Copilot CLI",
   gemini: "Gemini CLI",
+  kilo: "Kilo",
+  opencode: "OpenCode",
 };
 
 export const DEFAULT_AGENT: AgentType = "claude";

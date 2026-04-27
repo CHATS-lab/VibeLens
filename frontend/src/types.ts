@@ -1,4 +1,12 @@
-export type AgentType = "claude" | "claude_web" | "codex" | "gemini";
+export type AgentType =
+  | "claude"
+  | "claude_web"
+  | "codebuddy"
+  | "codex"
+  | "copilot"
+  | "gemini"
+  | "kilo"
+  | "opencode";
 export type OSPlatform = "macos" | "linux" | "windows";
 
 export interface Agent {
@@ -36,6 +44,11 @@ export interface ToolCall {
   tool_call_id: string;
   function_name: string;
   arguments: unknown;
+  // True when the tool call invokes a packaged Skill (claude/codebuddy
+  // 'Skill', gemini 'activate_skill', opencode/kilo 'skill'). VibeLens
+  // extension; absent on agents whose Skills are system-prompt injections
+  // (cursor, kiro).
+  is_skill?: boolean | null;
 }
 
 export interface ContentPart {
@@ -65,6 +78,12 @@ export interface Step {
   tool_calls: ToolCall[];
   observation?: Observation | null;
   metrics?: Metrics | null;
+  // True when this step marks an in-stream context-compaction or
+  // truncation boundary. Set by codex / copilot / gemini / opencode /
+  // codebuddy / cursor / kiro parsers. The renderer surfaces a divider
+  // so the user can see where context was summarised.
+  is_compaction?: boolean | null;
+  is_copied_context?: boolean | null;
   extra?: Record<string, unknown> | null;
 }
 

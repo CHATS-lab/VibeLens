@@ -9,6 +9,7 @@ import {
   Pencil,
   ChevronDown,
   ChevronRight,
+  Lightbulb,
 } from "lucide-react";
 import { useState } from "react";
 import { createTwoFilesPatch } from "diff";
@@ -88,7 +89,19 @@ export function getToolPreview(name: string, input: unknown): string {
 export function ToolUseBlock({ toolCall }: { toolCall: ToolCall }) {
   const [open, setOpen] = useState(false);
   const name = toolCall.function_name || "unknown";
-  const { icon, color } = getToolIconAndColor(name);
+  // Skill tool calls (claude/codebuddy 'Skill', gemini 'activate_skill',
+  // opencode 'skill') get an amber highlight to distinguish them from
+  // generic tool invocations. The is_skill flag is the typed signal set
+  // by parsers via helpers.is_skill_tool — see ToolCall.is_skill in the
+  // backend model.
+  const isSkill = !!toolCall.is_skill;
+  const { icon, color } = isSkill
+    ? {
+        icon: <Lightbulb className="w-4 h-4" />,
+        color:
+          "bg-amber-500/10 hover:bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/25",
+      }
+    : getToolIconAndColor(name);
   const preview = getToolPreview(name, toolCall.arguments);
 
   return (
@@ -100,6 +113,7 @@ export function ToolUseBlock({ toolCall }: { toolCall: ToolCall }) {
         {open ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
         {icon}
         <span className="font-medium">{name}</span>
+        {isSkill && <span className="text-[10px] uppercase tracking-wide opacity-70">skill</span>}
         {!open && preview && (
           <span className="text-muted truncate max-w-[200px] ml-0.5">{preview}</span>
         )}

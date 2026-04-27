@@ -6,6 +6,7 @@ import {
   Monitor,
   Zap,
   ScrollText,
+  Archive,
 } from "lucide-react";
 import { useState } from "react";
 import type { Step, ToolCall, ObservationResult, ContentPart } from "../../types";
@@ -25,6 +26,13 @@ interface StepBlockProps {
 }
 
 export function StepBlock({ step, concise }: StepBlockProps) {
+  // Compaction / truncation boundaries get a dedicated divider regardless
+  // of source. The flag is the typed first-class signal every parser sets
+  // when in-stream context summarisation occurred (see Step.is_compaction
+  // in the backend model). is_truncation lives in extra (Copilot-only).
+  if (step.is_compaction || step.extra?.is_truncation) {
+    return <CompactionStep step={step} />;
+  }
   if (step.source === "system") {
     return <SystemStep step={step} />;
   }
@@ -41,6 +49,46 @@ export function StepBlock({ step, concise }: StepBlockProps) {
     return <AgentStep step={step} concise={concise} />;
   }
   return null;
+}
+
+function CompactionStep({ step }: { step: Step }) {
+  // Renders a horizontal divider plus an expandable summary of what the
+  // agent preserved during compaction. When the parser captured a summary
+  // body (Copilot summaryContent / CodeBuddy synthetic agent / Kiro
+  // Compaction.data.summary) it's shown on click; agents that only emit
+  // a boundary marker (Codex, Gemini /compress, OpenCode flag) collapse
+  // to just the divider line.
+  const [open, setOpen] = useState(false);
+  const text = extractMessageText(step.message);
+  const isTruncation = !!step.extra?.is_truncation;
+  const label = isTruncation ? "Context truncated" : "Context compacted";
+  const hasBody = !!text && text !== "[Context compacted]" && text !== "[Context truncated]";
+
+  return (
+    <div className="my-3">
+      <div className="flex items-center gap-3">
+        <div className="flex-1 h-px bg-card" />
+        <button
+          onClick={() => hasBody && setOpen(!open)}
+          disabled={!hasBody}
+          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs border transition-colors bg-subtle text-muted border-hover ${hasBody ? "hover:bg-control/80 cursor-pointer" : "cursor-default"}`}
+          title={hasBody ? "Click to expand the preserved summary" : ""}
+        >
+          {hasBody && (open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />)}
+          <Archive className="w-3.5 h-3.5" />
+          <span className="font-medium">{label}</span>
+        </button>
+        <div className="flex-1 h-px bg-card" />
+      </div>
+      {open && hasBody && (
+        <div className="mt-2 bg-panel/30 border border-card rounded-lg p-3 max-w-[85%] mx-auto">
+          <pre className="text-xs text-secondary whitespace-pre-wrap break-words overflow-x-auto max-h-96 overflow-y-auto">
+            {text}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
 }
 
 /** @deprecated Use StepBlock instead. Kept for backward compatibility during migration. */
