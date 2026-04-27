@@ -1,6 +1,6 @@
 import { BarChart3, DollarSign } from "lucide-react";
 import type { Trajectory } from "../../types";
-import { formatTokens, formatCost } from "../../utils";
+import { formatTokens, formatCost, formatDuration } from "../../utils";
 import { Tooltip } from "../ui/tooltip";
 import { SESSION_ID_SHORT, PREVIEW_SHORT } from "../../constants";
 
@@ -47,6 +47,7 @@ interface MetricsPillProps {
   cacheReadTokens: number;
   cacheWriteTokens: number;
   totalTokens: number;
+  durationSeconds?: number | null;
 }
 
 /** Compact pill that surfaces the session's cost (or total tokens when cost is
@@ -59,9 +60,16 @@ export function MetricsPill({
   cacheReadTokens,
   cacheWriteTokens,
   totalTokens,
+  durationSeconds,
 }: MetricsPillProps) {
   const tooltip = (
     <div className="grid grid-cols-[auto_auto] gap-x-3 gap-y-0.5 text-left font-mono tabular-nums">
+      {durationSeconds != null && (
+        <>
+          <span className="text-muted">Duration</span>
+          <span className="text-cyan-700 dark:text-cyan-300">{formatDuration(durationSeconds)}</span>
+        </>
+      )}
       <span className="text-muted">Input</span>
       <span className="text-cyan-700 dark:text-cyan-300">{formatTokens(inputTokens)}</span>
       <span className="text-muted">Output</span>

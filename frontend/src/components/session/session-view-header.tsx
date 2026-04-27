@@ -24,12 +24,7 @@ import { sessionsClient } from "../../api/sessions";
 import { SESSION_ID_SHORT } from "../../constants";
 import { useCopyFeedback } from "../../hooks/use-copy-feedback";
 import type { Step, Trajectory } from "../../types";
-import {
-  baseProjectName,
-  extractUserText,
-  formatDuration,
-  tildifyPath,
-} from "../../utils";
+import { baseProjectName, extractUserText, tildifyPath } from "../../utils";
 import { Tooltip } from "../ui/tooltip";
 import {
   MetaPill,
@@ -173,7 +168,7 @@ export function SessionViewHeader({
 
         {headerExpanded && (
           <>
-            {/* Row 2: Meta Pills — ordered: Path, Date, Model, Prompts (with sub-stats), Duration, Cost. */}
+            {/* Row 2: Meta Pills — ordered: Path, Date, Model, Prompts (with sub-stats), Cost (duration in tooltip). */}
             <div className="flex flex-wrap items-center gap-1.5 mb-3 pl-7">
               {main.project_path && (
                 <MetaPill
@@ -236,14 +231,6 @@ export function SessionViewHeader({
                   </div>
                 }
               />
-              {metrics && (
-                <MetaPill
-                  icon={<Clock className="w-3 h-3" />}
-                  label={formatDuration(metrics.duration)}
-                  color="text-accent-cyan"
-                  tooltip="Total session duration"
-                />
-              )}
               {(metrics?.total_prompt_tokens != null ||
                 metrics?.total_completion_tokens != null ||
                 sessionCost != null) && (
@@ -254,6 +241,7 @@ export function SessionViewHeader({
                   cacheReadTokens={metrics?.total_cache_read_tokens || 0}
                   cacheWriteTokens={metrics?.total_cache_write_tokens || 0}
                   totalTokens={totalTokens}
+                  durationSeconds={metrics?.duration ?? null}
                 />
               )}
               {subAgents.length > 0 && (
