@@ -55,9 +55,33 @@ After stage 4, `_load_subagents(main, file_path)` runs to discover and parse dir
 | [gemini](gemini.md) | `~/.gemini/tmp/<hash>/chats/session-*.json` | none | no | bidirectional, no per-call linkage (sibling-file scan from main; UI uses timestamp placement) | computed via pricing |
 | [hermes](hermes.md) | `~/.hermes/sessions/<sid>.jsonl` + `session_<sid>.json` snapshot | `state.db` | no | bidirectional, no per-call linkage (state.db `parent_session_id` reverse query) | from `state.db` |
 | [openclaw](openclaw.md) | `~/.openclaw/agents/<name>/sessions/<sid>.jsonl` | `sessions.json` | no | none observed | from `usage.cost.total` |
+| [copilot](copilot.md) | `~/.copilot/session-state/<uuid>/events.jsonl` | none — directory rglob | no | metadata-only (no separate sub-agent file; `subagent.started/completed` summaries fold onto spawn ToolCall) | from `session.shutdown.modelMetrics.<m>.requests.cost` |
+| [cursor](cursor.md) | `~/.cursor/chats/<workspace-hash>/<sid>/store.db` (SQLite blobs ordered by rowid); JSONL transcripts in `~/.cursor/projects/<project>/agent-transcripts/<sid>/` are partial export only | none — direct rowid walk | no | full bidirectional via sibling `subagents/<child-sid>.jsonl` files, no per-call linkage (Cursor's `Subagent` tool_use lacks an id) | computed via pricing |
+| [opencode](opencode.md) | `~/.local/share/opencode/opencode.db` | `session` table | no | full bidirectional (`tool.state.metadata.sessionId` + `session.parent_id`) | from `message.data.cost` and `step-finish.cost` |
+| [kilo](kilo.md) | `~/.local/share/kilo/kilo.db` (subclass of OpencodeParser) | `session` table | no | same as opencode | same as opencode |
+| [kiro](kiro.md) | `~/.kiro/sessions/cli/<sid>.jsonl` + `<sid>.json` snapshot | snapshot only — no fast index | no | inline-only (`subagent` tool's report text — child Steps not persisted; we synthesise a 2-step Trajectory) | computed via pricing |
+| [codebuddy](codebuddy.md) | `~/.codebuddy/projects/<hash>/<sid>.jsonl` + `<sid>/subagents/agent-*.jsonl` | none — head-of-file scan | no | full bidirectional via filename + `task_id` regex (renderer.value JSON primary) | not USD-verified — `credit` stashed on `Metrics.extra` |
 | [dataclaw](dataclaw.md) | exported `conversations.jsonl`, one session per line | n/a (whole file is the index) | no | none (privacy-stripped) | not present |
 | [claude_web](claude_web.md) | Settings → Export `conversations.json`, one array of sessions | n/a (whole file is the index) | no | none | not present |
 | [parsed](parsed.md) | DiskStore-saved Trajectory JSON | n/a | n/a | mirror of source | mirror of source |
+
+### Capability flags vs Claude reference
+
+| Parser | text | reasoning | tools+obs | sub-agents | images | compaction | skills (typed) |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| claude | ✓ | ✓ | ✓ | ✓ file-based + acompact | ✓ | sub-agent (`acompact-*`) | ✓ tool=`Skill` |
+| codex | ✓ | ✓ | ✓ | ✓ spawn_agent | ✓ `input_image` | ✓ `context_compacted` | n/a |
+| codebuddy | ✓ | ✓ | ✓ | ✓ sibling files | ✓ `image_blob_ref` | ✓ `agent="compact"` (in-stream tag) | ✓ tool=`Skill` |
+| copilot | ✓ | ✗ encrypted | ✓ | ✓ `agentId` grouping | ✓ attachments | ✓ `compaction_complete` + `truncation` | n/a |
+| cursor | ✓ | ✗ encrypted | ✓ | ✓ sibling files | ✓ Uint8Array hex | ✓ `isSummary` flag | ✗ system-prompt injection |
+| gemini | ✓ | ✓ `thoughts[]` | ✓ | ✓ legacy file + inline | ✓ `inlineData` | ✓ `/compress` (logs.json) | ✓ tool=`activate_skill` |
+| hermes | ✓ | ✗ no signal | ✓ | ✓ `parent_session_id` | ✗ no data yet | ✗ no signal | n/a |
+| kilo | ✓ | ✓ | ✓ | ✓ parent_id | ✓ data URL | ✓ `compaction` part | ✓ tool=`skill` |
+| kiro | ✓ | ✗ not persisted | ✓ | ✓ inline-synthesised | ✓ byte array | ✓ `kind: Compaction` | ✗ system-prompt injection |
+| openclaw | ✓ | ✓ `thinking` | ✓ | ✗ no data yet | ✓ inline base64 | ✗ no signal | n/a |
+| opencode | ✓ | ✓ | ✓ | ✓ parent_id | ✓ data URL | ✓ `compaction` part | ✓ tool=`skill` |
+
+`Step.is_compaction` and `ToolCall.is_skill` are the **typed first-class flags**; cells marked with a tool name set the `is_skill=True` flag, cells with a compaction mechanism set `is_compaction=True`. `n/a` means the agent has no Skill tool. `✗ system-prompt injection` means the agent does have skills but activates them by injecting the prompt — no structural session-log signal we can read.
 
 ## Helpers all parsers can reach for
 

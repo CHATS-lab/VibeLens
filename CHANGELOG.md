@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Added
+- **Four new parsers**: GitHub Copilot CLI (`~/.copilot/session-state/<uuid>/events.jsonl`), OpenCode (`~/.local/share/opencode/opencode.db`), Code Buddy (`~/.codebuddy/projects/<hash>/<sid>.jsonl` plus `<sid>/subagents/agent-*.jsonl`), and Kilo (`~/.local/share/kilo/kilo.db`, OpencodeParser subclass). Auto-discovered by LocalStore; frontend `AgentType` and upload constants gain entries for all four.
+- **Sub-agent linkage** for the new parsers where the format records it: OpenCode/Kilo via `tool.state.metadata.sessionId` (primary) + regex on `state.output` (fallback) + `session.parent_id` reverse link; Code Buddy via `function_call_result.providerData.toolResult.renderer.value` JSON `taskId` (primary) + regex on `output.text` (fallback). Copilot's sub-agents have no separate trajectory file — the `subagent.started`/`subagent.completed` summary events fold onto the spawn `ToolCall.extra.subagent`.
+- **Code Buddy multimodal**: `image_blob_ref` content parts are read from disk (`~/.codebuddy/blobs/<hash>/<hash>.png`) and inlined as base64 on `ContentPart.source.base64` so the UI can render screenshots without filesystem-sandboxing concerns.
+
+### Changed
+- **`ExtensionSource` enum collapsed into `AgentType`**: removes the duplicate 14-value enum and `CENTRAL` (which had no real users); every consumer now reads from `AgentType` directly. Affects `services/extensions/{platforms, catalog_resolver}.py`, `deps.py`, `schemas/extensions.py`, and the corresponding test files.
+- **Code Buddy CLI command echoes dropped**: `<command-name>`, `<local-command-stdout>`, `<system-reminder>`, etc. are detected via a regex pattern (mirrors `claude.py`) and dropped from the trajectory entirely rather than emitted as empty SYSTEM steps. Diagnostics records each drop as a skip.
+- **Index cache version bumped to v15**: forces a rebuild so existing v12 caches repopulate with the new agent types and per-step extras (editor_context, subagent metadata, etc.).
+
 ## [1.0.7] - 2026-04-25
 
 ### Added
