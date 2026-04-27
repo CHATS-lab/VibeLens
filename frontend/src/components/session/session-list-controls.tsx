@@ -2,7 +2,21 @@ import { Bot, ChevronDown, Check, Heart } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Tooltip } from "../ui/tooltip";
 
-export function AgentFilterDropdown({ value, agents, onChange }: { value: string; agents: string[]; onChange: (v: string) => void }) {
+interface AgentFilterAgents {
+  names: string[];
+  counts: Record<string, number>;
+  total: number;
+}
+
+export function AgentFilterDropdown({
+  value,
+  agents,
+  onChange,
+}: {
+  value: string;
+  agents: AgentFilterAgents;
+  onChange: (v: string) => void;
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -15,8 +29,13 @@ export function AgentFilterDropdown({ value, agents, onChange }: { value: string
     return () => document.removeEventListener("mousedown", handleClick);
   }, [open]);
 
-  const options = [{ value: "all", label: "All agents" }, ...agents.map((a) => ({ value: a, label: a }))];
-  const activeLabel = options.find((o) => o.value === value)?.label ?? "All agents";
+  const options = [
+    { value: "all", label: "All agents", count: agents.total },
+    ...agents.names.map((a) => ({ value: a, label: a, count: agents.counts[a] ?? 0 })),
+  ];
+  const active = options.find((o) => o.value === value);
+  const activeLabel = active?.label ?? "All agents";
+  const activeCount = active?.count;
 
   return (
     <div className="relative" ref={ref}>
@@ -26,6 +45,9 @@ export function AgentFilterDropdown({ value, agents, onChange }: { value: string
       >
         <Bot className="w-3.5 h-3.5 text-dimmed shrink-0" />
         <span className="flex-1 text-left truncate">{activeLabel}</span>
+        {activeCount !== undefined && (
+          <span className="text-[11px] tabular-nums text-dimmed shrink-0">{activeCount}</span>
+        )}
         <ChevronDown className={`w-3.5 h-3.5 text-dimmed shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
@@ -45,7 +67,8 @@ export function AgentFilterDropdown({ value, agents, onChange }: { value: string
               ) : (
                 <span className="w-3.5 shrink-0" />
               )}
-              <span className="truncate">{opt.label}</span>
+              <span className="flex-1 truncate text-left">{opt.label}</span>
+              <span className="text-[11px] tabular-nums text-dimmed shrink-0">{opt.count}</span>
             </button>
           ))}
         </div>

@@ -229,13 +229,18 @@ export function App() {
       .finally(() => setSessionsLoading(false));
   }, [refreshKey, fetchWithToken]);
 
-  // Derive unique agent names from loaded sessions
+  // Derive sorted agent names + per-agent session counts from the list.
+  // The filter dropdown surfaces both — counts let the user see at a glance
+  // which agents have data on this machine.
   const availableAgents = useMemo(() => {
-    const names = new Set<string>();
+    const counts: Record<string, number> = {};
     for (const s of sessions) {
-      if (s.agent?.name) names.add(s.agent.name);
+      const name = s.agent?.name;
+      if (!name) continue;
+      counts[name] = (counts[name] ?? 0) + 1;
     }
-    return [...names].sort();
+    const names = Object.keys(counts).sort();
+    return { names, counts, total: sessions.length };
   }, [sessions]);
 
   // Preload dashboard data after session list loads to avoid blocking it

@@ -36,7 +36,7 @@ interface SessionListProps {
   onViewModeChange: (mode: ViewMode) => void;
   agentFilter: string;
   onAgentFilterChange: (agent: string) => void;
-  availableAgents: string[];
+  availableAgents: { names: string[]; counts: Record<string, number>; total: number };
   onUpload?: () => void;
   onDonate?: () => void;
   donateDisabled?: boolean;
@@ -266,7 +266,7 @@ export function SessionList({
         )}
 
         {/* Agent Filter */}
-        {availableAgents.length > 0 && (
+        {availableAgents.names.length > 0 && (
           <AgentFilterDropdown
             value={agentFilter}
             agents={availableAgents}
