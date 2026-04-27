@@ -425,9 +425,10 @@ export function PromptNavPanel({
                   />
                   {sub.first_message && (
                     <p
-                      className={`line-clamp-2 leading-snug ${
+                      className={`truncate leading-snug ${
                         isActive ? "text-secondary" : "text-secondary group-hover:text-secondary"
                       }`}
+                      title={sub.first_message}
                     >
                       {truncate(sub.first_message, PREVIEW_MEDIUM)}
                     </p>
