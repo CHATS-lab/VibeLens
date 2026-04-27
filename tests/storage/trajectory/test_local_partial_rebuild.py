@@ -12,7 +12,7 @@ import pytest
 
 from vibelens.ingest import index_cache
 from vibelens.models.enums import AgentType
-from vibelens.storage.trajectory.local import LocalTrajectoryStore, _partition_files
+from vibelens.storage.trajectory.local import LocalTrajectoryStore, _partition_sessions
 
 
 @pytest.fixture
@@ -158,71 +158,65 @@ def test_dropped_path_not_retried_on_warm_restart(isolated_cache, tmp_path, capl
     assert str(bad_file) in cache2["dropped_paths"]
 
 
-def test_partition_files_classifies_correctly(tmp_path):
-    """_partition_files separates unchanged / changed / new / removed correctly."""
+def test_partition_sessions_classifies_correctly(tmp_path):
+    """_partition_sessions separates unchanged / changed / new / removed by session_id."""
     file_a = tmp_path / "a.jsonl"
     file_a.write_text("a")
     file_b = tmp_path / "b.jsonl"
     file_b.write_text("b")
 
     file_index = {
-        "a": (file_a, object()),
-        "b": (file_b, object()),
+        "sid_a": (file_a, object()),
+        "sid_b": (file_b, object()),
+    }
+    current_mtimes = {"sid_a": 100, "sid_b": 200}
+
+    # Cached state: sid_a's mtime drifted (changed); sid_c was in cache but
+    # is no longer in file_index (removed). sid_b is absent from cache (new).
+    cached_entries = {
+        "sid_a": {"filepath": str(file_a), "session_mtime_ns": 99},
+        "sid_c": {"filepath": str(tmp_path / "c.jsonl"), "session_mtime_ns": 50},
     }
 
-    # cached stat records a's old mtime + a third file 'c' that no longer exists.
-    a_st = file_a.stat()
-    cached_stats = {
-        str(file_a): [a_st.st_mtime_ns - 1, a_st.st_size],  # different mtime → changed
-        str(tmp_path / "c.jsonl"): [999_999, 0],  # gone → removed
-    }
-    dropped_paths: dict[str, list[int]] = {}
+    partition = _partition_sessions(file_index, current_mtimes, cached_entries)
 
-    partition, fresh_dropped, current_stats = _partition_files(
-        file_index, cached_stats, dropped_paths
-    )
-
-    assert "a" in partition.changed
-    assert "b" in partition.new
+    assert "sid_a" in partition.changed
+    assert "sid_b" in partition.new
     assert partition.unchanged == {}
-    assert str(tmp_path / "c.jsonl") in partition.removed_paths
-    assert fresh_dropped == {}
-    # current_stats should cover every live file we actually statted.
-    assert str(file_a) in current_stats
-    assert str(file_b) in current_stats
+    assert "sid_c" in partition.removed_sids
 
 
-def test_partition_files_size_change_marks_changed(tmp_path):
-    """In-place rewrite that preserves mtime is caught by the size component."""
-    f = tmp_path / "rewritten.jsonl"
-    f.write_text("hello")
-    st = f.stat()
+def test_partition_sessions_path_change_marks_changed(tmp_path):
+    """When a session's filepath drifts but mtime matches, it's still changed."""
+    file_old = tmp_path / "old.jsonl"
+    file_old.write_text("x")
+    file_new = tmp_path / "new.jsonl"
+    file_new.write_text("x")
 
-    file_index = {"r": (f, object())}
-    cached_stats = {str(f): [st.st_mtime_ns, st.st_size + 1]}  # size differs only
+    file_index = {"sid": (file_new, object())}
+    current_mtimes = {"sid": 100}
+    cached_entries = {"sid": {"filepath": str(file_old), "session_mtime_ns": 100}}
 
-    partition, _, _ = _partition_files(file_index, cached_stats, {})
+    partition = _partition_sessions(file_index, current_mtimes, cached_entries)
 
-    assert "r" in partition.changed
+    assert "sid" in partition.changed
 
 
-def test_partition_files_skips_dropped_with_unchanged_mtime(tmp_path):
-    """Files in dropped_paths with matching stat tuples are excluded from all sets."""
-    bad = tmp_path / "bad.jsonl"
-    bad.write_text("x")
-    st = bad.stat()
-    bad_stat = [st.st_mtime_ns, st.st_size]
+def test_partition_sessions_unchanged_when_mtime_and_path_match(tmp_path):
+    """Unchanged sessions land in the unchanged bucket and don't trigger work."""
+    file_a = tmp_path / "a.jsonl"
+    file_a.write_text("a")
 
-    file_index = {"bad": (bad, object())}
-    cached_stats: dict[str, list[int]] = {}
-    dropped_paths = {str(bad): bad_stat}
+    file_index = {"sid": (file_a, object())}
+    current_mtimes = {"sid": 100}
+    cached_entries = {"sid": {"filepath": str(file_a), "session_mtime_ns": 100}}
 
-    partition, fresh_dropped, _ = _partition_files(file_index, cached_stats, dropped_paths)
+    partition = _partition_sessions(file_index, current_mtimes, cached_entries)
 
-    assert partition.new == {}
-    assert partition.unchanged == {}
+    assert "sid" in partition.unchanged
     assert partition.changed == {}
-    assert fresh_dropped == {str(bad): bad_stat}
+    assert partition.new == {}
+    assert partition.removed_sids == set()
 
 
 def _write_claude_session(projects_dir: Path, sid: str, text: str = "prompt") -> Path:
@@ -339,14 +333,14 @@ def test_staleness_check_rate_limited(isolated_cache, claude_data_dirs, monkeypa
     store.list_metadata()  # warm
 
     scan_count = 0
-    real_scan = store._scan_disk_mtimes
+    real_scan = store._scan_session_mtimes
 
     def counting_scan():
         nonlocal scan_count
         scan_count += 1
         return real_scan()
 
-    monkeypatch.setattr(store, "_scan_disk_mtimes", counting_scan)
+    monkeypatch.setattr(store, "_scan_session_mtimes", counting_scan)
 
     for _ in range(20):
         store.list_metadata()

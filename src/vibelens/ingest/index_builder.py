@@ -1,7 +1,8 @@
 """Session index builder for LocalStore.
 
 Builds skeleton trajectories from parser indexes with polymorphic dispatch,
-plus deduplication/validation and continuation chain enrichment.
+plus deduplication/validation. Session_ids are authoritative — they come
+from each parser's ``discover_sessions`` and never need remapping here.
 """
 
 import os
@@ -27,13 +28,11 @@ def build_session_index(
     """Build validated, deduplicated skeleton trajectories from all agents.
 
     Each parser's ``parse_session_index`` method is called first for a fast
-    index path. If it returns None, falls back to full-file parsing.
-
-    Mutates file_index to remap session IDs when parsers produce
-    different IDs than filename-based keys.
+    index path. If it returns None, falls back to per-file skeleton parsing.
 
     Args:
-        file_index: Mutable session_id -> (filepath, parser) map.
+        file_index: Mutable session_id -> (filepath, parser) map. May be
+            mutated by ``_dedup_and_validate`` to drop empty sessions.
         data_dirs: Parser -> resolved data directory for index lookups.
 
     Returns:
@@ -53,53 +52,6 @@ def build_session_index(
     return valid, dropped_paths
 
 
-def build_partial_session_index(
-    file_index: dict[str, tuple[Path, BaseParser]], only_paths: set[str]
-) -> tuple[list[Trajectory], list[Path]]:
-    """Build skeletons for a path-scoped subset of ``file_index``.
-
-    Used by the per-file partial-rebuild path in LocalTrajectoryStore. Skips
-    the per-parser fast index (history.jsonl etc.) since ``only_paths``
-    already names the files of interest; drives directly through
-    :func:`_build_orphaned_skeletons` for each parser.
-
-    Mutates ``file_index`` for ID remapping and empty-file pruning, same as
-    :func:`build_session_index`.
-
-    Args:
-        file_index: Mutable session_id -> (filepath, parser) map.
-        only_paths: Set of filepath strings to (re)parse. Other entries are
-            ignored.
-
-    Returns:
-        Tuple of (skeleton trajectories for the subset, list of dropped paths).
-    """
-    if not only_paths:
-        return [], []
-
-    target_sids = {sid for sid, (fpath, _) in file_index.items() if str(fpath) in only_paths}
-    if not target_sids:
-        return [], []
-
-    parsers = list({file_index[sid][1] for sid in target_sids})
-    silent_drops: list[Path] = []
-    raw_skeletons: list[Trajectory] = []
-    for parser in parsers:
-        # _build_orphaned_skeletons treats sids not in `indexed_ids` as
-        # orphans to re-parse. To re-parse exactly our targets, mark every
-        # other id as "already indexed". The parser-filter inside the helper
-        # narrows by `p is parser`, so cross-parser entries are harmless.
-        indexed_ids = set(file_index) - target_sids
-        raw_skeletons.extend(
-            _build_orphaned_skeletons(
-                parser, file_index, indexed_ids, dropped_sink=silent_drops
-            )
-        )
-
-    valid, dropped_paths = _dedup_and_validate(raw_skeletons, file_index)
-    return valid, dropped_paths + silent_drops
-
-
 def _collect_all_skeletons(
     parsers: list[BaseParser],
     file_index: dict[str, tuple[Path, BaseParser]],
@@ -109,9 +61,9 @@ def _collect_all_skeletons(
     """Collect skeleton trajectories from all parsers using polymorphic dispatch.
 
     When a parser's fast index (e.g. history.jsonl) exists but doesn't
-    cover all discovered files, orphaned files are parsed individually
-    as a fallback. This handles sessions created by Claude Code Desktop
-    or other tools that don't write to the index file.
+    cover all discovered sessions, orphans are parsed individually as a
+    fallback. This handles sessions created by Claude Code Desktop or
+    other tools that don't write to the index file.
 
     Args:
         parsers: Parser instances to dispatch over.
@@ -156,93 +108,63 @@ def _build_orphaned_skeletons(
 ) -> list[Trajectory]:
     """Parse session files not covered by the parser's fast index.
 
-    Some sessions (e.g. from Claude Code Desktop) exist on disk but
-    aren't recorded in history.jsonl. This function finds and parses them.
+    Deduplicates by file path so a multi-session-per-file format doesn't
+    re-parse the same db once per orphan sid. Each path is opened once
+    via ``parse_skeletons_for_file`` (plural) which yields one skeleton
+    per session.
 
     Args:
         parser: The parser instance to use.
-        file_index: Session file index.
+        file_index: Mutable session file index (mutated to drop empty sessions).
         indexed_ids: Session IDs already covered by the fast index.
         dropped_sink: Optional list to receive paths of files that produced
             no parseable trajectory. Lets the caller persist them so the
             next startup doesn't retry.
 
     Returns:
-        Skeleton trajectories for orphaned files.
+        Skeleton trajectories for orphaned sessions.
     """
-    orphaned_entries = [
-        (sid, fpath, p)
-        for sid, (fpath, p) in file_index.items()
-        if p is parser and sid not in indexed_ids
-    ]
-    if not orphaned_entries:
+    orphan_paths: dict[str, list[str]] = {}
+    for sid, (fpath, p) in file_index.items():
+        if p is parser and sid not in indexed_ids:
+            orphan_paths.setdefault(str(fpath), []).append(sid)
+    if not orphan_paths:
         return []
 
-    def _scan(entry: tuple[str, Path, BaseParser]) -> tuple[str, Path, Trajectory | None]:
-        old_sid, fpath, p = entry
+    def _scan(path_str: str) -> tuple[str, list[Trajectory]]:
         try:
-            return old_sid, fpath, p.parse_skeleton_for_file(fpath)
+            return path_str, parser.parse_skeletons_for_file(Path(path_str))
         except Exception:
-            logger.debug("Failed to parse orphaned file %s, skipping", fpath)
-            return old_sid, fpath, None
+            logger.debug("Failed to parse orphaned file %s, skipping", path_str)
+            return path_str, []
 
     with ThreadPoolExecutor(max_workers=INDEX_PARSE_WORKERS) as pool:
-        scanned = list(pool.map(_scan, orphaned_entries))
+        scanned = list(pool.map(_scan, orphan_paths.keys()))
 
     result: list[Trajectory] = []
-    for old_sid, fpath, main in scanned:
-        if main is None:
+    for path_str, skels in scanned:
+        if not skels:
+            for sid in orphan_paths[path_str]:
+                file_index.pop(sid, None)
             if dropped_sink is not None:
-                dropped_sink.append(fpath)
-            file_index.pop(old_sid, None)
+                dropped_sink.append(Path(path_str))
             continue
-        real_sid = main.session_id
-        if real_sid != old_sid:
-            file_index.pop(old_sid, None)
-            file_index[real_sid] = (fpath, parser)
-        result.append(main)
+        result.extend(skels)
     return result
 
 
 def _reconcile_index_skeletons(
     parser: BaseParser, skeletons: list[Trajectory], file_index: dict[str, tuple[Path, BaseParser]]
 ) -> list[Trajectory]:
-    """Match index skeletons to file_index entries, remapping IDs when needed.
+    """Filter skeletons to those whose session_id is in file_index for this parser.
 
-    Handles two matching strategies:
-    1. Direct session_id match (Claude Code)
-    2. Path-based match via extra.rollout_path (Codex), with ID remapping
-
-    Args:
-        parser: Parser that produced the skeletons.
-        skeletons: Skeleton trajectories from the parser's fast index.
-        file_index: Mutable session file index for ID remapping.
-
-    Returns:
-        Skeleton trajectories that match known session files.
+    Session_ids come from ``parser.discover_sessions`` (the cache key) and
+    must match what the parser's fast index returns. Mismatches are dropped
+    silently — discovery is the single source of truth.
     """
-    path_to_old_sid = {str(fpath): sid for sid, (fpath, p) in file_index.items() if p is parser}
-
-    result: list[Trajectory] = []
-    for traj in skeletons:
-        # Direct match by session_id
-        if traj.session_id in file_index and file_index[traj.session_id][1] is parser:
-            result.append(traj)
-            continue
-
-        # Path-based match (Codex rollout_path)
-        rollout_path = (traj.extra or {}).get("rollout_path", "")
-        old_sid = path_to_old_sid.get(rollout_path)
-        if not old_sid:
-            continue
-        # Remap file_index from filename-based key to real session_id
-        if traj.session_id != old_sid:
-            entry = file_index.pop(old_sid, None)
-            if entry:
-                file_index[traj.session_id] = entry
-        result.append(traj)
-
-    return result
+    return [
+        t for t in skeletons if t.session_id in file_index and file_index[t.session_id][1] is parser
+    ]
 
 
 def _build_file_parse_skeletons(
@@ -252,54 +174,46 @@ def _build_file_parse_skeletons(
 ) -> list[Trajectory]:
     """Build skeletons by lightly parsing each session file in parallel.
 
-    Dispatches to the parser's :meth:`parse_skeleton_for_file` hook so
-    formats with append-only JSONL (Claude, OpenClaw) can scan only the
-    head; parsers that don't override fall back to a full parse with
-    cleared steps. Files are processed in a thread pool because the work
-    is dominated by I/O.
-
-    Collects entries first to avoid mutating file_index during iteration.
-    Remaps session IDs when the parser produces different IDs than
-    filename-based keys.
+    Dispatches to ``parse_skeletons_for_file`` (plural) so multi-session
+    formats yield N skeletons per file in one pass. Files are processed
+    in a thread pool because the work is dominated by I/O.
 
     Args:
         parser: The parser instance to use.
-        file_index: Mutable session file index for ID remapping.
+        file_index: Session file index. Empty sessions are dropped from it
+            and recorded in dropped_sink.
         dropped_sink: Optional list to receive paths of files that produced
-            no parseable trajectory. Lets the caller persist them so the
-            next startup doesn't retry. Symmetric with
-            :func:`_build_orphaned_skeletons`.
+            no parseable trajectory.
 
     Returns:
         Skeleton trajectories for all parseable files.
     """
-    parser_entries = [(sid, fpath) for sid, (fpath, p) in file_index.items() if p is parser]
-    if not parser_entries:
+    paths_to_sids: dict[str, list[str]] = {}
+    for sid, (fpath, p) in file_index.items():
+        if p is parser:
+            paths_to_sids.setdefault(str(fpath), []).append(sid)
+    if not paths_to_sids:
         return []
 
-    def _scan(entry: tuple[str, Path]) -> tuple[str, Path, Trajectory | None]:
-        old_sid, fpath = entry
+    def _scan(path_str: str) -> tuple[str, list[Trajectory]]:
         try:
-            return old_sid, fpath, parser.parse_skeleton_for_file(fpath)
+            return path_str, parser.parse_skeletons_for_file(Path(path_str))
         except Exception:
-            logger.warning("Failed to index %s, skipping", fpath)
-            return old_sid, fpath, None
+            logger.warning("Failed to index %s, skipping", path_str)
+            return path_str, []
 
     with ThreadPoolExecutor(max_workers=INDEX_PARSE_WORKERS) as pool:
-        scanned = list(pool.map(_scan, parser_entries))
+        scanned = list(pool.map(_scan, paths_to_sids.keys()))
 
     result: list[Trajectory] = []
-    for old_sid, fpath, main in scanned:
-        if main is None:
+    for path_str, skels in scanned:
+        if not skels:
+            for sid in paths_to_sids[path_str]:
+                file_index.pop(sid, None)
             if dropped_sink is not None:
-                dropped_sink.append(fpath)
-            file_index.pop(old_sid, None)
+                dropped_sink.append(Path(path_str))
             continue
-        real_sid = main.session_id
-        if real_sid != old_sid:
-            file_index.pop(old_sid, None)
-            file_index[real_sid] = (fpath, parser)
-        result.append(main)
+        result.extend(skels)
     return result
 
 

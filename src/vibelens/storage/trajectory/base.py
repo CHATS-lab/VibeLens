@@ -104,7 +104,12 @@ class BaseTrajectoryStore(ABC):
             return None
 
         path, parser = entry
-        trajectories = parser.parse(path)
+        # Delegate session selection to the parser. The default
+        # BaseParser.parse_session implementation handles both single- and
+        # multi-session-per-file formats; subclasses may override for
+        # efficiency. base.py never needs to know how many sessions live
+        # in a given file.
+        trajectories = parser.parse_session(path, session_id)
         if not trajectories:
             logger.warning(
                 "Parser %s returned no trajectories for session %s from %s",

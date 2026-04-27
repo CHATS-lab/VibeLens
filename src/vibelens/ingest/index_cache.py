@@ -1,7 +1,9 @@
 """Persistent index cache for fast startup.
 
-Serializes session metadata and file mtimes to a JSON file so subsequent
-startups skip full index rebuilding when no files have changed.
+Serializes session metadata to a JSON file so subsequent startups skip
+full index rebuilding when no sessions have changed. Per-session mtime
+tracking lets multi-session-per-file formats (OpenCode, Kilo) detect
+which exact session changed without re-parsing the whole file.
 """
 
 import contextlib
@@ -14,28 +16,15 @@ from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
 
-# Bump to invalidate existing caches after schema changes. Stat tuples
-# are stored as ``[mtime_ns, size_bytes]`` per file; size catches
-# in-place rewrites that preserve mtime. v8 invalidates v7 caches whose
-# entries still carry the old ``total_cache_read`` / ``total_cache_write``
-# (and Metrics ``cached_tokens`` / ``cache_creation_tokens``) field names.
-# v9 invalidates v8 caches that don't carry Codex sub-agent linkage
-# (``parent_trajectory_ref`` populated from session_meta source /
-# forked_from_id, and ``extra.agent_role`` / ``extra.agent_nickname``).
-# v10 invalidates v9 caches whose ``final_metrics.total_steps`` was
-# populated from the fast scanner's ``message_count`` (JSONL line count,
-# structurally larger than ``len(steps)``). v10 entries are written via
-# ``parser.parse`` so ``total_steps == len(traj.steps)`` and
-# ``daily_breakdown.messages`` sums to the same — the contract the
-# dashboard relies on.
-# v11 invalidates v10 caches written before ``Trajectory.timestamp`` was
-# split into ``created_at`` and ``updated_at``. Old entries lack the new
-# fields and would render the session list with empty time labels.
-# v12 invalidates v11 caches whose ``updated_at`` was backfilled equal to
-# ``created_at`` because the head-of-file skeleton parsers (claude, codex)
-# only saw the first event. v12 derives ``updated_at`` from the source
-# file's mtime so the session list shows true last-activity time.
-CACHE_VERSION = 12
+# v16 drops the legacy ``file_mtimes`` / ``path_to_session_id`` /
+# ``continuation_map`` top-level fields. Per-session mtime is now embedded
+# inside each entry (``session_mtime_ns``), so multi-session-per-file
+# formats can detect per-session changes without a separate side table.
+# v17 promotes ``is_compaction`` (Step) and ``is_skill`` (ToolCall) from
+# polymorphic ``extra`` dicts to typed first-class fields. Cached entries
+# from v16 still carry the old values inside ``extra`` and would render
+# without the typed flag set, so we force a rebuild.
+CACHE_VERSION = 17
 
 # User-home path for the persistent session index cache
 DEFAULT_CACHE_PATH = Path.home() / ".vibelens" / "session_index.json"
@@ -77,8 +66,7 @@ def load_cache(cache_path: Path | None = None) -> dict | None:
             so tests can monkeypatch the module attr).
 
     Returns:
-        Cache dict with 'entries', 'file_mtimes', 'path_to_session_id',
-        'continuation_map', and 'dropped_paths', or None.
+        Cache dict with 'entries' and 'dropped_paths', or None.
     """
     if cache_path is None:
         cache_path = DEFAULT_CACHE_PATH
@@ -97,24 +85,22 @@ def load_cache(cache_path: Path | None = None) -> dict | None:
 
 def save_cache(
     metadata_cache: dict[str, dict],
-    file_mtimes: dict[str, list[int]],
-    continuation_map: dict[str, str],
-    path_to_session_id: dict[str, str] | None = None,
     dropped_paths: dict[str, list[int]] | None = None,
     cache_path: Path | None = None,
 ) -> None:
     """Write the index cache to disk.
 
+    Each entry in ``metadata_cache`` must already carry ``filepath`` and
+    ``session_mtime_ns`` keys — callers stamp these before passing the
+    dict in. There's no longer a separate side table for either.
+
     Args:
-        metadata_cache: session_id -> metadata dict (from model_dump).
-        file_mtimes: file_path_str -> ``[mtime_ns, size]`` for staleness
-            detection. Both must match on next startup for a cache hit;
-            this catches in-place rewrites that preserve mtime.
-        continuation_map: current_session_id -> previous_session_id.
-        path_to_session_id: file_path_str -> real session_id for index remapping.
-        dropped_paths: file_path_str -> ``[mtime_ns, size]`` for files dropped
-            as empty/invalid. Lets the next startup skip re-parsing them as
-            long as their stat tuple is unchanged.
+        metadata_cache: session_id -> metadata dict. Each entry must
+            include ``filepath`` (str) and ``session_mtime_ns`` (int) for
+            staleness detection on next startup.
+        dropped_paths: file_path_str -> ``[mtime_ns, size]`` for files
+            dropped as empty/invalid. Lets the next startup skip
+            re-parsing them as long as their stat tuple is unchanged.
         cache_path: Path to write the cache file. Defaults to the
             module-level ``DEFAULT_CACHE_PATH`` (resolved at call time).
     """
@@ -123,9 +109,6 @@ def save_cache(
     payload = {
         "version": CACHE_VERSION,
         "written_at": time.time(),
-        "file_mtimes": file_mtimes,
-        "continuation_map": continuation_map,
-        "path_to_session_id": path_to_session_id or {},
         "dropped_paths": dropped_paths or {},
         "entries": {sid: _compact_entry(entry) for sid, entry in metadata_cache.items()},
     }
@@ -139,9 +122,8 @@ def save_cache(
 def collect_file_mtimes(file_index: dict[str, tuple[Path, object]]) -> dict[str, list[int]]:
     """Build a filepath -> ``[mtime_ns, size]`` map from the current file index.
 
-    The size component lets the staleness check catch in-place rewrites
-    that preserve mtime (rare with normal Claude Code/Codex session
-    files, but possible with editors that ``write -> rename`` quickly).
+    Used only for the ``dropped_paths`` table now (live sessions track
+    per-session mtime inside each cache entry).
 
     Args:
         file_index: session_id -> (filepath, parser) map.

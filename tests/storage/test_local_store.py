@@ -9,7 +9,6 @@ import pytest
 from vibelens.ingest.parsers.claude import ClaudeParser
 from vibelens.models.enums import AgentType
 from vibelens.storage.trajectory.local import LocalTrajectoryStore as LocalSource
-from vibelens.storage.trajectory.local import _extract_session_id
 
 
 @pytest.fixture
@@ -351,19 +350,23 @@ class TestCacheHitOrRebuild:
         # Build initial index and warm cache
         source.list_metadata()
 
-        # Invalidate in-memory state, then repopulate _index via the walk
-        # so _try_load_from_cache has something to partition against.
+        # Invalidate in-memory state, then repopulate _index + mtimes via the
+        # walk so _try_load_from_cache has something to partition against.
         source._metadata_cache = None
-        source._index = {
-            _extract_session_id(fpath, parser.AGENT_TYPE): (fpath, parser)
-            for parser, fpath, _mtime in source._walk_session_files()
-        }
+        source._index = {}
+        current_mtimes: dict[str, int] = {}
+        for parser, fpath, sid, mtime in source._walk_session_files():
+            source._index[sid] = (fpath, parser)
+            current_mtimes[sid] = mtime
 
         # Modify one file to make it stale
         session_file = test_project / "session-001.jsonl"
         session_file.write_text(session_file.read_text() + "\n")
+        # Refresh mtime for the stale session so the partition sees it as changed.
+        for _parser, _fpath, sid, mtime in source._walk_session_files():
+            current_mtimes[sid] = mtime
 
-        result = source._try_load_from_cache()
+        result = source._try_load_from_cache(current_mtimes)
         assert result is True, "Stale files should trigger partial rebuild and return True"
         # Both sessions should still be in the index after partial rebuild.
         assert source._metadata_cache is not None
