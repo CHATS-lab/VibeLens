@@ -5,18 +5,27 @@ export interface UploadCommands {
   description: string;
 }
 
+export interface AgentSpec {
+  agent_type: string;
+  display_name: string;
+  description: string;
+  source: "local_zip" | "external_export";
+  user_facing: boolean;
+  commands: Record<string, { command: string; output: string }>;
+  external_instructions: string[];
+}
+
 export interface UploadClient {
-  commands: (agentType: string, osPlatform: string) => Promise<UploadCommands>;
+  agents: () => Promise<AgentSpec[]>;
 }
 
 export function uploadClient(fetchWithToken: FetchWithToken): UploadClient {
   return {
-    commands: async (agentType, osPlatform) => {
-      const res = await fetchWithToken(
-        `/api/upload/commands?agent_type=${agentType}&os_platform=${osPlatform}`,
-      );
+    agents: async () => {
+      const res = await fetchWithToken("/api/upload/agents");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json();
+      const payload = await res.json();
+      return payload.agents as AgentSpec[];
     },
   };
 }

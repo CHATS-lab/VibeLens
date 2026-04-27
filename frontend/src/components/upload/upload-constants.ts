@@ -2,16 +2,10 @@ import type { AgentType, OSPlatform } from "../../types";
 
 export type UploadStep = "select" | "upload" | "confirm" | "result";
 
-export const AGENT_OPTIONS: { type: AgentType; label: string }[] = [
-  { type: "claude", label: "Claude Code" },
-  { type: "claude_web", label: "Claude Web" },
-  { type: "codex", label: "Codex CLI" },
-  { type: "codebuddy", label: "Code Buddy" },
-  { type: "copilot", label: "GitHub Copilot CLI" },
-  { type: "gemini", label: "Gemini CLI" },
-  { type: "kilo", label: "Kilo" },
-  { type: "opencode", label: "OpenCode" },
-];
+// Agent metadata is fetched from GET /upload/agents at dialog open time
+// (see uploadClient.agents in api/upload.ts). The frontend no longer
+// hardcodes labels/descriptions — backend services/upload/agents.py is
+// the single source of truth.
 
 export const OS_OPTIONS: { platform: OSPlatform; label: string }[] = [
   { platform: "macos", label: "macOS" },
@@ -19,23 +13,5 @@ export const OS_OPTIONS: { platform: OSPlatform; label: string }[] = [
   { platform: "windows", label: "Windows" },
 ];
 
-export const AGENT_LABELS: Record<AgentType, string> = {
-  claude: "Claude Code",
-  claude_web: "Claude Web",
-  codex: "Codex CLI",
-  codebuddy: "Code Buddy",
-  copilot: "GitHub Copilot CLI",
-  gemini: "Gemini CLI",
-  kilo: "Kilo",
-  opencode: "OpenCode",
-};
-
 export const DEFAULT_AGENT: AgentType = "claude";
 export const DEFAULT_OS: OSPlatform = "macos";
-
-export const WEB_EXPORT_STEPS = [
-  { num: "1", text: "Open claude.ai and go to Settings" },
-  { num: "2", text: 'Scroll to "Export Data" and click Export' },
-  { num: "3", text: "Wait for the email, then download the zip" },
-  { num: "4", text: "Upload the downloaded zip below" },
-];

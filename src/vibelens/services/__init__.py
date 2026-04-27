@@ -10,7 +10,7 @@ from vibelens.services.session.crud import (
 )
 from vibelens.services.session.demo import load_demo_examples
 from vibelens.services.session.donation import donate_sessions
-from vibelens.services.upload.commands import get_upload_command
+from vibelens.services.upload.agents import get_upload_command
 from vibelens.services.upload.processor import process_zip
 
 __all__ = [
