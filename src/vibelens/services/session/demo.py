@@ -7,7 +7,6 @@ from pathlib import Path
 
 from vibelens.config.settings import Settings
 from vibelens.deps import get_settings
-from vibelens.ingest.discovery import discover_all_session_files
 from vibelens.ingest.parsers import LOCAL_PARSER_CLASSES
 from vibelens.ingest.parsers.base import BaseParser
 from vibelens.ingest.parsers.dataclaw import DataclawParser
@@ -21,6 +20,33 @@ logger = get_logger(__name__)
 
 # File marker for example skills
 _EXAMPLE_SKILL_SIDECAR = ".is_example"
+
+# Demo-mode "load every file" walker — agnostic to agent type. Skips
+# Claude sub-agent files (parsed via the main session) and history index
+# files. Lives here because demo is the only caller.
+_DEMO_PARSEABLE_EXTENSIONS = {".json", ".jsonl"}
+_DEMO_HISTORY_INDEX_FILENAME = "history.jsonl"
+_DEMO_SKIP_DIR_NAMES = {"subagents", "parsed"}
+
+
+def discover_all_session_files(directory: Path) -> list[Path]:
+    """Walk a directory and return parseable session files for any agent.
+
+    Excludes Claude sub-agent files (loaded via the main session), the
+    history index, and macOS resource forks.
+    """
+    files: list[Path] = []
+    for ext in sorted(_DEMO_PARSEABLE_EXTENSIONS):
+        for filepath in directory.rglob(f"*{ext}"):
+            if _DEMO_SKIP_DIR_NAMES.intersection(filepath.parts):
+                continue
+            if filepath.name == _DEMO_HISTORY_INDEX_FILENAME:
+                continue
+            if filepath.name.startswith("._"):
+                continue
+            files.append(filepath)
+    return sorted(files)
+
 
 _ALL_PARSERS: list[type[BaseParser]] = [*LOCAL_PARSER_CLASSES, DataclawParser]
 

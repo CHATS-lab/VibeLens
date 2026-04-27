@@ -20,7 +20,7 @@ from vibelens.utils.log import (
 
 def test_resolve_domain_ingest_covers_parsers():
     assert _resolve_domain("vibelens.ingest.parsers.claude") == "ingest"
-    assert _resolve_domain("vibelens.ingest.discovery") == "ingest"
+    assert _resolve_domain("vibelens.ingest.anonymize.rule_anonymizer") == "ingest"
 
 
 def test_resolve_domain_donation_wins_over_session():
