@@ -7,7 +7,7 @@ extension types each platform supports.
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from vibelens.models.enums import AgentExtensionType, ExtensionSource
+from vibelens.models.enums import AgentExtensionType, AgentType
 
 
 @dataclass(frozen=True)
@@ -27,7 +27,7 @@ class AgentPlatform:
         extra_paths: Opaque platform-specific extra paths.
     """
 
-    source: ExtensionSource
+    source: AgentType
     root: Path
     skills_dir: Path
     commands_dir: Path | None = None
@@ -43,7 +43,7 @@ def _home(*parts: str) -> Path:
     return Path.home().joinpath(*parts)
 
 
-def _build_platforms() -> dict[ExtensionSource, AgentPlatform]:
+def _build_platforms() -> dict[AgentType, AgentPlatform]:
     """Build the platform table using the current ``Path.home()``.
 
     Tests that patch ``HOME`` or ``Path.home`` should call
@@ -51,8 +51,8 @@ def _build_platforms() -> dict[ExtensionSource, AgentPlatform]:
     module-level ``PLATFORMS`` dict picks up the new paths.
     """
     return {
-        ExtensionSource.CLAUDE: AgentPlatform(
-            source=ExtensionSource.CLAUDE,
+        AgentType.CLAUDE: AgentPlatform(
+            source=AgentType.CLAUDE,
             root=_home(".claude"),
             skills_dir=_home(".claude", "skills"),
             commands_dir=_home(".claude", "commands"),
@@ -70,8 +70,8 @@ def _build_platforms() -> dict[ExtensionSource, AgentPlatform]:
             ),
             extra_paths={"claude_json": _home(".claude.json")},
         ),
-        ExtensionSource.CODEX: AgentPlatform(
-            source=ExtensionSource.CODEX,
+        AgentType.CODEX: AgentPlatform(
+            source=AgentType.CODEX,
             root=_home(".codex"),
             skills_dir=_home(".codex", "skills"),
             subagents_dir=_home(".codex", "agents"),
@@ -86,8 +86,8 @@ def _build_platforms() -> dict[ExtensionSource, AgentPlatform]:
                 }
             ),
         ),
-        ExtensionSource.CURSOR: AgentPlatform(
-            source=ExtensionSource.CURSOR,
+        AgentType.CURSOR: AgentPlatform(
+            source=AgentType.CURSOR,
             root=_home(".cursor"),
             skills_dir=_home(".cursor", "skills"),
             commands_dir=_home(".cursor", "commands"),
@@ -104,8 +104,8 @@ def _build_platforms() -> dict[ExtensionSource, AgentPlatform]:
                 }
             ),
         ),
-        ExtensionSource.OPENCODE: AgentPlatform(
-            source=ExtensionSource.OPENCODE,
+        AgentType.OPENCODE: AgentPlatform(
+            source=AgentType.OPENCODE,
             root=_home(".config", "opencode"),
             skills_dir=_home(".config", "opencode", "skills"),
             commands_dir=_home(".config", "opencode", "commands"),
@@ -118,8 +118,8 @@ def _build_platforms() -> dict[ExtensionSource, AgentPlatform]:
                 }
             ),
         ),
-        ExtensionSource.GEMINI: AgentPlatform(
-            source=ExtensionSource.GEMINI,
+        AgentType.GEMINI: AgentPlatform(
+            source=AgentType.GEMINI,
             root=_home(".gemini"),
             skills_dir=_home(".gemini", "skills"),
             subagents_dir=_home(".gemini", "subagents"),
@@ -134,8 +134,8 @@ def _build_platforms() -> dict[ExtensionSource, AgentPlatform]:
                 }
             ),
         ),
-        ExtensionSource.COPILOT: AgentPlatform(
-            source=ExtensionSource.COPILOT,
+        AgentType.COPILOT: AgentPlatform(
+            source=AgentType.COPILOT,
             root=_home(".copilot"),
             skills_dir=_home(".copilot", "skills"),
             plugins_dir=_home(".copilot", "plugins"),
@@ -148,8 +148,8 @@ def _build_platforms() -> dict[ExtensionSource, AgentPlatform]:
                 }
             ),
         ),
-        ExtensionSource.ANTIGRAVITY: AgentPlatform(
-            source=ExtensionSource.ANTIGRAVITY,
+        AgentType.ANTIGRAVITY: AgentPlatform(
+            source=AgentType.ANTIGRAVITY,
             root=_home(".gemini", "antigravity"),
             skills_dir=_home(".gemini", "antigravity", "global_skills"),
             commands_dir=_home(".gemini", "antigravity", "commands"),
@@ -162,8 +162,8 @@ def _build_platforms() -> dict[ExtensionSource, AgentPlatform]:
                 }
             ),
         ),
-        ExtensionSource.QWEN: AgentPlatform(
-            source=ExtensionSource.QWEN,
+        AgentType.QWEN: AgentPlatform(
+            source=AgentType.QWEN,
             root=_home(".qwen"),
             skills_dir=_home(".qwen", "skills"),
             subagents_dir=_home(".qwen", "agents"),
@@ -176,21 +176,21 @@ def _build_platforms() -> dict[ExtensionSource, AgentPlatform]:
                 }
             ),
         ),
-        ExtensionSource.KIMI: AgentPlatform(
-            source=ExtensionSource.KIMI,
+        AgentType.KIMI: AgentPlatform(
+            source=AgentType.KIMI,
             root=_home(".config", "agents"),
             skills_dir=_home(".config", "agents", "skills"),
             subagents_dir=_home(".config", "agents", "agents"),
             supported_types=frozenset({AgentExtensionType.SKILL, AgentExtensionType.SUBAGENT}),
         ),
-        ExtensionSource.OPENCLAW: AgentPlatform(
-            source=ExtensionSource.OPENCLAW,
+        AgentType.OPENCLAW: AgentPlatform(
+            source=AgentType.OPENCLAW,
             root=_home(".openclaw"),
             skills_dir=_home(".openclaw", "skills"),
             supported_types=frozenset({AgentExtensionType.SKILL}),
         ),
-        ExtensionSource.OPENHANDS: AgentPlatform(
-            source=ExtensionSource.OPENHANDS,
+        AgentType.OPENHANDS: AgentPlatform(
+            source=AgentType.OPENHANDS,
             root=_home(".openhands"),
             skills_dir=_home(".openhands", "skills"),
             supported_types=frozenset({AgentExtensionType.SKILL}),
@@ -198,7 +198,7 @@ def _build_platforms() -> dict[ExtensionSource, AgentPlatform]:
     }
 
 
-PLATFORMS: dict[ExtensionSource, AgentPlatform] = _build_platforms()
+PLATFORMS: dict[AgentType, AgentPlatform] = _build_platforms()
 
 
 def rebuild_platforms() -> None:
@@ -215,10 +215,10 @@ def rebuild_platforms() -> None:
 
 
 def get_platform(key: str) -> AgentPlatform:
-    """Look up a platform by ExtensionSource value.
+    """Look up a platform by AgentType value.
 
     Args:
-        key: Platform key matching ``ExtensionSource.value`` (e.g. "claude").
+        key: Platform key matching ``AgentType.value`` (e.g. "claude").
 
     Returns:
         Matching AgentPlatform.
@@ -227,7 +227,7 @@ def get_platform(key: str) -> AgentPlatform:
         ValueError: If key does not match any known source.
     """
     try:
-        source = ExtensionSource(key)
+        source = AgentType(key)
     except ValueError as exc:
         raise ValueError(f"Unknown agent: {key!r}") from exc
     if source not in PLATFORMS:
@@ -239,7 +239,7 @@ def installed_platforms() -> dict[str, AgentPlatform]:
     """Return platforms whose root directory exists on disk.
 
     Returns:
-        Dict mapping ``ExtensionSource.value`` to platform for agents the
+        Dict mapping ``AgentType.value`` to platform for agents the
         user actually has installed.
     """
     return {p.source.value: p for p in PLATFORMS.values() if p.root.expanduser().is_dir()}

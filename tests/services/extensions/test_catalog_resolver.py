@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from vibelens.models.enums import AgentExtensionType, ExtensionSource
+from vibelens.models.enums import AgentExtensionType, AgentType
 from vibelens.models.extension import AgentExtensionItem
 from vibelens.services.extensions import catalog_resolver
 from vibelens.services.extensions.catalog_resolver import (
@@ -52,7 +52,7 @@ def _stub_platform(monkeypatch, tmp_path: Path) -> AgentPlatform:
     commands_dir = root / "commands"
 
     platform = AgentPlatform(
-        source=ExtensionSource.CLAUDE,
+        source=AgentType.CLAUDE,
         root=root,
         skills_dir=skills_dir,
         subagents_dir=subagents_dir,
@@ -159,7 +159,7 @@ def test_install_unsupported_type_for_platform_raises(monkeypatch, tmp_path: Pat
     root = tmp_path / "agent-root"
     root.mkdir()
     platform = AgentPlatform(
-        source=ExtensionSource.CODEX,
+        source=AgentType.CODEX,
         root=root,
         skills_dir=None,
         subagents_dir=None,

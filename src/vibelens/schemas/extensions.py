@@ -145,7 +145,7 @@ class ExtensionMetaResponse(BaseModel):
 class AgentCapability(BaseModel):
     """Per-agent capability entry."""
 
-    key: str = Field(description="ExtensionSource value, e.g. 'claude'.")
+    key: str = Field(description="AgentType value, e.g. 'claude'.")
     installed: bool = Field(description="Whether the agent's root directory exists.")
     supported_types: list[str] = Field(description="Extension types this agent can install.")
 

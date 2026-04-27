@@ -1,6 +1,5 @@
 """Extension domain models (skill, subagent, command, hook, repo)."""
 
-from vibelens.models.enums import ExtensionSource
 from vibelens.models.extension.command import Command
 from vibelens.models.extension.hook import Hook
 from vibelens.models.extension.item import (
@@ -16,7 +15,6 @@ __all__ = [
     "EXTENSION_TYPE_LABELS",
     "Command",
     "AgentExtensionItem",
-    "ExtensionSource",
     "FILE_BASED_TYPES",
     "Hook",
     "Plugin",

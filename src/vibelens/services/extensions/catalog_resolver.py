@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 
 from vibelens.deps import get_plugin_service, get_skill_service
-from vibelens.models.enums import AgentExtensionType, ExtensionSource
+from vibelens.models.enums import AgentExtensionType, AgentType
 from vibelens.models.extension import AgentExtensionItem
 from vibelens.services.extensions.platforms import AgentPlatform, get_platform
 from vibelens.utils.github import (
@@ -21,7 +21,7 @@ logger = get_logger(__name__)
 
 
 def _resolve_platform(target_platform: str) -> AgentPlatform:
-    """Look up a platform by ExtensionSource value and verify it is installed."""
+    """Look up a platform by AgentType value and verify it is installed."""
     platform = get_platform(target_platform)
     if not platform.root.expanduser().is_dir():
         raise ValueError(f"Agent {target_platform!r} not installed")
@@ -239,7 +239,7 @@ def uninstall_extension(item: AgentExtensionItem, target_platform: str) -> Path:
 
 def _plugin_installed_path(platform: AgentPlatform, name: str, target_platform: str) -> Path:
     """Return the on-agent installed path for a plugin (for reporting)."""
-    if platform.source == ExtensionSource.CLAUDE:
+    if platform.source == AgentType.CLAUDE:
         return platform.root.expanduser() / "plugins" / "cache" / "vibelens" / name
     if platform.plugins_dir is None:
         raise ValueError(f"Platform {target_platform} has no plugins directory")

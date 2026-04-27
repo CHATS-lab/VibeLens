@@ -222,7 +222,7 @@ def _build_agent_plugin_stores() -> dict:
     renamed manifest directories; Gemini uses a flat
     ``gemini-extension.json`` with field translation.
     """
-    from vibelens.models.enums import ExtensionSource
+    from vibelens.models.enums import AgentType
     from vibelens.storage.extension.plugin_stores import (
         ClaudePluginStore,
         CodexPluginStore,
@@ -233,15 +233,15 @@ def _build_agent_plugin_stores() -> dict:
     )
 
     store_class_map = {
-        ExtensionSource.CODEX: CodexPluginStore,
-        ExtensionSource.CURSOR: CursorPluginStore,
-        ExtensionSource.COPILOT: CopilotPluginStore,
-        ExtensionSource.GEMINI: GeminiPluginStore,
+        AgentType.CODEX: CodexPluginStore,
+        AgentType.CURSOR: CursorPluginStore,
+        AgentType.COPILOT: CopilotPluginStore,
+        AgentType.GEMINI: GeminiPluginStore,
     }
 
     stores: dict = {}
     for key, platform in _iter_supporting(AgentExtensionType.PLUGIN):
-        if platform.source == ExtensionSource.CLAUDE:
+        if platform.source == AgentType.CLAUDE:
             cache_root = platform.root.expanduser() / "plugins" / "cache"
             stores[key] = ClaudePluginStore(cache_root, create=True)
             continue
