@@ -48,7 +48,6 @@ Capability vs Claude reference parser:
 """
 
 import json
-import re
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
@@ -75,12 +74,42 @@ from vibelens.utils import get_logger, parse_iso_timestamp
 
 logger = get_logger(__name__)
 
-# Session filename: 20260418_192555_4077bccc or 20260418_203756_06db65
-# (varying hex length observed in practice). Matches both the jsonl
-# stem and the suffix of a session_*.json snapshot.
-_SESSION_ID_RE = re.compile(r"^\d{8}_\d{6}_[0-9a-f]+$")
+_DEFAULT_PROJECT_PATH = "hermes://local"
+
+# Hermes session_id format: ``<YYYYMMDD>_<HHMMSS>_<hex>`` per
+# ``run_agent.py:1359`` (``f"{timestamp_str}_{short_uuid}"`` where
+# ``timestamp_str = strftime("%Y%m%d_%H%M%S")`` and
+# ``short_uuid = uuid4().hex[:6]``). Hex-tail length has varied across
+# Hermes versions, so validation is by part shape — newer / older builds
+# with different uuid slicing still parse.
+def _is_hermes_session_id(stem: str) -> bool:
+    """True if ``stem`` looks like a Hermes-generated session_id.
+
+    Three underscore-separated parts: 8-digit date, 6-digit time, hex
+    suffix of any non-zero length. Used to distinguish session files
+    from index / config files (e.g. ``sessions.json``) in the same
+    directory.
+    """
+    parts = stem.split("_")
+    if len(parts) != 3:
+        return False
+    date, time_part, suffix = parts
+    return (
+        len(date) == 8
+        and date.isdigit()
+        and len(time_part) == 6
+        and time_part.isdigit()
+        and bool(suffix)
+        and all(c in "0123456789abcdef" for c in suffix.lower())
+    )
 
 _SNAPSHOT_PREFIX = "session_"
+
+# Hermes's skill-activation tool. ``skill_view`` loads a skill's content and
+# the agent immediately follows its instructions — semantically equivalent to
+# Claude's ``Skill`` or Gemini's ``activate_skill``. ``skill_manage`` and
+# ``skills_list`` are management/listing meta-tools and are NOT activation.
+_SKILL_TOOL_NAMES: frozenset[str] = frozenset({"skill_view"})
 
 
 @dataclass
@@ -180,12 +209,12 @@ class HermesParser(BaseParser):
         for path in sessions_dir.iterdir():
             if not path.is_file():
                 continue
-            if path.suffix == ".jsonl" and _SESSION_ID_RE.match(path.stem):
+            if path.suffix == ".jsonl" and _is_hermes_session_id(path.stem):
                 jsonl_ids[path.stem] = path
             elif (
                 path.suffix == ".json"
                 and path.stem.startswith(_SNAPSHOT_PREFIX)
-                and _SESSION_ID_RE.match(path.stem[len(_SNAPSHOT_PREFIX) :])
+                and _is_hermes_session_id(path.stem[len(_SNAPSHOT_PREFIX) :])
             ):
                 snapshot_ids[path.stem[len(_SNAPSHOT_PREFIX) :]] = path
 
@@ -342,16 +371,13 @@ class HermesParser(BaseParser):
         return subs
 
 
-_DEFAULT_PROJECT_PATH = "hermes://local"
-
-
 def _session_id_from_path(path: Path) -> str | None:
     """Extract the canonical session_id from a jsonl or snapshot path."""
-    if path.suffix == ".jsonl" and _SESSION_ID_RE.match(path.stem):
+    if path.suffix == ".jsonl" and _is_hermes_session_id(path.stem):
         return path.stem
     if path.suffix == ".json" and path.stem.startswith(_SNAPSHOT_PREFIX):
         candidate = path.stem[len(_SNAPSHOT_PREFIX) :]
-        if _SESSION_ID_RE.match(candidate):
+        if _is_hermes_session_id(candidate):
             return candidate
     return None
 
@@ -803,6 +829,7 @@ def _build_tool_calls_and_observation(
                 tool_call_id=tool_call_id,
                 function_name=function_name,
                 arguments=arguments,
+                is_skill=True if function_name in _SKILL_TOOL_NAMES else None,
                 extra=tc_extra or None,
             )
         )

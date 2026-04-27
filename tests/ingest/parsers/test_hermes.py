@@ -669,3 +669,86 @@ def test_parent_without_state_db_returns_only_itself(tmp_path: Path) -> None:
     assert len(trajectories) == 1
     assert trajectories[0].session_id == parent_id
     assert trajectories[0].parent_trajectory_ref is None
+
+
+def test_skill_view_tagged(tmp_path: Path) -> None:
+    """skill_view → is_skill=True; skill_manage and skills_list stay None
+    (activation-only contract)."""
+    session_id = "20260427_000000_aabbccdd"
+    sessions_dir = tmp_path / "sessions"
+    sessions_dir.mkdir()
+    records = [
+        {
+            "role": "session_meta",
+            "timestamp": "2026-04-27T00:00:00.000000",
+            "model": "anthropic/claude-opus-4.7",
+            "platform": "slack",
+            "tools": [],
+        },
+        {"role": "user", "content": "go", "timestamp": "2026-04-27T00:00:01.000000"},
+        {
+            "role": "assistant",
+            "content": "ok",
+            "finish_reason": "tool_calls",
+            "tool_calls": [
+                {
+                    "id": "c1",
+                    "type": "function",
+                    "function": {
+                        "name": "skill_view",
+                        "arguments": json.dumps({"name": "foo"}),
+                    },
+                },
+                {
+                    "id": "c2",
+                    "type": "function",
+                    "function": {
+                        "name": "skill_manage",
+                        "arguments": json.dumps({"action": "list"}),
+                    },
+                },
+                {
+                    "id": "c3",
+                    "type": "function",
+                    "function": {"name": "skills_list", "arguments": "{}"},
+                },
+                {
+                    "id": "c4",
+                    "type": "function",
+                    "function": {
+                        "name": "terminal",
+                        "arguments": json.dumps({"cmd": "ls"}),
+                    },
+                },
+            ],
+            "timestamp": "2026-04-27T00:00:02.000000",
+        },
+    ]
+    _write_jsonl(sessions_dir / f"{session_id}.jsonl", records)
+    _write_snapshot(
+        sessions_dir / f"session_{session_id}.json",
+        {
+            "session_id": session_id,
+            "model": "anthropic/claude-opus-4.7",
+            "base_url": "https://openrouter.ai/api/v1",
+            "platform": "slack",
+            "session_start": "2026-04-27T00:00:00.000000",
+            "last_updated": "2026-04-27T00:00:02.000000",
+            "system_prompt": "x",
+            "tools": [],
+            "message_count": 2,
+            "messages": [],
+        },
+    )
+    _seed_state_db(tmp_path / "state.db", session_id, started_at=100.0, ended_at=110.0)
+    _seed_index(sessions_dir, session_id)
+
+    trajs = _parser.parse(sessions_dir / f"{session_id}.jsonl")
+    assert trajs
+    tcs = [tc for s in trajs[0].steps for tc in s.tool_calls]
+    by_id = {tc.tool_call_id: tc for tc in tcs}
+    print(f"is_skill: { {k: v.is_skill for k, v in by_id.items()} }")
+    assert by_id["c1"].is_skill is True, "skill_view must be tagged"
+    assert by_id["c2"].is_skill is None, "skill_manage must NOT be tagged"
+    assert by_id["c3"].is_skill is None, "skills_list must NOT be tagged"
+    assert by_id["c4"].is_skill is None
