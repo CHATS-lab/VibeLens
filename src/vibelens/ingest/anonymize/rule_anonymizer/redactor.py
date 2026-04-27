@@ -68,6 +68,13 @@ def _deduplicate_findings(findings: list[Finding]) -> list[Finding]:
     return deduped
 
 
+# Pattern matching skipped above this size — the PEM private-key pattern
+# (`[\s\S]*?` between BEGIN/END markers) can backtrack catastrophically on
+# large malformed inputs. Real secrets are well under 1 MB; anything bigger
+# is almost certainly a content blob, not a credential.
+_MAX_PATTERN_INPUT_BYTES = 1_000_000
+
+
 def redact_patterns(
     text: str, patterns: list[PatternDef], placeholder: str
 ) -> tuple[str, int]:
@@ -84,6 +91,8 @@ def redact_patterns(
     Returns:
         Tuple of (redacted text, number of replacements made).
     """
+    if len(text) > _MAX_PATTERN_INPUT_BYTES:
+        return text, 0
     findings = scan_text(text, patterns)
     findings = _deduplicate_findings(findings)
     if not findings:

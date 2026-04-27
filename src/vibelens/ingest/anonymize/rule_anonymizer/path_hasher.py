@@ -219,31 +219,24 @@ class PathHasher:
         for match in re.finditer(r"-(?:Users|home)-([^-]+)-", path):
             self._register_username(match.group(1))
 
-        if self._path_pattern:
-            new_path, n = self._path_pattern.subn(
-                lambda m: f"{m.group(1)}{self._username_to_hash[m.group(2)]}{m.group(3)}", path
-            )
-            path = new_path
-            count += n
+        # Guarded substitution — if the regex matches a username we
+        # didn't register (race or pattern drift), leave the match
+        # unchanged rather than crashing the whole batch with KeyError.
+        def _safe_replace(m: re.Match) -> str:
+            hashed = self._username_to_hash.get(m.group(2))
+            if hashed is None:
+                return m.group(0)
+            return f"{m.group(1)}{hashed}{m.group(3)}"
 
-        if self._encoded_pattern:
-            new_path, n = self._encoded_pattern.subn(
-                lambda m: f"{m.group(1)}{self._username_to_hash[m.group(2)]}{m.group(3)}", path
-            )
-            path = new_path
-            count += n
-
-        if self._win_path_pattern:
-            new_path, n = self._win_path_pattern.subn(
-                lambda m: f"{m.group(1)}{self._username_to_hash[m.group(2)]}{m.group(3)}", path
-            )
-            path = new_path
-            count += n
-
-        if self._wsl_path_pattern:
-            new_path, n = self._wsl_path_pattern.subn(
-                lambda m: f"{m.group(1)}{self._username_to_hash[m.group(2)]}{m.group(3)}", path
-            )
+        for pattern in (
+            self._path_pattern,
+            self._encoded_pattern,
+            self._win_path_pattern,
+            self._wsl_path_pattern,
+        ):
+            if pattern is None:
+                continue
+            new_path, n = pattern.subn(_safe_replace, path)
             path = new_path
             count += n
 

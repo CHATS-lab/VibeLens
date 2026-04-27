@@ -57,14 +57,23 @@ def traverse_trajectory(trajectory: Trajectory, transform: Callable[[str], str])
     return Trajectory.model_validate(data)
 
 
-def _transform_value(value: Any, transform: Callable[[str], str]) -> Any:
+# Pathologically nested ``extra`` dicts (e.g. cycles round-tripped from
+# the agent's logs) can blow the Python stack. Cap recursion at this depth;
+# values deeper than that are returned untouched. Real conversation extras
+# don't go beyond ~5 levels.
+_MAX_RECURSION_DEPTH = 100
+
+
+def _transform_value(value: Any, transform: Callable[[str], str], depth: int = 0) -> Any:
     """Recursively apply *transform* to all strings in nested dicts/lists."""
+    if depth >= _MAX_RECURSION_DEPTH:
+        return value
     if isinstance(value, str):
         return transform(value)
     if isinstance(value, dict):
-        return {k: _transform_value(v, transform) for k, v in value.items()}
+        return {k: _transform_value(v, transform, depth + 1) for k, v in value.items()}
     if isinstance(value, list):
-        return [_transform_value(item, transform) for item in value]
+        return [_transform_value(item, transform, depth + 1) for item in value]
     return value
 
 
