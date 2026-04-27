@@ -1,5 +1,5 @@
 import { Bot, MessageSquare, Wrench } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { Trajectory } from "../../types";
 import { SESSION_ID_MEDIUM } from "../../constants";
 import { CollapsiblePill } from "../ui/collapsible-pill";
@@ -14,6 +14,20 @@ interface SubAgentBlockProps {
 
 export function SubAgentBlock({ trajectory, allTrajectories, concise, index }: SubAgentBlockProps) {
   const [open, setOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // Without this, when a previous sub-agent is already expanded, the scroll
+  // container's anchoring lands on a stable element below the expansion,
+  // pushing the viewport to the bottom of the newly-expanded content.
+  const handleToggle = () => {
+    const willOpen = !open;
+    setOpen(willOpen);
+    if (willOpen) {
+      requestAnimationFrame(() => {
+        wrapperRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+  };
 
   const steps = trajectory.steps || [];
   const stepCount = steps.length;
@@ -36,9 +50,10 @@ export function SubAgentBlock({ trajectory, allTrajectories, concise, index }: S
   const preview = `${stepCount} steps · ${toolCallCount} tools`;
 
   return (
+    <div ref={wrapperRef} style={{ scrollMarginTop: "1rem" }}>
     <CollapsiblePill
       open={open}
-      onToggle={() => setOpen(!open)}
+      onToggle={handleToggle}
       icon={<Bot className="w-3.5 h-3.5" />}
       label={label}
       preview={preview}
@@ -80,5 +95,6 @@ export function SubAgentBlock({ trajectory, allTrajectories, concise, index }: S
         ))}
       </div>
     </CollapsiblePill>
+    </div>
   );
 }
