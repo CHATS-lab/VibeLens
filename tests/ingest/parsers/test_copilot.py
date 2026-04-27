@@ -250,6 +250,82 @@ def test_session_with_no_events_jsonl_skipped(tmp_path: Path, parser: CopilotPar
     print("Empty session correctly skipped")
 
 
+def test_subagent_first_message_from_spawn_args(tmp_path: Path, parser: CopilotParser) -> None:
+    """A spawned sub-agent inherits its first_message from the parent assistant
+    turn's toolRequests[].arguments.prompt — sub-agent events never include a
+    user.message, so the spawn prompt must be lifted from the parent."""
+    events_jsonl = tmp_path / "session-state" / "main-1" / "events.jsonl"
+    _write_jsonl(
+        events_jsonl,
+        [
+            {"type": "session.start", "id": "e1", "timestamp": "2025-01-01T00:00:00Z",
+             "data": {"sessionId": "main-1", "context": {"cwd": "/tmp"},
+                      "producer": "copilot-agent"}},
+            {"type": "user.message", "id": "e2", "timestamp": "2025-01-01T00:00:01Z",
+             "data": {"content": "explore the repo"}},
+            {"type": "assistant.message", "id": "e3", "timestamp": "2025-01-01T00:00:02Z",
+             "data": {"messageId": "m1", "content": "spawning agent",
+                      "toolRequests": [{
+                          "toolCallId": "tc-sub-1",
+                          "name": "run-agent",
+                          "arguments": {"prompt": "Find every README and summarize them."},
+                      }]}},
+            {"type": "subagent.started", "id": "e4", "timestamp": "2025-01-01T00:00:03Z",
+             "data": {"toolCallId": "tc-sub-1", "agentName": "explorer",
+                      "agentDisplayName": "Explorer", "agentDescription": "short label"}},
+            # Sub-agent emits ONLY assistant events (no user.message) — every
+            # event tagged with agentId == toolCallId.
+            {"type": "assistant.message", "id": "e5", "timestamp": "2025-01-01T00:00:04Z",
+             "agentId": "tc-sub-1",
+             "data": {"messageId": "m2", "content": "Found 3 READMEs."}},
+            {"type": "subagent.completed", "id": "e6", "timestamp": "2025-01-01T00:00:05Z",
+             "data": {"toolCallId": "tc-sub-1", "model": "gpt-5"}},
+        ],
+    )
+    trajs = parser.parse(events_jsonl)
+    assert len(trajs) == 2
+    main, sub = trajs
+
+    assert sub.parent_trajectory_ref is not None
+    assert sub.parent_trajectory_ref.tool_call_id == "tc-sub-1"
+    assert sub.parent_trajectory_ref.step_id is not None
+    assert sub.first_message == "Find every README and summarize them."
+    print(f"sub-agent first_message: {sub.first_message!r}")
+
+
+def test_subagent_first_message_falls_back_to_description(
+    tmp_path: Path, parser: CopilotParser
+) -> None:
+    """When the parent tool-call args lack a prompt-shaped string, the sub-agent
+    falls back to the subagent.started event's agentDescription."""
+    events_jsonl = tmp_path / "session-state" / "main-2" / "events.jsonl"
+    _write_jsonl(
+        events_jsonl,
+        [
+            {"type": "session.start", "id": "e1", "timestamp": "2025-01-01T00:00:00Z",
+             "data": {"sessionId": "main-2", "context": {"cwd": "/tmp"},
+                      "producer": "copilot-agent"}},
+            {"type": "user.message", "id": "e2", "timestamp": "2025-01-01T00:00:01Z",
+             "data": {"content": "go"}},
+            {"type": "assistant.message", "id": "e3", "timestamp": "2025-01-01T00:00:02Z",
+             "data": {"messageId": "m1", "content": "spawning",
+                      "toolRequests": [{"toolCallId": "tc-sub-2",
+                                         "name": "run-agent",
+                                         "arguments": {"unrelated": 1}}]}},
+            {"type": "subagent.started", "id": "e4", "timestamp": "2025-01-01T00:00:03Z",
+             "data": {"toolCallId": "tc-sub-2", "agentName": "worker",
+                      "agentDescription": "summarise the diff"}},
+            {"type": "assistant.message", "id": "e5", "timestamp": "2025-01-01T00:00:04Z",
+             "agentId": "tc-sub-2",
+             "data": {"messageId": "m2", "content": "ok"}},
+        ],
+    )
+    trajs = parser.parse(events_jsonl)
+    sub = trajs[1]
+    assert sub.first_message == "summarise the diff"
+    print(f"description fallback first_message: {sub.first_message!r}")
+
+
 def test_malformed_jsonl_no_exception(tmp_path: Path, parser: CopilotParser) -> None:
     """Malformed JSONL lines are recorded as diagnostics; parser doesn't raise."""
     events_jsonl = tmp_path / "session-state" / "bad" / "events.jsonl"
@@ -258,3 +334,67 @@ def test_malformed_jsonl_no_exception(tmp_path: Path, parser: CopilotParser) -> 
     trajs = parser.parse(events_jsonl)
     assert trajs == []
     print("Malformed input handled gracefully")
+
+
+def test_copilot_does_not_tag_skill_via_path(
+    tmp_path: Path, parser: CopilotParser
+) -> None:
+    """Copilot has no dedicated activation tool; ``view`` reading a SKILL.md
+    is working-memory access, not activation, so ``is_skill`` stays unset.
+    """
+    events_jsonl = tmp_path / "session-state" / "no-skill" / "events.jsonl"
+    _write_jsonl(
+        events_jsonl,
+        [
+            {
+                "type": "session.start",
+                "data": {
+                    "sessionId": "no-skill",
+                    "version": 1,
+                    "copilotVersion": "1.0.0",
+                    "producer": "copilot-agent",
+                    "context": {"cwd": "/tmp"},
+                },
+                "id": "e1",
+                "timestamp": "2026-04-22T15:00:00.000Z",
+            },
+            {
+                "type": "user.message",
+                "data": {"content": "x"},
+                "id": "e2",
+                "timestamp": "2026-04-22T15:00:01.000Z",
+            },
+            {
+                "type": "assistant.message",
+                "data": {
+                    "messageId": "m1",
+                    "content": "y",
+                    "toolRequests": [
+                        {
+                            "toolCallId": "call_skill",
+                            "name": "view",
+                            "arguments": {
+                                "filePath": "/Users/x/.copilot/skills/foo/SKILL.md"
+                            },
+                        },
+                    ],
+                },
+                "id": "e3",
+                "timestamp": "2026-04-22T15:00:02.000Z",
+            },
+            {
+                "type": "tool.execution_complete",
+                "data": {
+                    "toolCallId": "call_skill",
+                    "success": True,
+                    "result": {"content": "..."},
+                },
+                "id": "e4",
+                "timestamp": "2026-04-22T15:00:03.000Z",
+            },
+        ],
+    )
+    trajs = parser.parse(events_jsonl)
+    tcs = [tc for s in trajs[0].steps for tc in s.tool_calls]
+    print(f"is_skill: {[(tc.function_name, tc.is_skill) for tc in tcs]}")
+    assert all(tc.is_skill is None for tc in tcs)

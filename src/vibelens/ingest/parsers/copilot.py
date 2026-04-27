@@ -79,6 +79,7 @@ from vibelens.ingest.parsers.helpers import (
     attach_subagent_ref,
     build_multimodal_message,
     iter_jsonl_safe,
+    truncate_first_message,
 )
 from vibelens.models.enums import AgentType, ContentType, StepSource
 from vibelens.models.trajectories import (
@@ -316,6 +317,7 @@ class CopilotParser(BaseParser):
                 completed_payload=subagent_completed.get(agent_id),
                 complete_by_call_id=complete_by_call_id,
                 main_model=main.agent.model_name if main.agent else None,
+                parent_steps=main.steps,
             )
             if traj is not None:
                 children.append(traj)
@@ -324,6 +326,45 @@ class CopilotParser(BaseParser):
 
 
 # ---- Module helpers ----
+
+
+# Argument keys carrying the spawning task description, in priority order.
+# Copilot's sub-agent dispatch tools (e.g. ``run-agent``) put the long task
+# in ``prompt`` or ``description``; ``task`` and ``instructions`` are seen on
+# older variants. Order matters: the first non-empty wins.
+_COPILOT_SPAWN_PROMPT_KEYS: tuple[str, ...] = (
+    "prompt",
+    "description",
+    "task",
+    "instructions",
+)
+
+
+def _subagent_first_message(
+    parent_steps: list[Step], spawn_tool_call_id: str
+) -> tuple[str | None, str | None]:
+    """Return ``(step_id, first_message)`` for the parent ToolCall that spawned the sub-agent.
+
+    Walks ``parent_steps`` for the ToolCall whose ``tool_call_id`` matches the
+    sub-agent's ``agentId``, then reads a string from ``arguments`` using
+    :data:`_COPILOT_SPAWN_PROMPT_KEYS`. Returns ``(None, None)`` if no match;
+    callers fall back to ``agentDescription`` from the ``subagent.started``
+    event.
+    """
+    for step in parent_steps:
+        for tc in step.tool_calls:
+            if tc.tool_call_id != spawn_tool_call_id:
+                continue
+            args = tc.arguments
+            if isinstance(args, str) and args.strip():
+                return step.step_id, truncate_first_message(args.strip())
+            if isinstance(args, dict):
+                for key in _COPILOT_SPAWN_PROMPT_KEYS:
+                    val = args.get(key)
+                    if isinstance(val, str) and val.strip():
+                        return step.step_id, truncate_first_message(val.strip())
+            return step.step_id, None
+    return None, None
 
 
 def _index_events(raw: list[dict], event_type: str, key_fn) -> dict[str, dict]:
@@ -421,12 +462,17 @@ def _build_subagent_trajectory(
     completed_payload: dict | None,
     complete_by_call_id: dict[str, dict],
     main_model: str | None,
+    parent_steps: list[Step],
 ) -> Trajectory | None:
     """Assemble one sub-agent Trajectory from events tagged with ``agent_id``.
 
     Re-runs the same step-building logic the parent uses on its slice of
     events. Walks ``session.model_change`` so the child's model is correct
-    even if the parent ran a different one.
+    even if the parent ran a different one. The sub-agent's events stream
+    never contains a ``user.message``; the spawning prompt lives only in
+    the parent assistant turn's ``toolRequests[].arguments``, so
+    :func:`_subagent_first_message` reads it from ``parent_steps`` for
+    display in the navigation panel.
     """
     started = started_payload or {}
     completed = completed_payload or {}
@@ -449,10 +495,19 @@ def _build_subagent_trajectory(
         if completed.get(src) is not None:
             sub_extra[dst] = completed[src]
 
+    spawn_step_id, first_message = _subagent_first_message(parent_steps, agent_id)
+    if first_message is None and (description := started.get("agentDescription")):
+        first_message = description
+
     traj = Trajectory(
         session_id=sub_session_id,
         agent=Agent(name=AgentType.COPILOT.value, model_name=sub_model),
-        parent_trajectory_ref=TrajectoryRef(session_id=main_session_id),
+        parent_trajectory_ref=TrajectoryRef(
+            session_id=main_session_id,
+            step_id=spawn_step_id,
+            tool_call_id=agent_id,
+        ),
+        first_message=first_message,
         extra=sub_extra,
     )
 
@@ -515,6 +570,9 @@ def _build_assistant_step(
         tc_extra = _build_tool_call_extra(
             req, function_name, call_id, subagent_started, subagent_completed
         )
+        # Copilot has no dedicated skill-activation tool; SKILL.md is injected
+        # as context server-side. Subsequent ``view`` reads of SKILL.md are
+        # working-memory access, not activation, so ``is_skill`` stays unset.
         tool_calls.append(
             ToolCall(
                 tool_call_id=call_id,
