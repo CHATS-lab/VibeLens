@@ -65,6 +65,18 @@ class Step(BaseModel):
             "for context during continuation (ATIF v1.5)."
         ),
     )
+    is_compaction: bool | None = Field(
+        default=None,
+        description=(
+            "Whether this step marks a context-compaction or truncation "
+            "boundary (in-stream summarisation; the conversation before "
+            "this point may be missing or summarised). Set by the Codex, "
+            "Copilot, Gemini, OpenCode/Kilo, CodeBuddy, Cursor, and Kiro "
+            "parsers when the source format records the boundary; Claude "
+            "models compaction as a sub-agent trajectory instead. VibeLens "
+            "extension; not part of upstream ATIF."
+        ),
+    )
     extra: dict[str, Any] | None = Field(default=None, description="Custom step-level metadata.")
 
     @model_validator(mode="after")

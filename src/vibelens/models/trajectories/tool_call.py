@@ -17,6 +17,19 @@ class ToolCall(BaseModel):
     arguments: dict | str | None = Field(
         default=None, description="Arguments passed to the tool."
     )
+    is_skill: bool | None = Field(
+        default=None,
+        description=(
+            "Whether this tool invocation is a Skill (a packaged prompt + "
+            "reference assets) rather than a generic tool. Set by parsers "
+            "whose agent exposes Skills as explicit tool calls (Claude "
+            "'Skill', CodeBuddy 'Skill', Gemini 'activate_skill', "
+            "OpenCode/Kilo 'skill'). Cursor and Kiro inject Skills as "
+            "system-prompt context rather than tool calls, so this stays "
+            "None for those agents. VibeLens extension; not part of "
+            "upstream ATIF."
+        ),
+    )
     extra: dict[str, Any] | None = Field(
         default=None, description="Custom tool call metadata (e.g. summary, output_digest)."
     )
