@@ -210,7 +210,10 @@ export function PromptNavPanel({
                         ) : undefined
                       }
                     />
-                    <p className={`line-clamp-2 leading-snug ${previewColor}`}>
+                    <p
+                      className={`truncate leading-snug ${previewColor}`}
+                      title={anchor.label}
+                    >
                       {truncate(anchor.label, PREVIEW_LONG)}
                     </p>
                   </button>
@@ -338,9 +341,10 @@ export function PromptNavPanel({
                       sessionStart={sessionStart}
                     />
                     <p
-                      className={`line-clamp-2 leading-snug ${
+                      className={`truncate leading-snug ${
                         isActive ? "text-secondary" : "text-secondary group-hover:text-secondary"
                       }`}
+                      title={entry.preview}
                     >
                       {entry.preview}
                     </p>
@@ -370,9 +374,10 @@ export function PromptNavPanel({
                     sessionStart={sessionStart}
                   />
                   <p
-                    className={`line-clamp-2 leading-snug ${
+                    className={`truncate leading-snug ${
                       isActive ? "text-secondary" : "text-secondary group-hover:text-secondary"
                     }`}
+                    title={entry.preview}
                   >
                     {entry.preview}
                   </p>
@@ -484,9 +489,10 @@ export function PromptNavPanel({
                     />
                     {sub.first_message && (
                       <p
-                        className={`line-clamp-2 leading-snug ${
+                        className={`truncate leading-snug ${
                           isActive ? "text-secondary" : "text-secondary group-hover:text-secondary"
                         }`}
+                        title={sub.first_message}
                       >
                         {truncate(sub.first_message, PREVIEW_MEDIUM)}
                       </p>
