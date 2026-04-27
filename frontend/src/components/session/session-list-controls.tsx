@@ -1,5 +1,6 @@
 import { Bot, ChevronDown, Check, Heart } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { AgentIcon } from "../../agents";
 import { Tooltip } from "../ui/tooltip";
 
 interface AgentFilterAgents {
@@ -43,7 +44,11 @@ export function AgentFilterDropdown({
         onClick={() => setOpen((v) => !v)}
         className="w-full flex items-center gap-2 bg-control text-secondary text-sm rounded px-2.5 py-1.5 border border-card hover:border-hover transition cursor-pointer"
       >
-        <Bot className="w-3.5 h-3.5 text-dimmed shrink-0" />
+        {value === "all" ? (
+          <Bot className="w-4 h-4 text-dimmed shrink-0" />
+        ) : (
+          <AgentIcon agent={value} />
+        )}
         <span className="flex-1 text-left truncate">{activeLabel}</span>
         {activeCount !== undefined && (
           <span className="text-[11px] tabular-nums text-dimmed shrink-0">{activeCount}</span>
@@ -66,6 +71,11 @@ export function AgentFilterDropdown({
                 <Check className="w-3.5 h-3.5 text-accent-cyan shrink-0" />
               ) : (
                 <span className="w-3.5 shrink-0" />
+              )}
+              {opt.value === "all" ? (
+                <Bot className="w-4 h-4 text-dimmed shrink-0" />
+              ) : (
+                <AgentIcon agent={opt.value} />
               )}
               <span className="flex-1 truncate text-left">{opt.label}</span>
               <span className="text-[11px] tabular-nums text-dimmed shrink-0">{opt.count}</span>
