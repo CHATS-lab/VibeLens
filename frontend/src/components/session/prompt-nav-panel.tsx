@@ -80,7 +80,6 @@ function buildPromptEntries(steps: Step[]): PromptEntry[] {
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
     if (step.source !== "user") continue;
-    if (step.extra?.is_skill_output) continue;
 
     if (step.extra?.is_auto_prompt) {
       const text = extractMessageText(step.message);

@@ -73,6 +73,28 @@ export function getToolIconAndColor(name: string): { icon: React.ReactNode; colo
   };
 }
 
+/** Pull a skill name out of a Skill-shaped tool call's arguments.
+ *
+ * Each agent uses its own argument key (Claude: ``skill``, OpenCode: ``name``,
+ * Hermes/Gemini may pass a path). We try the obvious keys, then fall back to
+ * extracting the directory name from any path argument that points at a
+ * SKILL.md file.
+ */
+export function getSkillName(input: unknown): string {
+  const data = input as Record<string, unknown> | undefined;
+  if (!data) return "";
+  const direct = data.skill ?? data.skill_name ?? data.name;
+  if (direct) return String(direct);
+  const path = data.path ?? data.file_path;
+  if (path) {
+    const parts = String(path).split("/").filter(Boolean);
+    const idx = parts.findIndex((p) => p.toLowerCase() === "skill.md");
+    if (idx > 0) return parts[idx - 1];
+    return parts[parts.length - 1] || "";
+  }
+  return "";
+}
+
 export function getToolPreview(name: string, input: unknown): string {
   const data = input as Record<string, unknown> | undefined;
   if (!data) return "";

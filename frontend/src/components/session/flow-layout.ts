@@ -156,8 +156,6 @@ function buildCards(steps: Step[]): CardSplit {
     if (step.source === "user") {
       const text = extractMessageText(step.message);
       if (!text) continue;
-      // Skip skill outputs entirely but keep auto-prompts (plan mode, etc.)
-      if (step.extra?.is_skill_output) continue;
       const isAuto = !!step.extra?.is_auto_prompt;
       promptNumber++;
       userCards.push({

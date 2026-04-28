@@ -59,9 +59,7 @@ export function StepTimeline({
         const isFirst = index === 0;
         const dotColor =
           entry.step.source === "user"
-            ? entry.step.extra?.is_skill_output
-              ? "bg-amber-500"
-              : "bg-indigo-500"
+            ? "bg-indigo-500"
             : entry.step.source === "system"
               ? "bg-dimmed"
               : "bg-cyan-500";

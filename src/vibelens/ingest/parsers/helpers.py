@@ -83,6 +83,7 @@ _ALL_KNOWN_SYSTEM_TAG_PREFIXES = (
 # Unique enough that the agent-agnostic check costs nothing for other agents.
 _SKILL_OUTPUT_PREFIX = "Base directory for this skill:"
 
+
 def is_meaningful_prompt(text: str, extra_system_prefixes: tuple[str, ...] = ()) -> bool:
     """Return True if text looks like a real user prompt, not system chatter.
 
@@ -133,7 +134,7 @@ def find_first_user_text(steps: list[Step]) -> str | None:
         if step.is_copied_context:
             continue
         extra = step.extra or {}
-        if extra.get("is_skill_output") or extra.get("is_auto_prompt"):
+        if extra.get("is_auto_prompt"):
             continue
         text = step_text_only(step.message)
         if text and is_meaningful_prompt(text):
@@ -342,6 +343,58 @@ def build_multimodal_message(text: str, image_parts: list[ContentPart]) -> str |
         parts.append(ContentPart(type=ContentType.TEXT, text=text))
     parts.extend(image_parts)
     return parts
+
+
+def extract_tool_result_content(
+    content: str | list | None,
+) -> str | list[ContentPart] | None:
+    """Decode the polymorphic ``content`` field of a tool_result block.
+
+    Anthropic and Claude-web both surface tool results as ``str | list | None``
+    where each list element is either a raw string, ``{"type": "text", "text"}``,
+    or ``{"type": "image", "source": {...}}``. This helper joins text parts
+    and lifts inline base64 images into ``ContentPart``s, matching the
+    multimodal shape the rest of the pipeline expects.
+
+    Returns:
+        ``str`` for text-only results, ``list[ContentPart]`` when at least
+        one image is present (text first, images after), or ``None`` for
+        empty/unrecognised content.
+    """
+    if content is None:
+        return None
+    if isinstance(content, str):
+        return content or None
+    if not isinstance(content, list):
+        return str(content)
+
+    text_parts: list[str] = []
+    image_parts: list[ContentPart] = []
+    for item in content:
+        if isinstance(item, str):
+            text_parts.append(item)
+            continue
+        if not isinstance(item, dict):
+            continue
+        if item.get("type") == "image":
+            source = item.get("source", {})
+            if isinstance(source, dict) and source.get("type") == "base64":
+                image_parts.append(
+                    ContentPart(
+                        type=ContentType.IMAGE,
+                        source=Base64Source(
+                            media_type=source.get("media_type", "image/png"),
+                            base64=source.get("data", ""),
+                        ),
+                    )
+                )
+        elif "text" in item:
+            text_parts.append(str(item["text"]))
+
+    joined = "\n".join(t for t in text_parts if t)
+    if image_parts:
+        return build_multimodal_message(joined, image_parts)
+    return joined or None
 
 
 def data_url_to_image_content_part(

@@ -4,7 +4,6 @@ import {
   ChevronRight,
   Layers,
   Monitor,
-  Zap,
   ScrollText,
   Archive,
 } from "lucide-react";
@@ -37,9 +36,6 @@ export function StepBlock({ step, concise }: StepBlockProps) {
     return <SystemStep step={step} />;
   }
   if (step.source === "user") {
-    if (step.extra?.is_skill_output) {
-      return <SkillStep step={step} />;
-    }
     if (step.extra?.is_auto_prompt) {
       return <AutoPromptStep step={step} />;
     }
@@ -169,39 +165,6 @@ function SystemStep({ step }: { step: Step }) {
   );
 }
 
-function extractSkillName(text: string): string | null {
-  const match = text.match(/\/skills\/([^/\s]+)/);
-  return match ? match[1] : null;
-}
-
-function SkillStep({ step }: { step: Step }) {
-  const [open, setOpen] = useState(false);
-  const text = extractMessageText(step.message);
-  if (!text) return null;
-  const skillName = extractSkillName(text);
-
-  return (
-    <div className="max-w-[85%]">
-      <button
-        onClick={() => setOpen(!open)}
-        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-sm border transition-colors bg-amber-500/10 hover:bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/25"
-      >
-        {open ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-        <Zap className="w-4 h-4" />
-        <span className="font-medium">Skill</span>
-        {skillName && <span className="text-amber-600 dark:text-amber-400 ml-0.5">/{skillName}</span>}
-      </button>
-      {open && (
-        <div className="mt-1 bg-amber-50/50 dark:bg-amber-500/[0.04] border border-amber-500/20 rounded-lg p-3">
-          <pre className="text-xs text-amber-800 dark:text-amber-200 whitespace-pre-wrap overflow-x-auto max-h-96 overflow-y-auto">
-            {text}
-          </pre>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function AutoPromptStep({ step }: { step: Step }) {
   const [open, setOpen] = useState(false);
   const text = extractMessageText(step.message);
@@ -236,18 +199,6 @@ function AutoPromptStep({ step }: { step: Step }) {
 }
 
 function AgentStep({ step, concise }: { step: Step; concise?: boolean }) {
-  // Concise mode: render only the text message, skip thinking/tools
-  if (concise) {
-    if (!step.message || (typeof step.message === "string" && !step.message.trim())) {
-      return null;
-    }
-    return (
-      <div className="space-y-1">
-        <TextBlock content={step.message} />
-      </div>
-    );
-  }
-
   // Build observation results indexed by source_call_id for pairing
   const obsMap = new Map<string, ObservationResult>();
   if (step.observation) {
@@ -256,6 +207,35 @@ function AgentStep({ step, concise }: { step: Step; concise?: boolean }) {
         obsMap.set(r.source_call_id, r);
       }
     }
+  }
+
+  // Concise mode: render text + skill activations only. Skills are the one
+  // tool kind we keep visible in concise so users can still see what skill
+  // the agent loaded; everything else (thinking, regular tool calls,
+  // observations) collapses away.
+  if (concise) {
+    const hasMessage =
+      !!step.message && (typeof step.message !== "string" || !!step.message.trim());
+    const skillCalls = step.tool_calls.filter((tc) => tc.is_skill);
+    if (!hasMessage && skillCalls.length === 0) {
+      return null;
+    }
+    return (
+      <div className="space-y-1">
+        {hasMessage && <TextBlock content={step.message} />}
+        {skillCalls.length > 0 && (
+          <div className="flex flex-col gap-1 mt-1.5">
+            {skillCalls.map((tc, i) => (
+              <ToolCallBlock
+                key={`tc-${i}`}
+                toolCall={tc}
+                result={obsMap.get(tc.tool_call_id)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    );
   }
 
   const orphanResults = step.observation?.results.filter(

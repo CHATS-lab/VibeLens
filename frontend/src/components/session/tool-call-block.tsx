@@ -4,6 +4,7 @@ import type { ContentPart, ObservationResult, ToolCall } from "../../types";
 import { ContentRenderer } from "./content-renderer";
 import {
   ToolInputRenderer,
+  getSkillName,
   getToolIconAndColor,
   getToolPreview,
 } from "./tool-input-renderers";
@@ -61,7 +62,8 @@ export function ToolCallBlock({ toolCall, result }: ToolCallBlockProps) {
     ? <X className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
     : <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />;
 
-  const preview = getToolPreview(name, toolCall.arguments);
+  const skillName = isSkill ? getSkillName(toolCall.arguments) : "";
+  const preview = isSkill ? "" : getToolPreview(name, toolCall.arguments);
 
   return (
     <div className="max-w-[85%]">
@@ -73,9 +75,9 @@ export function ToolCallBlock({ toolCall, result }: ToolCallBlockProps) {
           ? <ChevronDown className="w-3.5 h-3.5" />
           : <ChevronRight className="w-3.5 h-3.5" />}
         {toolIcon}
-        <span className="font-medium">{name}</span>
-        {isSkill && (
-          <span className="text-[10px] uppercase tracking-wide opacity-70">skill</span>
+        <span className="font-medium">{isSkill ? "Skill" : name}</span>
+        {isSkill && skillName && (
+          <span className="text-amber-600 dark:text-amber-400 ml-0.5">/{skillName}</span>
         )}
         {statusIcon}
         {preview && (

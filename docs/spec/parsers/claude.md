@@ -85,9 +85,10 @@ A `type: "user"` entry can carry:
 
 - Real user text → `StepSource.USER`.
 - `<system-reminder>`, `<command-name>`, `<local-command-stdout>`, etc. → `StepSource.SYSTEM`.
-- "Base directory for this skill: ..." → `USER` with `extra.is_skill_output: True`.
 - `Implement the following plan` / `Execute the following plan` → `USER` with `extra.is_auto_prompt: True`.
 - A multimodal `list[ContentPart]` (text + image from a paste) → always treated as real user, no classification.
+
+Skill outputs ("Base directory for this skill: ..." messages with `sourceToolUseID` linking back to a prior `Skill` tool call) are **not emitted as their own step**. `_collect_tool_results` absorbs the SKILL.md text as the Skill tool call's `Observation`, so the UI renders skill activations through the unified `ToolCall.is_skill` pill instead of a separate user-source step. Two entries can target the same `tool_use_id` (a short "Launching skill: <name>" `tool_result` block plus the longer SKILL.md text); the SKILL.md text always wins.
 
 The classification is gated to string messages so screenshot-paste turns don't get mis-classified (the bracket-style filter would have rejected `[image]`-suffixed multimodal text otherwise).
 

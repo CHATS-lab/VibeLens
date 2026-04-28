@@ -8,7 +8,6 @@ import json
 from pathlib import Path
 
 from vibelens.ingest.parsers.base import BaseParser
-from vibelens.models.enums import AgentType
 from vibelens.models.trajectories import Trajectory
 from vibelens.utils.log import get_logger
 
@@ -21,7 +20,7 @@ class ParsedTrajectoryParser(BaseParser):
     Not in ``LOCAL_PARSER_CLASSES`` — only DiskStore uses it, not local agent discovery.
     """
 
-    AGENT_TYPE = AgentType.PARSED
+    AGENT_TYPE = None
     LOCAL_DATA_DIR = None
 
     def parse(self, file_path: Path) -> list[Trajectory]:

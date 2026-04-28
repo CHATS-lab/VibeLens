@@ -25,6 +25,7 @@ from pathlib import Path
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
 from vibelens.ingest.parsers.base import BaseParser
+from vibelens.ingest.parsers.helpers import extract_tool_result_content
 from vibelens.models.enums import AgentType, StepSource
 from vibelens.models.trajectories import (
     Observation,
@@ -274,12 +275,14 @@ def _decompose_assistant_content(
 
             tool_calls.append(
                 ToolCall(
-                    tool_call_id=tool_call_id, function_name=tool_name, arguments=block.get("input")
+                    tool_call_id=tool_call_id,
+                    function_name=tool_name,
+                    arguments=block.get("input"),
                 )
             )
 
         elif block_type == "tool_result":
-            result_content = _extract_tool_result_content(block)
+            result_content = extract_tool_result_content(block.get("content"))
             native_tool_use_id = block.get("tool_use_id")
             source_call_id = tool_id_map.get(native_tool_use_id)
 
@@ -288,37 +291,6 @@ def _decompose_assistant_content(
             )
 
     return text_parts, reasoning_parts, tool_calls, observation_results
-
-
-def _extract_tool_result_content(block: dict) -> str | None:
-    """Extract text content from a tool_result block.
-
-    The content field can be a string, a list of sub-blocks (each with
-    type/text), or None.
-
-    Args:
-        block: A tool_result content block.
-
-    Returns:
-        Concatenated text content, or None if empty.
-    """
-    raw_content = block.get("content")
-    if raw_content is None:
-        return None
-
-    if isinstance(raw_content, str):
-        return raw_content or None
-
-    if isinstance(raw_content, list):
-        parts = []
-        for sub in raw_content:
-            if isinstance(sub, dict) and sub.get("type") == "text":
-                text = sub.get("text", "")
-                if text:
-                    parts.append(text)
-        return "\n".join(parts) if parts else None
-
-    return None
 
 
 def _extract_user_content(msg: dict) -> tuple[str, list[dict]]:

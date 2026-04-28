@@ -1184,6 +1184,43 @@ def test_skill_tool_tagged(tmp_path: Path) -> None:
     assert by_name["Read"].is_skill is None
 
 
+def test_skill_output_absorbed_as_observation(tmp_path: Path) -> None:
+    """SKILL.md text becomes the Skill tool call's observation; no synthetic
+    is_skill_output user step. The SKILL.md text wins over any short
+    "Launching skill: ..." ack tool_result for the same tool_use_id.
+    """
+    sid = "22222222-2222-2222-2222-222222222222"
+    jsonl = tmp_path / f"{sid}.jsonl"
+    skill_text = "Base directory for this skill: /skills/brainstorming\n\n# X"
+    events = [
+        {"type": "user", "uuid": "u1", "sessionId": sid,
+         "message": {"role": "user", "content": [{"type": "text", "text": "hi"}]}},
+        {"type": "assistant", "uuid": "a1", "sessionId": sid,
+         "message": {"role": "assistant", "id": "m1", "content": [
+             {"type": "tool_use", "id": "tc_skill", "name": "Skill",
+              "input": {"skill": "brainstorming"}}]}},
+        {"type": "user", "uuid": "u2", "sessionId": sid,
+         "message": {"role": "user", "content": [
+             {"type": "tool_result", "tool_use_id": "tc_skill",
+              "content": "Launching skill: brainstorming"}]}},
+        {"type": "user", "uuid": "u3", "sessionId": sid, "sourceToolUseID": "tc_skill",
+         "message": {"role": "user", "content": [{"type": "text", "text": skill_text}]}},
+    ]
+    with jsonl.open("w") as f:
+        for e in events:
+            f.write(json.dumps(e) + "\n")
+
+    main = _parser.parse(jsonl)[0]
+    assert not [s for s in main.steps if s.extra and s.extra.get("is_skill_output")]
+
+    skill_call_steps = [(s, tc) for s in main.steps for tc in s.tool_calls if tc.is_skill]
+    assert len(skill_call_steps) == 1
+    s, tc = skill_call_steps[0]
+    obs = next(r for r in s.observation.results if r.source_call_id == tc.tool_call_id)
+    print(f"observation: {str(obs.content)[:80]!r}")
+    assert str(obs.content).startswith("Base directory for this skill")
+
+
 def test_compaction_subagent_flagged(tmp_path: Path) -> None:
     """An acompact-* sub-agent gets traj.extra.is_compaction=True. Internal
     steps are NOT tagged — typical compaction is 2 events (summary prompt +

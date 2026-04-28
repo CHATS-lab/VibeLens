@@ -23,6 +23,8 @@ from vibelens.ingest.diagnostics import DiagnosticsCollector
 from vibelens.ingest.parsers.base import BaseParser
 from vibelens.ingest.parsers.helpers import (
     ROLE_TO_SOURCE,
+    build_multimodal_message,
+    extract_tool_result_content,
     is_meaningful_prompt,
     iter_jsonl_safe,
     truncate_first_message,
@@ -468,9 +470,13 @@ def _step_from_group(
     Tool-relay = a ``type: "user"`` entry whose content is only ``tool_result``
     blocks; its content is already injected into the preceding assistant step
     via the pre-scanned ``tool_results`` map, so we drop it here to avoid
-    phantom user steps.
+    phantom user steps. Skill outputs (text user messages linked to a Skill
+    tool_use via ``sourceToolUseID``) are absorbed the same way — their
+    content already becomes the Skill tool call's observation.
     """
     entry = _merge_entry_group(group)
+    if _is_skill_output_entry(entry):
+        return None
     msg = entry.get("message", {})
     role = msg.get("role", entry.get("type", ""))
     source = ROLE_TO_SOURCE.get(role, StepSource.USER)
@@ -481,7 +487,7 @@ def _step_from_group(
     if source == StepSource.USER and not message and not tool_calls and observation is None:
         return None
 
-    # Reclassify user-role messages that carry system / skill / auto-prompt content.
+    # Reclassify user-role messages that carry system / auto-prompt content.
     classify_extra: dict[str, Any] | None = None
     if source == StepSource.USER and message and isinstance(message, str):
         source, classify_extra = classify_user_message(message, entry)
@@ -593,6 +599,13 @@ def _collect_tool_results(raw_entries: list[dict]) -> dict[str, dict]:
     calls do not lose early results to eviction. Also captures the
     event-level ``toolUseResult`` field (structured metadata like
     exit_code, stdout, stderr) for downstream extraction.
+
+    Skill activations: Claude returns the SKILL.md content as a separate
+    user-role text message linked back to the originating tool_use via
+    ``sourceToolUseID`` (rather than a ``tool_result`` content block).
+    Treat those as the tool result for the Skill tool call so the regular
+    tool-call+observation rendering pipeline handles them — no synthetic
+    user step needed.
     """
     tool_results: dict[str, dict] = {}
     for entry in raw_entries:
@@ -604,6 +617,22 @@ def _collect_tool_results(raw_entries: list[dict]) -> dict[str, dict]:
             continue
         # Event-level toolUseResult carries structured execution metadata
         tool_use_result = entry.get("toolUseResult")
+
+        # Skill outputs always overwrite any prior tool_result for the same
+        # tool_use_id. Claude emits a short "Launching skill: <name>" ack as
+        # a normal tool_result block AND the actual SKILL.md content as a
+        # separate text entry; the latter is what the user wants to see.
+        source_tool_id = entry.get("sourceToolUseID")
+        if source_tool_id:
+            text_parts = [
+                b.get("text", "")
+                for b in content
+                if isinstance(b, dict) and b.get("type") == "text"
+            ]
+            joined = "".join(t for t in text_parts if t)
+            if joined.lstrip().startswith(_SKILL_PREFIX):
+                tool_results[source_tool_id] = {"output": joined, "is_error": False}
+
         for block in content:
             if block.get("type") == "tool_result":
                 tool_use_id = block.get("tool_use_id", "")
@@ -660,22 +689,14 @@ def _group_entries_by_step(entries: list[dict]) -> list[list[dict]]:
 def _detect_orphans(
     tool_use_ids: set[str], tool_results: dict[str, dict], diagnostics: DiagnosticsCollector
 ) -> None:
-    """Detect orphaned tool calls and results and record in diagnostics.
-
-    Args:
-        tool_use_ids: Set of tool_use IDs found in agent steps.
-        tool_results: Mapping of tool_use_id -> result from user steps.
-        diagnostics: Collector to record orphans into.
-    """
-    result_ids = set(tool_results.keys())
-    for tc_id in tool_use_ids:
+    """Record total tool-result count plus any tool_use / tool_result orphans."""
+    result_ids = tool_results.keys()
+    for _ in result_ids:
         diagnostics.record_tool_result()
-        if tc_id not in result_ids:
-            diagnostics.record_orphaned_call(tc_id)
-    for result_id in result_ids:
-        diagnostics.record_tool_result()
-        if result_id not in tool_use_ids:
-            diagnostics.record_orphaned_result(result_id)
+    for tc_id in tool_use_ids - result_ids:
+        diagnostics.record_orphaned_call(tc_id)
+    for result_id in result_ids - tool_use_ids:
+        diagnostics.record_orphaned_result(result_id)
 
 
 def _build_agent_spawn_map(
@@ -843,35 +864,60 @@ def _validate_subagent_linkage(
             )
 
 
+def _is_skill_output_entry(entry: dict[str, Any]) -> bool:
+    """Whether this user-role entry is the SKILL.md output of a Skill tool call.
+
+    Identified by ``sourceToolUseID`` plus a text body starting with the
+    skill-output prefix. Such entries are consumed by ``_collect_tool_results``
+    as the Skill tool call's observation, so the entry itself should not
+    materialise as a synthetic user step.
+    """
+    if entry.get("type") != "user":
+        return False
+    if not entry.get("sourceToolUseID"):
+        return False
+    msg = entry.get("message", {})
+    if not isinstance(msg, dict):
+        return False
+    content = msg.get("content", "")
+    if isinstance(content, str):
+        return content.lstrip().startswith(_SKILL_PREFIX)
+    if isinstance(content, list):
+        for block in content:
+            if (
+                isinstance(block, dict)
+                and block.get("type") == "text"
+                and str(block.get("text", "")).lstrip().startswith(_SKILL_PREFIX)
+            ):
+                return True
+    return False
+
+
 def classify_user_message(
     text: str, entry: dict[str, Any]
 ) -> tuple[StepSource, dict[str, Any] | None]:
-    """Classify a user-role message as real user, system, skill, or auto-generated.
+    """Classify a user-role message as real user, system, or auto-generated.
 
-    Claude Code injects system content (XML tags, continuation notices),
-    skill output (after Skill tool_use), and plan mode output into user-type
-    entries. This function detects those patterns and returns the correct
-    source classification with metadata.
+    Claude Code injects system content (XML tags, continuation notices) and
+    plan mode output into user-type entries. This function detects those
+    patterns and returns the correct source classification with metadata.
+
+    Skill outputs are filtered earlier (see :func:`_is_skill_output_entry`)
+    and never reach this function — they become the Skill tool call's
+    observation instead of a separate user step.
 
     Args:
         text: The text content of a user-type message.
-        entry: Raw JSONL entry dict, used to extract sourceToolUseID for skills.
+        entry: Raw JSONL entry dict (currently unused; kept for parity).
 
     Returns:
-        Tuple of (source, extra_metadata). Extra is None for system/plain user,
-        {"is_skill_output": True} for skill content, or
-        {"is_auto_prompt": True} for auto-generated prompts (e.g. plan mode).
+        Tuple of (source, extra_metadata). Extra is None for system/plain user
+        or ``{"is_auto_prompt": True}`` for auto-generated prompts (e.g. plan mode).
     """
     if not text:
         return StepSource.USER, None
 
     stripped = text.lstrip()
-    if stripped.startswith(_SKILL_PREFIX):
-        extra: dict[str, Any] = {"is_skill_output": True}
-        source_tool_id = entry.get("sourceToolUseID")
-        if source_tool_id:
-            extra["sourceToolUseID"] = source_tool_id
-        return StepSource.USER, extra
 
     if _SYSTEM_TAG_PATTERN.match(stripped):
         return StepSource.SYSTEM, None
@@ -965,7 +1011,7 @@ def _decompose_raw_content(
                 obs_results.append(
                     ObservationResult(
                         source_call_id=tool_call_id,
-                        content=_extract_tool_result_content(result.get("output")),
+                        content=extract_tool_result_content(result.get("output")),
                         is_error=bool(result.get("is_error")),
                         extra=_extract_tool_result_metadata(result),
                     )
@@ -980,22 +1026,13 @@ def _decompose_raw_content(
             obs_results.append(
                 ObservationResult(
                     source_call_id=block.get("tool_use_id", ""),
-                    content=_extract_tool_result_content(block.get("content")),
+                    content=extract_tool_result_content(block.get("content")),
                     is_error=bool(block.get("is_error")),
                 )
             )
 
-    # Build message: use list[ContentPart] when images are present
-    if image_parts:
-        content_parts: list[ContentPart] = []
-        joined_text = "\n\n".join(text_parts).strip()
-        if joined_text:
-            content_parts.append(ContentPart(type=ContentType.TEXT, text=joined_text))
-        content_parts.extend(image_parts)
-        message: str | list[ContentPart] = content_parts
-    else:
-        message = "\n\n".join(text_parts).strip() if text_parts else ""
-
+    joined_text = "\n\n".join(text_parts).strip() if text_parts else ""
+    message = build_multimodal_message(joined_text, image_parts)
     reasoning_content = "\n\n".join(thinking_parts).strip() if thinking_parts else None
     observation = Observation(results=obs_results) if obs_results else None
 
@@ -1053,7 +1090,7 @@ def _build_step_extra(
 
     Extracts format-specific metadata (is_sidechain, stop_reason, stop_sequence,
     cwd, request_id, service_tier, user_type) and merges in any classifier
-    extras (is_skill_output / is_auto_prompt / sourceToolUseID) returned by
+    extras (currently just ``is_auto_prompt``) returned by
     :func:`classify_user_message`.
     """
     extra: dict[str, Any] = {}
@@ -1196,54 +1233,6 @@ def _read_persisted_agent_id(content: str) -> str:
         return text[-TAIL_SIZE:] if len(text) > TAIL_SIZE else text
     except OSError:
         return content
-
-
-def _extract_tool_result_content(content: str | list | None) -> str | list[ContentPart] | None:
-    """Extract text (and optionally images) from a tool_result content field.
-
-    When the content list contains image blocks, returns a list[ContentPart]
-    combining text and image parts. Otherwise returns plain text string.
-
-    Args:
-        content: Raw content from a tool_result block (str, list, or None).
-
-    Returns:
-        Extracted content as str, list[ContentPart], or None if empty.
-    """
-    if content is None:
-        return None
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        text_parts: list[str] = []
-        image_parts: list[ContentPart] = []
-        for item in content:
-            if isinstance(item, str):
-                text_parts.append(item)
-            elif isinstance(item, dict):
-                if item.get("type") == "image":
-                    source = item.get("source", {})
-                    if isinstance(source, dict) and source.get("type") == "base64":
-                        image_parts.append(
-                            ContentPart(
-                                type=ContentType.IMAGE,
-                                source=Base64Source(
-                                    media_type=source.get("media_type", "image/png"),
-                                    base64=source.get("data", ""),
-                                ),
-                            )
-                        )
-                elif "text" in item:
-                    text_parts.append(str(item["text"]))
-        if image_parts:
-            parts: list[ContentPart] = []
-            joined = "\n".join(text_parts)
-            if joined:
-                parts.append(ContentPart(type=ContentType.TEXT, text=joined))
-            parts.extend(image_parts)
-            return parts
-        return "\n".join(text_parts) if text_parts else None
-    return str(content)
 
 
 def _extract_tool_result_metadata(result: dict) -> dict[str, Any] | None:

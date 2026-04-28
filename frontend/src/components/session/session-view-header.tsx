@@ -75,13 +75,14 @@ export function SessionViewHeader({
   const promptCount = steps.filter(
     (s) =>
       s.source === "user" &&
-      !s.extra?.is_skill_output &&
       !s.extra?.is_auto_prompt &&
       extractUserText(s),
   ).length;
-  const skillCount = steps.filter(
-    (s) => s.source === "user" && s.extra?.is_skill_output,
-  ).length;
+  // Skill activations are tool calls on agent steps (ToolCall.is_skill).
+  const skillCount = steps.reduce(
+    (n, s) => n + (s.tool_calls?.filter((tc) => tc.is_skill).length ?? 0),
+    0,
+  );
   const totalTokens =
     (metrics?.total_prompt_tokens || 0) + (metrics?.total_completion_tokens || 0);
 

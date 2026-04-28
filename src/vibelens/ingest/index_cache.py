@@ -28,7 +28,12 @@ logger = get_logger(__name__)
 # (claude compaction sub-agents). Old cached entries carry the obsolete
 # key; the bump invalidates them so the consumer's ``extra.is_compaction``
 # lookup repopulates correctly on first read.
-CACHE_VERSION = 18
+# v19 unifies skill rendering on ToolCall.is_skill: the Claude parser no
+# longer emits a synthetic user step for SKILL.md outputs (instead the
+# text becomes the Skill tool call's observation). Old cached steps still
+# carry ``extra.is_skill_output``; the bump rebuilds them so the new
+# rendering path applies.
+CACHE_VERSION = 19
 
 # User-home path for the persistent session index cache
 DEFAULT_CACHE_PATH = Path.home() / ".vibelens" / "session_index.json"

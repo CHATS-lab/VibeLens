@@ -227,7 +227,7 @@ def _fix_first_message(traj: Trajectory) -> None:
     for step in traj.steps:
         if step.source != StepSource.USER:
             continue
-        if step.extra and (step.extra.get("is_skill_output") or step.extra.get("is_auto_prompt")):
+        if step.extra and step.extra.get("is_auto_prompt"):
             continue
         if isinstance(step.message, str) and is_meaningful_prompt(step.message):
             text = step.message
