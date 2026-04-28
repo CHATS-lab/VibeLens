@@ -486,7 +486,7 @@ function LocalExtensionCard({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-mono text-base font-bold text-primary">{item.name}</span>
-              {item.installed_in.map((agent) => (
+              {[...item.installed_in].sort((a, b) => a.localeCompare(b)).map((agent) => (
                 <SourceBadge key={agent} sourceType={agent} sourcePath="" />
               ))}
             </div>
