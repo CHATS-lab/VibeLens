@@ -81,9 +81,7 @@ def _clear_cache():
 
 
 def test_fetch_latest_returns_highest_stable():
-    with patch.object(
-        version_mod.httpx, "get", return_value=_mock_httpx_response(PYPI_PAYLOAD_OK)
-    ):
+    with patch.object(version_mod.httpx, "get", return_value=_mock_httpx_response(PYPI_PAYLOAD_OK)):
         assert version_mod.fetch_latest_version() == "1.0.5"
 
 
@@ -142,9 +140,7 @@ def test_detect_install_method_uv_via_env(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_detect_install_method_uv_via_prefix(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(
-        version_mod.sys, "prefix", "/home/u/.local/share/uv/tools/vibelens/venv"
-    )
+    monkeypatch.setattr(version_mod.sys, "prefix", "/home/u/.local/share/uv/tools/vibelens/venv")
     monkeypatch.delenv("UV_TOOL_BIN_DIR", raising=False)
     monkeypatch.delenv("NPM_CONFIG_PREFIX", raising=False)
     monkeypatch.delenv("npm_config_user_agent", raising=False)

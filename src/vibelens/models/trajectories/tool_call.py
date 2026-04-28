@@ -14,9 +14,7 @@ class ToolCall(BaseModel):
     function_name: str = Field(
         description="Name of the invoked tool (e.g. 'Bash', 'Read', 'Edit').",
     )
-    arguments: dict | str | None = Field(
-        default=None, description="Arguments passed to the tool."
-    )
+    arguments: dict | str | None = Field(default=None, description="Arguments passed to the tool.")
     is_skill: bool | None = Field(
         default=None,
         description=(

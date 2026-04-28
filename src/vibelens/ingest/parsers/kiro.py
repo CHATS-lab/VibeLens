@@ -183,11 +183,7 @@ class KiroParser(BaseParser):
         )
 
     def _build_steps(
-        self,
-        raw: _KiroRaw,
-        traj: Trajectory,
-        file_path: Path,
-        diagnostics: DiagnosticsCollector,
+        self, raw: _KiroRaw, traj: Trajectory, file_path: Path, diagnostics: DiagnosticsCollector
     ) -> list[Step]:
         """Walk JSONL events, emit ATIF Steps. Tool results are paired by toolUseId.
 
@@ -255,9 +251,6 @@ class KiroParser(BaseParser):
                 attach_subagent_ref(main.steps, tool_call.tool_call_id, child.session_id)
                 children.append(child)
         return children
-
-
-# ---- Module helpers ----
 
 
 class _KiroRaw:

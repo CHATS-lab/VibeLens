@@ -36,9 +36,9 @@ _STALENESS_CHECK_MIN_INTERVAL_S = 10
 class CachePartition:
     """Result of comparing the current session index against the persisted cache."""
 
-    unchanged: dict[str, tuple[Path, "BaseParser"]] = field(default_factory=dict)
-    changed: dict[str, tuple[Path, "BaseParser"]] = field(default_factory=dict)
-    new: dict[str, tuple[Path, "BaseParser"]] = field(default_factory=dict)
+    unchanged: dict[str, tuple[Path, BaseParser]] = field(default_factory=dict)
+    changed: dict[str, tuple[Path, BaseParser]] = field(default_factory=dict)
+    new: dict[str, tuple[Path, BaseParser]] = field(default_factory=dict)
     removed_sids: set[str] = field(default_factory=set)
 
 

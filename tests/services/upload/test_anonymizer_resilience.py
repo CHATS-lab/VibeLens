@@ -4,9 +4,7 @@ Each documented bug must NOT crash the anonymizer when triggered.
 """
 
 from vibelens.ingest.anonymize.rule_anonymizer.path_hasher import PathHasher
-from vibelens.ingest.anonymize.rule_anonymizer.redactor import (
-    redact_patterns,
-)
+from vibelens.ingest.anonymize.rule_anonymizer.redactor import redact_patterns
 from vibelens.ingest.anonymize.traversal import _transform_value
 
 
@@ -33,6 +31,7 @@ def test_redact_patterns_caps_huge_input_to_avoid_backtracking():
     huge = "-----BEGIN PRIVATE KEY-----" + ("X" * 2_000_000)
     # Use a pattern set that contains the PEM pattern at minimum.
     from vibelens.ingest.anonymize.rule_anonymizer.patterns import CREDENTIAL_PATTERNS
+
     out, count = redact_patterns(huge, CREDENTIAL_PATTERNS, "[REDACTED]")
     assert count == 0
     # Returns input unchanged when over the cap.
