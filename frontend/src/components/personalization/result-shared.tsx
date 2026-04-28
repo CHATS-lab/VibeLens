@@ -1,4 +1,5 @@
 import { Filter, Search, X } from "lucide-react";
+import { AgentIcon } from "../../agents";
 import { Tooltip } from "../ui/tooltip";
 import { normalizeSourceType, SOURCE_COLORS, SOURCE_LABELS } from "./constants";
 
@@ -56,9 +57,17 @@ export function SourceFilterBar({
 }) {
   if (items.length === 0) return null;
 
+  // Sort by display label so the chip bar is always alphabetical regardless
+  // of caller order or filesystem walk order.
+  const sortedItems = [...items].sort((a, b) => {
+    const la = labelMap[normalizeSourceType(a)] ?? labelMap[a] ?? a;
+    const lb = labelMap[normalizeSourceType(b)] ?? labelMap[b] ?? b;
+    return la.toLowerCase().localeCompare(lb.toLowerCase());
+  });
+
   return (
-    <div className="flex items-center gap-2 mb-4">
-      <Filter className="w-3.5 h-3.5 text-dimmed" />
+    <div className="flex flex-wrap items-center gap-2 mb-4">
+      <Filter className="w-3.5 h-3.5 text-dimmed shrink-0" />
       <button
         onClick={() => onSelect(null)}
         className={`px-2.5 py-1 text-[11px] font-medium rounded-md border transition ${
@@ -69,7 +78,7 @@ export function SourceFilterBar({
       >
         All ({totalCount})
       </button>
-      {items.map((key) => {
+      {sortedItems.map((key) => {
         const normalized = normalizeSourceType(key);
         const count = countByKey(key);
         const colorClass = colorMap[normalized] || colorMap[key] || "bg-control text-muted border-card";
@@ -77,12 +86,13 @@ export function SourceFilterBar({
           <button
             key={key}
             onClick={() => onSelect(activeKey === key ? null : key)}
-            className={`px-2.5 py-1 text-[11px] font-medium rounded-md border transition ${
+            className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium rounded-md border transition ${
               activeKey === key
                 ? colorClass
                 : "text-secondary border-card hover:text-primary hover:border-hover"
             }`}
           >
+            <AgentIcon agent={normalized} size={14} />
             {labelMap[normalized] || labelMap[key] || key} ({count})
           </button>
         );

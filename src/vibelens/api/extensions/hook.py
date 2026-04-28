@@ -56,7 +56,7 @@ def list_hooks(
     if refresh:
         service.invalidate()
     hooks, total = service.list_items(page=page, page_size=page_size, search=search)
-    targets = service.list_sync_targets()
+    targets = sorted(service.list_sync_targets(), key=lambda t: t.agent.lower())
     return HookListResponse(
         items=hooks,
         total=total,

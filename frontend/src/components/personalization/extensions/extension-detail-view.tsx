@@ -35,7 +35,7 @@ import {
 } from "./extension-constants";
 import { TopicsRow } from "./topics-row";
 import { UninstallExtensionDialog } from "./uninstall-extension-dialog";
-import { SOURCE_LABELS } from "../constants";
+import { AgentIcon, getAgentMeta } from "../../../agents";
 
 interface CatalogDetailViewProps {
   item: ExtensionItemSummary;
@@ -499,7 +499,7 @@ export function LocalExtensionDetailView({
       setSyncInFlight(agent);
       setSyncMessage(null);
       const target = syncTargets.find((t) => t.agent === agent);
-      const label = SOURCE_LABELS[agent] || agent;
+      const label = getAgentMeta(agent).label;
       const path = formatInstallPath(extensionType, target?.dir ?? "", name);
       try {
         if (installedIn.includes(agent)) {
@@ -523,6 +523,56 @@ export function LocalExtensionDetailView({
     },
     [api, extensionType, installedIn, name, refreshItem, syncTargets],
   );
+
+  // Targets that the user could sync to (have a dir on this machine but
+  // aren't yet installed) and targets currently installed.
+  const syncableAgents = syncTargets
+    .filter((t) => !!t.dir && !installedIn.includes(t.agent))
+    .map((t) => t.agent);
+  const installedAgents = syncTargets
+    .filter((t) => installedIn.includes(t.agent))
+    .map((t) => t.agent);
+
+  const handleSyncAll = useCallback(async () => {
+    if (syncableAgents.length === 0) return;
+    setSyncInFlight("__bulk__");
+    setSyncMessage(null);
+    try {
+      const data = await api.syncToAgents(name, syncableAgents);
+      const results = data.results as Record<string, boolean>;
+      const ok = Object.values(results).filter(Boolean).length;
+      const fail = syncableAgents.length - ok;
+      setSyncMessage(
+        fail === 0
+          ? `Synced to ${ok} agent${ok !== 1 ? "s" : ""}`
+          : `Synced to ${ok}; ${fail} failed`,
+      );
+      await refreshItem();
+    } catch (err) {
+      setSyncMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSyncInFlight(null);
+    }
+  }, [api, name, syncableAgents, refreshItem]);
+
+  const handleUnsyncAll = useCallback(async () => {
+    if (installedAgents.length === 0) return;
+    setSyncInFlight("__bulk__");
+    setSyncMessage(null);
+    try {
+      await Promise.all(installedAgents.map((a) => api.unsyncFromAgent(name, a)));
+      setSyncMessage(
+        `Removed from ${installedAgents.length} agent${installedAgents.length !== 1 ? "s" : ""}`,
+      );
+      await refreshItem();
+    } catch (err) {
+      setSyncMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSyncInFlight(null);
+    }
+  }, [api, name, installedAgents, refreshItem]);
+
+  const bulkBusy = syncInFlight === "__bulk__";
 
   const LocalIcon = ITEM_TYPE_ICONS[extensionType] || Package;
   const localIconColors = ITEM_TYPE_ICON_COLORS[extensionType] || ITEM_TYPE_ICON_COLORS.skill;
@@ -569,15 +619,53 @@ export function LocalExtensionDetailView({
       )}
       {syncTargets.length > 0 && (
         <div className="px-6 py-3 border-t border-card/50">
-          <div className="flex items-center gap-1.5 mb-2.5">
-            <Share2 className={`w-3.5 h-3.5 ${localIconColors.text}`} />
-            <span className="text-xs font-semibold text-secondary">Sync to Agents</span>
+          <div className="flex items-center justify-between gap-3 mb-2.5">
+            <div className="flex items-center gap-1.5">
+              <Share2 className={`w-3.5 h-3.5 ${localIconColors.text}`} />
+              <span className="text-xs font-semibold text-secondary">Sync to Agents</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => guardAction(handleSyncAll)}
+                disabled={bulkBusy || syncableAgents.length === 0}
+                className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded text-accent-teal bg-accent-teal-subtle border border-accent-teal-border hover:bg-teal-100 dark:hover:bg-teal-900/30 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                title={
+                  syncableAgents.length === 0
+                    ? "Already synced everywhere available"
+                    : `Sync to ${syncableAgents.length} agent${syncableAgents.length !== 1 ? "s" : ""}`
+                }
+              >
+                {bulkBusy ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <Share2 className="w-3 h-3" />
+                )}
+                Sync all
+              </button>
+              <button
+                onClick={() => guardAction(handleUnsyncAll)}
+                disabled={bulkBusy || installedAgents.length === 0}
+                className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded text-rose-600 dark:text-rose-300 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800/40 hover:bg-rose-100 dark:hover:bg-rose-900/30 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                title={
+                  installedAgents.length === 0
+                    ? "Not synced anywhere"
+                    : `Remove from ${installedAgents.length} agent${installedAgents.length !== 1 ? "s" : ""}`
+                }
+              >
+                {bulkBusy ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <Trash2 className="w-3 h-3" />
+                )}
+                Unsync all
+              </button>
+            </div>
           </div>
           <div className="flex flex-wrap gap-1.5">
             {syncTargets.map((target) => {
               const isSynced = installedIn.includes(target.agent);
               const hasDir = !!target.dir;
-              const label = SOURCE_LABELS[target.agent] || target.agent;
+              const label = getAgentMeta(target.agent).label;
               const busy = syncInFlight === target.agent;
               const tooltipText = isSynced
                 ? `Click to remove from ${label}`
@@ -602,7 +690,7 @@ export function LocalExtensionDetailView({
                     ) : isSynced ? (
                       <Check className="w-3 h-3" />
                     ) : (
-                      <Share2 className="w-3 h-3 opacity-50" />
+                      <AgentIcon agent={target.agent} size={14} />
                     )}
                     {label}
                   </button>

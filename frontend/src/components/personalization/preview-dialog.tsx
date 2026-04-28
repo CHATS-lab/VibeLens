@@ -1,8 +1,8 @@
-import { Check, Download, Loader2, Monitor, RotateCcw, Upload } from "lucide-react";
+import { Check, Download, Loader2, RotateCcw, Upload } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { SkillSyncTarget } from "../../types";
 import { Modal, ModalBody, ModalFooter, ModalHeader } from "../ui/modal";
-import { SOURCE_LABELS } from "./constants";
+import { AgentIcon, getAgentMeta } from "../../agents";
 
 interface PreviewDialogProps {
   skillName: string;
@@ -70,6 +70,12 @@ export function PreviewDialog({
     });
   }, []);
 
+  const selectAll = useCallback(
+    () => setSelectedTargets(new Set(syncTargets.map((t) => t.agent))),
+    [syncTargets],
+  );
+  const clearAll = useCallback(() => setSelectedTargets(new Set()), []);
+
   const handleInstall = useCallback(async () => {
     setInstalling(true);
     await onInstall(localContent, [...selectedTargets]);
@@ -121,6 +127,28 @@ export function PreviewDialog({
               <span className="text-[10px] text-accent-teal font-medium px-1.5 py-0.5 rounded bg-accent-teal-subtle">Always</span>
             </div>
 
+            {syncTargets.length > 0 && (
+              <div className="flex items-center justify-end gap-2 -mt-1">
+                <button
+                  type="button"
+                  onClick={selectAll}
+                  disabled={selectedTargets.size === syncTargets.length}
+                  className="text-[11px] font-medium text-accent-teal hover:underline disabled:opacity-40 disabled:no-underline disabled:cursor-not-allowed"
+                >
+                  Select all ({syncTargets.length})
+                </button>
+                <span className="text-dimmed text-[11px]">·</span>
+                <button
+                  type="button"
+                  onClick={clearAll}
+                  disabled={selectedTargets.size === 0}
+                  className="text-[11px] font-medium text-muted hover:text-secondary disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
+
             {/* Agent interface checkboxes */}
             {syncTargets.length > 0 && (
               <div className="space-y-2">
@@ -143,10 +171,10 @@ export function PreviewDialog({
                       }`}>
                         {isSelected && <Check className="w-3 h-3 text-white" />}
                       </div>
-                      <Monitor className="w-4 h-4 text-muted shrink-0" />
+                      <AgentIcon agent={target.agent} size={20} />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-secondary">
-                          {SOURCE_LABELS[target.agent] || target.agent}
+                          {getAgentMeta(target.agent).label}
                         </p>
                         <p className="text-xs text-dimmed truncate">{target.skills_dir}</p>
                       </div>

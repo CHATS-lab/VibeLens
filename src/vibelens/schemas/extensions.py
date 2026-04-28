@@ -143,11 +143,31 @@ class ExtensionMetaResponse(BaseModel):
 
 
 class AgentCapability(BaseModel):
-    """Per-agent capability entry."""
+    """Per-agent capability entry — single source of truth for "agents I can sync to".
+
+    The frontend ``syncTargets.get()`` cache derives ``Record<type, SyncTarget[]>``
+    by filtering ``installed && type ∈ supported_types`` and reading
+    ``dirs_by_type[type]`` / ``counts_by_type[type]``. This avoids drift from
+    the older parallel ``sync_targets`` endpoint which is now redundant.
+    """
 
     key: str = Field(description="AgentType value, e.g. 'claude'.")
-    installed: bool = Field(description="Whether the agent's root directory exists.")
+    installed: bool = Field(
+        description="True if any of root or extra_paths exists on disk.",
+    )
     supported_types: list[str] = Field(description="Extension types this agent can install.")
+    dirs_by_type: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Per-extension-type install directory (absolute path). Keyed by "
+            "extension type value. Only populated for types whose specific "
+            "directory field on the platform is non-None."
+        ),
+    )
+    counts_by_type: dict[str, int] = Field(
+        default_factory=dict,
+        description="Per-extension-type item count currently installed in this agent.",
+    )
 
 
 class AgentCapabilitiesResponse(BaseModel):

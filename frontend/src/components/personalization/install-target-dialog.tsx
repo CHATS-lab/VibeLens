@@ -1,12 +1,16 @@
-import { Check, Download, Loader2, Monitor, X } from "lucide-react";
+import { Check, Download, Loader2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useExtensionsClient } from "../../app";
-import type { AgentCapability, LinkType } from "../../api/extensions";
+import type { LinkType } from "../../api/extensions";
 import type { ExtensionSyncTarget } from "../../types";
 import { Modal, ModalBody, ModalFooter, ModalHeader } from "../ui/modal";
-import { normalizeSourceType, SOURCE_LABELS } from "./constants";
+import { AgentIcon, getAgentMeta, normalizeSourceType } from "../../agents";
 import { TYPE_PLURAL } from "./extensions/extension-constants";
-import { LinkTypeToggle } from "./extensions/link-type-toggle";
+
+// Install method is fixed to symlink (with automatic copy fallback at the
+// store layer when symlinks aren't supported). The user-visible toggle was
+// removed — the default is always correct.
+const DEFAULT_LINK_TYPE: LinkType = "symlink";
 
 function centralStoreLabel(type: string): string {
   if (type === "hook") return "~/.vibelens/hooks/";
@@ -42,6 +46,10 @@ interface InstallTargetDialogProps {
  * Uses diff semantics: each row shows its current state (installed or not),
  * and clicking toggles the desired future state. The submit handler receives
  * both the add list and the remove list so the caller can apply the diff.
+ *
+ * The list of agents shown comes entirely from ``syncTargets`` — backend
+ * already filters those by ``installed_platforms()`` ∩ ``supported_types``,
+ * so any further client-side capability check would only re-introduce drift.
  */
 export function InstallTargetDialog({
   extensionName,
@@ -53,31 +61,6 @@ export function InstallTargetDialog({
 }: InstallTargetDialogProps) {
   const client = useExtensionsClient();
   const [fetchedInstalled, setFetchedInstalled] = useState<string[] | null>(null);
-  const [capabilities, setCapabilities] = useState<AgentCapability[] | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await client.agents.list();
-        if (!cancelled) setCapabilities(data.agents);
-      } catch {
-        /* best-effort */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [client]);
-
-  const supportedAgentKeys = useMemo(() => {
-    if (capabilities === null) return null;
-    return new Set(
-      capabilities
-        .filter((a) => a.installed && a.supported_types.includes(typeKey))
-        .map((a) => a.key),
-    );
-  }, [capabilities, typeKey]);
 
   // Auto-fetch installed_in if caller didn't provide it.
   useEffect(() => {
@@ -110,7 +93,6 @@ export function InstallTargetDialog({
   // Agents the user has toggled away from their current installed state.
   const [toggled, setToggled] = useState<Set<string>>(() => new Set());
   const [installing, setInstalling] = useState(false);
-  const [linkType, setLinkType] = useState<LinkType>("symlink");
 
   const toggleTarget = useCallback((key: string) => {
     setToggled((prev) => {
@@ -120,6 +102,21 @@ export function InstallTargetDialog({
       return next;
     });
   }, []);
+
+  // Select-all stages an install on every agent not yet installed (does not
+  // disturb already-installed rows). Clear empties the toggle set entirely.
+  const selectAllNotInstalled = useCallback(() => {
+    setToggled(
+      () => new Set(syncTargets.filter((t) => !installedSet.has(t.agent)).map((t) => t.agent)),
+    );
+  }, [syncTargets, installedSet]);
+
+  const clearSelection = useCallback(() => setToggled(new Set()), []);
+
+  const notInstalledCount = useMemo(
+    () => syncTargets.filter((t) => !installedSet.has(t.agent)).length,
+    [syncTargets, installedSet],
+  );
 
   // Desired state = installed XOR toggled. Diff against current.
   // Keys are normalized to plain lowercase (e.g. "claude") so the backend
@@ -141,8 +138,8 @@ export function InstallTargetDialog({
     setInstalling(true);
     // Central-only: no sync targets exist, install to default platform
     const effectiveAdd = centralOnly && toAdd.length === 0 ? ["claude"] : toAdd;
-    await onInstall(effectiveAdd, toRemove, linkType);
-  }, [onInstall, toAdd, toRemove, centralOnly, linkType]);
+    await onInstall(effectiveAdd, toRemove, DEFAULT_LINK_TYPE);
+  }, [onInstall, toAdd, toRemove, centralOnly]);
 
   const totalChanges = toAdd.length + toRemove.length;
   const buttonLabel = (() => {
@@ -176,12 +173,30 @@ export function InstallTargetDialog({
         </div>
 
         {syncTargets.length > 0 && (
+          <div className="flex items-center justify-end gap-2 -mt-1">
+            <button
+              type="button"
+              onClick={selectAllNotInstalled}
+              disabled={notInstalledCount === 0}
+              className="text-[11px] font-medium text-accent-teal hover:underline disabled:opacity-40 disabled:no-underline disabled:cursor-not-allowed"
+            >
+              Select all ({notInstalledCount})
+            </button>
+            <span className="text-dimmed text-[11px]">·</span>
+            <button
+              type="button"
+              onClick={clearSelection}
+              disabled={toggled.size === 0}
+              className="text-[11px] font-medium text-muted hover:text-secondary disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Clear
+            </button>
+          </div>
+        )}
+
+        {syncTargets.length > 0 && (
           <div className="space-y-2">
             {syncTargets.map((target) => {
-              const normalizedAgent = normalizeSourceType(target.agent);
-              const supportsType =
-                supportedAgentKeys === null ||
-                supportedAgentKeys.has(normalizedAgent);
               const isInstalled = installedSet.has(target.agent);
               const isToggled = toggled.has(target.agent);
               // Four visual states based on (isInstalled, isToggled):
@@ -215,12 +230,6 @@ export function InstallTargetDialog({
                   ? <Check className="w-3 h-3 text-white" />
                   : null;
 
-              const iconColor = willUninstall
-                ? "text-accent-rose"
-                : isCurrent
-                  ? "text-accent-emerald"
-                  : "text-muted";
-
               const badge = willUninstall
                 ? { label: "Will uninstall", cls: "bg-accent-rose-subtle text-accent-rose border-accent-rose-border" }
                 : isCurrent
@@ -229,35 +238,24 @@ export function InstallTargetDialog({
                     ? { label: "Will install", cls: "bg-accent-teal-subtle text-accent-teal border-accent-teal-border" }
                     : null;
 
-              const unsupportedTooltip = supportsType
-                ? undefined
-                : `${SOURCE_LABELS[normalizedAgent] || target.agent} does not support ${typeKey}`;
-
               return (
                 <button
                   key={target.agent}
-                  onClick={() => supportsType && toggleTarget(target.agent)}
-                  disabled={!supportsType}
-                  title={unsupportedTooltip}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg border transition text-left ${rowClass} ${!supportsType ? "opacity-40 cursor-not-allowed" : ""}`}
+                  onClick={() => toggleTarget(target.agent)}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg border transition text-left ${rowClass}`}
                 >
                   <div
                     className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition ${boxClass}`}
                   >
                     {boxIcon}
                   </div>
-                  <Monitor className={`w-4 h-4 shrink-0 ${iconColor}`} />
+                  <AgentIcon agent={target.agent} size={20} />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-secondary flex items-center gap-2 flex-wrap">
-                      {SOURCE_LABELS[normalizedAgent] || target.agent}
-                      {badge && supportsType && (
+                      {getAgentMeta(target.agent).label}
+                      {badge && (
                         <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${badge.cls}`}>
                           {badge.label}
-                        </span>
-                      )}
-                      {!supportsType && (
-                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border bg-subtle text-dimmed border-card">
-                          Not supported
                         </span>
                       )}
                     </p>
@@ -276,12 +274,6 @@ export function InstallTargetDialog({
           <p className="text-xs text-dimmed italic">
             No agent interfaces detected. The {typeKey} will only be saved to the central store.
           </p>
-        )}
-
-        {syncTargets.length > 0 && (
-          <div className="pt-3 border-t border-card">
-            <LinkTypeToggle value={linkType} onChange={setLinkType} />
-          </div>
         )}
       </ModalBody>
       <ModalFooter>

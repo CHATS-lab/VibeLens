@@ -1,10 +1,7 @@
 import { Tag, Wrench } from "lucide-react";
+import { getAgentMeta } from "../../agents";
 import { Tooltip } from "../ui/tooltip";
 import {
-  normalizeSourceType,
-  SOURCE_COLORS,
-  SOURCE_DESCRIPTIONS,
-  SOURCE_LABELS,
   SUBDIR_DESCRIPTIONS,
   SUBDIR_LABELS,
   TAG_DESCRIPTIONS,
@@ -12,14 +9,10 @@ import {
 
 /** Colored pill showing which agent interface a skill comes from. */
 export function SourceBadge({ sourceType, sourcePath }: { sourceType: string; sourcePath?: string }) {
-  const key = normalizeSourceType(sourceType);
-  const colorClass = SOURCE_COLORS[key] || "bg-control-hover text-muted border-hover";
-  const label = SOURCE_LABELS[key] || key;
-  const description = SOURCE_DESCRIPTIONS[key] || sourcePath || key;
-
+  const { label, color, description } = getAgentMeta(sourceType);
   return (
-    <Tooltip text={description}>
-      <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${colorClass}`}>
+    <Tooltip text={description || sourcePath || label}>
+      <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${color}`}>
         {label}
       </span>
     </Tooltip>

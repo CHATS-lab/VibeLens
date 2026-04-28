@@ -3,9 +3,12 @@ import { ArrowLeft, Download, Loader2, Trash2 } from "lucide-react";
 import { useExtensionsClient } from "../../../../app";
 import type { Collection, LinkType } from "../../../../api/extensions";
 import type { ExtensionSyncTarget } from "../../../../types";
-import { SOURCE_LABELS } from "../../constants";
-import { LinkTypeToggle } from "../link-type-toggle";
+import { AgentIcon, getAgentMeta } from "../../../../agents";
 import { CollectionExportDialog } from "./collection-export-dialog";
+
+// Install method is fixed to symlink (with automatic copy fallback at the
+// store layer when symlinks aren't supported).
+const DEFAULT_LINK_TYPE: LinkType = "symlink";
 
 interface CollectionDetailViewProps {
   name: string;
@@ -33,7 +36,6 @@ export function CollectionDetailView({
   const [showExport, setShowExport] = useState(false);
   const [availableAgents, setAvailableAgents] = useState<ExtensionSyncTarget[]>([]);
   const [selectedAgents, setSelectedAgents] = useState<Set<string>>(new Set());
-  const [linkType, setLinkType] = useState<LinkType>("symlink");
 
   useEffect(() => {
     if (initialCollection && initialCollection.name === name) return;
@@ -67,6 +69,12 @@ export function CollectionDetailView({
     });
   }, []);
 
+  const selectAllAgents = useCallback(
+    () => setSelectedAgents(new Set(availableAgents.map((t) => t.agent))),
+    [availableAgents],
+  );
+  const clearAgents = useCallback(() => setSelectedAgents(new Set()), []);
+
   const canInstall = useMemo(
     () =>
       collection !== null &&
@@ -82,7 +90,7 @@ export function CollectionDetailView({
       const res = await client.collections.install(
         collection.name,
         Array.from(selectedAgents),
-        linkType,
+        DEFAULT_LINK_TYPE,
       );
       setInstallResults(res.results);
       onChanged();
@@ -174,7 +182,30 @@ export function CollectionDetailView({
 
       <div className="border-t border-card pt-4 space-y-3">
         <div>
-          <p className="text-xs font-medium text-secondary mb-2">Install to agents</p>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-medium text-secondary">Install to agents</p>
+            {availableAgents.length > 0 && (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={selectAllAgents}
+                  disabled={selectedAgents.size === availableAgents.length}
+                  className="text-[11px] font-medium text-accent-teal hover:underline disabled:opacity-40 disabled:no-underline disabled:cursor-not-allowed"
+                >
+                  Select all ({availableAgents.length})
+                </button>
+                <span className="text-dimmed text-[11px]">·</span>
+                <button
+                  type="button"
+                  onClick={clearAgents}
+                  disabled={selectedAgents.size === 0}
+                  className="text-[11px] font-medium text-muted hover:text-secondary disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
+          </div>
           {availableAgents.length === 0 ? (
             <p className="text-xs text-muted">No agents detected on this machine.</p>
           ) : (
@@ -194,14 +225,13 @@ export function CollectionDetailView({
                     onChange={() => toggleAgent(target.agent)}
                     className="sr-only"
                   />
-                  {SOURCE_LABELS[target.agent] || target.agent}
+                  <AgentIcon agent={target.agent} size={14} />
+                  {getAgentMeta(target.agent).label}
                 </label>
               ))}
             </div>
           )}
         </div>
-
-        <LinkTypeToggle value={linkType} onChange={setLinkType} withHelp={false} />
 
         <button
           onClick={handleInstall}

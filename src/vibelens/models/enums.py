@@ -7,11 +7,17 @@ class AgentType(StrEnum):
     """Known agent CLI types.
 
     Includes both trajectory-parsed agents (claude, codex, gemini, dataclaw)
-    and skill-only agents (cursor, opencode, etc.) that we scan for installed skills.
+    and skill-only agents (cursor, opencode, etc.) that we scan for installed
+    extensions. ``CLAUDE_WEB`` is a real trajectory source. ``AIDER`` is
+    referenced by the LLM-backend layer (``llm/backends/aider_cli.py``,
+    ``models/llm/inference.py``) — it has no parser and no PLATFORMS row.
     """
 
     AIDER = "aider"
+    AMP = "amp"
     ANTIGRAVITY = "antigravity"
+    AUGMENT = "augment"
+    AUTOCLAW = "autoclaw"
     CLAUDE = "claude"
     CLAUDE_WEB = "claude_web"
     CODEBUDDY = "codebuddy"
@@ -19,16 +25,24 @@ class AgentType(StrEnum):
     COPILOT = "copilot"
     CURSOR = "cursor"
     DATACLAW = "dataclaw"
+    EASYCLAW = "easyclaw"
+    FACTORY = "factory"
     GEMINI = "gemini"
     HERMES = "hermes"
+    JUNIE = "junie"
     KILO = "kilo"
     KIMI = "kimi"
     KIRO = "kiro"
-    OPENCODE = "opencode"
+    OB1 = "ob1"
     OPENCLAW = "openclaw"
+    OPENCODE = "opencode"
     OPENHANDS = "openhands"
+    QCLAW = "qclaw"
+    QODER = "qoder"
     QWEN = "qwen"
-    PARSED = "parsed"
+    TRAE = "trae"
+    TRAE_CN = "trae-cn"
+    WORKBUDDY = "workbuddy"
 
 
 class AgentExtensionType(StrEnum):

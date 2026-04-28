@@ -57,7 +57,7 @@ def build_typed_router(
         if refresh:
             service.invalidate()
         items, total = service.list_items(page=page, page_size=page_size, search=search)
-        targets = service.list_sync_targets()
+        targets = sorted(service.list_sync_targets(), key=lambda t: t.agent.lower())
         return ExtensionListResponse(
             items=[i.model_dump() for i in items],
             total=total,

@@ -135,6 +135,11 @@ export type AgentCapability = {
   key: string;
   installed: boolean;
   supported_types: string[];
+  /** Per-extension-type install dir on disk (absolute path). Only populated
+   *  for types whose specific platform field is non-None. */
+  dirs_by_type: Record<string, string>;
+  /** Per-extension-type item count currently installed in this agent. */
+  counts_by_type: Record<string, number>;
 };
 
 export type AgentCapabilitiesResponse = {
@@ -280,32 +285,30 @@ export function createExtensionsClient(
       if (cachedTargets) return cachedTargets;
       if (cachePromise) return cachePromise;
       cachePromise = (async () => {
-        const types = [
-          "skills",
-          "commands",
-          "hooks",
-          "subagents",
-        ] as const;
+        // Single source of truth: derive Record<type, SyncTarget[]> from the
+        // /agents endpoint. Each agent carries its own dirs_by_type and
+        // counts_by_type maps; we group rows by extension type.
         const results: Record<string, ExtensionSyncTarget[]> = {};
-        await Promise.all(
-          types.map(async (type) => {
-            try {
-              const res = await fetchFn(`${BASE}/${type}?page_size=1`);
-              if (res.ok) {
-                const data = await res.json();
-                results[type.replace(/s$/, "")] = (
-                  data.sync_targets || []
-                ).map((t: ExtensionSyncTarget) => ({
-                  agent: t.agent,
-                  count: t.count,
-                  dir: t.dir,
-                }));
+        try {
+          const res = await fetchFn(`${BASE}/agents`);
+          if (res.ok) {
+            const data: AgentCapabilitiesResponse = await res.json();
+            for (const agent of data.agents) {
+              if (!agent.installed) continue;
+              for (const type of agent.supported_types) {
+                const dir = agent.dirs_by_type[type];
+                if (dir === undefined) continue;
+                (results[type] ??= []).push({
+                  agent: agent.key,
+                  count: agent.counts_by_type[type] ?? 0,
+                  dir,
+                });
               }
-            } catch {
-              results[type.replace(/s$/, "")] = [];
             }
-          }),
-        );
+          }
+        } catch {
+          // network/parse error — fall through with whatever we have
+        }
         cachedTargets = results;
         cachePromise = null;
         return results;
