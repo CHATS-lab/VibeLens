@@ -112,9 +112,14 @@ export function SessionList({
     };
   }, [search, runSearch]);
 
-  // Reset pagination when filters or view mode change
+  // Reset pagination when filters or view mode change. Also clear the
+  // expanded-projects set and re-arm the auto-expand guard so the first
+  // project of the newly-filtered group reopens — otherwise the user lands
+  // on a fully-collapsed list after switching agents.
   useEffect(() => {
     setPage(0);
+    setExpandedProjects(new Set());
+    hasAutoExpanded.current = false;
   }, [agentFilter, viewMode, rankedIds]);
 
   const filtered = useMemo(() => {
