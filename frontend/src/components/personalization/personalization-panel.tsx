@@ -22,6 +22,7 @@ import {
   type PersonalizationTab,
 } from "./personalization-view";
 import { MODE_API_BASE, PersonalizationHistory } from "./personalization-history";
+import { PERSONALIZATION_TAB_KEY } from "../../constants";
 import { errorMessage } from "../../utils";
 
 // Collections is feature-gated off until the UX is fleshed out. Backend, API
@@ -133,7 +134,7 @@ export function PersonalizationPanel({ checkedIds, selectedProjectCount, resetKe
   const llmApi = useMemo(() => llmClient(fetchWithToken), [fetchWithToken]);
   const sessionsApi = useMemo(() => sessionsClient(fetchWithToken), [fetchWithToken]);
   const [activeTab, setActiveTab] = useState<PersonalizationTab>(() => {
-    const stored = localStorage.getItem("vibelens-personalization-tab");
+    const stored = localStorage.getItem(PERSONALIZATION_TAB_KEY);
     if (stored && TAB_CONFIG.some((t) => t.id === stored)) return stored as PersonalizationTab;
     return "local";
   });
@@ -337,7 +338,7 @@ export function PersonalizationPanel({ checkedIds, selectedProjectCount, resetKe
     setAnalysisDetailItem(null);
     setModeField(loaded.mode, "result", loaded);
     setActiveTab(tab);
-    localStorage.setItem("vibelens-personalization-tab", tab);
+    localStorage.setItem(PERSONALIZATION_TAB_KEY, tab);
   }, [setModeField]);
 
   // Per-mode history cache so each mode's "auto-load most recent" doesn't clobber others.
@@ -369,7 +370,7 @@ export function PersonalizationPanel({ checkedIds, selectedProjectCount, resetKe
     if (autoLoadedRef.current) return;
     autoLoadedRef.current = true;
 
-    const storedTab = localStorage.getItem("vibelens-personalization-tab");
+    const storedTab = localStorage.getItem(PERSONALIZATION_TAB_KEY);
     const targetMode = storedTab && MODE_MAP[storedTab] ? MODE_MAP[storedTab] : null;
     if (!targetMode) return;
 
@@ -538,7 +539,7 @@ export function PersonalizationPanel({ checkedIds, selectedProjectCount, resetKe
                   }
                 }
                 setActiveTab(tab.id);
-                localStorage.setItem("vibelens-personalization-tab", tab.id);
+                localStorage.setItem(PERSONALIZATION_TAB_KEY, tab.id);
               }}
               className={`w-full px-3 py-1.5 text-sm font-semibold rounded-md transition text-center ${
                 activeTab === tab.id ? ACTIVE_TAB_STYLE : INACTIVE_TAB_STYLE
@@ -584,7 +585,7 @@ export function PersonalizationPanel({ checkedIds, selectedProjectCount, resetKe
               onDetailOpenChange={setExploreDetailOpen}
               onSwitchToRecommend={() => {
                 setActiveTab("retrieve");
-                localStorage.setItem("vibelens-personalization-tab", "retrieve");
+                localStorage.setItem(PERSONALIZATION_TAB_KEY, "retrieve");
                 setAnalysisDetailItem(null);
                 if (!resultsByMode.recommendation && !jobIdsByMode.recommendation && !loadingByMode.recommendation) {
                   loadMostRecentAnalysis("recommendation");
@@ -628,7 +629,7 @@ export function PersonalizationPanel({ checkedIds, selectedProjectCount, resetKe
               onDetailChange={setAnalysisDetailItem}
               onSwitchTab={(tab) => {
                 setActiveTab(tab);
-                localStorage.setItem("vibelens-personalization-tab", tab);
+                localStorage.setItem(PERSONALIZATION_TAB_KEY, tab);
                 setAnalysisDetailItem(null);
               }}
             />

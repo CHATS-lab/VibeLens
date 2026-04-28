@@ -21,3 +21,6 @@ export const RESIZE_DEBOUNCE_MS = 150;
 
 // Analysis detail sections (workflow patterns, issues found)
 export const SHOW_ANALYSIS_DETAIL_SECTIONS = false;
+
+// localStorage keys
+export const PERSONALIZATION_TAB_KEY = "vibelens-personalization-tab";

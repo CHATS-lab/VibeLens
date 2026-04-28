@@ -38,6 +38,8 @@ import { CopyAllDialog } from "./friction-copy-all-dialog";
 import { MitigationsSection } from "./friction-mitigations";
 import { FrictionTypesSection } from "./friction-types";
 
+const TUTORIAL_DISMISS_KEY = "vibelens-tutorial-friction-dismissed";
+
 interface FrictionPanelProps {
   checkedIds: Set<string>;
   selectedProjectCount: number;
@@ -276,7 +278,7 @@ export function FrictionPanel({ checkedIds, selectedProjectCount, activeJobId, o
           <TutorialBanner
             tutorial={FRICTION_TUTORIAL}
             accentColor="cyan"
-            dismissKey="vibelens-tutorial-friction-dismissed"
+            dismissKey={TUTORIAL_DISMISS_KEY}
           />
         </div>
         <AnalysisLoadingScreen
@@ -298,7 +300,7 @@ export function FrictionPanel({ checkedIds, selectedProjectCount, activeJobId, o
             <TutorialBanner
               tutorial={FRICTION_TUTORIAL}
               accentColor="cyan"
-              dismissKey="vibelens-tutorial-friction-dismissed"
+              dismissKey={TUTORIAL_DISMISS_KEY}
             />
           </div>
           <AnalysisWelcomePage
@@ -329,7 +331,7 @@ export function FrictionPanel({ checkedIds, selectedProjectCount, activeJobId, o
           <TutorialBanner
             tutorial={FRICTION_TUTORIAL}
             accentColor="cyan"
-            dismissKey="vibelens-tutorial-friction-dismissed"
+            dismissKey={TUTORIAL_DISMISS_KEY}
           />
         </div>
         <div className="max-w-4xl mx-auto px-6 py-8 space-y-8">

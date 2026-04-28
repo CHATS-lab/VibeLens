@@ -20,6 +20,7 @@ import { SessionList, type ViewMode } from "./components/session/session-list";
 import { LoadingSpinner } from "./components/ui/loading-spinner";
 import { UploadDialog } from "./components/upload/upload-dialog";
 import { SettingsDialog } from "./components/settings-dialog";
+import { PERSONALIZATION_TAB_KEY } from "./constants";
 import { errorMessage } from "./utils";
 
 // Heavy route-level views. Code-split so the initial bundle only loads what
@@ -603,7 +604,7 @@ export function App() {
                 activeJobId={frictionJobId}
                 onJobIdChange={setFrictionJobId}
                 onNavigateToPersonalization={(tab) => {
-                  localStorage.setItem("vibelens-personalization-tab", tab);
+                  localStorage.setItem(PERSONALIZATION_TAB_KEY, tab);
                   setMainView("skills");
                 }}
               />
@@ -670,7 +671,7 @@ export function App() {
           <RecommendationWelcomeDialog
             onTryNow={() => {
               setShowRecWelcome(false);
-              localStorage.setItem("vibelens-personalization-tab", "retrieve");
+              localStorage.setItem(PERSONALIZATION_TAB_KEY, "retrieve");
               setMainView("skills");
             }}
             onDismiss={() => setShowRecWelcome(false)}
