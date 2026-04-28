@@ -70,8 +70,7 @@ def _linux_zip(agent_dir: str, payload: str, output_name: str) -> ZipCommand:
     pre-existing Desktop dir."""
     return ZipCommand(
         command=(
-            f"mkdir -p ~/Desktop && cd {agent_dir} "
-            f"&& zip -r ~/Desktop/{output_name} {payload}"
+            f"mkdir -p ~/Desktop && cd {agent_dir} && zip -r ~/Desktop/{output_name} {payload}"
         ),
         output=f"~/Desktop/{output_name}",
     )
@@ -201,12 +200,8 @@ UPLOAD_SPECS: dict[AgentType, UploadAgentSpec] = {
         source="local_zip",
         commands={
             # Windows omitted: kilo doesn't ship for Windows.
-            "macos": _macos_zip(
-                "~/.local/share/kilo", "kilo.db*", "kilo-data.zip"
-            ),
-            "linux": _linux_zip(
-                "~/.local/share/kilo", "kilo.db*", "kilo-data.zip"
-            ),
+            "macos": _macos_zip("~/.local/share/kilo", "kilo.db*", "kilo-data.zip"),
+            "linux": _linux_zip("~/.local/share/kilo", "kilo.db*", "kilo-data.zip"),
         },
     ),
     AgentType.KIRO: UploadAgentSpec(
@@ -384,8 +379,12 @@ if _missing:
 
 
 def list_user_facing_specs() -> list[UploadAgentSpec]:
-    """Return the user-facing registry the frontend renders."""
-    return [s for s in UPLOAD_SPECS.values() if s.user_facing]
+    """Return the user-facing registry the frontend renders,
+    sorted alphabetically by display name."""
+    return sorted(
+        (s for s in UPLOAD_SPECS.values() if s.user_facing),
+        key=lambda s: s.display_name.lower(),
+    )
 
 
 def get_upload_command(agent_type: str, os_platform: str) -> dict:

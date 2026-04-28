@@ -110,6 +110,13 @@ class OpencodeParser(BaseParser):
     AGENT_TYPE = AgentType.OPENCODE
     LOCAL_DATA_DIR: Path | None = Path.home() / ".local" / "share" / "opencode"
     DB_FILENAME: ClassVar[str] = "opencode.db"
+    # SQLite-backed: zip extraction needs the .db file plus its WAL/SHM
+    # sidecars to read uncommitted pages. Subclasses (Kilo) inherit these.
+    ALLOWED_EXTENSIONS: ClassVar[frozenset[str]] = BaseParser.ALLOWED_EXTENSIONS | {
+        ".db",
+        ".db-wal",
+        ".db-shm",
+    }
     # Session ids in the SQLite ``session.id`` column are already globally
     # unique (``ses_*``), and discover_sessions reads them directly so there's
     # no filename-derived sid to namespace.

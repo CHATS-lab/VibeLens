@@ -42,3 +42,39 @@ def test_unknown_exception_falls_back_to_generic():
 def test_empty_exception_falls_back_to_class_name():
     out = to_friendly_error(RuntimeError(""))
     assert out["details"] == "RuntimeError"
+
+
+def test_duplicate_step_ids_message_maps_to_parser_bug_summary():
+    """Pydantic ValidationError carrying ``duplicate step IDs`` should surface
+    a parser-bug message, not the generic 'unexpected ValidationError'."""
+    out = to_friendly_error(
+        ValueError(
+            "1 validation error for Trajectory\n  Value error, Trajectory abc: "
+            "duplicate step IDs: ['x', 'x']"
+        )
+    )
+    assert "parser bug" in out["summary"].lower()
+    assert "duplicate step ids" in out["details"].lower()
+
+
+def test_size_limit_exception_maps_to_specific_summary():
+    out = to_friendly_error(ValueError("Zip file exceeds size limit: 999 > 200"))
+    assert "size limit" in out["summary"].lower()
+
+
+def test_validation_error_class_name_maps_to_parser_bug():
+    """A ValidationError without the dup-id substring still maps via class name."""
+
+    # Synthesize a class that mimics pydantic.ValidationError's class name
+    # without requiring the import (the friendly mapper does string match).
+    class ValidationError(Exception):  # noqa: N818
+        pass
+
+    out = to_friendly_error(ValidationError("some other validation issue"))
+    assert "parser bug" in out["summary"].lower()
+
+
+def test_fallback_summary_names_the_exception_class():
+    """Generic fallback should at least tell the user what category failed."""
+    out = to_friendly_error(RuntimeError("boom"))
+    assert "RuntimeError" in out["summary"]

@@ -1,15 +1,18 @@
-"""Zip archive validation and safe extraction utilities."""
+"""Zip archive validation and safe extraction utilities.
+
+This module is business-agnostic — it provides the mechanics of validating
+and extracting a zip archive given a caller-supplied extension allowlist.
+The set of "safe" extensions for VibeLens uploads lives in the parser
+layer (``BaseParser.ALLOWED_EXTENSIONS``) and is passed in by callers.
+"""
 
 import zipfile
+from collections.abc import Iterable
 from pathlib import Path
 
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
-
-# Extensions safe to extract from user-uploaded zips.
-# .project_root is a Gemini CLI marker file that maps hash dirs to projects.
-ALLOWED_EXTENSIONS = {".json", ".jsonl", ".project_root", ".txt"}
 
 # Unix file-type mask and symlink value for external_attr inspection
 UNIX_FILE_TYPE_MASK = 0o170000
@@ -28,8 +31,16 @@ def _is_macos_junk(filename: str) -> bool:
     return basename.startswith(MACOS_RESOURCE_FORK_PREFIX)
 
 
+def _normalize_extensions(allowed: Iterable[str]) -> frozenset[str]:
+    return frozenset(s.lower() for s in allowed)
+
+
 def validate_zip(
-    zip_path: Path, max_zip_bytes: int, max_extracted_bytes: int, max_file_count: int
+    zip_path: Path,
+    max_zip_bytes: int,
+    max_extracted_bytes: int,
+    max_file_count: int,
+    allowed_extensions: Iterable[str],
 ) -> None:
     """Validate a zip archive for size, safety, and content constraints.
 
@@ -42,6 +53,10 @@ def validate_zip(
         max_zip_bytes: Maximum allowed zip file size.
         max_extracted_bytes: Maximum total uncompressed size.
         max_file_count: Maximum number of files in the archive.
+        allowed_extensions: Lowercase suffix set the caller wants extracted.
+            Anything else is silently skipped (not counted toward limits).
+            Callers in the upload pipeline pass the active parser's
+            :attr:`BaseParser.ALLOWED_EXTENSIONS`.
 
     Raises:
         ValueError: If any validation check fails.
@@ -53,17 +68,25 @@ def validate_zip(
     if not zipfile.is_zipfile(zip_path):
         raise ValueError("File is not a valid zip archive")
 
+    extensions = _normalize_extensions(allowed_extensions)
     with zipfile.ZipFile(zip_path, "r") as zf:
-        _check_zip_entries(zf, max_extracted_bytes, max_file_count)
+        _check_zip_entries(zf, max_extracted_bytes, max_file_count, extensions)
 
 
-def _check_zip_entries(zf: zipfile.ZipFile, max_extracted_bytes: int, max_file_count: int) -> None:
+def _check_zip_entries(
+    zf: zipfile.ZipFile,
+    max_extracted_bytes: int,
+    max_file_count: int,
+    allowed_extensions: frozenset[str],
+) -> None:
     """Scan zip entries for safety and size constraints.
 
     Args:
         zf: Open ZipFile to inspect.
         max_extracted_bytes: Maximum total uncompressed size.
         max_file_count: Maximum file count.
+        allowed_extensions: Lowercase suffix set; entries with any other
+            suffix are skipped (not counted toward limits).
 
     Raises:
         ValueError: On path traversal, symlinks, size, or count violations.
@@ -89,7 +112,7 @@ def _check_zip_entries(zf: zipfile.ZipFile, max_extracted_bytes: int, max_file_c
 
         # Only count files with parseable extensions toward the budget
         suffix = Path(info.filename).suffix.lower()
-        if suffix not in ALLOWED_EXTENSIONS:
+        if suffix not in allowed_extensions:
             continue
 
         total_size += info.file_size
@@ -104,7 +127,7 @@ def _check_zip_entries(zf: zipfile.ZipFile, max_extracted_bytes: int, max_file_c
         raise ValueError(f"Too many files: {file_count} > {max_file_count}")
 
 
-def extract_zip(zip_path: Path, dest_dir: Path) -> Path:
+def extract_zip(zip_path: Path, dest_dir: Path, allowed_extensions: Iterable[str]) -> Path:
     """Extract a validated zip archive to the destination directory.
 
     Only extracts files with allowed extensions, skipping others.
@@ -112,11 +135,14 @@ def extract_zip(zip_path: Path, dest_dir: Path) -> Path:
     Args:
         zip_path: Path to the zip file.
         dest_dir: Directory to extract into.
+        allowed_extensions: Lowercase suffix set; entries with any other
+            suffix are skipped.
 
     Returns:
         The destination directory path.
     """
     dest_dir.mkdir(parents=True, exist_ok=True)
+    extensions = _normalize_extensions(allowed_extensions)
 
     with zipfile.ZipFile(zip_path, "r") as zf:
         for info in zf.infolist():
@@ -125,7 +151,7 @@ def extract_zip(zip_path: Path, dest_dir: Path) -> Path:
             if _is_macos_junk(info.filename):
                 continue
             suffix = Path(info.filename).suffix.lower()
-            if suffix not in ALLOWED_EXTENSIONS:
+            if suffix not in extensions:
                 continue
             zf.extract(info, dest_dir)
 

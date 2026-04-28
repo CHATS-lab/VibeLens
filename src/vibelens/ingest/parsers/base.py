@@ -17,7 +17,7 @@ Multi-session-per-file formats (dataclaw, claude_web, parsed) override
 import logging
 from abc import ABC
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any, ClassVar, NamedTuple
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
 from vibelens.ingest.parsers.helpers import (
@@ -60,10 +60,19 @@ class BaseParser(ABC):
     filenames are already globally unique (Claude UUIDs).
     """
 
-    AGENT_TYPE: AgentType
+    AGENT_TYPE: AgentType | None
     LOCAL_DATA_DIR: Path | None = None
     DISCOVER_GLOB: str | None = None
     NAMESPACE_SESSION_IDS: bool = True
+    # Lowercase file suffixes the upload pipeline should extract for this
+    # parser. The baseline covers every plain-text agent format. Subclasses
+    # extend (not replace) when their wire format needs additional extensions
+    # — e.g. SQLite-backed parsers add ``.db`` and the ``-wal`` / ``-shm``
+    # sidecars. Keeping this on the parser keeps the zip helper in
+    # ``utils/zip.py`` business-agnostic.
+    ALLOWED_EXTENSIONS: ClassVar[frozenset[str]] = frozenset(
+        {".json", ".jsonl", ".project_root", ".txt"}
+    )
 
     # ---- Discovery ----
     def discover_session_files(self, data_dir: Path) -> list[Path]:
@@ -276,7 +285,17 @@ class BaseParser(ABC):
         model_name: str | None = None,
         tool_definitions: list | None = None,
     ) -> Agent:
-        """Create an Agent for this parser's ``AGENT_TYPE``."""
+        """Create an Agent for this parser's ``AGENT_TYPE``.
+
+        Real parsers always set ``AGENT_TYPE``; ``ParsedTrajectoryParser`` is
+        the only subclass with ``AGENT_TYPE = None``, and it deserializes
+        pre-parsed trajectories whose ``Agent`` is already populated — so it
+        never reaches this code path. The assertion guards that invariant.
+        """
+        assert self.AGENT_TYPE is not None, (
+            f"AGENT_TYPE is None on {type(self).__name__}; build_agent() "
+            "is only valid for real parsers"
+        )
         return Agent(
             name=self.AGENT_TYPE.value,
             version=version,

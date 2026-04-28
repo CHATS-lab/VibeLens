@@ -87,8 +87,7 @@ import re
 import sqlite3
 from datetime import datetime
 from pathlib import Path
-from typing import Any
-from uuid import uuid4
+from typing import Any, ClassVar
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
 from vibelens.ingest.parsers.base import BaseParser, DiscoveredSession
@@ -130,9 +129,7 @@ _NOTEBOOK_KEYS = frozenset({"cells", "nbformat", "nbformat_minor"})
 _TIMESTAMP_TAG_RE = re.compile(r"<timestamp>(.*?)</timestamp>", re.DOTALL)
 # ``Sunday, Apr 26, 2026, 9:53 PM (UTC-4)`` → drop the day prefix and
 # (UTC...) suffix, then strptime. The day-name prefix is informational only.
-_TIMESTAMP_BODY_RE = re.compile(
-    r"(?:[A-Za-z]+, )?([A-Za-z]+ \d{1,2}, \d{4}, \d{1,2}:\d{2} [AP]M)"
-)
+_TIMESTAMP_BODY_RE = re.compile(r"(?:[A-Za-z]+, )?([A-Za-z]+ \d{1,2}, \d{4}, \d{1,2}:\d{2} [AP]M)")
 
 
 class CursorParser(BaseParser):
@@ -140,6 +137,12 @@ class CursorParser(BaseParser):
 
     AGENT_TYPE = AgentType.CURSOR
     LOCAL_DATA_DIR: Path | None = _LOCAL_ROOT
+    # SQLite-backed: each session's ``store.db`` plus its WAL/SHM sidecars.
+    ALLOWED_EXTENSIONS: ClassVar[frozenset[str]] = BaseParser.ALLOWED_EXTENSIONS | {
+        ".db",
+        ".db-wal",
+        ".db-shm",
+    }
     # Session ids are UUIDs (the agent-id directory under chats/<workspace>/),
     # already globally unique — no namespace needed.
     NAMESPACE_SESSION_IDS = False
@@ -231,7 +234,7 @@ class CursorParser(BaseParser):
         # by toolCallId so we can attach them to the spawning assistant turn.
         results_by_call_id = _index_tool_results(raw)
         steps: list[Step] = []
-        for msg in raw:
+        for idx, msg in enumerate(raw):
             role = msg.get("role")
             if role == "system":
                 # Cursor's ``role: system`` blob is the always-on system
@@ -241,7 +244,7 @@ class CursorParser(BaseParser):
                 # Already consumed via the pre-scan map; emitting standalone
                 # tool steps would duplicate observations.
                 continue
-            step = _build_step(msg, results_by_call_id, diagnostics)
+            step = _build_step(msg, results_by_call_id, diagnostics, idx=idx)
             if step is None:
                 diagnostics.record_skip(f"empty {role} blob dropped")
                 continue
@@ -341,7 +344,11 @@ def _index_tool_results(messages: list[dict]) -> dict[str, dict]:
 
 
 def _build_step(
-    msg: dict, results_by_call_id: dict[str, dict], diagnostics: DiagnosticsCollector
+    msg: dict,
+    results_by_call_id: dict[str, dict],
+    diagnostics: DiagnosticsCollector,
+    *,
+    idx: int = 0,
 ) -> Step | None:
     """Build one Step from a message blob.
 
@@ -350,6 +357,11 @@ def _build_step(
     blocks contribute to ``Step.reasoning_content`` only when they carry
     plaintext — Cursor's reasoning is encrypted for OpenAI providers, so
     in practice this stays empty (see module docstring).
+
+    ``idx`` is the message's position in the raw list. Cursor's per-message
+    ``id`` field has been observed to collide within a session (multiple
+    messages sharing ``id="1"``), so we always disambiguate with the index
+    to keep ``step_id`` unique within the trajectory.
     """
     role = msg.get("role", "")
     source = StepSource.USER if role == "user" else StepSource.AGENT
@@ -406,8 +418,10 @@ def _build_step(
     if not (raw_text or image_parts or reasoning_parts or tool_calls or obs_results or is_summary):
         return None
 
+    raw_id = msg.get("id")
+    step_id = f"{raw_id}-{idx}" if raw_id else f"cursor-step-{idx}"
     return Step(
-        step_id=msg.get("id") or str(uuid4()),
+        step_id=step_id,
         source=source,
         message=message,
         timestamp=timestamp,
@@ -475,6 +489,9 @@ def _build_tool_pair(
     call_id = block.get("toolCallId") or ""
     function_name = block.get("toolName") or ""
     diagnostics.record_tool_call()
+    # Cursor has no dedicated skill-activation tool; SKILL.md is auto-discovered
+    # and injected as context. Subsequent ReadFile of SKILL.md is working-memory
+    # access (often repeatedly on the same file), not activation.
     tc = ToolCall(
         tool_call_id=call_id,
         function_name=function_name,
@@ -593,7 +610,7 @@ def _parse_subagent_file(
 
     first_user_timestamp: datetime | None = None
     steps: list[Step] = []
-    for raw_line in lines:
+    for line_idx, raw_line in enumerate(lines):
         if not raw_line.strip():
             continue
         try:
@@ -633,7 +650,11 @@ def _parse_subagent_file(
             continue
         steps.append(
             Step(
-                step_id=str(uuid4()),
+                # Deterministic ID derived from the line position in the
+                # child file. Same input produces the same step_id across
+                # parse runs, which keeps the upload-store/dedup paths
+                # cache-stable.
+                step_id=f"cursor-child-step-{line_idx}",
                 source=StepSource.USER if role == "user" else StepSource.AGENT,
                 message=message_text,
                 timestamp=first_user_timestamp if not steps else None,

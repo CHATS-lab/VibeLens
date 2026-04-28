@@ -52,7 +52,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 from uuid import uuid4
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
@@ -76,32 +76,16 @@ logger = get_logger(__name__)
 
 _DEFAULT_PROJECT_PATH = "hermes://local"
 
-# Hermes session_id format: ``<YYYYMMDD>_<HHMMSS>_<hex>`` per
-# ``run_agent.py:1359`` (``f"{timestamp_str}_{short_uuid}"`` where
-# ``timestamp_str = strftime("%Y%m%d_%H%M%S")`` and
-# ``short_uuid = uuid4().hex[:6]``). Hex-tail length has varied across
-# Hermes versions, so validation is by part shape — newer / older builds
-# with different uuid slicing still parse.
-def _is_hermes_session_id(stem: str) -> bool:
-    """True if ``stem`` looks like a Hermes-generated session_id.
+# Filename stems in ``~/.hermes/sessions/`` that are NOT session data —
+# index / config files Hermes writes alongside the per-session files.
+# Anything not in this set is treated as a session candidate. The previous
+# implementation validated session-id format with a regex shaped by one
+# user's data (``\d{8}_\d{6}_[0-9a-f]+``), which silently dropped sessions
+# whose filename didn't fit the assumed shape (different Hermes builds,
+# custom session ids, etc.). Trusting the parser to reject malformed
+# content is safer than fitting a regex to observed data.
+_HERMES_NON_SESSION_STEMS: frozenset[str] = frozenset({"sessions"})
 
-    Three underscore-separated parts: 8-digit date, 6-digit time, hex
-    suffix of any non-zero length. Used to distinguish session files
-    from index / config files (e.g. ``sessions.json``) in the same
-    directory.
-    """
-    parts = stem.split("_")
-    if len(parts) != 3:
-        return False
-    date, time_part, suffix = parts
-    return (
-        len(date) == 8
-        and date.isdigit()
-        and len(time_part) == 6
-        and time_part.isdigit()
-        and bool(suffix)
-        and all(c in "0123456789abcdef" for c in suffix.lower())
-    )
 
 _SNAPSHOT_PREFIX = "session_"
 
@@ -165,6 +149,12 @@ class HermesParser(BaseParser):
 
     AGENT_TYPE = AgentType.HERMES
     LOCAL_DATA_DIR: Path | None = Path.home() / ".hermes"
+    # state.db sidecar enriches token/cost data — extract it alongside .jsonl.
+    ALLOWED_EXTENSIONS: ClassVar[frozenset[str]] = BaseParser.ALLOWED_EXTENSIONS | {
+        ".db",
+        ".db-wal",
+        ".db-shm",
+    }
     # Hermes session ids are ``YYYYMMDD_HHMMSS_<hash>``. ``.jsonl`` files use
     # the bare id; ``.json`` snapshots embed it as ``session_<id>``. Both
     # collapse to the bare id via ``_namespace_session_id``.
@@ -209,14 +199,12 @@ class HermesParser(BaseParser):
         for path in sessions_dir.iterdir():
             if not path.is_file():
                 continue
-            if path.suffix == ".jsonl" and _is_hermes_session_id(path.stem):
+            if path.suffix == ".jsonl" and path.stem not in _HERMES_NON_SESSION_STEMS:
                 jsonl_ids[path.stem] = path
-            elif (
-                path.suffix == ".json"
-                and path.stem.startswith(_SNAPSHOT_PREFIX)
-                and _is_hermes_session_id(path.stem[len(_SNAPSHOT_PREFIX) :])
-            ):
-                snapshot_ids[path.stem[len(_SNAPSHOT_PREFIX) :]] = path
+            elif path.suffix == ".json" and path.stem.startswith(_SNAPSHOT_PREFIX):
+                snapshot_id = path.stem[len(_SNAPSHOT_PREFIX) :]
+                if snapshot_id not in _HERMES_NON_SESSION_STEMS:
+                    snapshot_ids[snapshot_id] = path
 
         known_db_ids = _list_state_db_sessions(sessions_dir)
         primary: list[Path] = list(jsonl_ids.values())
@@ -373,11 +361,11 @@ class HermesParser(BaseParser):
 
 def _session_id_from_path(path: Path) -> str | None:
     """Extract the canonical session_id from a jsonl or snapshot path."""
-    if path.suffix == ".jsonl" and _is_hermes_session_id(path.stem):
+    if path.suffix == ".jsonl" and path.stem not in _HERMES_NON_SESSION_STEMS:
         return path.stem
     if path.suffix == ".json" and path.stem.startswith(_SNAPSHOT_PREFIX):
         candidate = path.stem[len(_SNAPSHOT_PREFIX) :]
-        if _is_hermes_session_id(candidate):
+        if candidate not in _HERMES_NON_SESSION_STEMS:
             return candidate
     return None
 

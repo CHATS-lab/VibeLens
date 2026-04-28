@@ -55,10 +55,28 @@ EXTRACTED_SUBDIR = "_extracted"
 # Append-only log of all uploads under the upload directory
 METADATA_FILENAME = "metadata.jsonl"
 
-# Map raw exceptions to user-readable summaries while preserving the raw
-# string in `details`. Order matters — first match wins. String key matches
-# the exception class name (avoids importing every concrete error class).
-_FRIENDLY_ERRORS: list[tuple[type[Exception] | str, str]] = [
+# First-match-wins rules dispatched by substring of ``str(exc)``. Used for
+# parser-specific failure modes that arrive wrapped in generic exception
+# types (e.g. Pydantic ValidationError carrying ``duplicate step IDs`` in
+# its message body). Tried BEFORE the type-based table so a precise message
+# wins over the generic class-based fallback.
+_RULES_BY_MESSAGE_SUBSTRING: list[tuple[str, str]] = [
+    (
+        "duplicate step IDs",
+        "Parser bug: the agent's session has duplicate step IDs. Please report "
+        "the agent type — this needs a parser fix to be uploadable.",
+    ),
+    (
+        "exceeds size limit",
+        "Zip exceeds the upload size limit. Try splitting it or contact the admin "
+        "to raise the limit.",
+    ),
+]
+
+# First-match-wins rules dispatched by exception type. Either the concrete
+# class (when we'd otherwise have to import a niche library type) or the
+# class name as a string (avoids importing every concrete error class).
+_RULES_BY_EXCEPTION_TYPE: list[tuple[type[Exception] | str, str]] = [
     (
         json.JSONDecodeError,
         "The session file isn't valid JSON. It may have been truncated mid-write.",
@@ -79,6 +97,16 @@ _FRIENDLY_ERRORS: list[tuple[type[Exception] | str, str]] = [
         "PermissionError",
         "Couldn't read the file (permission denied). Check the agent's data directory permissions.",
     ),
+    (
+        "ValidationError",
+        "The parser produced data that doesn't match the expected schema. "
+        "This is a parser bug — please report it with the agent type and any "
+        "non-sensitive details below.",
+    ),
+    (
+        "HTTPException",
+        "Upload rejected by the server. See details below for the specific reason.",
+    ),
 ]
 
 
@@ -87,15 +115,25 @@ def to_friendly_error(exc: Exception) -> dict:
 
     ``summary`` is a one-line user-readable message; ``details`` is the
     raw ``str(exc)`` for the optional collapsible "raw error" panel.
-    Falls back to a generic summary when nothing matches.
+
+    Lookup order: (1) substring matches against ``str(exc)`` for parser-
+    specific failure modes that surface inside generic exception types;
+    (2) class-based mappings; (3) generic fallback that names the exception
+    class so the user at least knows the failure category.
     """
-    raw = str(exc) or exc.__class__.__name__
-    for kind, msg in _FRIENDLY_ERRORS:
-        if isinstance(kind, type) and isinstance(exc, kind):
-            return {"summary": msg, "details": raw}
-        if isinstance(kind, str) and exc.__class__.__name__ == kind:
-            return {"summary": msg, "details": raw}
-    return {"summary": "Couldn't process this file. See details below.", "details": raw}
+    message = str(exc) or exc.__class__.__name__
+    for substring, summary in _RULES_BY_MESSAGE_SUBSTRING:
+        if substring in message:
+            return {"summary": summary, "details": message}
+    for matcher, summary in _RULES_BY_EXCEPTION_TYPE:
+        if isinstance(matcher, type) and isinstance(exc, matcher):
+            return {"summary": summary, "details": message}
+        if isinstance(matcher, str) and exc.__class__.__name__ == matcher:
+            return {"summary": summary, "details": message}
+    return {
+        "summary": f"Unexpected {exc.__class__.__name__}. See details below.",
+        "details": message,
+    }
 
 
 @dataclass
@@ -217,17 +255,20 @@ def extract_and_discover(zip_path: Path, agent_type: str) -> list[Path]:
         List of discovered session file paths.
     """
     settings = get_settings()
+    parser = get_parser(agent_type)
+    allowed_extensions = parser.ALLOWED_EXTENSIONS
     validate_zip(
         zip_path=zip_path,
         max_zip_bytes=settings.upload.max_zip_bytes,
         max_extracted_bytes=settings.upload.max_extracted_bytes,
         max_file_count=settings.upload.max_file_count,
+        allowed_extensions=allowed_extensions,
     )
 
     extracted_dir = zip_path.parent / EXTRACTED_SUBDIR
-    extract_zip(zip_path=zip_path, dest_dir=extracted_dir)
+    extract_zip(zip_path=zip_path, dest_dir=extracted_dir, allowed_extensions=allowed_extensions)
 
-    return get_parser(agent_type).discover_session_files(extracted_dir)
+    return parser.discover_session_files(extracted_dir)
 
 
 def cleanup_extraction(extraction_dir: Path) -> None:

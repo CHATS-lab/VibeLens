@@ -119,11 +119,16 @@ def _seed_index(sessions_dir: Path, session_id: str, user_name: str = "Xu Li") -
 
 
 def test_session_id_from_path_accepts_jsonl_and_snapshot() -> None:
-    """Session IDs are extracted from both filename shapes."""
+    """Session IDs are extracted from both filename shapes; the index file
+    ``sessions.json`` is the only one explicitly rejected. Filenames are
+    not validated against an over-fit regex — different Hermes builds or
+    custom session ids should still parse."""
     assert _session_id_from_path(Path(f"/x/{_JSONL_SESSION_ID}.jsonl")) == _JSONL_SESSION_ID
     assert _session_id_from_path(Path(f"/x/session_{_JSONL_SESSION_ID}.json")) == _JSONL_SESSION_ID
     assert _session_id_from_path(Path("/x/sessions.json")) is None
-    assert _session_id_from_path(Path("/x/random.jsonl")) is None
+    # Arbitrary jsonl filenames are treated as session candidates — parser
+    # rejects them downstream if the content can't be decoded.
+    assert _session_id_from_path(Path("/x/random.jsonl")) == "random"
 
 
 def test_derive_project_path_by_platform_and_chat() -> None:

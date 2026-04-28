@@ -11,9 +11,7 @@ def _seed_metadata(upload_dir, *, upload_id, sha, agent_type, result_payload, to
     upload_dir.mkdir(parents=True, exist_ok=True)
     (upload_dir / upload_id).mkdir(parents=True, exist_ok=True)
     result_rel = f"{upload_id}/result.json"
-    (upload_dir / result_rel).write_text(
-        json.dumps(result_payload), encoding="utf-8"
-    )
+    (upload_dir / result_rel).write_text(json.dumps(result_payload), encoding="utf-8")
     # Default to a successful upload so dedup considers the entry cacheable.
     # Tests can override ``totals`` to simulate failure cases.
     seeded_totals = totals if totals is not None else {"sessions_parsed": 5, "errors": 0}

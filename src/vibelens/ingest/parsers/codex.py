@@ -38,7 +38,7 @@ import sqlite3
 from collections import OrderedDict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import NamedTuple
+from typing import ClassVar, NamedTuple
 from uuid import uuid4
 
 import orjson
@@ -84,7 +84,6 @@ RELEVANT_ROLES = {"user", "assistant"}
 MAX_TOOL_RESULT_CACHE = 500
 
 # Matches the metadata prefix Codex prepends to tool outputs:
-#
 #   Exit code: 0
 #   Wall time: 1.23s
 #   Output:
@@ -172,6 +171,12 @@ class CodexParser(BaseParser):
 
     AGENT_TYPE = AgentType.CODEX
     LOCAL_DATA_DIR: Path | None = Path.home() / ".codex"
+    # state_5.sqlite sidecar provides id resolution for ambiguous filenames.
+    ALLOWED_EXTENSIONS: ClassVar[frozenset[str]] = BaseParser.ALLOWED_EXTENSIONS | {
+        ".sqlite",
+        ".sqlite-wal",
+        ".sqlite-shm",
+    }
     # Filenames embed the canonical UUID alongside a timestamp prefix; the
     # real session_id comes from ``session_meta.id`` (or ``state_5.sqlite``).
     # ``_namespace_session_id`` returns that real id so default
@@ -648,6 +653,10 @@ def _handle_response_item(
         # custom_tool_call uses "input" for arguments, function_call uses "arguments"
         raw_args = payload.get("arguments", "") or payload.get("input", "")
         result = tool_outputs.get(call_id, {})
+        # Codex has no dedicated skill-activation tool. Skill content is
+        # server-injected (via ``$skill-name`` user marker); subsequent file
+        # reads of SKILL.md are working-memory access, not activation events,
+        # so we leave ``is_skill`` unset.
         state.pending_tools.append(
             ToolCall(
                 tool_call_id=call_id,
