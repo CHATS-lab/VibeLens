@@ -16,6 +16,7 @@ import { InstallTargetDialog } from "../install-target-dialog";
 import { useDemoGuard } from "../../../hooks/use-demo-guard";
 import { InstallLocallyDialog } from "../../install-locally-dialog";
 import { Tooltip } from "../../ui/tooltip";
+import { errorMessage } from "../../../utils";
 import {
   CARD_VIEW_MAX_TAGS,
   ITEM_TYPE_COLORS,
@@ -134,7 +135,7 @@ export function CatalogInstallButton({
         onStateChange(item.extension_id, toAdd.length > 0, null);
         setShowTargetDialog(false);
       } catch (err) {
-        onStateChange(item.extension_id, false, err instanceof Error ? err.message : String(err));
+        onStateChange(item.extension_id, false, errorMessage(err));
       } finally {
         setInstalling(false);
       }
@@ -234,7 +235,7 @@ export function ExtensionCard({
         onInstalled(item.extension_id);
         setShowTargetDialog(false);
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
+        setError(errorMessage(err));
       } finally {
         setInstalling(false);
       }

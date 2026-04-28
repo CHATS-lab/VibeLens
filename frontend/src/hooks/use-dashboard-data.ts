@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAppContext } from "../app";
 import { dashboardClient } from "../api/dashboard";
 import type { DashboardStats, ToolUsageStat } from "../types";
+import { errorMessage } from "../utils";
 
 export interface DashboardCache {
   stats: DashboardStats;
@@ -60,7 +61,7 @@ export function useDashboardData({
     api
       .stats()
       .then(setStats)
-      .catch((err) => setError(String(err)))
+      .catch((err) => setError(errorMessage(err)))
       .finally(() => setLoading(false));
     api.toolUsage().then(setToolUsage).catch(() => {});
   }, [cache, stats, api, selectedProject, selectedAgent]);
@@ -76,7 +77,7 @@ export function useDashboardData({
         setStats(dashData);
         setToolUsage(toolData);
       })
-      .catch((err) => setError(String(err)))
+      .catch((err) => setError(errorMessage(err)))
       .finally(() => setLoading(false));
   }, [api, selectedProject, selectedAgent]);
 
@@ -92,7 +93,7 @@ export function useDashboardData({
       setStats(dashData);
       setToolUsage(toolData);
     } catch (err) {
-      setError(String(err));
+      setError(errorMessage(err));
     } finally {
       setRefreshing(false);
     }

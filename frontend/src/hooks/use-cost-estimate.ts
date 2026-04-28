@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import type { CostEstimate } from "../types";
+import { errorMessage } from "../utils";
 
 type FetchWithToken = (url: string, init?: RequestInit) => Promise<Response>;
 
@@ -41,7 +42,7 @@ export function useCostEstimate(
         setEstimate(await res.json());
         return true;
       } catch (err) {
-        onError(err instanceof Error ? err.message : String(err));
+        onError(errorMessage(err));
         return false;
       } finally {
         setEstimating(false);

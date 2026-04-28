@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useExtensionsClient } from "../../../../app";
+import { errorMessage } from "../../../../utils";
 
 interface CollectionExportDialogProps {
   collectionName: string;
@@ -18,7 +19,7 @@ export function CollectionExportDialog({
     client.collections
       .export(collectionName)
       .then((data) => setPayload(JSON.stringify(data, null, 2)))
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)));
+      .catch((err) => setError(errorMessage(err)));
   }, [client, collectionName]);
 
   function handleDownload() {

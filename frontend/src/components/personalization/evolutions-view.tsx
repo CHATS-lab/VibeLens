@@ -24,6 +24,7 @@ import { useDemoGuard } from "../../hooks/use-demo-guard";
 import { ConfidenceBar, SectionHeader } from "./result-shared";
 import { StepRefList } from "./patterns-view";
 import { applyEdits } from "./edit-utils";
+import { errorMessage } from "../../utils";
 import { EvolutionDiffView } from "./evolution-diff";
 import { PreviewDialog } from "./preview-dialog";
 
@@ -97,7 +98,7 @@ function EvolutionCard({
       setOriginalContent(data.content);
       return data.content;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = errorMessage(err);
       setFetchError(msg.includes("not found") ? "Skill not found in central store" : "Failed to fetch skill content");
       return null;
     } finally {

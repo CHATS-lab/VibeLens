@@ -22,6 +22,7 @@ import {
   type PersonalizationTab,
 } from "./personalization-view";
 import { MODE_API_BASE, PersonalizationHistory } from "./personalization-history";
+import { errorMessage } from "../../utils";
 
 // Collections is feature-gated off until the UX is fleshed out. Backend, API
 // client, tab component, detail view, and dialogs are all in place — flip
@@ -282,7 +283,7 @@ export function PersonalizationPanel({ checkedIds, selectedProjectCount, resetKe
         setModeField(mode, "jobId", data.job_id);
       }
     } catch (err) {
-      setModeField(mode, "error", err instanceof Error ? err.message : String(err));
+      setModeField(mode, "error", errorMessage(err));
       setModeField(mode, "loading", false);
     }
   }, [checkedIds, clearEstimate, fetchWithToken, setModeField]);
@@ -313,7 +314,7 @@ export function PersonalizationPanel({ checkedIds, selectedProjectCount, resetKe
       }
       proceedToEstimate("recommendation", allIds);
     } catch (err) {
-      setModeField("recommendation", "error", err instanceof Error ? err.message : String(err));
+      setModeField("recommendation", "error", errorMessage(err));
     }
   }, [fetchAllSessionIds, proceedToEstimate, setModeField]);
 
@@ -726,7 +727,7 @@ function SkillSelectionDialog({
         setSelected(new Set());
       })
       .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : String(err));
+        setError(errorMessage(err));
       })
       .finally(() => setLoading(false));
   }, [client]);

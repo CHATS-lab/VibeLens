@@ -20,6 +20,7 @@ import { SessionList, type ViewMode } from "./components/session/session-list";
 import { LoadingSpinner } from "./components/ui/loading-spinner";
 import { UploadDialog } from "./components/upload/upload-dialog";
 import { SettingsDialog } from "./components/settings-dialog";
+import { errorMessage } from "./utils";
 
 // Heavy route-level views. Code-split so the initial bundle only loads what
 // the user lands on (session list + browse). Analysis panels pull in markdown,
@@ -334,7 +335,7 @@ export function App() {
           total: checkedIds.size,
           donated: 0,
           donation_id: null,
-          errors: [{ session_id: "", error: err instanceof Error ? err.message : String(err) }],
+          errors: [{ session_id: "", error: errorMessage(err) }],
         },
       });
     }

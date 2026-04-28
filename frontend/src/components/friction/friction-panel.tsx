@@ -19,7 +19,7 @@ import type {
   LLMStatus,
 } from "../../types";
 import type { PersonalizationTab } from "../personalization/personalization-view";
-import { formatCost } from "../../utils";
+import { errorMessage, formatCost } from "../../utils";
 import { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH } from "../../styles";
 import { SHOW_ANALYSIS_DETAIL_SECTIONS } from "../../constants";
 import { analysisClient } from "../../api/analysis";
@@ -133,7 +133,7 @@ export function FrictionPanel({ checkedIds, selectedProjectCount, activeJobId, o
         onJobIdChange(data.job_id);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errorMessage(err));
       setLoading(false);
     }
   }, [api, checkedIds, clearEstimate, onJobIdChange]);

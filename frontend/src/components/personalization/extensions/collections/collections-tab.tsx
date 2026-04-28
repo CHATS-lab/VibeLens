@@ -3,6 +3,7 @@ import { Layers, Loader2, Plus } from "lucide-react";
 import { useExtensionsClient } from "../../../../app";
 import type { Collection } from "../../../../api/extensions";
 import { CollectionDetailView } from "./collection-detail-view";
+import { errorMessage } from "../../../../utils";
 
 interface CollectionsTabProps {
   refreshTrigger?: number;
@@ -37,7 +38,7 @@ export function CollectionsTab({
         if (!cancelled) setCollections(res.items);
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) setError(errorMessage(err));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -61,7 +62,7 @@ export function CollectionsTab({
       setNewDescription("");
       setCreating(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errorMessage(err));
     }
   }
 

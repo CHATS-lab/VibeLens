@@ -24,6 +24,7 @@ import { useClickOutside } from "../../../hooks/use-click-outside";
 import { useResetOnKey } from "../../../hooks/use-reset-on-key";
 import { TOGGLE_ACTIVE, TOGGLE_BUTTON_BASE, TOGGLE_CONTAINER, TOGGLE_INACTIVE } from "../../../styles";
 import type { ExtensionItemSummary, ExtensionSyncTarget } from "../../../types";
+import { errorMessage } from "../../../utils";
 import { EmptyState } from "../../ui/empty-state";
 import { ErrorBanner } from "../../ui/error-banner";
 import { LoadingState } from "../../ui/loading-state";
@@ -186,7 +187,7 @@ export function ExtensionExploreTab({
       setItems(data.items);
       setTotal(data.total);
     } catch (err) {
-      setError(String(err));
+      setError(errorMessage(err));
     } finally {
       setLoading(false);
     }

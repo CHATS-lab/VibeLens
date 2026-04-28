@@ -13,6 +13,7 @@ import type {
   RankedRecommendationItem,
 } from "../../types";
 import { useExtensionsClient } from "../../app";
+import { errorMessage } from "../../utils";
 import { BulletText } from "../ui/bullet-text";
 import { CollapsibleText } from "../ui/collapsible-text";
 import { Tooltip } from "../ui/tooltip";
@@ -96,7 +97,7 @@ function RecommendationCard({
       const item = await client.catalog.getItem(rec.item.extension_id);
       onOpenDetail(item);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errorMessage(err));
     } finally {
       setLoading(false);
     }

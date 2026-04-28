@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useExtensionsClient } from "../../../../app";
 import type { Collection, CollectionItemRef } from "../../../../api/extensions";
+import { errorMessage } from "../../../../utils";
 
 interface AddToCollectionDialogProps {
   itemRefs: CollectionItemRef[];
@@ -23,7 +24,7 @@ export function AddToCollectionDialog({
     client.collections
       .list()
       .then((res) => setCollections(res.items))
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)));
+      .catch((err) => setError(errorMessage(err)));
   }, [client]);
 
   async function handleAdd() {
@@ -45,7 +46,7 @@ export function AddToCollectionDialog({
       onAdded();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errorMessage(err));
     } finally {
       setSubmitting(false);
     }

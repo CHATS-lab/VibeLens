@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { TOGGLE_ACTIVE, TOGGLE_BUTTON_BASE, TOGGLE_CONTAINER, TOGGLE_INACTIVE } from "../../../styles";
 import { CopyButton } from "../../ui/copy-button";
 import { MarkdownRenderer } from "../../ui/markdown-renderer";
+import { errorMessage } from "../../../utils";
 
 export interface TocEntry {
   level: number;
@@ -123,7 +124,7 @@ export function ExtensionDetailContent({
     try {
       await onSave(draft);
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : String(err));
+      setSaveError(errorMessage(err));
     } finally {
       setSaving(false);
     }

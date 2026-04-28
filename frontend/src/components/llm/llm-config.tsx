@@ -2,6 +2,7 @@ import { Check, Loader2, Pencil } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CliBackendModels, LiteLLMPreset, LLMStatus } from "../../types";
 import { llmClient } from "../../api/llm";
+import { errorMessage } from "../../utils";
 import {
   ACCENT_STYLES,
   BACKEND_OPTIONS,
@@ -120,7 +121,7 @@ export function LLMConfigForm({
       await api.configure(payload);
       onConfigured();
     } catch (err) {
-      setConfigError(err instanceof Error ? err.message : String(err));
+      setConfigError(errorMessage(err));
     } finally {
       setSubmitting(false);
     }
