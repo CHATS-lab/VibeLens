@@ -53,7 +53,12 @@ _ALL_PARSERS: list[type[BaseParser]] = [*LOCAL_PARSER_CLASSES, DataclawParser]
 # Bump this when the parser changes in ways that affect cached data
 # (e.g. timestamp extraction, duration computation) or when the bundled
 # example session_id changes. Forces re-parse of demo examples on next startup.
-_CACHE_VERSION = 2
+# v3 (2026-04-28): rebuild so the example trajectory carries ``created_at``
+# (via ``Trajectory.backfill_created_updated_at``). v2 caches stored
+# ``created_at: null`` which made the dashboard skip the demo session in
+# This Year / This Month / This Week and the Usage Over Time chart, even
+# though the top-line totals were computed correctly.
+_CACHE_VERSION = 3
 _CACHE_VERSION_FILE = ".cache_version"
 
 
