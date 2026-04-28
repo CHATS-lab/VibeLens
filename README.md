@@ -177,7 +177,7 @@ Full install guide and troubleshooting: [docs/INSTALL.md](docs/INSTALL.md).
 | **CodeBuddy** | JSONL | `~/.codebuddy/projects/` |
 | **Claude.ai (web)** | exported JSON | drag-and-drop upload |
 
-VibeLens auto-detects the agent format. Just point it at your session directory and it works.
+VibeLens auto-detects the agent format.
 
 ## Screenshots
 
@@ -261,6 +261,8 @@ To donate, upload your data, select the sessions you want to share, and click th
 ## Contributing
 
 Contributions are welcome! Please ensure code passes `ruff check` and `pytest` before submitting.
+
+Northeastern University researchers are recruiting active AI coding agent users for a paid study (~20 min, up to $100). See [docs/HUMAN_STUDY.md](docs/HUMAN_STUDY.md) for details.
 
 ## License
 
