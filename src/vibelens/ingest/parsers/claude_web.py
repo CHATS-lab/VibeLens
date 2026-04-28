@@ -107,10 +107,7 @@ class ClaudeWebParser(BaseParser):
         if conversation.get("summary"):
             extra["summary"] = conversation["summary"]
         return Trajectory(
-            session_id=session_id,
-            agent=self.build_agent(),
-            steps=steps,
-            extra=extra or None,
+            session_id=session_id, agent=self.build_agent(), steps=steps, extra=extra or None
         )
 
 

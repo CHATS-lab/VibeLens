@@ -58,7 +58,7 @@ Uploads land on disk and become first-class stores resolved per session-token. D
 +-- {upload_id}/
     +-- {upload_id}.zip                   <- original zip (kept for re-donation)
     +-- result.json                       <- UploadResult, served on dedup hit
-    +-- _index.jsonl                      <- per-upload session index
+    +-- index.jsonl                      <- per-upload session index
     +-- {session_id}.json                 <- parsed trajectory
 
 ~/.vibelens/donations/                    <- settings.donation.dir (demo only)

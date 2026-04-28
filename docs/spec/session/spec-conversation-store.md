@@ -64,13 +64,13 @@ Used by demo dataset hosting and by every upload.
 ```
 {root}/
 ├── {session_id}.json       full trajectory group (JSON array)
-├── _index.jsonl            append-only summary index, one line per session
+├── index.jsonl            append-only summary index, one line per session
 └── uploads/{upload_id}/
     ├── {session_id}.json
-    └── _index.jsonl
+    └── index.jsonl
 ```
 
-`save(trajectories)` extracts the main trajectory's `to_summary()`, writes the full JSON file, appends a line to `_index.jsonl`, and (if the index is already in memory) updates the cache so the new session is visible without a rebuild. `_index.jsonl` appends use the shared `locked_jsonl_append` helper so concurrent uploads don't interleave bytes.
+`save(trajectories)` extracts the main trajectory's `to_summary()`, writes the full JSON file, appends a line to `index.jsonl`, and (if the index is already in memory) updates the cache so the new session is visible without a rebuild. `index.jsonl` appends use the shared `locked_jsonl_append` helper so concurrent uploads don't interleave bytes.
 
 Loads go through `ParsedTrajectoryParser`, which deserialises the on-disk JSON back to ATIF `Trajectory` objects.
 
@@ -88,7 +88,7 @@ Session ID convention: Claude sessions keep the agent's UUID; sessions from othe
 |---|---|---|
 | Writable | Yes (`save`) | No |
 | Data sources | one root + per-upload subdirs | every registered local parser's data dir |
-| Discovery | `_index.jsonl` walk | parser-driven file scanning |
+| Discovery | `index.jsonl` walk | parser-driven file scanning |
 | Persistent cache | none (the on-disk JSON *is* the cache) | `~/.vibelens/session_index.json` |
 | Concurrency | `locked_jsonl_append` for index writes | `_build_lock` around index rebuilds |
 
@@ -112,5 +112,5 @@ On server restart, `reconstruct_upload_registry()` replays `~/.vibelens/uploads/
 
 ## Out of scope
 
-- Cross-process locking. The store assumes single-process VibeLens; if that ever changes, `_index.jsonl` writes still serialise via `flock`, but the in-memory caches go stale.
+- Cross-process locking. The store assumes single-process VibeLens; if that ever changes, `index.jsonl` writes still serialise via `flock`, but the in-memory caches go stale.
 - Remote stores (S3, NFS, etc.). Both implementations assume the local filesystem.
