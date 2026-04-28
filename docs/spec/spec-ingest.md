@@ -1,124 +1,84 @@
-# Ingest Pipeline
+# Ingest
 
-Parser framework that converts raw agent conversation files into normalized ATIF trajectories.
+The layer that turns a coding agent's native session files into ATIF `Trajectory` objects everything else can consume.
 
-## Purpose
+## Motivation
 
-Each coding agent CLI stores session data in its own format. The ingest layer provides a parser per format, a format auto-detection system, and shared utilities for tool normalization, diagnostics, and metrics extraction. All parsers produce `list[Trajectory]` output that the rest of the platform consumes uniformly.
+Each agent CLI invents its own log format. Claude writes JSONL with merge-by-message-id semantics; Codex writes per-day rollouts indexed by a SQLite file; Gemini writes JSON with `parts`-based content; Cursor, Hermes, Kilo, OpenCode use SQLite as the source of truth; Kiro mixes JSONL + JSON snapshots; OpenClaw uses event-based JSONL; CodeBuddy's events share an `id` across writes. Versions change.
+
+Without a translation layer, every downstream service — search, dashboard, friction analysis, skill analysis, donation packaging — would need per-agent code paths and would break on every upstream format bump. Ingest is that translation layer. Per-agent parsers in, ATIF out.
 
 ## Architecture
 
 ```
-Raw Agent Files
-      |
-      v
-+------------------+
-| discovery.py     |  Format auto-detection (confidence scoring)
-+--------+---------+
-         |
-         v
-+------------------+     +------------------+
-| Parser per format|---->| BaseParser ABC   |  Shared helpers: truncation,
-|  claude_code.py  |     | (parsers/base.py)|  metadata, tool enrichment
-|  codex.py        |     +------------------+
-|  gemini.py       |
-|  dataclaw.py     |
-|  openclaw.py     |
-|  claude_code_web |
-|  parsed.py       |
-+--------+---------+
-         |
-         v
-+------------------+
-| list[Trajectory] |  Normalized ATIF v1.6 output
-+------------------+
+~/.<agent>/...                     <- the user's local data directory
+       |
+       v
++--------------------+
+| BaseParser ABC     |   four-stage lifecycle: discover → index → parse → build
++--------------------+
+       |
+       v
+list[Trajectory]                   <- ATIF v1.6, validated by Pydantic
 ```
 
-## Key Files
+Each parser is a single class extending `BaseParser`, registered against an `AgentType` value. `get_parser(agent_type)` is the only entry point the rest of the codebase needs.
+
+## Key files
 
 | File | Role |
-|------|------|
-| `ingest/parsers/base.py` | `BaseParser` ABC with shared helpers |
-| `ingest/parsers/claude_code.py` | Claude Code JSONL parser (sub-agent cascade, tool result pairing) |
-| `ingest/parsers/claude_code_web.py` | Claude Code web export parser |
-| `ingest/parsers/codex.py` | Codex CLI parser (OpenAI Responses API format) |
-| `ingest/parsers/gemini.py` | Gemini CLI parser (parts-based content) |
-| `ingest/parsers/dataclaw.py` | Dataclaw HuggingFace JSONL parser |
-| `ingest/parsers/openclaw.py` | OpenClaw event-based JSONL parser |
-| `ingest/parsers/parsed.py` | `ParsedTrajectoryParser` for pre-parsed JSON |
-| `ingest/discovery.py` | Format fingerprinting and auto-detection |
-| `ingest/diagnostics.py` | Parse quality tracking per session |
-| `ingest/fast_metrics.py` | Line-by-line JSONL scanner for aggregate metrics |
-| `ingest/index_builder.py` | Skeleton trajectory builder for LocalStore |
-| `ingest/index_cache.py` | Persistent JSON cache for fast startup |
+|---|---|
+| `ingest/parsers/base.py` | `BaseParser` ABC + shared lifecycle hooks |
+| `ingest/parsers/__init__.py` | `LOCAL_PARSER_CLASSES`, `ALL_PARSER_CLASSES`, `get_parser` |
+| `ingest/parsers/<agent>.py` | One file per parser |
+| `ingest/parsers/helpers.py` | Cross-parser utilities (JSONL iteration, content extraction, metric finalisation) |
+| `ingest/diagnostics.py` | Per-session parse-quality counters |
+| `ingest/index_builder.py` | Builds the listing-time skeleton index across all local parsers |
+| `ingest/index_cache.py` | Persistent JSON cache for the skeleton index |
+| `ingest/anonymize/` | `RuleAnonymizer` (paths, credentials, PII) — see `spec-anonymize.md` |
 
-## BaseParser ABC
+The session-loading layer (`storage/trajectory/local.py`) drives ingest at runtime; see [`session/spec-session-loading.md`](session/spec-session-loading.md) for the warm/cold path mechanics.
 
-All parsers extend `BaseParser`, which provides:
+## Parser inventory
 
-- `parse_file(path)` -- Abstract method each parser implements
-- `discover_session_files(data_dir)` -- Find parseable files in an agent data directory
-- `parse_session_index(data_dir)` -- Fast index parsing (optional, for Claude Code and Codex)
-- `get_session_files(session_file)` -- All files belonging to a session (base: single file; Claude Code: main + sub-agents)
-- `truncate_first_message(text)` -- Cap at 200 chars
-- `find_first_user_text(messages)` -- Extract first meaningful user prompt
-- `iter_jsonl_safe(path, diagnostics)` -- Resilient JSONL parsing, skips malformed lines
+Two registry lists in `ingest/parsers/__init__.py` define what's available:
 
-## Parser Implementations
+- `LOCAL_PARSER_CLASSES` — parsers whose agent stores session data on the user's machine. The session-loading layer scans these directories on cold start.
+- `ALL_PARSER_CLASSES` — adds the external-export and internal formats (Claude Web, Dataclaw, the pre-parsed JSON loader). Used for upload, donation, and demo-mode pipelines.
 
-| Parser | Agent | Source Format | Key Features |
-|--------|-------|---------------|--------------|
-| `ClaudeCodeParser` | Claude Code | JSONL per session | History index parsing, sub-agent discovery, tool result pairing, content block extraction |
-| `ClaudeCodeWebParser` | Claude Code (web) | JSON export | Web UI conversation export |
-| `CodexParser` | Codex CLI | JSONL rollout files | OpenAI Responses API reconstruction, function call extraction |
-| `GeminiParser` | Gemini CLI | JSON per session | Parts-based content, project resolution via `.project_root` |
-| `DataclawParser` | Dataclaw | HuggingFace JSONL | Multi-session JSONL, format auto-detection |
-| `OpenClawParser` | OpenClaw | Event-based JSONL | `type: "message"` wrapping, session index support |
-| `ParsedTrajectoryParser` | Pre-parsed | JSON array | Loads already-parsed trajectory groups (DiskStore) |
+For per-agent format details and the capability matrix, see [`docs/spec/parsers/README.md`](parsers/README.md). For the full set of conventions a new parser must follow, see [`docs/spec/parsers/add-parser-skill.md`](parsers/add-parser-skill.md).
 
-## Agent Data Directories (macOS)
+## What `BaseParser` provides
 
-| Agent | Directory | Format |
-|-------|-----------|--------|
-| Claude Code | `~/.claude/` | `history.jsonl` index + `projects/{path}/{uuid}.jsonl` sessions |
-| Codex | `~/.codex/sessions/YYYY/MM/DD/` | `rollout-*.jsonl` per session |
-| Gemini | `~/.gemini/tmp/{sha256}/chats/` | `session-*.json` per session |
-| OpenClaw | `~/.openclaw/agents/main/sessions/` | `{uuid}.jsonl` per session |
-| Dataclaw | HuggingFace exports | `conversations.jsonl` (one session per line) |
+The ABC has four roles:
 
-## Format Auto-Detection
+1. **Discovery** — `discover_session_files(data_dir)` returns the parseable files in an agent data directory. Most parsers walk the agent's known layout; SQLite-backed parsers expose the `.db` plus its `-wal` / `-shm` sidecars via `ALLOWED_EXTENSIONS` so the upload pipeline preserves them in zips.
+2. **Fast indexing** — `parse_session_index(data_dir)` (optional). Parsers with a native session index (Claude's `history.jsonl`, Codex's `state_5.sqlite`, OpenClaw's `sessions.json`) implement this; the listing layer uses it to skip orphan walks.
+3. **Skeleton building** — `parse_skeleton_for_file(path)`. Default: full-parse and drop steps (always correct, slow). Override when the format permits a head-only scan (Claude does this for the JSONL listing path).
+4. **Full parsing** — `parse_file(path) -> list[Trajectory]`. Each parser's main entry. Returns one or more trajectories per file (multi-session files are normal for Dataclaw, Claude Web, and parsed-JSON loaders).
 
-`discovery.py` probes the first 10 lines (up to 8KB) of a file to determine its format. Returns `list[FormatMatch]` sorted by confidence (0.0-1.0).
-
-Detection heuristics use structural field presence (e.g., `"type": "user"` for Claude Code, `"contents"` + `"parts"` for Gemini).
+`BaseParser` also enforces robustness conventions every parser opts into: `iter_jsonl_safe` skips malformed lines without raising, `find_first_user_text` and `truncate_first_message` produce the listing preview, and per-step Pydantic validation runs before a `Trajectory` is returned.
 
 ## Diagnostics
 
-`DiagnosticsCollector` tracks parse quality per session:
+`DiagnosticsCollector` rides along with each parse and records:
 
-| Metric | Description |
-|--------|-------------|
-| `skipped_lines` | Malformed JSONL lines skipped |
-| `orphaned_tool_calls` | `tool_use` without matching `tool_result` |
-| `orphaned_tool_results` | `tool_result` without matching `tool_use` |
-| `completeness_score` | 0.0-1.0 overall parse quality |
+- malformed JSONL lines skipped,
+- orphaned `tool_call` / `tool_result` pairs,
+- a per-session `completeness_score` from those counts.
 
-## Fast Metrics Scanner
+Diagnostics are non-fatal — a session always completes; the score is what surfaces parser drift to the user.
 
-`fast_metrics.py` extracts aggregate metrics from raw JSONL files without full Pydantic parsing. Used by `LocalStore._enrich_skeleton_metrics()` for fast startup.
+## Index builder
 
-Scans line-by-line to accumulate: input/output/cache tokens, tool call count, model name, message count, and timestamps (for duration). Deduplicates by message ID to handle streaming chunks.
+`build_session_index(file_index, data_dirs)` is what session loading calls on a cold rebuild. For each local parser it tries the fast index first, falls back to walking orphans, and only resorts to full-parse fallback when neither yields a skeleton. Skeleton work runs in a small `ThreadPoolExecutor` because per-file time is dominated by I/O.
 
-## Index Builder
+The result is reconciled (de-duplicated by `session_id`, validated against the existing in-memory file index) and continuation refs (`prev_/next_trajectory_ref`) are filled in by walking the skeletons. Final metrics are then enriched per file via `parser.parse_file` so `total_steps == len(traj.steps)` — the contract the dashboard relies on.
 
-`index_builder.py` builds skeleton trajectories (metadata only, no steps) from all agent parsers. Called by `LocalStore._full_rebuild()`.
+## Index cache
 
-Pipeline: collect skeletons (fast index or full parse) -> deduplicate and validate -> enrich continuation chain refs.
+`~/.vibelens/session_index.json` carries the skeleton index across runs. See [`session/spec-session-loading.md`](session/spec-session-loading.md) for the cache contract (`CACHE_VERSION`, `[mtime_ns, size]` keys, dropped-paths set, atomic write).
 
-## Index Cache
+## Why no auto-detection
 
-`index_cache.py` provides persistent JSON cache at `~/.vibelens/index_cache.json` for fast startup. Tracks file mtimes to detect staleness:
-
-- All mtimes match: cache hit (instant restore)
-- < 30% files changed: incremental update (re-parse stale only)
-- >= 30% files changed: full rebuild
+Earlier designs tried to fingerprint a file's format from its content. That approach is pragmatic only when the user *doesn't know* which agent produced a file — but in VibeLens the agent is always known: the upload wizard asks for it, demo mode is per-store, self-mode iterates by registered local parsers. So format is supplied, not inferred, and the per-parser format probing logic lives inside each parser's discovery path rather than in a shared classifier.

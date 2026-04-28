@@ -1,199 +1,161 @@
-# Skill Personalization
+# Personalization
 
-LLM-powered analysis that turns trajectory evidence into skill recommendations. Three modes: retrieve existing skills, create new ones, and evolve installed skills.
+LLM-powered analyses that turn agent-session evidence into installable extensions. Three top-level modes — recommend existing extensions, create new skills, evolve installed skills — each with its own service, store, and API surface.
 
-## Purpose
+## Motivation
 
-Skill personalization detects recurring workflow patterns in agent sessions and takes three actions:
+VibeLens already shows the user *what* they did with their agent. Personalization is the layer that asks *what would have helped them do it better*: from sessions, infer recurring workflows, then either point at existing extensions that match those workflows, generate new skill definitions, or amend the skills the user has already installed.
 
-1. **Retrieve** -- recommend existing skills from a catalog that match the user's workflows.
-2. **Create** -- generate new SKILL.md definitions when no existing skill covers a pattern.
-3. **Evolve** -- improve installed skills when the user's behavior diverges from skill instructions.
+Each mode has different cost, latency, and UX expectations, so they're built as three sibling services rather than one polymorphic pipeline:
 
-All analysis runs asynchronously as background tasks. Results are persisted and browsable via a history sidebar.
+- **Recommendation** is a retrieval problem against a large catalogue. The fast path uses the same field-weighted BM25 engine that powers extension browse (see [`spec-extension-search.md`](../extension/spec-extension-search.md)); the LLM is used only to rank a small candidate set and produce rationale.
+- **Creation** is a generative problem. Cost and user trust matter, so it's a two-step pipeline (cheap proposals → user confirms → deep generation per accepted proposal).
+- **Evolution** edits content the user has already installed. The model has to know *which* skill is being edited and ground every edit in a real conflict observed in a session, otherwise it'll cheerfully drift the skill away from what the user actually does.
+
+All three share the same trajectory-compression layer (`services/context`), the same job-tracker (`services/job_tracker`), and the same persistence shape (per-analysis JSON file + JSONL index).
 
 ## Architecture
 
 ```
-POST /skills/analysis
-         |
-         v
-  Load sessions -> build_step_signals() -> digest for LLM
-         |
-         v
-  +------+------+------+
-  |      |      |      |
-  v      v      v      v
-Retrieve  Create   Evolve  Proposals
-  |      |      |      |
-  v      v      v      v
-  LLM inference (1 or batched)
-         |
-         v
-  SkillAnalysisResult (persisted to SkillStore)
+sessions selected by user
+        │
+        ▼
+context extraction + batching         (shared with friction)
+        │
+        ├──────────────┐──────────────┐
+        ▼              ▼              ▼
+   recommendation   creation        evolution
+        │              │              │
+        ▼              ▼              ▼
+  catalogue BM25   propose → user → create   discover → diagnose → prescribe
+        │              │              │
+        ▼              ▼              ▼
+   ranked items    SKILL.md           per-skill edits
+        │              │              │
+        └──────────────┴──────────────┘
+                       ▼
+              JobTracker + per-mode store
 ```
 
-## Key Files
+Every `POST` returns immediately with a `job_id`; the actual work runs as a background `asyncio.Task` under the shared job tracker. The frontend polls.
 
-### Backend
+## Modules
 
-| File | Role |
-|------|------|
-| `services/skill/retrieval.py` | Skill retrieval + shared infrastructure (loading, parsing, cache) |
-| `services/skill/creation.py` | Skill creation pipeline |
-| `services/skill/evolution.py` | Skill evolution analysis |
-| `services/skill/shared.py` | Shared utilities across skill modes |
-| `services/skill/download.py` | Skill download/install |
-| `services/skill/importer.py` | Skill import from files |
-| `services/skill/store.py` | `SkillStore`: save/load/list/delete |
-| `services/skill/mock.py` | Mock results for demo/test mode |
-| `services/analysis_shared.py` | Shared analysis utilities |
-| `services/job_tracker.py` | Background job lifecycle management |
-| `models/skill/` | Domain models (results, patterns, retrieval, creation, evolution) |
-| `schemas/skills.py` | Request/response schemas |
-| `api/skill_analysis.py` | Skill analysis endpoints |
-| `llm/prompts/skill_retrieval.py` | Retrieval prompt templates |
-| `llm/prompts/skill_creation.py` | Creation prompt templates |
-| `llm/prompts/skill_evolution.py` | Evolution prompt templates |
+| Path | Role |
+|---|---|
+| `services/recommendation/engine.py` | L2 (LLM profile) + L3 (BM25 retrieval) + L4 (rationale) pipeline. |
+| `services/creation/creation.py` | Two-step pipeline: proposals → deep generation. |
+| `services/evolution/evolution.py` | Three-phase: discover-active → diagnose-conflicts → prescribe-edits. |
+| `services/personalization/store.py` | Shared persistence backend (per-analysis JSON, append-only index, in-memory TTL cache). |
+| `services/personalization/shared.py` | Cross-mode helpers (digest framing, profile loading). |
+| `services/job_tracker.py` | Background job lifecycle, polling, cancellation. |
+| `services/analysis_store.py` | Generic analysis store contract reused across friction + personalization modes. |
+| `models/{recommendation,creation,evolution}/...` | Domain models per mode. |
+| `api/recommendation.py`, `api/creation.py`, `api/evolution.py` | HTTP surface (one router per mode). |
+| `llm/prompts/...` | Prompt templates per mode. |
 
-### Frontend
+## API surface
 
-| File | Role |
-|------|------|
-| `components/skills/skills-panel.tsx` | Main skill analysis UI (tabs, polling, results) |
-| `components/skills/skills-history.tsx` | History sidebar |
+Each mode mounts under `/api/<mode>/`. Within each, the contract is identical:
 
-## Skill Format
+| Method | Path | Purpose |
+|---|---|---|
+| `POST /api/<mode>` | start an analysis (returns `job_id`) |
+| `POST /api/<mode>/estimate` | pre-flight token / cost estimate |
+| `GET /api/<mode>/jobs/{job_id}` | poll job status |
+| `POST /api/<mode>/jobs/{job_id}/cancel` | cancel a running job |
+| `GET /api/<mode>/history` | list persisted analyses |
+| `GET /api/<mode>/{analysis_id}` | load full result |
+| `DELETE /api/<mode>/{analysis_id}` | delete an analysis |
 
-Skills target a common format installable across coding agent CLIs:
+Friction analysis follows the same shape under `/api/analysis/friction/...` (see [`spec-analysis-friction.md`](spec-analysis-friction.md)).
+
+## Skill format
+
+Skills target a common, install-anywhere markdown format:
 
 ```markdown
 ---
-description: One-line trigger description
+description: One-line trigger description.
 tags: [tag1, tag2]
 allowed_tools: [Read, Edit, Bash, Grep, Glob, Write]
 ---
 
-# Skill Name
+# Skill name
 
 Step-by-step instructions the agent follows when triggered.
 ```
 
-Install locations: Claude Code (`~/.claude/commands/`), Codex (`~/.codex/skills/`).
+Install paths vary by agent (`~/.claude/skills/`, `~/.codex/skills/`, etc.); the install pipeline lives in `services/extensions/platforms.py`.
 
-## Shared Concepts
+## Mode 1 — Recommendation
 
-### Session Digest
+Goal: surface existing extensions (skills, plugins, sub-agents, …) that match the user's recurring workflows.
 
-All modes share the same trajectory compression: raw trajectories -> step signals via `build_step_signals()` -> compact text digest optimized for LLM context. The digest includes per-session tool frequency counts and user topic summaries.
+The engine is layered:
 
-### Installed Skills
+- **L1: signals.** Per-session step signals (tool frequency, error patterns, user topic summaries) are aggregated into a compact corpus the LLM can reason about.
+- **L2: profile.** One LLM call produces a `UserProfile` with weighted `search_keywords` describing the user's working style.
+- **L3: retrieval.** `rank_catalog(query=ExtensionQuery(profile=...), sort=PERSONALIZED, top_k=...)` returns the top candidates from the shared catalogue index. Same engine that powers the explore tab — browse-quality ≡ recommend-quality.
+- **L4: rationale.** A second LLM call ranks and explains the top candidates, producing per-item rationale.
 
-The central skill store at `~/.vibelens/skills/` provides the inventory of skills the user already has. All modes use this for dedup (retrieval/creation) or as edit targets (evolution).
+Output is a `RankedRecommendationItem` list with score breakdown, rationale, and the underlying `AgentExtensionItem`.
 
-### Background Job Execution
+## Mode 2 — Creation
 
-All POST endpoints return immediately with a `job_id`. The shared `JobTracker` wraps coroutines in `asyncio.Task` instances. Frontend polls at 3s intervals. Users can cancel running jobs.
+Goal: when no existing extension covers a recurring workflow, generate a new skill.
 
-## API Endpoints
+Two steps, on purpose:
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/skills/analysis` | Start skill analysis (retrieval/creation/evolution) |
-| `POST` | `/skills/analysis/proposals` | Generate creation proposals |
-| `POST` | `/skills/analysis/create` | Deep create from approved proposal |
-| `GET` | `/skills/analysis/jobs/{job_id}` | Poll job status |
-| `POST` | `/skills/analysis/jobs/{job_id}/cancel` | Cancel running job |
-| `GET` | `/skills/analysis/history` | List past analyses |
-| `GET` | `/skills/analysis/{analysis_id}` | Load full result |
-| `DELETE` | `/skills/analysis/{analysis_id}` | Delete result |
+1. **Proposals** — cheap LLM call returning short `(name, description, rationale)` triples. Batched when the session set exceeds the context budget, with a synthesis pass to merge.
+2. **Deep creation** — for each proposal the user accepts, one focused LLM call produces the full SKILL.md (frontmatter + body). One call per accepted skill.
 
-## Mode 1: Skill Retrieval
+The two-step shape lets the user filter at the cheap stage; deep generation only runs on what they want.
 
-Recommend existing skills from a catalog matching the user's recurring workflows.
+## Mode 3 — Evolution
 
-**Scaling tiers:**
-- Tier 1 (current): All candidates fit in LLM context. Pre-filter via keyword scoring when catalog exceeds 200 candidates. Source: `featured-skills.json` (~300 skills).
-- Tier 2 (planned): BM25/TF-IDF search index for thousands of skills.
-- Tier 3 (future): Embedding search + LLM re-ranking for marketplace scale.
+Goal: improve skills the user has already installed.
 
-**Decision rule:** Recommend when a workflow pattern repeats, a candidate skill matches, and no installed skill covers it.
+Three phases:
 
-**Output:** `WorkflowPattern[]` + `SkillRecommendation[]` with confidence scores.
+1. **Discover** — which installed skills appear to have been active in the analysed sessions (by name match, by tool overlap, by description match).
+2. **Diagnose** — for each candidate skill, find conflicts between observed user behaviour and the skill's current instructions: skipped step, added step, wrong tool, bad trigger, outdated instruction.
+3. **Prescribe** — emit granular edits per conflict. Edit kinds are `add_instruction`, `remove_instruction`, `replace_instruction`, `update_description`, `add_tool`, `remove_tool`.
 
-## Mode 2: Skill Creation
-
-Two-step pipeline to manage cost and user control:
-
-**Step 1: Proposals** -- Lightweight analysis producing short proposals (name + description + rationale). Cheap enough to run frequently. Batched when sessions exceed context window, with synthesis merge pass.
-
-**Step 2: Deep Creation** -- For each approved proposal, a focused LLM call generates full SKILL.md content. One LLM call per skill.
-
-**Decision rule:** Propose when a workflow pattern repeats, has stable steps, and no existing skill covers it.
-
-## Mode 3: Skill Evolution
-
-Three-phase analysis of installed skills:
-
-1. **Discover** -- which installed skills were active during analyzed sessions
-2. **Diagnose** -- conflicts between user behavior and skill instructions
-3. **Prescribe** -- granular edits resolving each conflict
-
-**Conflict types:** skipped step, added step, wrong tool, bad trigger, outdated instruction.
-
-**Edit kinds:** `add_instruction`, `remove_instruction`, `replace_instruction`, `update_description`, `add_tool`, `remove_tool`.
-
-**Decision rule:** Evolve when a skill is close but insufficient, and fixing is simpler than creating a new one.
-
-## Data Models
-
-### SkillAnalysisResult
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `analysis_id` | `str | None` | Set on persistence |
-| `mode` | `SkillMode` | retrieval / creation / evolution |
-| `session_ids` | `list[str]` | Sessions analyzed |
-| `workflow_patterns` | `list[WorkflowPattern]` | Detected recurring patterns |
-| `recommendations` | `list[SkillRecommendation]` | Retrieval matches |
-| `generated_skills` | `list[SkillCreation]` | Created skills |
-| `evolution_suggestions` | `list[SkillEvolutionSuggestion]` | Per-skill edit plans |
-| `summary` | `str` | Narrative overview |
-| `user_profile` | `str` | Working style description |
-| `model` | `str` | Model identifier |
-| `cost_usd` | `float | None` | Inference cost |
-
-### WorkflowPattern
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `title` | `str` | Short name (e.g., "Search-Read-Edit Cycle") |
-| `description` | `str` | What the pattern does |
-| `pain_point` | `str` | Why automation helps |
-| `example_refs` | `list[StepRef]` | Real step IDs from trajectories |
+Every edit is grounded in a `StepRef` so the user can see the exact session evidence behind it.
 
 ## Persistence
 
-`SkillStore` uses disk-based storage (same pattern as FrictionStore):
+All three modes use the same on-disk shape:
 
 ```
-{skill_dir}/
-+-- index.jsonl             <- Append-only metadata
-+-- {analysis_id}.json      <- Full SkillAnalysisResult per analysis
+{personalization_dir}/{mode}/
+├── index.jsonl              append-only metadata, one entry per analysis
+└── {analysis_id}.json       full result blob
 ```
 
-In-memory cache with 1-hour TTL.
+An in-memory TTL cache fronts each store; entries are keyed by a hash of the sorted session-id list so the same analysis run twice replays from cache. The shared friction store (`services/friction/store.py`) follows the same shape under `{friction_dir}/`.
 
-## Job Lifecycle
+## Job lifecycle
 
 ```
-submit_job() -> RUNNING
-                  |
-          +-------+-------+
-          |       |       |
-     COMPLETED  FAILED  CANCELLED
-          |       |       |
-     cleanup_stale (removed after 1h)
+submit_job ──▶ RUNNING
+                 │
+        ┌────────┼────────┐
+        ▼        ▼        ▼
+   COMPLETED  FAILED  CANCELLED
+        │        │        │
+        └────────┴────────┘
+                 ▼
+       cleanup_stale (after grace period)
 ```
 
-All analysis endpoints follow the same pattern: mock mode returns completed immediately, real mode dispatches background task.
+All endpoints follow the same pattern: in mock mode (demo, test) the job completes immediately with canned output; in real mode the background task drives the LLM pipeline. The job tracker handles cancellation: a `cancel` request sets a flag the pipeline checks between phases, so the run terminates cleanly without partial writes.
+
+## Cost estimation
+
+Each mode's `/estimate` endpoint runs the same loading and batching pipeline without LLM calls and reports an input-token / output-token / cost range. Used by the frontend to show the user what they're about to spend.
+
+## Demo / test mode
+
+Mock results carry real step IDs from the user's sessions so the UI exercises the same rendering paths it would for real results. Mock mode is selected by absence of an inference backend — there's no separate flag.

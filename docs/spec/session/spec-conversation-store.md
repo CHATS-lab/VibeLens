@@ -1,172 +1,116 @@
 # Trajectory Storage
 
-Storage layer for agent trajectories. Provides a unified interface for listing, loading, and saving parsed session data across app modes.
+The unified store interface every service uses to list and load parsed trajectories.
 
-## Purpose
+## Motivation
 
-All services (dashboard, session viewer, friction analysis, skill analysis, upload, donation) access session data through a common `TrajectoryStore` interface. Two implementations serve different modes: `DiskStore` for demo/upload workflows, `LocalStore` for self-use with local agent data directories.
+Two very different "where do sessions come from" stories exist in VibeLens:
+
+- **Demo mode** runs as a public service. Sessions are explicit uploads written to a per-user disk subtree, and the dashboard, session viewer, search, friction, personalization, and donation features all need to query those uploads under per-tab isolation.
+- **Self mode** runs on the user's own machine. Sessions live in whatever shape each agent decided to write them — Claude's `~/.claude/projects/...`, Codex's day-bucketed rollouts, Cursor's SQLite, Hermes's mix of JSONL and JSON, and so on. There's no upload step; we read straight from the agent's data directory.
+
+A single store interface lets every consumer treat the two modes identically: ask for `list_metadata()`, ask for `load(session_id)`, get back the same shapes. The differences (writability, multi-agent discovery, per-tab isolation) live behind that interface.
 
 ## Architecture
 
 ```
-                     API / Services
-  dashboard  session.crud  upload  friction  skill  donation
-      |           |          |        |        |       |
-      +-----+-----+----+----+--------+--------+-------+
-            |           |
-       get_store()   store_resolver
-       (deps.py)     (session/store_resolver.py)
-            |           |
-            v           v
-   +-----------------------------+
-   |   TrajectoryStore (ABC)     |  base.py
-   |                             |
-   |  list_metadata()  load()    |
-   |  exists()  session_count()  |
-   |  invalidate_index()         |
-   +----------+----------+------+
-              |          |
-     +--------+--+  +----+--------+
-     | DiskStore |  | LocalStore  |
-     | (demo)    |  | (self)      |
-     +--------+--+  +------+------+
-              |            |
-       JSON files     4 agent parsers
-       + JSONL index  scanning local dirs
+                    API / services
+   dashboard  session  upload  donation  friction  personalization
+       │         │       │        │         │            │
+       └─────┬───┴───┬───┴────────┴────┬────┴─────┬──────┘
+             │       │                 │          │
+        get_store   store_resolver   register_upload_store
+        (deps.py)   (services/session/store_resolver.py)
+             │       │
+             ▼       ▼
+   ┌─────────────────────────────┐
+   │   BaseTrajectoryStore (ABC) │
+   │   list_metadata · load      │
+   │   exists · session_count    │
+   │   get_metadata · invalidate │
+   └────────────┬────────────────┘
+                │
+       ┌────────┴────────┐
+       ▼                 ▼
+   DiskStore          LocalStore
+   (demo / upload)    (self mode)
 ```
 
-## Key Files
+The base ABC owns the shared index pattern: every concrete store maintains `(session_id → file path + parser)` for on-demand loading and `(session_id → summary dict)` for cheap metadata listing. Subclasses override how those two structures get built.
 
-| File | Role |
-|------|------|
-| `storage/trajectory/base.py` | `TrajectoryStore` ABC with shared index pattern and read methods |
-| `storage/trajectory/disk.py` | `DiskStore` -- file-based persistence for demo mode and uploads |
-| `storage/trajectory/local.py` | `LocalStore` -- multi-agent local discovery (read-only) |
-| `services/session/store_resolver.py` | Per-user store resolution and session isolation |
-| `ingest/index_builder.py` | Skeleton builder for LocalStore full/incremental rebuilds |
-| `ingest/index_cache.py` | Persistent cache for fast LocalStore startup |
-| `ingest/fast_metrics.py` | Line-by-line metrics scanner for skeleton enrichment |
+## Modules
 
-## Store Selection
+| Path | Role |
+|---|---|
+| `storage/trajectory/base.py` | `BaseTrajectoryStore` ABC |
+| `storage/trajectory/disk.py` | `DiskStore` — writable, file-based persistence |
+| `storage/trajectory/local.py` | `LocalStore` — read-only multi-agent local discovery |
+| `services/session/store_resolver.py` | Per-token store routing for demo mode |
+| `ingest/index_builder.py` | Skeleton builder used by `LocalStore` cold rebuild |
+| `ingest/index_cache.py` | Persistent cache used by `LocalStore` warm path |
 
-`get_store()` in `deps.py` selects the store based on app mode:
+## Store selection
 
-| Mode | Store | Backing |
-|------|-------|---------|
-| `demo` | `DiskStore` | `datasets/` directory (JSON files + JSONL index) |
-| `self` | `LocalStore` | Local agent data directories (`~/.claude/`, `~/.codex/`, etc.) |
+`get_store()` in `deps.py` picks the implementation off the active `AppMode`:
 
-## TrajectoryStore ABC
+- **demo** → `DiskStore` rooted at the demo dataset directory; per-token uploads add additional `DiskStore` instances scoped to that token.
+- **self** → a single `LocalStore` reading every registered local parser's data directory.
+- **test** → small `DiskStore` against a fixture root.
 
-### Internal State
+## DiskStore — writable, file-backed
 
-| Field | Type | Purpose |
-|-------|------|---------|
-| `_index` | `dict[str, tuple[Path, BaseParser]]` | Maps session_id to (filepath, parser) for on-demand loading |
-| `_metadata_cache` | `dict[str, dict] | None` | Maps session_id to summary dict (no steps); `None` = not yet built |
-
-### Abstract Methods
-
-| Method | Purpose |
-|--------|---------|
-| `initialize()` | Set up backing store (create dirs, etc.) |
-| `save(trajectories)` | Persist a trajectory group (DiskStore only) |
-| `_build_index()` | Populate `_index` and `_metadata_cache` from backing store |
-
-### Concrete Read Methods
-
-| Method | Returns | Description |
-|--------|---------|-------------|
-| `list_metadata()` | `list[dict]` | All trajectory summaries (no steps) |
-| `list_projects()` | `list[str]` | Unique project paths, sorted |
-| `load(session_id)` | `list[Trajectory] | None` | Full trajectory group via parser from `_index` |
-| `exists(session_id)` | `bool` | Check index membership |
-| `session_count()` | `int` | Total indexed sessions |
-| `get_metadata(session_id)` | `dict | None` | Single session summary |
-| `invalidate_index()` | `None` | Clear cache, forces rebuild on next access |
-
-### Load Pipeline
-
-```
-load(session_id)
-  1. _ensure_index()        <- lazy-build if cache is None
-  2. Lookup (path, parser) from _index
-  3. parser.parse_file(path)
-  4. _enrich_refs_from_index()  <- restore continuation refs from cached metadata
-  5. _sort_trajectories()       <- main first, then sub-agents by timestamp
-```
-
-## DiskStore
-
-File-system persistence using JSON files and a JSONL index. Used in demo mode and for uploaded sessions.
-
-### Storage Layout
+Used by demo dataset hosting and by every upload.
 
 ```
 {root}/
-+-- {session_id}.json       <- Full trajectory array (JSON)
-+-- _index.jsonl            <- One summary line per session
-+-- uploads/                <- Upload subdirectory
-    +-- {upload_id}/
-        +-- _index.jsonl
-        +-- {session_id}.json
+├── {session_id}.json       full trajectory group (JSON array)
+├── _index.jsonl            append-only summary index, one line per session
+└── uploads/{upload_id}/
+    ├── {session_id}.json
+    └── _index.jsonl
 ```
 
-### Save Flow
+`save(trajectories)` extracts the main trajectory's `to_summary()`, writes the full JSON file, appends a line to `_index.jsonl`, and (if the index is already in memory) updates the cache so the new session is visible without a rebuild. `_index.jsonl` appends use the shared `locked_jsonl_append` helper so concurrent uploads don't interleave bytes.
 
-1. Extract main trajectory, compute summary via `to_summary()`
-2. Write `{session_id}.json` (full trajectory array)
-3. Append summary to `_index.jsonl`
-4. Update in-memory cache if already initialized
+Loads go through `ParsedTrajectoryParser`, which deserialises the on-disk JSON back to ATIF `Trajectory` objects.
 
-## LocalStore
+## LocalStore — read-only, multi-agent
 
-Multi-agent read-only store. Scans local agent data directories for sessions.
+Used in self-mode. Each registered local parser declares the directory it expects to find data under (`~/.claude/`, `~/.codex/...`, etc.); `LocalStore` walks them all, dispatches per-file work to the parser that owns the path, and unifies the result.
 
-### Agent Directories
+The cold / warm path mechanics — partial vs. full rebuild, the `[mtime_ns, size]` cache key, `parse_skeleton_for_file`, the staleness window — live in [`spec-session-loading.md`](spec-session-loading.md).
 
-| Agent | Default Directory | Config Override |
-|-------|-------------------|-----------------|
-| Claude Code | `~/.claude/` | `settings.claude_dir` |
-| Codex | `~/.codex/sessions/` | `settings.codex_dir` |
-| Gemini | `~/.gemini/tmp/` | `settings.gemini_dir` |
-| OpenClaw | `~/.openclaw/` | `settings.openclaw_dir` |
-
-### Session ID Format
-
-- Claude Code: `{uuid}` (as-is)
-- Other agents: `{agent_type}:{stem}` (prefixed to avoid collisions)
-
-### Index Build Pipeline
-
-```
-_build_index()                              <- thread-safe via _build_lock
-  1. _discover_files()                      <- parser.discover_session_files() per agent
-  2. _try_load_from_cache()
-     +-- Cache hit (all mtimes match)       -> restore from cache
-     +-- Partial staleness (<30%)           -> incremental update
-     +-- Cache miss or heavy staleness      -> full rebuild
-  3. _full_rebuild()
-     +-- build_session_index()              -> parse all files into skeletons
-     +-- _enrich_skeleton_metrics()         -> fast-scan for tokens/tools/duration
-     +-- save_cache()                       -> write persistent cache
-```
+Session ID convention: Claude sessions keep the agent's UUID; sessions from other agents are namespaced as `{agent_type}:{stem}` so no two agents can collide on the same id.
 
 ## DiskStore vs. LocalStore
 
-| Feature | DiskStore | LocalStore |
-|---------|-----------|------------|
-| App mode | Demo | Self |
-| Writable | Yes (`save()`) | No (read-only) |
-| Data sources | Single root directory | 4 agent data directories |
-| Discovery | `_index.jsonl` recursion | Parser-based file scanning |
-| Persistent cache | No | Yes (`~/.vibelens/index_cache.json`) |
-| Incremental updates | N/A | Mtime-based staleness detection |
-| Thread safety | No internal lock | `_build_lock` for concurrent rebuilds |
-| Parser | `ParsedTrajectoryParser` | 4+ agent-specific parsers |
+| Aspect | DiskStore | LocalStore |
+|---|---|---|
+| Writable | Yes (`save`) | No |
+| Data sources | one root + per-upload subdirs | every registered local parser's data dir |
+| Discovery | `_index.jsonl` walk | parser-driven file scanning |
+| Persistent cache | none (the on-disk JSON *is* the cache) | `~/.vibelens/session_index.json` |
+| Concurrency | `locked_jsonl_append` for index writes | `_build_lock` around index rebuilds |
 
-## Session Isolation (Demo Mode)
+## Per-tab isolation in demo mode
 
-In demo mode, each browser tab gets a `crypto.randomUUID()` session token (never persisted). Uploads are registered per-token via `register_upload_store()` in `deps.py`. The `store_resolver.py` routes all listing/loading requests to the correct per-user stores.
+Each browser tab generates a `crypto.randomUUID()` on page load and sends it as `X-Session-Token` on every request. `register_upload_store(token, store)` binds a per-upload `DiskStore` to that token; `store_resolver` returns:
 
-On server restart, `reconstruct_upload_registry()` reads `metadata.jsonl` and restores per-token store mappings.
+- demo + the token has registered uploads → only those stores.
+- demo + no registered uploads → the shared example store.
+- self → the single `LocalStore`, no token filtering.
+
+On server restart, `reconstruct_upload_registry()` replays `~/.vibelens/uploads/metadata.jsonl` to rebuild the token-to-stores mapping so existing browser tabs keep their uploads visible.
+
+## What the ABC guarantees
+
+- `list_metadata()` always returns a list of summary dicts (no `steps`).
+- `load(session_id)` always runs the parser; the trajectory is never served from cached step data.
+- `exists` / `session_count` / `get_metadata` operate on the in-memory cache; they're effectively free after the first `list_metadata`.
+- `invalidate_index()` drops the in-memory cache; the next access rebuilds.
+- After load, continuation references (`prev/next_trajectory_ref`) are restored from the cached skeleton metadata so a single `load` returns a self-consistent multi-segment trajectory group.
+
+## Out of scope
+
+- Cross-process locking. The store assumes single-process VibeLens; if that ever changes, `_index.jsonl` writes still serialise via `flock`, but the in-memory caches go stale.
+- Remote stores (S3, NFS, etc.). Both implementations assume the local filesystem.

@@ -1,183 +1,149 @@
 # Upload and Donation
 
-Two features that move session data in and out of VibeLens. Upload imports external agent sessions into the platform. Donation contributes sessions for academic research.
+Two features that move session data in and out of VibeLens. Upload imports a user's own agent sessions for analysis. Donation contributes sessions to academic research.
 
-## Purpose
+## Motivation
 
-Upload is demo-mode only (hidden in self-use mode). It lets users bring their agent session data into VibeLens for analysis via ZIP file upload. Donation works in both modes: sessions are packaged into a ZIP and sent to the configured research server. Both features share ZIP handling infrastructure and session isolation via ephemeral browser tokens.
+VibeLens analyses agent sessions, but the agents themselves write data to a dozen different on-disk layouts, with formats that vary across versions. The upload and donation features exist to make that data portable:
+
+- **Upload (demo-mode only).** A visitor on the public demo doesn't have local data, so they zip their own agent's data on their machine, drag it into the wizard, and see their sessions inside a per-browser sandbox. No account, no server-side login.
+- **Donation (both modes).** A user who wants their data preserved for research zips up the same content and ships it — together with the parsed trajectories and any git bundles needed to reproduce the analysis — to the configured research server.
+
+The two flows share the zip-handling pipeline and a per-tab session token (`X-Session-Token`, a `crypto.randomUUID()` generated on page load) that scopes uploads to the browser tab that produced them.
 
 ## Architecture
 
 ```
-                     Frontend (React)
-                          |
-           +--------------+--------------+
-           |              |              |
-      Upload Dialog   Donate Button   Session Token
-           |              |         (ephemeral UUID)
-           v              v              |
-      POST /upload/zip  POST /sessions/donate
-           |              |              |
-           v              v              v
-     processor.      donation.       store_resolver
-     process_zip()   donate_sessions()  (per-user isolation)
-           |              |
-           v              v
-     DiskStore       sender.send_donation()
-     (per-upload)    (collect + ZIP + POST)
-           |              |
-           v              v
-     {upload_dir}/   receiver.receive_donation()
-     {upload_id}/    (demo mode only)
+                Frontend (React)
+                      |
+        +-------------+--------------+
+        |                            |
+   Upload wizard               Donate dialog
+        |                            |
+        v                            v
+   POST /upload/zip          POST /sessions/donate
+        |                            |
+        v                            v
+   processor.process_zip      session.donate_sessions
+        |                            |
+        v                            v
+   per-upload DiskStore       sender.send_donation
+        |                            |
+        v                            v
+  ~/.vibelens/uploads/        donation server
+  {upload_id}/{...}              (httpx POST)
 ```
 
-## Key Files
+Uploads land on disk and become first-class stores resolved per session-token. Donations are zipped on the fly and POSTed; the receiver (demo only) simply files the zip away under `~/.vibelens/donations/`.
+
+## Key files
 
 | File | Role |
 |------|------|
-| `services/upload/processor.py` | Upload pipeline: stream, validate, extract, parse, anonymize, store |
-| `services/upload/commands.py` | CLI command generation for agent data zipping |
-| `services/donation/sender.py` | Collect sessions, bundle repos, create ZIP, send to server |
-| `services/donation/receiver.py` | Receive donation ZIP (demo mode) |
-| `services/session/donation.py` | Orchestration: filter donatable IDs, delegate to sender |
-| `services/session/store_resolver.py` | Per-user store resolution and session isolation |
-| `api/upload.py` | Upload endpoints |
-| `api/donation.py` | Donation endpoints |
-| `schemas/upload.py` | Upload request/response models |
+| `api/upload.py` | `GET /upload/agents`, `POST /upload/zip` |
+| `api/donation.py` | `POST /sessions/donate`, `GET /sessions/donations/history`, `POST /donation/receive` |
+| `services/upload/agents.py` | Per-agent registry (commands per OS, icon, friendly name) |
+| `services/upload/processor.py` | Stream → validate → extract → parse → anonymize → store |
+| `services/session/donation.py` | Orchestrates a donation: select sessions, delegate to sender |
+| `services/donation/sender.py` | Bundle raw files + parsed trajectories + git bundles, POST to server |
+| `services/donation/receiver.py` | Demo-side receiver: stream zip to disk, append to index |
+| `services/session/store_resolver.py` | Per-token store lookup; the visibility boundary |
+| `schemas/upload.py` | `UploadResult` |
 
-## Storage Layout
-
-### Uploads
+## Storage layout
 
 ```
-~/.vibelens/uploads/                     <- settings.upload_dir
-+-- metadata.jsonl                       <- Global upload manifest (append-only)
-+-- {upload_id}/                         <- Per-upload subdirectory
-    +-- {upload_id}.zip                  <- Original zip (permanent archive)
-    +-- _index.jsonl                     <- Session index (tagged with _upload_id)
-    +-- {session_id}.json                <- Parsed trajectory
+~/.vibelens/uploads/                      <- settings.upload.dir
++-- metadata.jsonl                        <- append-only manifest of every upload
++-- {upload_id}/
+    +-- {upload_id}.zip                   <- original zip (kept for re-donation)
+    +-- result.json                       <- UploadResult, served on dedup hit
+    +-- _index.jsonl                      <- per-upload session index
+    +-- {session_id}.json                 <- parsed trajectory
+
+~/.vibelens/donations/                    <- settings.donation.dir (demo only)
++-- index.jsonl
++-- {donation_id}.zip
 ```
 
-### Donations (Receiver)
+`upload_id` format: `{YYYYMMDDHHMMSS}_{4-char-hex}`.
 
-```
-~/.vibelens/donations/                   <- settings.donation_dir
-+-- index.jsonl                          <- Append-only donation index
-+-- {donation_id}.zip                    <- Received donation ZIP
-```
+## Upload pipeline
 
-## Upload Feature
+`process_zip(file, agent_type, session_token, expected_sha256)`:
 
-### Upload ID Format
+1. **Stream zip to disk.** 64 KB chunks; abort over `max_zip_bytes`. Reject mismatched body hash if the client sent `X-Zip-Sha256`.
+2. **Validate and extract.** Path-traversal guard, symlink rejection, file-count and uncompressed-size caps. Each parser declares its own `ALLOWED_EXTENSIONS`; everything else is silently skipped (so SQLite-backed parsers extract `.db`/`-wal`/`-shm` while plain-JSON parsers don't pull random binaries).
+3. **Discover.** Active parser scans the extracted tree for session files.
+4. **Parse, anonymize, store.** Each session file goes through the parser, then `RuleAnonymizer`, then a per-upload `DiskStore`.
+5. **Record.** Append a line to `metadata.jsonl`; write `result.json`.
+6. **Register.** Bind the new store to the requesting `session_token` so the upload becomes visible without restart, and invalidate search/dashboard caches.
+7. **Cleanup.** Drop the extracted dir; keep the zip for later donation.
 
-`{YYYYMMDDHHMMSS}_{4-char-hex}` (e.g., `20260329143012_a1b2`)
+### Idempotency / dedup
 
-### API Endpoints
+The same content uploaded twice (same `(zip_sha256, agent_type)`) reuses the prior result instead of reparsing. There are two dedup paths:
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/upload/commands` | Platform-specific CLI command for zipping agent data |
-| `POST` | `/upload/zip` | Accept multipart ZIP upload |
+- **Header dedup** — the client computes the zip's SHA-256 in the browser and sends it as `X-Zip-Sha256`. The server scans `metadata.jsonl`, and on a hit returns the cached `result.json` *without reading the request body*. The new token is registered against the prior store so the dedup'd response is actually visible.
+- **Body dedup** — when no header is sent, the server hashes during streaming and falls back to the same lookup once the bytes have landed.
 
-### Upload Pipeline
+Failed prior uploads (`sessions_parsed == 0` or `errors > 0`) are skipped during dedup so the user can retry once the underlying issue is fixed.
 
-`process_zip(file, agent_type, session_token)`:
+### Per-tab visibility
 
-1. **Stream to disk** -- Write ZIP in chunks. Abort if exceeds `max_zip_bytes`.
-2. **Validate and extract** -- Reject path traversal, symlinks, oversized archives, non-allowed extensions.
-3. **Discover session files** -- Agent-specific discovery logic.
-4. **Parse, anonymize, store** -- Create per-upload DiskStore. Parse via agent parser, run through `RuleAnonymizer`, save trajectories.
-5. **Record metadata** -- Append to `metadata.jsonl`.
-6. **Register and invalidate** -- Make upload visible via `register_upload_store()`. Invalidate search/dashboard caches.
-7. **Cleanup** -- Remove extracted directory, keep ZIP.
+Every browser tab generates a `crypto.randomUUID()` on load and sends it as `X-Session-Token`. The upload registry maps `token -> [DiskStore, ...]`. `store_resolver` returns:
 
-## Session Isolation
+- demo + uploads in registry → only that token's stores
+- demo + nothing in registry → shared example sessions
+- self-use → the single `LocalStore`, no token filtering
 
-Each browser tab generates a `crypto.randomUUID()` on page load (never persisted). Sent as `X-Session-Token` on every request.
+On server restart, `reconstruct_upload_registry()` replays `metadata.jsonl` to rebuild the mapping.
 
-- **Demo with uploads**: `store_resolver` returns only the user's registered DiskStores
-- **Demo without uploads**: falls back to shared example sessions
-- **Self-use**: delegates to single `LocalStore`, no token filtering
+### Error behaviour
 
-On restart, `reconstruct_upload_registry()` reads `metadata.jsonl` and restores per-token store mappings.
+Per-file parse errors don't fail the upload — they're logged into `UploadResult.errors` (each entry has a friendly `summary` and the raw `details`), and the rest of the zip is processed. The friendly mapping covers JSON decode errors, SQLite encryption / corruption, missing files, encoding issues, parser-bug `duplicate step IDs` from Pydantic, and zip size-limit breaches. Anything unmatched falls back to a generic message that names the exception class.
 
-## Donation Feature
+## Donation pipeline
 
-### API Endpoints
+`donate_sessions(session_ids, session_token)`:
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/sessions/donate` | Initiate donation from frontend |
-| `POST` | `/api/donation/receive` | Server-to-server: receive donation ZIP |
+1. **Filter.** Drop session IDs not visible to this token; reject example sessions (`"Example sessions cannot be donated"`).
+2. **Collect raw files.** For uploads, include the original zip. For local sessions, include the agent's raw files (Claude Code includes sub-agent JSONLs).
+3. **Bundle repos.** Resolve git roots from the trajectories, deduplicate, run `git bundle create --all` per repo.
+4. **Package.** Produce a single zip containing raw files, parsed trajectory JSON, repo bundles, and a manifest (donation_id, timestamp, vibelens_version, session entries with `repo_hash`/`raw_files`, repo entries with `bundle_file`).
+5. **Send.** POST to `{donation_url}/api/donation/receive` (httpx, 120 s timeout).
+6. **Record.** Append to local donation history (token-scoped, hashed).
 
-### Sender Pipeline
+Donation history is keyed by `sha256(session_token)` so multi-user demo deployments don't leak history across browsers.
 
-`send_donation(session_ids, session_token)`:
-
-1. **Collect sessions** -- Resolve source files from store. For uploads: include original ZIP. For local: include raw JSONL (with sub-agents for Claude Code).
-2. **Bundle repos** -- Resolve git roots, deduplicate, run `git bundle create --all` per repo.
-3. **Create ZIP** -- Package sessions, parsed trajectories, repo bundles, and manifest.
-4. **Send** -- POST to `{donation_url}/api/donation/receive` via httpx (120s timeout).
-5. **Cleanup** -- Delete temp files.
-
-### Manifest Format
-
-```json
-{
-  "donation_id": "20260330120000_abcd",
-  "timestamp": "2026-03-30T15:30:45+00:00",
-  "vibelens_version": "0.9.15",
-  "sessions": [
-    {
-      "session_id": "uuid-1",
-      "agent_type": "claude_code",
-      "repo_hash": "a1b2c3d4",
-      "trajectory_count": 3,
-      "step_count": 142,
-      "raw_files": ["sessions/raw/claude_code/projects/.../uuid.jsonl"]
-    }
-  ],
-  "repos": [
-    {
-      "repo_hash": "a1b2c3d4",
-      "bundle_file": "repos/a1b2c3d4.bundle",
-      "session_ids": ["uuid-1"]
-    }
-  ]
-}
-```
-
-### Receiver Pipeline
-
-`receive_donation(file)`: Stream ZIP to disk -> read manifest -> rename file -> append to index.
+The receiver (`POST /donation/receive`, demo only) streams the zip to `~/.vibelens/donations/{donation_id}.zip` and appends to `index.jsonl`.
 
 ### Consent
 
-Frontend requires explicit agreement to four statements before donating: data may contain code/paths, used for academic research (CHATS-Lab at Northeastern), user has reviewed for no credentials, may be shared in anonymized form.
+The frontend gates the donate button on four explicit acknowledgements: data may contain code/paths, used for academic research (CHATS-Lab at Northeastern), user has reviewed for credentials, may be shared in anonymized form.
 
 ## Configuration
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `upload_dir` | `~/.vibelens/uploads` | Upload storage base |
-| `examples_dir` | `~/.vibelens/examples` | Demo example sessions |
-| `donation_url` | `https://vibelens.chats-lab.org` | Donation server URL |
-| `donation_dir` | `~/.vibelens/donations` | Received donations (demo) |
-| `max_zip_bytes` | 10 GB | Max ZIP file size |
-| `max_extracted_bytes` | 20 GB | Max uncompressed size |
-| `max_file_count` | 10,000 | Max files in archive |
-| `stream_chunk_size` | 64 KB | Streaming chunk size |
+| Setting | Default |
+|---|---|
+| `upload.dir` | `~/.vibelens/uploads` |
+| `upload.max_zip_bytes` | 10 GB |
+| `upload.max_extracted_bytes` | 20 GB |
+| `upload.max_file_count` | 10000 |
+| `upload.stream_chunk_size` | 64 KB |
+| `donation.url` | `https://vibelens.chats-lab.org` |
+| `donation.dir` | `~/.vibelens/donations` |
+| `storage.examples_dir` | `~/.vibelens/examples` |
 
-## Error Handling
+## Error responses
 
-| Scenario | Behavior |
-|----------|----------|
-| Upload in self-use mode | 400 "Uploads not supported" |
-| Non-ZIP file | 400 "Only .zip files accepted" |
-| Unknown agent_type | 400 "Unknown agent_type" |
-| ZIP exceeds size limit | 400, partial file deleted |
-| Path traversal in ZIP | ValueError during validation |
-| Single file parse failure | Logged, added to errors, other files continue |
-| Session not accessible for donation | Per-session error |
-| Example session donation | "Example sessions cannot be donated" |
-| HTTP error during send | Error in response, `donated: 0` |
+| Scenario | Response |
+|---|---|
+| Upload in self-use mode | 400, "Uploads not supported in self-use mode" |
+| Non-zip filename | 400, "Only .zip files are accepted" |
+| Unknown `agent_type` | 400, "Unknown agent_type: …" |
+| Body hash mismatches `X-Zip-Sha256` | 400, header/body diverged |
+| Zip exceeds size / file-count / path-traversal checks | 400, friendly summary in body |
+| Per-file parse failure | logged into `UploadResult.errors`, processing continues |
+| Donation of an example session | per-session error in `DonateResult.errors` |
+| Donation server unreachable | result returned with `donated: 0` and the network error |

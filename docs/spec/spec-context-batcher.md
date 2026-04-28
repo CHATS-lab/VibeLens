@@ -1,19 +1,19 @@
 # Session Batcher
 
-Token-budgeted batch packing for concurrent LLM calls. Groups extracted session contexts into batches that respect token limits, preserve chain integrity, and maximize same-project affinity.
+Token-budgeted batch packing for concurrent LLM calls.
 
-## Purpose
+## Motivation
 
-LLM context windows are finite. Sending all sessions in one prompt exceeds model limits; sending one per call wastes cost and time. The batcher solves a bin-packing problem with domain constraints: linked sessions stay together, same-project sessions share a batch, and no batch exceeds the token budget. Used by friction analysis, skill analysis, and any future batch-inference module.
+Friction analysis, skill analysis, and any future "look at many sessions at once" feature face the same problem: an LLM context window is finite, but a user has dozens or hundreds of sessions. Sending them one at a time multiplies cost and round-trip latency; sending all of them at once exceeds the model's input limit.
 
-## Key Files
+The batcher is the bin-packing layer between context extraction and inference. It groups extracted `SessionContext`s into batches that:
 
-| File | Role |
-|------|------|
-| `services/session_batcher.py` | `build_batches()` entry point, chain building, splitting, packing |
-| `services/context_extraction.py` | `SessionContext` model (batcher input) |
-| `llm/tokenizer.py` | Token counting via tiktoken `cl100k_base` |
-| `tests/services/test_session_batcher.py` | 16 test cases |
+- never exceed `max_batch_tokens`,
+- keep linked sessions (continued conversations) together so chain semantics survive,
+- prefer same-project neighbours so the LLM sees thematically coherent batches,
+- otherwise pack greedily by time-nearest neighbours.
+
+It lives in `vibelens.context.batcher` and is callable as `build_batches(contexts, max_batch_tokens) -> list[SessionContextBatch]`.
 
 ## Pipeline
 
@@ -21,105 +21,64 @@ LLM context windows are finite. Sending all sessions in one prompt exceeds model
 SessionContext[]
        |
        v
-+--------------+
-| build_chains |  Merge linked sessions into atomic chains
-+------+-------+
+  split oversized        (one session larger than the budget?
+       |                  split it at step boundaries)
+       v
+  group into chains      (sessions linked via prev/next_trajectory_ref_id
+       |                  become atomic chains)
+       v
+  enforce chain budget   (chain larger than budget? break apart)
        |
        v
-+---------------------+
-| split_oversized     |  Break chains exceeding budget
-+------+--------------+
-       |
+  affinity pack          (greedy bin-packing on chains with
+       |                  same-project + time-nearest tie-breaks)
        v
-+--------------+
-| pack_batches |  Affinity-based greedy bin packing
-+------+-------+
-       |
-       v
-  SessionBatch[]
+SessionContextBatch[]
 ```
 
-Public entry point: `build_batches(session_contexts, max_batch_tokens)`.
+## Inputs and outputs
 
-## Data Models
+### `SessionContext`
 
-### SessionContext (Input)
+The extractor produces these. The batcher only reads four things off each context:
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `session_id` | `str` | Session identifier |
-| `project_path` | `str | None` | Working directory |
-| `context_text` | `str` | Compressed session text with `[step_id=N]` markers |
-| `char_count` | `int` | Length of `context_text` |
-| `last_trajectory_ref_id` | `str | None` | Predecessor session (backward link) |
-| `continued_trajectory_ref_id` | `str | None` | Successor session (forward link) |
-| `timestamp` | `datetime | None` | Session start time |
+- `session_id`, `project_path`, `created_at` — identity and ordering.
+- `context_text` — the compressed text that goes to the LLM. Token count is computed from this via `tiktoken cl100k_base`.
+- `prev_trajectory_ref_id` / `next_trajectory_ref_id` — backward/forward links between continued sessions. The batcher walks these to assemble chains. (`parent_trajectory_ref_id` on a `Trajectory` exists for sub-agent lineage but is not relevant here — the batcher operates above sub-agent boundaries.)
 
-### SessionBatch (Output)
+### `SessionContextBatch`
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `batch_id` | `str` | Sequential label (`batch-001`, `batch-002`, ...) |
-| `session_contexts` | `list[SessionContext]` | Contexts in this batch |
-| `total_tokens` | `int` | Sum of token counts |
-| `project_paths` | `set[str]` | Distinct projects in batch |
+Output container. Carries `contexts`, `total_tokens`, `project_paths` (set), and a sequential `batch_id` ("batch-001", …). The batch object is also LLM-call-aware: it resolves `StepRef`s against its members and exposes `all_trajectories` for downstream consumers.
 
-## Phase 1: Chain Building
+## Phase details
 
-Sessions linked via `last_trajectory_ref_id` / `continued_trajectory_ref_id` form atomic chains that must stay together. Algorithm: index by ID, sort by timestamp, walk backward/forward to find chain boundaries.
+### Oversized split
 
-```
-Session A (continued_ref -> B)    Session B (last_ref -> A)    Session C (standalone)
-        Chain 1: [A, B]                                        Chain 2: [C]
-```
+If a single session's `context_text` exceeds the budget, the batcher splits at step boundaries (`\n\n[step_id=…`) into multiple parts, each prepended with the session header and given a suffixed id (`{session_id}__part1`, `__part2`, …). Sessions with no parseable boundaries stay as one over-budget batch, with a warning logged — better to send too much to one call than to drop content silently.
 
-## Phase 2: Oversized Splitting
+### Chain building
 
-Chains exceeding the budget are handled in order:
+Sessions linked through `prev_trajectory_ref_id` / `next_trajectory_ref_id` form a chain. The whole chain is treated as one atomic packing unit so a continued conversation never gets split across batches. Standalone sessions become single-element chains.
 
-1. Multi-session chain -> split into individual session chains
-2. Individual session exceeding budget -> split at `[step_id=]` boundaries in `context_text`
-3. Each part gets the session header prepended and a suffixed ID (`{session_id}__part1`)
-4. If no step boundaries found -> stays as one oversized batch (warning logged)
+### Chain budget enforcement
 
-## Phase 3: Affinity Packing
+When a multi-session chain still exceeds the budget after grouping, it's broken back into individual sessions and re-treated as standalone units. Chain integrity is a preference, not a hard constraint we'd violate the budget for.
 
-Greedy bin-packing with affinity-ranked candidate selection:
+### Affinity packing
 
-1. Sort all chains by (project, timestamp)
-2. Pop first unplaced chain as "seed" for a new batch
-3. Rank remaining chains by affinity: same-project first, then time-nearest
-4. Greedily add highest-affinity chains that fit within budget
-5. Emit batch, repeat
-
-Affinity sort key: `(is_cross_project, time_distance_seconds)`
-
-Priority order: chain integrity (atomic) > same-project, time-nearest > cross-project, time-nearest.
+Greedy first-fit, ranked by affinity. Seed each batch with the next unplaced chain in `(project, created_at)` order; rank remaining chains by `(is_cross_project, time_distance)` and pull in the highest-affinity chains that still fit. Result: batches dominated by a single project, then a single time window — exactly the structure the LLM benefits from.
 
 ## Configuration
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `max_batch_tokens` | `80,000` | Token budget per batch (from `Settings`) |
+`max_batch_tokens` is provided by callers, typically from `Settings`. The default (~80k) leaves headroom for the system prompt and output within current 128–200k context windows.
 
-Budget leaves room for system prompt + output within typical 128K-200K context windows.
+## Edge cases
 
-## Performance
-
-| Scenario | Before (naive) | After (affinity packing) |
-|----------|---------------|------------------------|
-| 12 sessions | 9 batches | 2 batches |
-| 17 sessions | 8 batches | 3 batches |
-| Avg utilization | ~25% | ~85% |
-
-## Edge Cases
-
-| Case | Behavior |
-|------|----------|
-| Empty input | Returns `[]` |
-| Single session | One batch |
-| Session exceeds budget (with steps) | Split at step boundaries |
-| Session exceeds budget (no steps) | One oversized batch (warning) |
-| Multi-session chain exceeds budget | Chain broken into individual sessions first |
-| All sessions same project | Packed by time proximity |
+| Case | Behaviour |
+|---|---|
+| Empty input | `[]` |
+| Single session under budget | One batch |
+| Session over budget with step boundaries | Split into parts |
+| Session over budget without step boundaries | One over-budget batch, warning logged |
+| Multi-session chain over budget | Chain broken; sessions packed as standalone |
 | Mixed projects | Same-project affinity wins over time proximity |

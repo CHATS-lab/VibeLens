@@ -1,95 +1,77 @@
-# Anonymization
+# Anonymisation
 
-Rule-based anonymizer that removes secrets, PII, and usernames from ATIF trajectories before sharing or donation.
+The redaction layer that runs over every uploaded or donated `Trajectory` before it leaves the user's machine.
 
-## Purpose
+## Motivation
 
-Donated or shared trajectories must not leak credentials, personal information, or OS usernames. The anonymizer applies three-phase regex-based redaction to all text fields in a trajectory while preserving structural fields (IDs, timestamps, metrics) and minimizing false positives.
+Sessions that get donated, shared, or even just uploaded carry whatever the user typed and whatever the agent saw — often including API keys, JWTs, database URLs, OS usernames embedded in absolute paths, customer email addresses, and the occasional company-internal identifier. The user has to be able to share session content with confidence, which means the platform has to redact the predictable categories before any sharing path runs.
+
+The anonymiser is rule-based on purpose. LLM-based and NER-based variants are scaffolded as future modules, but the default has to be deterministic, fast, and inspectable: a regression on what gets redacted is a privacy bug, and "the model decided" is not a useful answer. Every redaction the user sees has a named rule behind it.
 
 ## Architecture
 
 ```
 ingest/anonymize/
-  base.py                       BaseAnonymizer ABC, AnonymizeResult model
-  traversal.py                  Deep-walk ATIF fields, apply str->str transform
-  rule_anonymizer/
-    anonymizer.py               RuleAnonymizer -- orchestrates patterns + paths
-    patterns.py                 PatternDef, CREDENTIAL_PATTERNS, PII_PATTERNS, ALLOWLIST
-    redactor.py                 scan_text(), redact_patterns(), redact_custom_strings()
-    path_hasher.py              PathHasher -- username detection, hashing, variants
-  llm_anonymizer/               (future) LLM-based anonymizer
-  ner_anonymizer/               (future) NER-based anonymizer
+├── base.py                ABC + AnonymizeResult
+├── traversal.py           deep-walk an ATIF Trajectory and apply str→str
+└── rule_anonymizer/
+    ├── anonymizer.py      RuleAnonymizer (orchestrator)
+    ├── patterns.py        named credential / PII patterns + allowlist
+    ├── redactor.py        scan + replace, end-to-start to preserve offsets
+    └── path_hasher.py     username detection across OS path conventions
 ```
 
-## Redaction Pipeline
+Two dimensions: *what to redact* (patterns + paths) and *where to redact* (deep-walked text fields, structural fields untouched). The two are kept separate so a future LLM- or NER-backed implementation can swap in the "what" while keeping the same "where".
 
-For each trajectory, `RuleAnonymizer` builds a `transform(text) -> text` closure chaining three phases:
+## The transform
 
-1. **Regex pattern redaction** -- Scans against `CREDENTIAL_PATTERNS` (37 patterns) and `PII_PATTERNS` (5 patterns). Matches deduplicated (overlapping ranges resolved earliest-wins), replaced end-to-start to preserve offsets.
-2. **Custom literal redaction** -- Replaces user-provided literal strings (e.g., company-internal tokens).
-3. **Path username hashing** -- `PathHasher` detects usernames in `/Users/X/`, `/home/X/`, and encoded `-Users-X-` paths, replaces with `user_<8-hex>` (SHA-256 prefix). Also derives camelCase variants.
+For each trajectory, `RuleAnonymizer` builds a `transform(text) -> text` closure that runs three phases in order:
 
-`traversal.py` deep-walks the ATIF Trajectory tree and applies the transform to all text fields (messages, paths, arguments, extras) while leaving structural fields untouched.
+1. **Pattern redaction.** Named credential and PII regexes scan the text. Overlaps are resolved earliest-wins, replacements are applied end-to-start so offsets stay valid through the rewrite.
+2. **Custom literal redaction.** User-provided literal strings (company-internal tokens, project codenames) are replaced verbatim.
+3. **Path-username hashing.** Detected usernames in absolute paths become `user_<8-hex>` (SHA-256 prefix). The same username on every platform variant — `/Users/`, `/home/`, the `-Users-` form Claude Code encodes into project hashes, `C:\Users\`, `/mnt/c/Users/`, plus camelCase / snake_case variants — maps to the same hash, so cross-session linkability is preserved without leaking the original.
+
+`traversal.py` then walks the trajectory and applies the closure to every text field (messages, tool inputs, observations, paths, extras) while leaving identifiers, timestamps, and metrics alone.
+
+`RuleAnonymizer.anonymize_batch` shares one `PathHasher` across all trajectories in a batch so a username keeps the same hash across an upload's worth of sessions.
+
+## Pattern categories
+
+- **Credentials** — JWTs, database connection strings, provider API keys (Anthropic, OpenAI, HuggingFace, AWS, GCloud, GitHub, GitLab, Stripe, Slack, Discord, npm, Vercel, Netlify, Supabase, Twilio, SendGrid, Firebase, Sentry, …), PEM blocks, auth headers, session cookies, secrets in JSON/YAML config, CLI flags carrying tokens, env-var assignments, bearer tokens, URL secret parameters.
+- **PII** — email addresses, public IPv4, E.164 phone numbers, US SSNs, credit card numbers.
+- **Allowlist** — exact strings that look credential-shaped but aren't (`user@example.com`, Python decorator `@property`, DNS / loopback IPs, example DB URLs).
+
+Patterns are ordered most-specific-first so a provider-shaped key wins over a generic "long hex" rule.
+
+## False-positive containment
+
+The biggest hazard for a rule-based anonymiser is over-redacting. Two design choices keep that bounded:
+
+- **Keyword-gated entropy.** Generic high-entropy patterns require structural context (`secret=`, `token=`, JSON keys named `"password"` / `"api_key"`, cookie-shaped headers). Pure-entropy heuristics are not used — natural-language paragraphs and traceback file paths defeat them.
+- **Allowlist before pattern match.** Common safe-example values short-circuit before the regex bank runs.
+
+Every regression risk surface (Python tracebacks, git hashes, natural text) is locked in by tests in `tests/ingest/anonymize/`.
 
 ## Configuration
 
-`AnonymizeConfig` in `config/anonymize.py`:
+`AnonymizeConfig` (`config/anonymize.py`) controls the pipeline:
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | `bool` | `False` | Master switch |
-| `redact_credentials` | `bool` | `True` | Redact API keys, tokens, JWTs, database URLs |
-| `redact_pii` | `bool` | `True` | Redact emails and public IPs |
-| `anonymize_paths` | `bool` | `True` | Hash usernames in file paths |
-| `placeholder` | `str` | `[REDACTED]` | Replacement text |
-| `custom_redact_strings` | `list[str]` | `[]` | Additional literal strings to redact |
-| `extra_usernames` | `list[str]` | `[]` | Additional usernames to hash |
-
-## Pattern Categories
-
-### Credentials (37 patterns)
-
-Ordered most-specific-first. Includes: JWT, database URLs (Postgres/MySQL/MongoDB), provider API keys (Anthropic, OpenAI, HuggingFace, GCloud, Stripe, GitHub, GitLab, AWS, Slack, Discord, npm, PyPI, Vercel, Netlify, Supabase, Twilio, SendGrid, Firebase, Sentry), PEM keys, auth headers, session cookies, JSON/YAML secrets, CLI token flags, env vars, bearer tokens, URL secret params.
-
-### PII (5 patterns)
-
-Email addresses, public IPv4 (excluding private ranges), E.164 phone numbers, US SSNs, credit card numbers.
-
-### Allowlist
-
-Exact-match strings never redacted: safe example emails (`user@example.com`), Python decorators (`@property`), example DB URLs, DNS/loopback IPs.
-
-## False Positive Strategy
-
-An earlier Shannon entropy heuristic (>= 3.5 bits for 40+ char strings) was removed due to false positives on Python traceback file paths and config values. The current approach uses **structural prefixes or keyword gates** for each pattern:
-
-- `long_hex_secret` requires `secret=`/`token=`/`key=` before hex strings
-- `json_yaml_secret` requires specific key names (`"password"`, `"api_key"`)
-- `session_cookie_token` requires cookie-name keywords
-
-## Path Anonymization
-
-`PathHasher` handles username detection across platforms:
-
-| Platform | Pattern |
-|----------|---------|
-| macOS/Linux | `/Users/X/`, `/home/X/` |
-| Encoded | `-Users-X-` (Claude Code project encoding) |
-| Windows | `C:\Users\X\` |
-| WSL | `/mnt/c/Users/X/` |
-| Bare | Word-boundary match (usernames >= 4 chars) |
-| CamelCase | `JohnDoe` also catches `john_doe`, `JOHN-DOE`, etc. |
-
-All variants of the same username map to the same `user_<8-hex>` hash for consistency across trajectories.
+| Field | Default | Effect |
+|---|---|---|
+| `enabled` | `False` | Master switch. Off → identity transform. |
+| `redact_credentials` | `True` | Run the credential pattern bank. |
+| `redact_pii` | `True` | Run the PII pattern bank. |
+| `anonymize_paths` | `True` | Run the path-username hasher. |
+| `placeholder` | `[REDACTED]` | Replacement text for pattern matches. |
+| `custom_redact_strings` | `[]` | Extra literal strings to redact. |
+| `extra_usernames` | `[]` | Extra usernames the hasher should treat as known. |
 
 ## Integration
 
-The upload pipeline (`services/upload/processor.py`) auto-applies anonymization when `AnonymizeConfig.enabled` is True. `RuleAnonymizer.anonymize_batch()` shares a single `PathHasher` across all trajectories in an upload for consistent username hashing.
+The upload pipeline (`services/upload/processor.py`) calls `RuleAnonymizer.anonymize_batch` automatically when `AnonymizeConfig.enabled` is true; the donation pipeline does the same before zipping. Counts of what was redacted (`secrets_redacted`, `paths_anonymized`, `pii_redacted`) end up on `UploadResult` so the user sees what was changed.
 
-## Testing
+## Out of scope (today)
 
-- `tests/ingest/anonymize/test_patterns.py` -- every credential/PII pattern and allowlist entry
-- `tests/ingest/anonymize/test_rule_anonymizer.py` -- full pipeline with config combinations
-- `TestFalsePositiveRegression` -- guards against regressions with traceback paths, git hashes, natural text
-
-Run: `pytest tests/ingest/anonymize/ -v -s`
+- LLM- and NER-based anonymisers. The directories exist as placeholders; the contract (an `AnonymizeResult`-returning class) is in `base.py`.
+- In-place redaction of agent-side state (e.g. the live conversation in another terminal). The anonymiser only runs at upload / donation time.
+- Reversible mappings. Once a credential is replaced with `[REDACTED]`, there is no way back; once a username is hashed, the original is gone.

@@ -1,115 +1,92 @@
 # Concurrency
 
-Concurrency audit and hardening plan for multi-user deployment. Catalogs race conditions in the single-process uvicorn server and tracks fixes.
+How VibeLens handles shared mutable state in a single-process server.
 
-## Purpose
+## Motivation
 
-VibeLens runs as a single-process, single-worker uvicorn server using `asyncio.to_thread()` for blocking I/O. This works fine for single-user local use, but multi-user deployment (demo mode) exposes race conditions on shared mutable resources: JSONL files, in-memory caches, and DI singletons. This spec catalogs every hazard and tracks resolution.
+VibeLens runs as a single-process, single-worker uvicorn server. The simplest possible deployment — but it serves multiple users in demo mode, multiple browser tabs in self-mode, and routinely dispatches blocking work onto a shared thread pool. That gives three classes of contention to think about:
 
-## Execution Model
+- **Files on disk** — JSONL appends and rewrites that two requests can race on.
+- **In-memory caches and registries** — module-level dicts that can be read on the event loop while a thread is mid-update.
+- **DI singletons / config** — lazy-built objects accessed from many code paths.
+
+This spec lays out the execution model and the invariants every shared resource is required to maintain. Specific bug-tracker entries don't belong here; the rules below do.
+
+## Execution model
 
 ```
                     uvicorn (1 worker, 1 process)
-                               |
-                      asyncio event loop
-                     /         |         \
-               coroutine A  coroutine B  coroutine C
-                    |          |            |
-              to_thread()  to_thread()   (async I/O)
-                    |          |
-             Thread Pool (default: 40 threads)
+                               │
+                       asyncio event loop
+                      ╱        │        ╲
+              coroutine A  coroutine B  coroutine C
+                   │           │
+              to_thread()  to_thread()
+                   │           │
+            shared thread pool (default ≈ 40 threads)
 ```
 
-All coroutines share process memory. `to_thread()` dispatches blocking work to a shared thread pool. Module-level dicts and file handles are accessible from every thread and coroutine simultaneously.
+Everything is in one process, one event loop. `asyncio.to_thread()` dispatches blocking work into a shared thread pool. All coroutines and threads share the same dictionaries, file handles, and singletons.
 
-## Threat Model
+What this means in practice:
 
-| Vector | Frequency |
-|--------|-----------|
-| Concurrent uploads | High |
-| Upload + dashboard read (cache invalidation) | High |
-| Concurrent LLM analyses | Medium |
-| Concurrent donations | Medium |
-| Concurrent config writes | Low |
-| Background warmup vs. foreground requests | Every startup |
+- Synchronous code between two `await` points runs without interleaving — pure-async dict operations don't race against each other.
+- Code inside `to_thread()` *does* run concurrently with the event loop and with other thread-pool work — those are real races.
+- Multi-process scaling (multiple uvicorn workers) is not a goal; if it becomes one, every in-memory cache becomes per-process and would need an external store.
 
-## Issue Tracker
+## Invariants by resource type
 
-### P0 -- Data Corruption
+### Append-only JSONL files
 
-- [x] **JSONL append locking** -- `locked_jsonl_append()` in `utils/json.py` with `fcntl.flock()`. Applied to: DiskStore index, upload metadata, donation index, friction store, skill store.
+Every JSONL the server writes (`metadata.jsonl`, donation index, friction store, skill store, share registry) is appended through `utils/json.locked_jsonl_append`, which holds `fcntl.flock(LOCK_EX)` across the write+flush. Two concurrent appends serialise; lines never interleave.
 
-### P0.5 -- Event Loop Performance
+Reads use `_iter_jsonl`, which skips malformed lines silently — a corrupt append would otherwise drop a session, so the lock is the only safe contract.
 
-- [x] **Offload blocking calls** -- `locked_jsonl_append()` and `cleanup_extraction()` wrapped in `asyncio.to_thread()`.
+### Read-modify-write on JSONL
 
-### P1 -- Silent Data Loss
+Delete-style operations (`locked_jsonl_remove`) hold the same exclusive lock across the whole read → filter → rewrite cycle. A concurrent append must not slip in between read and write.
 
-- [ ] **Non-atomic multi-step writes** -- `DiskStore.save()` and `ShareService.create_share()` need temp + rename pattern.
-- [x] **JSONL read-modify-write locking** -- `locked_jsonl_remove()` in `utils/json.py` for delete operations in friction and skill stores.
-- [ ] **Storage layer index cache locks** -- DiskStore needs `threading.RLock`; LocalStore needs wider `_build_lock` scope.
+### Files written atomically
 
-### P2 -- State Inconsistency
+Anything written as a whole document — config files (`config/llm.yaml`), the session index cache (`session_index.json`), the share registry, per-upload `result.json` — uses `utils/json.atomic_write_json` (write to temp + rename). Concurrent readers always see either the old or the new file, never a half-written one.
 
-- [ ] **DI singleton registry lock** -- `threading.Lock` in `deps.py` for `_get_or_create()` and `set_llm_config()`.
-- [ ] **LLM config atomic write** -- temp + rename for `config/llm.yaml`.
-- [ ] **API concurrency control** -- `asyncio.Semaphore` per endpoint group (uploads: 3-5, LLM: 2, donation: 3, config: 1).
+### In-memory caches
 
-### P3 -- Defensive Hardening
+Module-level cache dicts (dashboard TTL caches, tool-usage cache, store registries, parser-instance cache) follow one rule: **mutations happen on the event loop, not in `to_thread()`**. When a heavy build must run in a thread (e.g. a fast-path aggregation), it returns a fresh dict and the event loop swaps it in atomically. Threads never mutate live cache dicts in place.
 
-- [ ] **Upload ID entropy** -- increase from 4 to 8 hex chars (collision risk at scale).
-- [ ] **Background warmup sync** -- `asyncio.Event` gate so first request waits for cache warming.
-- [ ] **Persistent index cache atomic write** -- temp + rename for `index_cache.json`.
-- [ ] **In-memory cache locks** -- `threading.Lock` per cache dict (needed when `to_thread()` causes real thread concurrency).
+Where a build inherently needs to mutate shared state from a thread, the resource carries a `threading.Lock` and the read path acquires it before iterating.
 
-## Key Race Conditions
+### DI singletons and registries
 
-### JSONL Append (Fixed)
+`deps.py` holds the lazy-built singletons (LLM client, store registry, share service). Construction is guarded by a `threading.Lock` so two coroutines that both call `to_thread()` and both miss the cache don't both build. After construction the singleton is read-only — the lock isn't held on the read path.
 
-Without file locking, concurrent `open("index.jsonl", "a")` + `write()` from two threads can interleave bytes, producing corrupt JSON lines. `_iter_jsonl()` silently skips corrupt lines, causing sessions to vanish.
+Per-token store registration (the `(session_token, upload_id)` map in the upload pipeline) is an event-loop-only structure; it's mutated from the request handler before any `to_thread()` returns.
 
-**Fix:** `locked_jsonl_append()` acquires `fcntl.flock(LOCK_EX)` before write, releases after flush.
+## Threat model
 
-### JSONL Read-Modify-Write (Fixed)
+| Vector | Why it matters |
+|---|---|
+| Concurrent uploads | Every upload appends to `metadata.jsonl` and registers a store. Lock contention is real but bounded; thread-pool saturation is the bigger risk on large zips. |
+| Upload + dashboard read | Cache invalidation runs on the event loop; the dashboard request is async-only on the cache-hit path. The race is only on the rebuild path. |
+| Concurrent LLM analyses | Each analysis queues batches of LLM calls; the batcher is stateless, but the friction/skill stores receive concurrent appends — covered by JSONL lock. |
+| Concurrent donations | Donation history JSONL append (lock-covered); the sender holds no shared state. |
+| Background warmup vs. foreground requests | Cache warmup runs as a `to_thread()` task; the event loop swaps the result in atomically. A foreground request that arrives mid-warmup falls through to the synchronous build, which is correct (just slower). |
 
-Delete operations read JSONL, filter, and rewrite. A concurrent append between read and write is lost.
+## Performance profile
 
-**Fix:** `locked_jsonl_remove()` holds exclusive lock for entire read-filter-write cycle.
+What the single-worker model can absorb before backpressure shows up:
 
-### Storage Index Cache
+- **Async-only endpoints** (dashboard cache hits, search query, list metadata) — bounded by event-loop cost. Hundreds of req/s is comfortable.
+- **Thread-pool endpoints** (upload, donation send, LLM analysis dispatch) — bounded by the thread pool. Default 40 threads handles ~20 concurrent active users with real headroom.
+- **JSONL lock contention** — single-digit ms per append; serialises one append at a time per file.
 
-`DiskStore` has no locking. `invalidate_index()` can set `_metadata_cache = None` while another thread is mid-update, causing writes to a discarded dict.
+Scaling levers, in increasing cost:
 
-### In-Memory Caches
+1. Increase the asyncio thread pool size if uploads dominate.
+2. Add a `Semaphore` per endpoint group (upload, LLM, donation) to give backpressure earlier than the thread-pool exhaustion edge.
+3. Move to multiple uvicorn workers — at which point in-memory caches become per-process and would need either to be rebuilt per-worker or persisted (TTL caches are cheap to rebuild; the upload registry already replays from `metadata.jsonl`).
 
-Six module-level cache dicts are unprotected. In single-worker asyncio, coroutines don't interleave between `await` points, so synchronous dict ops are safe. The real race is `warm_cache()` running in a thread (via `to_thread()`) while the event loop reads the same dict.
+## Out of scope
 
-## Performance Profile
-
-### Concurrent Uploads (10 Users)
-
-| Phase | Duration | Blocks Event Loop? |
-|-------|----------|-------------------|
-| Stream ZIP to disk | 50-100ms | No (async) |
-| Extract + discover | 15-30ms | No (thread pool) |
-| Parse + anonymize + store | 110-140ms | No (thread pool) |
-| Metadata append (locked) | 5-10ms | Yes |
-| Cache invalidation | < 1ms | Yes (trivial) |
-| Cleanup extracted dir | 20-50ms | Yes |
-
-Thread pool usage: 10 uploads use 10 of 40 threads. No saturation. Lock serialization at metadata append: 50-100ms total for all 10 uploads. Memory: ~100-150MB (10 x 15MB per upload).
-
-### Single Worker Sufficient For
-
-- < 20 concurrent users (typical demo load)
-- Dashboard/search endpoints are pure async (no thread consumption)
-- Uploads dispatch heavy work to thread pool
-
-### Scaling Options
-
-| Option | Impact | Effort |
-|--------|--------|--------|
-| Offload blocking calls to thread pool | High | Small |
-| Semaphore cap on concurrent uploads | High | Small |
-| Increase thread pool size | Medium | One-line |
-| Multiple uvicorn workers | Medium | Config (caches become per-process) |
+- Cross-process locks. The single-process assumption is load-bearing; if this changes, every "module-level dict" invariant in this spec needs revisiting.
+- Distributed coordination (Redis, etc.). VibeLens stays single-host; the donation server is a separate service with its own concurrency story.

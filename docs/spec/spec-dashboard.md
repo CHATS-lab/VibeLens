@@ -1,20 +1,24 @@
 # Analytics Dashboard
 
-Aggregate-usage view: stat cards, time-series charts, tool usage, and per-session analytics. Pure computation — no LLM dependency. Every number traces to a parsed session trajectory or its cached metadata.
+Aggregate-usage view: stat cards, time-series charts, tool usage, per-session analytics. Pure computation — no LLM dependency. Every number traces back to a parsed trajectory or its cached metadata.
 
-## What it answers
+## Motivation
 
-Which tools do I invoke most? When are my peak coding hours? Which project consumes the most cost? How does this week compare to last? The dashboard sits on top of session loading and pricing, and adds aggregation, caching, and the API surface the frontend reads from.
+VibeLens already has a parser tier (per-agent → ATIF), a storage tier (`session_index.json`), and a session-view tier. The dashboard answers a different question: **"taken across all my sessions, what's going on?"** — which tools dominate, when do I work, which project costs the most, how does this week compare to last.
+
+Two constraints shape the design:
+
+- **It must feel free.** The user reaches the dashboard before doing anything else and revisits it constantly. A round-trip should rarely cost more than a TTL-cache lookup.
+- **It must agree with the sidebar.** If the sidebar lists 1 480 sessions, the dashboard's session count, daily breakdown, and project distribution must add up to 1 480 too — even when some files failed to parse cleanly.
 
 ## Two paths
 
-A request first checks the in-memory TTL cache. On a cache miss the dashboard takes one of two routes, decided by whether enough metadata entries already carry token totals — a strict-majority vote across the filtered set.
+The dashboard request first checks the in-memory TTL cache. On a cache miss it picks one of two compute paths, decided by a strict-majority vote: do enough metadata entries (within the active filter) already carry token totals?
 
-The **fast path** sums per-session aggregates that ingest already wrote into the metadata cache. No trajectories are loaded. Used on every typical request because ingest fills the cache up front.
+- **Fast path** — sum the per-session aggregates that ingest wrote into the metadata cache. No trajectories are loaded. This is the typical case because session loading enriches metadata up front.
+- **Slow path** — load every filtered trajectory in parallel, re-aggregate from per-step metrics, then run a reconciliation pass that re-injects sessions which failed to parse so the totals match what the sidebar shows. Reserved for stores whose metadata bypasses enrichment.
 
-The **slow path** loads every filtered trajectory in parallel, re-aggregates from per-step metrics, then runs a reconciliation pass that adds failed-to-parse sessions back into the totals so the dashboard never undercounts what the sidebar shows. Used only when metadata lacks token totals (rare — happens for stores that bypass enrichment).
-
-Both paths produce the same response model and respect the same filters.
+Both paths produce the same response model and respect the same filters. Sub-millisecond cache hits dominate; cache miss on the fast path is on the order of milliseconds; the slow path is multiple seconds because of the trajectory-load step.
 
 ### Lifecycle walkthrough
 
@@ -81,93 +85,62 @@ Three things from this timeline are worth pulling out. The only visible wait is 
 
 ## The messages contract
 
-A "message" means one trajectory step, irrespective of source (USER, AGENT, or SYSTEM). This is the contract end-to-end: ingest writes `total_steps == len(steps)` and a daily breakdown whose per-day messages sum to the same value; the dashboard's fast and slow paths both honour it. The contract is locked by ten invariant tests across `test_stats.py`, `test_loader.py`, and `test_helpers_messages_invariant.py`. Any future change that filters out a step source will fail at least one of them.
+A "message" means **one trajectory step**, regardless of `source` (`user` / `agent` / `system`). The contract is enforced end-to-end:
+
+- Ingest writes `final_metrics.total_steps == len(traj.steps)`.
+- The daily breakdown's per-day `messages` sum to `total_steps`.
+- The dashboard's fast and slow paths both honour this.
+
+The contract is locked by invariant tests in `tests/services/dashboard/` and `tests/ingest/parsers/test_helpers_messages_invariant.py`. Any future change that filters out a step source has to either update the contract everywhere or fail at least one of those tests.
 
 ## Time bucketing
 
-A session is *one event in time* for some statistics and a *stream of activity over time* for others. Session count, peak-hour, weekday heatmap, project distribution, and average-per-session metrics anchor on the trajectory's creation timestamp. Daily and period messages, tokens, and cost bucket per step, so a session that crossed midnight contributes to both days' bars. Duration and per-period subtotals like tool calls stay anchored to the creation day. The two-mode bucketing happens in one pass per session and is covered by the cross-day test suite.
+A session is *one event in time* for some statistics and a *stream of activity over time* for others.
+
+- **Anchored on session start** — session count, peak-hour, weekday heatmap, project distribution, average-per-session metrics.
+- **Bucketed per step** — daily and per-period messages, tokens, cost. A session that crossed midnight contributes to both days.
+- **Anchored on session start, period-internal** — duration and per-period subtotals like tool calls.
+
+The two-mode bucketing happens in one pass per session.
 
 ## Caching
 
-In-memory TTL cache (one hour) keyed by the full filter tuple — a global view and a project-filtered view never collide. A second TTL cache holds the tool-usage response with the same key shape. Both clear on `?refresh=true` or `invalidate_cache()`. Tool-usage data also persists per session on disk, keyed by source-file mtime so warm restarts skip sessions that didn't change. The session-index metadata cache itself lives one layer below in `~/.vibelens/session_index.json` (schema version 10) and follows the rules described in [`spec/session/spec-session-loading.md`](session/spec-session-loading.md).
+- **In-memory TTL cache** (one hour) keyed by the full filter tuple. Different filters get different cache entries; switching back and forth is fast on the first hit and instant after that. A second TTL cache holds the tool-usage response with the same key shape. Both clear on `?refresh=true` or `invalidate_cache()`.
+- **Persistent tool-usage cache** — per-session, keyed by source-file mtime, so warm restarts skip sessions whose source didn't change.
+- **Session-index cache** — one layer below in `~/.vibelens/session_index.json`. See [`spec-session-loading.md`](session/spec-session-loading.md) for its rules.
 
 ## API
 
-All routes mount under `/api/`. Every query accepts project, date range, and agent filters, plus a per-tab session token for multi-user demo isolation.
+All routes mount under `/api/`. Every dashboard query accepts project, date-range, and agent filters, plus a per-tab session token for multi-user demo isolation.
 
 | Path | Returns |
-|------|---------|
-| `GET /api/dashboard` | Aggregate stats payload (`?refresh=true` clears the cache first) |
-| `GET /api/tool-usage` | One row per tool, sorted by call count desc |
-| `GET /api/sessions/{id}/stats` | Per-session analytics — token breakdown, tool frequency, phase segments, cost. Recomputed every request |
-| `GET /api/dashboard/export?format=csv\|json` | Streaming download honouring the same filters |
+|---|---|
+| `GET /api/dashboard` | Aggregate stats payload. `?refresh=true` clears the cache first. |
+| `GET /api/tool-usage` | One row per tool, sorted by call count desc. |
+| `GET /api/dashboard/export?format=csv\|json` | Streaming download honouring the same filters. |
+| `GET /api/sessions/{id}/stats` | Per-session analytics — token breakdown, tool frequency, phase segments, cost. Recomputed every request. |
 
 ## Cost
 
-Per-step cost is written by ingest into `step.metrics.cost_usd` from a pricing lookup keyed by canonical model name. Both paths sum populated step costs for the session-level total; the fast path additionally falls back to an aggregate-token lookup when per-step data is absent. Sessions whose model is unknown are excluded from the per-model cost breakdown but still count toward grand totals. Pricing lives in `llm/pricing.py` so it stays available to non-dashboard callers.
+Per-step cost is written by ingest into `step.metrics.cost_usd` from a pricing lookup keyed by canonical model name. Both paths sum populated step costs for the session-level total; the fast path additionally falls back to an aggregate-token lookup when per-step data is absent. Sessions whose model is unknown are excluded from the per-model cost breakdown but still count toward grand totals. Pricing lives in `llm/pricing.py` so it's available to non-dashboard callers too.
 
 ## Reconciliation
 
-Some session files fail to parse cleanly (truncated JSONL, format drift). The sidebar lists every metadata entry, so the dashboard's totals must too — otherwise users see N sessions in the list and only M < N reflected in the cards. After the slow path aggregates whatever parsed, the reconciliation pass re-derives `total_sessions` and the period counts from metadata timestamps, and adds the unparsed sessions to the project distribution and daily activity. The fast path is naturally consistent (it operates on metadata only) so it skips this step.
+Some session files fail to parse cleanly (truncated JSONL, format drift). The sidebar lists every metadata entry, so the dashboard's totals must too — otherwise users see N sessions in the list and only M < N reflected in the cards. After the slow path aggregates whatever parsed, the reconciliation pass re-derives `total_sessions` and the period counts from metadata timestamps, and adds the unparsed sessions back into project distribution and daily activity. The fast path is naturally consistent (it operates on metadata only) so it skips this step.
 
 ## Filtering and edge cases
 
-Filter values become part of the cache key, so views cache independently. Sessions without a timestamp are excluded from time-dimension charts but still contribute to grand totals and distributions. Missing model and project fields fall back to "unknown" and "(no project)" placeholders. Parser-emitted sentinels like `<synthetic>` are filtered out of model distributions but still counted toward session totals.
+- Filter values become part of the cache key; views cache independently.
+- Sessions without a timestamp are excluded from time-dimension charts but still contribute to grand totals and distributions.
+- Missing model and project fields fall back to `"unknown"` and `"(no project)"`.
+- Parser-emitted sentinels like `<synthetic>` are filtered out of model distributions but still counted toward session totals.
 
-## Verification
+## Active sessions
 
-Numbers below come from `scripts/dashboard/bench.py` and `scripts/dashboard/dump_stats.py` running against the local `~/.claude/projects/` corpus on the development machine.
+VibeLens does not auto-detect appends to a session that's still being written to in another terminal. The dashboard refresh control invalidates the TTL caches *and* triggers a partial index rebuild, so one click suffices to see the latest data.
 
-### Environment
+## Out of scope
 
-| Item | Value |
-|---|---|
-| Platform | macOS Darwin 24.6.0 (arm64) |
-| Python | 3.10–3.12 |
-| Session count | 1480 |
-| Fast-path eligible | Yes (every metadata entry carries token totals after v10 enrichment) |
-| Cache TTL | 3600 s |
-
-### Performance
-
-Median over three back-to-back runs.
-
-| Path | Median wall time | What it covers |
-|---|---|---|
-| Fast path (typical request) | **~18 ms** | Aggregating 1480 metadata entries into the response payload |
-| Slow path compute | ~180 ms | Re-aggregating from already-loaded trajectories |
-| Slow path reconciliation | ~1 ms | Period-count override and failed-parse re-injection |
-| Slow path trajectory load | ~26 s | One-off; loads 1480 trajectories in parallel from disk |
-| Per-session analytics | ~4 ms | Single-trajectory roll-up, recomputed per request |
-| Cache hit | sub-millisecond | TTL dict lookup |
-
-The fast path is what the frontend hits on every interaction. The slow path is reserved for cache-miss scenarios on stores whose metadata lacks token totals.
-
-### Tests
-
-Locked by 49 tests across six files. Behaviour tests guarantee the response shape; invariant tests guard the messages contract; loader tests guard dispatch and reconciliation; pricing tests guard cost.
-
-| File | What it covers |
-|---|---|
-| `tests/services/dashboard/test_stats.py` | Full and fast path totals, distributions, period boundaries, cost aggregation, cross-day bucketing, fast-path daily breakdown, and the five `TestMessageCountInvariant` cases |
-| `tests/services/dashboard/test_loader.py` | Fast-vs-slow dispatch threshold, reconciliation behaviour, TTL cache key isolation, invalidation |
-| `tests/services/dashboard/test_tool_usage_cache.py` | Persistent on-disk tool-usage cache, mtime invalidation, drop-missing handling |
-| `tests/ingest/parsers/test_helpers_messages_invariant.py` | Ingest-side guarantee that `total_steps == len(steps)` and the daily breakdown sums to it |
-| `tests/ingest/parsers/test_cost_enrichment.py` | Per-step cost enrichment during ingest; preserves pre-populated cost; no-model and unknown-model fallbacks |
-| `tests/llm/test_pricing.py` | Pricing lookup, per-step and aggregate cost computation |
-
-### Results
-
-Verified end-to-end via `scripts/dashboard/dump_stats.py --full` after the v10 cache rebuild.
-
-| Check | Outcome |
-|---|---|
-| Per-session `cache.total_steps == len(traj.steps)` | 1477 / 1480 (3 explained: 2 active sessions racing on mtime, 1 fixture file from the pre-v10 era) |
-| Per-session `sum(daily_breakdown.messages) == total_steps` | 1480 / 1480 |
-| Per-session fast-path messages == slow-path messages | 1476 / 1477 (1 fixture mismatch as above) |
-| Top-line aggregates fast vs slow on inactive sessions | Identical |
-| Top-line aggregates across two back-to-back runs | Identical except for active-session deltas (the conversation file appended between runs) |
-
-## Future work
-
-The TTL cache lives in memory only — a process restart always pays one fast-path computation (~18 ms) before the first request. Persisting it would shave that off but isn't worth the invalidation complexity yet. Filter state in the frontend doesn't round-trip through the URL, so shared dashboard links always show the global view. The metadata fast path lacks per-day cost detail, so per-day cost breakdowns are derived from session-level totals; if per-day step cost ever matters for the cached path, the session index would need to carry the breakdown itself.
+- Persisting the TTL cache across restarts.
+- Round-tripping filter state through the URL — shared dashboard links show the global view.
+- Per-day cost detail in the cached path — derived from session-level totals; gaining per-day step cost would require the session index to carry the breakdown itself.
