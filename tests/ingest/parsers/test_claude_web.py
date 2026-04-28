@@ -404,7 +404,9 @@ def test_parse_attachment_only_human_message(tmp_path: Path):
     user_step = trajectories[0].steps[0]
     assert user_step.source == StepSource.USER
     assert user_step.message == "[Attached: report.pdf]"
-    assert user_step.extra and user_step.extra["attachments"][0]["extracted_content"] == "Body of the PDF."
+    assert user_step.extra is not None
+    att = user_step.extra["attachments"][0]
+    assert att["extracted_content"] == "Body of the PDF."
     print(f"attachment-only step: message={user_step.message!r}")
 
 
