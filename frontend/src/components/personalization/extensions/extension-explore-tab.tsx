@@ -20,6 +20,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useExtensionsClient } from "../../../app";
 import { SEARCH_DEBOUNCE_MS } from "../../../constants";
+import { useClickOutside } from "../../../hooks/use-click-outside";
 import { useResetOnKey } from "../../../hooks/use-reset-on-key";
 import { TOGGLE_ACTIVE, TOGGLE_BUTTON_BASE, TOGGLE_CONTAINER, TOGGLE_INACTIVE } from "../../../styles";
 import type { ExtensionItemSummary, ExtensionSyncTarget } from "../../../types";
@@ -67,15 +68,7 @@ interface FilterDropdownProps {
 function FilterDropdown({ value, options, onChange, icon, placeholder }: FilterDropdownProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const handleClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [open]);
+  useClickOutside(ref, open, () => setOpen(false));
 
   const activeLabel = options.find((o) => o.value === value)?.label ?? placeholder;
 

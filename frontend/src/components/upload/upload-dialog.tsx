@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppContext } from "../../app";
 import { AgentIcon } from "../../agents";
 import { uploadClient, type AgentSpec } from "../../api/upload";
+import { useClickOutside } from "../../hooks/use-click-outside";
 import type { AgentType, OSPlatform, UploadCommands, UploadResult } from "../../types";
 import { CopyButton } from "../ui/copy-button";
 import {
@@ -44,15 +45,7 @@ function AgentDropdown({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const handleClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [open]);
+  useClickOutside(ref, open, () => setOpen(false));
 
   const activeMeta = agents.find((a) => a.agent_type === value);
 
@@ -241,6 +234,13 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
         const data = JSON.parse(xhr.responseText);
         if (xhr.status >= 200 && xhr.status < 300) {
           setResult(data);
+          // Refresh the session list as soon as the server confirms — the
+          // dialog stays open at the result step so the user sees counts,
+          // but the main view's data is already fresh in case they click
+          // around (e.g. close via X instead of Done).
+          if (data.sessions_parsed > 0) {
+            onComplete();
+          }
         } else {
           setResult(errorResult(data.detail || `HTTP ${xhr.status}`));
         }
@@ -267,14 +267,12 @@ export function UploadDialog({ onClose, onComplete }: UploadDialogProps) {
     };
 
     xhr.send(formData);
-  }, [file, agentType, sessionToken]);
+  }, [file, agentType, sessionToken, onComplete]);
 
-  const handleDone = useCallback(() => {
-    if (result && result.sessions_parsed > 0) {
-      onComplete();
-    }
-    onClose();
-  }, [result, onClose, onComplete]);
+  // ``onComplete`` already fires inside ``xhr.onload`` so the parent's data
+  // refresh happens at success time, not at dialog-close time. This keeps
+  // ``handleDone`` purely a UI close.
+  const handleDone = useCallback(() => onClose(), [onClose]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">

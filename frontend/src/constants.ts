@@ -9,6 +9,9 @@ export const LABEL_MAX_LENGTH = 120;
 // Timing constants
 export const SHARE_STATUS_RESET_MS = 2000;
 export const SCROLL_SUPPRESS_MS = 800;
+export const SCROLL_INITIAL_DELAY_MS = 300;
+export const SCROLL_RETRY_BASE_MS = 200;
+export const FRICTION_HIGHLIGHT_MS = 2000;
 export const SEARCH_DEBOUNCE_MS = 300;
 export const SESSIONS_PER_PAGE = 100;
 export const COPY_FEEDBACK_MS = 1500;

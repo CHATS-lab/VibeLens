@@ -13,7 +13,12 @@ import { computeFlow } from "./flow-layout";
 import { extractUserText } from "../../utils";
 import { LoadingSpinner } from "../ui/loading-spinner";
 import { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH } from "../../styles";
-import { SCROLL_SUPPRESS_MS } from "../../constants";
+import {
+  FRICTION_HIGHLIGHT_MS,
+  SCROLL_INITIAL_DELAY_MS,
+  SCROLL_RETRY_BASE_MS,
+  SCROLL_SUPPRESS_MS,
+} from "../../constants";
 
 interface SessionViewProps {
   sessionId: string;
@@ -238,20 +243,19 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
         el.scrollIntoView({ behavior: "smooth", block: "start" });
         setActiveStepId(pendingScrollStepId);
         el.classList.add("friction-highlight");
-        setTimeout(() => el.classList.remove("friction-highlight"), 2000);
+        setTimeout(() => el.classList.remove("friction-highlight"), FRICTION_HIGHLIGHT_MS);
         onScrollComplete?.();
         return;
       }
       attempt++;
       if (attempt < 8) {
-        setTimeout(tryScroll, 200 * attempt);
+        setTimeout(tryScroll, SCROLL_RETRY_BASE_MS * attempt);
       } else {
         onScrollComplete?.();
       }
     };
 
-    // Initial delay for DOM render
-    const timer = setTimeout(tryScroll, 300);
+    const timer = setTimeout(tryScroll, SCROLL_INITIAL_DELAY_MS);
     return () => {
       cancelled = true;
       clearTimeout(timer);
@@ -288,10 +292,12 @@ export function SessionView({ sessionId, sharedTrajectories, shareToken, onNavig
       if (typeof s.message === "string") return !!s.message.trim();
       return s.message.length > 0;
     }
-    // In concise mode, hide agent steps that have no text message
+    // In concise mode, hide agent steps that have no text — except keep
+    // ones that activated a Skill so users still see "Skill /name" pills.
     if (isConcise && s.source === "agent") {
       const text = typeof s.message === "string" ? s.message.trim() : "";
-      return !!text;
+      const hasSkillCall = s.tool_calls?.some((tc) => tc.is_skill);
+      return !!text || !!hasSkillCall;
     }
     return s.source === "agent" || s.source === "system";
   };

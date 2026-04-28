@@ -1,6 +1,7 @@
 import { Bot, ChevronDown, Check, Heart } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { AgentIcon } from "../../agents";
+import { useClickOutside } from "../../hooks/use-click-outside";
 import { Tooltip } from "../ui/tooltip";
 
 interface AgentFilterAgents {
@@ -20,15 +21,7 @@ export function AgentFilterDropdown({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const handleClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [open]);
+  useClickOutside(ref, open, () => setOpen(false));
 
   const options = [
     { value: "all", label: "All agents", count: agents.total },
