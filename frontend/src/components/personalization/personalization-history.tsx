@@ -13,7 +13,7 @@ const MODE_LABELS: Record<PersonalizationMode, string> = {
   evolution: "Evolve",
 };
 
-const MODE_API_BASE: Record<PersonalizationMode, string> = {
+export const MODE_API_BASE: Record<PersonalizationMode, string> = {
   recommendation: "/api/recommendation",
   creation: "/api/creation",
   evolution: "/api/evolution",

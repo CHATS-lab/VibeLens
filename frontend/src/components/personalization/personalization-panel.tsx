@@ -21,7 +21,7 @@ import {
   AnalysisResultView,
   type PersonalizationTab,
 } from "./personalization-view";
-import { PersonalizationHistory } from "./personalization-history";
+import { MODE_API_BASE, PersonalizationHistory } from "./personalization-history";
 
 // Collections is feature-gated off until the UX is fleshed out. Backend, API
 // client, tab component, detail view, and dialogs are all in place — flip
@@ -46,12 +46,6 @@ const MODE_MAP: Record<string, PersonalizationMode> = {
   retrieve: "recommendation",
   create: "creation",
   evolve: "evolution",
-};
-
-const API_BASE_MAP: Record<string, string> = {
-  retrieve: "/api/recommendation",
-  create: "/api/creation",
-  evolve: "/api/evolution",
 };
 
 const MODE_DESCRIPTIONS: Record<PersonalizationMode, {
@@ -256,11 +250,6 @@ export function PersonalizationPanel({ checkedIds, selectedProjectCount, resetKe
     [sessionsApi],
   );
 
-  const apiBaseForMode = useCallback((mode: PersonalizationMode) => {
-    const tabKey = Object.entries(MODE_MAP).find(([, v]) => v === mode)?.[0] ?? "retrieve";
-    return API_BASE_MAP[tabKey];
-  }, []);
-
   const proceedToEstimate = useCallback(
     (mode: PersonalizationMode, overrideSessionIds?: string[]) => {
       setModeField(mode, "error", null);
@@ -269,14 +258,14 @@ export function PersonalizationPanel({ checkedIds, selectedProjectCount, resetKe
       setModeField(mode, "sessionCount", sessionIds.length);
       const body: Record<string, unknown> = { session_ids: sessionIds };
       if (selectedSkillNamesRef.current) body.skill_names = selectedSkillNamesRef.current;
-      requestEstimate(`${apiBaseForMode(mode)}/estimate`, body);
+      requestEstimate(`${MODE_API_BASE[mode]}/estimate`, body);
     },
-    [checkedIds, requestEstimate, apiBaseForMode, setModeField],
+    [checkedIds, requestEstimate, setModeField],
   );
 
   const handleConfirmAnalysis = useCallback(async () => {
     const mode = pendingModeRef.current;
-    const api = analysisClient(fetchWithToken, apiBaseForMode(mode));
+    const api = analysisClient(fetchWithToken, MODE_API_BASE[mode]);
     clearEstimate();
     setModeField(mode, "loading", true);
     setModeField(mode, "error", null);
@@ -296,7 +285,7 @@ export function PersonalizationPanel({ checkedIds, selectedProjectCount, resetKe
       setModeField(mode, "error", err instanceof Error ? err.message : String(err));
       setModeField(mode, "loading", false);
     }
-  }, [checkedIds, clearEstimate, fetchWithToken, apiBaseForMode, setModeField]);
+  }, [checkedIds, clearEstimate, fetchWithToken, setModeField]);
 
   const handleRequestEstimate = useCallback(
     async (mode: PersonalizationMode) => {
@@ -357,7 +346,7 @@ export function PersonalizationPanel({ checkedIds, selectedProjectCount, resetKe
 
   const loadMostRecentAnalysis = useCallback(
     async (mode: PersonalizationMode) => {
-      const api = analysisClient(fetchWithToken, apiBaseForMode(mode));
+      const api = analysisClient(fetchWithToken, MODE_API_BASE[mode]);
       try {
         if (!historyCacheByModeRef.current[mode]) {
           historyCacheByModeRef.current[mode] = await api.history<{ id: string; mode: PersonalizationMode }>();
@@ -370,7 +359,7 @@ export function PersonalizationPanel({ checkedIds, selectedProjectCount, resetKe
         /* best-effort — fall back to welcome page */
       }
     },
-    [fetchWithToken, apiBaseForMode, setModeField],
+    [fetchWithToken, setModeField],
   );
 
   // Auto-load most recent on initial mount, respecting stored tab preference.
@@ -383,7 +372,7 @@ export function PersonalizationPanel({ checkedIds, selectedProjectCount, resetKe
     const targetMode = storedTab && MODE_MAP[storedTab] ? MODE_MAP[storedTab] : null;
     if (!targetMode) return;
 
-    const api = analysisClient(fetchWithToken, apiBaseForMode(targetMode));
+    const api = analysisClient(fetchWithToken, MODE_API_BASE[targetMode]);
     (async () => {
       try {
         const history = await api.history<{ id: string; mode: PersonalizationMode }>();
@@ -395,7 +384,7 @@ export function PersonalizationPanel({ checkedIds, selectedProjectCount, resetKe
         /* best-effort */
       }
     })();
-  }, [fetchWithToken, handleHistorySelect, apiBaseForMode]);
+  }, [fetchWithToken, handleHistorySelect]);
 
   // Restore persisted running jobs on mount: verify each is still running on the
   // backend; if terminal, clear the persisted ID and surface result/error.
@@ -406,7 +395,7 @@ export function PersonalizationPanel({ checkedIds, selectedProjectCount, resetKe
     for (const mode of PERSONALIZATION_MODES) {
       const jobId = jobIdsByMode[mode];
       if (!jobId) continue;
-      const api = analysisClient(fetchWithToken, apiBaseForMode(mode));
+      const api = analysisClient(fetchWithToken, MODE_API_BASE[mode]);
       (async () => {
         try {
           const status = await api.jobStatus(jobId);
@@ -452,14 +441,14 @@ export function PersonalizationPanel({ checkedIds, selectedProjectCount, resetKe
       setModeField(mode, "jobId", null);
       setModeField(mode, "loading", false);
       try {
-        const api = analysisClient(fetchWithToken, apiBaseForMode(mode));
+        const api = analysisClient(fetchWithToken, MODE_API_BASE[mode]);
         setModeField(mode, "result", await api.load<PersonalizationResult>(analysisId));
       } catch {
         /* best-effort */
       }
       setHistoryRefresh((n) => n + 1);
     },
-    [fetchWithToken, apiBaseForMode, setModeField],
+    [fetchWithToken, setModeField],
   );
   const makeOnFailed = useCallback(
     (mode: PersonalizationMode) => (message: string) => {
@@ -493,14 +482,14 @@ export function PersonalizationPanel({ checkedIds, selectedProjectCount, resetKe
     onCancelled: makeOnCancelled("evolution"),
   }), [makeOnCompleted, makeOnFailed, makeOnCancelled]);
 
-  useJobPolling(jobIdsByMode.recommendation, "/api/recommendation", fetchWithToken, recCallbacks);
-  useJobPolling(jobIdsByMode.creation, "/api/creation", fetchWithToken, creCallbacks);
-  useJobPolling(jobIdsByMode.evolution, "/api/evolution", fetchWithToken, evoCallbacks);
+  useJobPolling(jobIdsByMode.recommendation, MODE_API_BASE.recommendation, fetchWithToken, recCallbacks);
+  useJobPolling(jobIdsByMode.creation, MODE_API_BASE.creation, fetchWithToken, creCallbacks);
+  useJobPolling(jobIdsByMode.evolution, MODE_API_BASE.evolution, fetchWithToken, evoCallbacks);
 
   const handleStopAnalysis = useCallback(async (mode: PersonalizationMode) => {
     const jobId = jobIdsByMode[mode];
     if (!jobId) return;
-    const api = analysisClient(fetchWithToken, apiBaseForMode(mode));
+    const api = analysisClient(fetchWithToken, MODE_API_BASE[mode]);
     try {
       await api.cancelJob(jobId);
     } catch {
@@ -508,7 +497,7 @@ export function PersonalizationPanel({ checkedIds, selectedProjectCount, resetKe
     }
     setModeField(mode, "jobId", null);
     setModeField(mode, "loading", false);
-  }, [jobIdsByMode, fetchWithToken, apiBaseForMode, setModeField]);
+  }, [jobIdsByMode, fetchWithToken, setModeField]);
 
   const isAnalysisTab =
     activeTab !== "local" && activeTab !== "explore" && activeTab !== "collections";
