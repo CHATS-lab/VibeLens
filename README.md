@@ -24,6 +24,11 @@
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
+<p align="center">
+  <a href="README.md">English</a> &middot;
+  <a href="README.zh-CN.md">中文</a>
+</p>
+
 ---
 
 <p align="center">
