@@ -21,6 +21,7 @@ Data format observations:
 """
 
 import json
+from collections import deque
 from pathlib import Path
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
@@ -240,9 +241,13 @@ def _decompose_assistant_content(
     tool_calls: list[ToolCall] = []
     observation_results: list[ObservationResult] = []
 
-    # Track tool_use blocks for pairing with tool_result blocks
-    # Maps tool_use.id -> tool_call_id (our generated ID)
-    tool_id_map: dict[str | None, str] = {}
+    # tool_use ↔ tool_result pairing: most blocks carry an ``id`` we can match
+    # by, but artifact tools emit ``id=None`` on both sides. For the null-id
+    # case we pair positionally (FIFO) rather than via the dict — otherwise
+    # multiple null-id calls in one message would all collapse onto the same
+    # dict entry and only the last pairing would survive.
+    tool_id_map: dict[str, str] = {}
+    null_id_pending: deque[str] = deque()
     tool_use_counter = 0
 
     for block in content_blocks:
@@ -270,7 +275,10 @@ def _decompose_assistant_content(
             tool_call_id = deterministic_id(
                 "tc", session_id, str(msg_idx), tool_name, str(tool_use_counter)
             )
-            tool_id_map[native_id] = tool_call_id
+            if native_id:
+                tool_id_map[native_id] = tool_call_id
+            else:
+                null_id_pending.append(tool_call_id)
             tool_use_counter += 1
 
             tool_calls.append(
@@ -284,7 +292,12 @@ def _decompose_assistant_content(
         elif block_type == "tool_result":
             result_content = extract_tool_result_content(block.get("content"))
             native_tool_use_id = block.get("tool_use_id")
-            source_call_id = tool_id_map.get(native_tool_use_id)
+            if native_tool_use_id:
+                source_call_id = tool_id_map.get(native_tool_use_id)
+            elif null_id_pending:
+                source_call_id = null_id_pending.popleft()
+            else:
+                source_call_id = None
 
             observation_results.append(
                 ObservationResult(source_call_id=source_call_id, content=result_content)
@@ -296,14 +309,20 @@ def _decompose_assistant_content(
 def _extract_user_content(msg: dict) -> tuple[str, list[dict]]:
     """Extract text and attachments from a human message.
 
-    Tries the ``content`` blocks array first, falling back to
-    the top-level ``text`` field.
+    Tries the ``content`` blocks array first, falling back to the top-level
+    ``text`` field. When a human message has no typed text but does carry
+    attachments (a file upload with no caption), synthesises a placeholder
+    so the message still produces a step — losing it would erase the user's
+    upload event from the conversation entirely. Attachment ``extracted_content``
+    is preserved in the returned dicts so the actual file body is recoverable
+    for analytics; it does NOT get inlined into the displayed message.
 
     Args:
         msg: Chat message dict with sender="human".
 
     Returns:
-        Tuple of (text, attachments_list).
+        Tuple of (text, attachments_list). ``text`` is always a string —
+        synthesised when only attachments are present.
     """
     content_blocks = msg.get("content", [])
     text_parts: list[str] = []
@@ -329,7 +348,12 @@ def _extract_user_content(msg: dict) -> tuple[str, list[dict]]:
                     "file_name": att.get("file_name", ""),
                     "file_type": att.get("file_type", ""),
                     "file_size": att.get("file_size", 0),
+                    "extracted_content": att.get("extracted_content", "") or "",
                 }
             )
+
+    if not text and attachments:
+        labels = [a["file_name"] or f"<{a['file_type'] or 'file'}>" for a in attachments]
+        text = f"[Attached: {', '.join(labels)}]"
 
     return text, attachments

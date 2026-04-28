@@ -330,6 +330,84 @@ def test_parse_tool_use_without_id(tmp_path: Path):
     print("Tool without ID: paired successfully via None key")
 
 
+def test_parse_multiple_null_id_tools_positional(tmp_path: Path):
+    """Multiple tool_use/tool_result pairs with id=None must pair positionally
+    (FIFO) rather than collapse onto a single dict entry.
+
+    Regression: dict lookup by ``None`` previously meant only the last pair
+    survived, dropping observations for earlier null-id calls.
+    """
+    conversation = _make_conversation(
+        chat_messages=[
+            _human_msg(text="Create three artifacts"),
+            _assistant_msg(
+                content_blocks=[
+                    {"type": "tool_use", "id": None, "name": "artifacts", "input": {"n": 1}},
+                    {"type": "tool_result", "tool_use_id": None,
+                     "content": [{"type": "text", "text": "first"}]},
+                    {"type": "tool_use", "id": None, "name": "artifacts", "input": {"n": 2}},
+                    {"type": "tool_result", "tool_use_id": None,
+                     "content": [{"type": "text", "text": "second"}]},
+                    {"type": "tool_use", "id": None, "name": "artifacts", "input": {"n": 3}},
+                    {"type": "tool_result", "tool_use_id": None,
+                     "content": [{"type": "text", "text": "third"}]},
+                ]
+            ),
+        ]
+    )
+    content = json.dumps([conversation])
+    trajectories = _parse_content(content, tmp_path)
+
+    agent_step = trajectories[0].steps[1]
+    assert len(agent_step.tool_calls) == 3
+    assert agent_step.observation is not None
+    assert len(agent_step.observation.results) == 3
+
+    # FIFO pairing: result i should reference call i
+    paired = [(r.source_call_id, r.content) for r in agent_step.observation.results]
+    expected = [(tc.tool_call_id, label) for tc, label in zip(
+        agent_step.tool_calls, ["first", "second", "third"], strict=True
+    )]
+    print(f"paired: {paired}")
+    print(f"expected: {expected}")
+    assert paired == expected
+
+
+def test_parse_attachment_only_human_message(tmp_path: Path):
+    """A human message with attachments but no typed text still produces a
+    USER step (synthesised placeholder) so the upload event isn't lost.
+    """
+    conversation = _make_conversation(
+        chat_messages=[
+            {
+                "uuid": "msg-att",
+                "sender": "human",
+                "text": "",
+                "created_at": "2025-10-24T19:39:14Z",
+                "content": [],
+                "attachments": [
+                    {
+                        "file_name": "report.pdf",
+                        "file_type": "pdf",
+                        "file_size": 12345,
+                        "extracted_content": "Body of the PDF.",
+                    }
+                ],
+            },
+            _assistant_msg(content_blocks=[{"type": "text", "text": "Got it."}]),
+        ]
+    )
+    content = json.dumps([conversation])
+    trajectories = _parse_content(content, tmp_path)
+
+    assert len(trajectories[0].steps) == 2
+    user_step = trajectories[0].steps[0]
+    assert user_step.source == StepSource.USER
+    assert user_step.message == "[Attached: report.pdf]"
+    assert user_step.extra and user_step.extra["attachments"][0]["extracted_content"] == "Body of the PDF."
+    print(f"attachment-only step: message={user_step.message!r}")
+
+
 def test_parse_orphaned_tool_use(tmp_path: Path):
     """Tool use without a following result (e.g. last message interrupted)."""
     conversation = _make_conversation(
@@ -388,8 +466,8 @@ def test_parse_attachments(tmp_path: Path):
     assert att["file_name"] == "report.pdf"
     assert att["file_type"] == "pdf"
     assert att["file_size"] == 12345
-    # extracted_content is not stored (too large)
-    assert "extracted_content" not in att
+    # extracted_content is preserved so analytics can recover what the LLM saw
+    assert att["extracted_content"] == "Some PDF content"
 
     print(f"Attachments: {att}")
 

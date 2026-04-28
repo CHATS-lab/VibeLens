@@ -77,7 +77,7 @@ When the user types while the agent is mid-turn, Claude Code emits a `queue-oper
 - **dequeued** → followed by a regular `type: "user"` message — we drop the enqueue, the user message wins.
 - **removed** → no follow-up user message exists. We synthesise a user entry from the enqueue so the user's intent is preserved.
 
-Pairing is FIFO (`deque.popleft()`) by occurrence order — the dequeue records its own delivery timestamp, not the enqueue's, so timestamp matching wouldn't survive that drift. (Bug originally found in session `b35f4972` where two duplicate user messages appeared.)
+Pairing is FIFO (`deque.popleft()`) by occurrence order — the dequeue records its own delivery timestamp, not the enqueue's, so timestamp matching wouldn't survive that drift.
 
 ### User-message classification
 
