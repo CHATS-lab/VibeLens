@@ -79,6 +79,34 @@ function openFeedback(label: string): void {
   window.open(`${GITHUB_ISSUES_URL}?${params}`, "_blank", "noopener,noreferrer");
 }
 
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <h3 className="text-[10px] font-semibold text-muted uppercase tracking-wider mb-1.5">
+      {children}
+    </h3>
+  );
+}
+
+function FeedbackButton({
+  label,
+  icon,
+  onClick,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-secondary hover:text-primary bg-control/80 hover:bg-control-hover rounded-lg border border-card transition"
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
 export function SettingsDialog({ version, onClose, onShowOnboarding }: SettingsDialogProps) {
   const { fontScale, setFontScale, fontScaleOptions, theme, setTheme, themeOptions, fontFamily, setFontFamily } = useSettings();
 
@@ -104,54 +132,72 @@ export function SettingsDialog({ version, onClose, onShowOnboarding }: SettingsD
         </div>
 
         {/* Body */}
-        <div className="px-5 py-4 space-y-5">
+        <div className="px-5 py-4 space-y-4">
           <VersionSection version={version} />
 
-          {/* Theme */}
-          <div>
-            <h3 className="text-xs font-semibold text-muted uppercase tracking-wider mb-3">
-              Theme
-            </h3>
-            <div className="flex gap-2">
-              {themeOptions.map((option: ThemePreference) => (
-                <button
-                  key={option}
-                  onClick={() => setTheme(option)}
-                  className={`flex-1 py-2 text-sm font-medium rounded-md border transition ${
-                    theme === option
-                      ? "bg-accent-cyan-subtle text-accent-cyan border-cyan-200 dark:border-cyan-700/40"
-                      : "text-muted border-card hover:text-secondary hover:border-hover"
-                  }`}
-                >
-                  {option.charAt(0).toUpperCase() + option.slice(1)}
-                </button>
-              ))}
+          {/* Appearance — theme + display scale share one block since both are
+              quick segmented pickers. The 5-column grid gives Scale's 5 buttons
+              their own column each so the percentages don't crowd. */}
+          <div className="grid grid-cols-5 gap-3">
+            <div className="col-span-2">
+              <SectionLabel>Theme</SectionLabel>
+              <div className="flex gap-1.5">
+                {themeOptions.map((option: ThemePreference) => (
+                  <button
+                    key={option}
+                    onClick={() => setTheme(option)}
+                    className={`flex-1 py-1.5 text-xs font-medium rounded-md border transition ${
+                      theme === option
+                        ? "bg-accent-cyan-subtle text-accent-cyan border-cyan-200 dark:border-cyan-700/40"
+                        : "text-muted border-card hover:text-secondary hover:border-hover"
+                    }`}
+                  >
+                    {option.charAt(0).toUpperCase() + option.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="col-span-3">
+              <SectionLabel>Scale</SectionLabel>
+              <div className="flex gap-1.5">
+                {fontScaleOptions.map((scale: FontScale) => (
+                  <button
+                    key={scale}
+                    onClick={() => setFontScale(scale)}
+                    className={`flex-1 py-1.5 text-xs font-medium rounded-md border transition ${
+                      fontScale === scale
+                        ? "bg-accent-cyan-subtle text-accent-cyan border-cyan-200 dark:border-cyan-700/40"
+                        : "text-muted border-card hover:text-secondary hover:border-hover"
+                    }`}
+                  >
+                    {scale}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
           {/* Font */}
           <div>
-            <h3 className="text-xs font-semibold text-muted uppercase tracking-wider mb-3">
-              Font
-            </h3>
+            <SectionLabel>Font</SectionLabel>
             <div className="grid grid-cols-4 gap-2">
               {FONT_CARDS.map((card) => (
                 <button
                   key={card.key}
                   onClick={() => setFontFamily(card.key)}
-                  className={`flex flex-col items-center gap-1 py-3 px-1 rounded-lg border transition ${
+                  className={`flex flex-col items-center gap-0.5 py-2 px-1 rounded-lg border transition ${
                     fontFamily === card.key
                       ? "bg-accent-cyan-subtle border-cyan-200 dark:border-cyan-700/40"
                       : "border-card hover:border-hover"
                   }`}
                 >
                   <span
-                    className="text-2xl text-primary leading-none"
+                    className="text-lg text-primary leading-none"
                     style={{ fontFamily: card.fontFamily }}
                   >
                     Aa
                   </span>
-                  <span className="text-[10px] text-muted mt-1 truncate w-full text-center">
+                  <span className="text-[10px] text-muted truncate w-full text-center">
                     {card.label}
                   </span>
                 </button>
@@ -159,74 +205,27 @@ export function SettingsDialog({ version, onClose, onShowOnboarding }: SettingsD
             </div>
           </div>
 
-          {/* Display Scale */}
+          {/* Send Feedback — compact icon-left buttons keep one row */}
           <div>
-            <h3 className="text-xs font-semibold text-muted uppercase tracking-wider mb-3">
-              Display Scale
-            </h3>
-            <div className="flex gap-2">
-              {fontScaleOptions.map((scale: FontScale) => (
-                <button
-                  key={scale}
-                  onClick={() => setFontScale(scale)}
-                  className={`flex-1 py-2 text-sm font-medium rounded-md border transition ${
-                    fontScale === scale
-                      ? "bg-accent-cyan-subtle text-accent-cyan border-cyan-200 dark:border-cyan-700/40"
-                      : "text-muted border-card hover:text-secondary hover:border-hover"
-                  }`}
-                >
-                  {scale}
-                </button>
-              ))}
+            <SectionLabel>Send Feedback</SectionLabel>
+            <div className="grid grid-cols-3 gap-1.5">
+              <FeedbackButton label="Bug" icon={<Bug className="w-3.5 h-3.5 text-red-600 dark:text-red-400" />} onClick={() => openFeedback("bug")} />
+              <FeedbackButton label="Feature" icon={<Lightbulb className="w-3.5 h-3.5 text-yellow-500" />} onClick={() => openFeedback("enhancement")} />
+              <FeedbackButton label="Improve" icon={<Sparkles className="w-3.5 h-3.5 text-accent-cyan" />} onClick={() => openFeedback("improvement")} />
             </div>
           </div>
 
-          {/* Send Feedback */}
-          <div>
-            <h3 className="text-xs font-semibold text-muted uppercase tracking-wider mb-3">
-              Send Feedback
-            </h3>
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                onClick={() => openFeedback("bug")}
-                className="flex flex-col items-center gap-1.5 py-3 text-xs font-medium text-secondary hover:text-primary bg-control/80 hover:bg-control-hover rounded-lg border border-card transition"
-              >
-                <Bug className="w-4 h-4 text-red-600 dark:text-red-400" />
-                Bug Report
-              </button>
-              <button
-                onClick={() => openFeedback("enhancement")}
-                className="flex flex-col items-center gap-1.5 py-3 text-xs font-medium text-secondary hover:text-primary bg-control/80 hover:bg-control-hover rounded-lg border border-card transition"
-              >
-                <Lightbulb className="w-4 h-4 text-yellow-400" />
-                Feature Request
-              </button>
-              <button
-                onClick={() => openFeedback("improvement")}
-                className="flex flex-col items-center gap-1.5 py-3 text-xs font-medium text-secondary hover:text-primary bg-control/80 hover:bg-control-hover rounded-lg border border-card transition"
-              >
-                <Sparkles className="w-4 h-4 text-accent-cyan" />
-                Improvement
-              </button>
-            </div>
-          </div>
-
-          {/* Help */}
-          <div>
-            <h3 className="text-xs font-semibold text-muted uppercase tracking-wider mb-3">
-              Help
-            </h3>
-            <button
-              onClick={() => {
-                localStorage.removeItem(TOUR_STORAGE_KEY);
-                onShowOnboarding?.();
-              }}
-              className="flex items-center gap-2 w-full py-2.5 px-3 text-xs font-medium text-secondary hover:text-primary bg-control/80 hover:bg-control-hover rounded-lg border border-card transition"
-            >
-              <Compass className="w-4 h-4 text-accent-cyan" />
-              Start Tutorial
-            </button>
-          </div>
+          {/* Tutorial — quiet footer link, no dedicated section header */}
+          <button
+            onClick={() => {
+              localStorage.removeItem(TOUR_STORAGE_KEY);
+              onShowOnboarding?.();
+            }}
+            className="flex items-center justify-center gap-1.5 w-full py-1.5 text-xs font-medium text-accent-cyan hover:text-accent-cyan/80 hover:bg-accent-cyan-subtle rounded-md transition"
+          >
+            <Compass className="w-3.5 h-3.5" />
+            Start Tutorial
+          </button>
         </div>
       </div>
     </div>
