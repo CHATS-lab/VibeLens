@@ -2,15 +2,43 @@
 
 ## [Unreleased]
 
+## [1.0.8] - 2026-04-27
+
 ### Added
-- **Four new parsers**: GitHub Copilot CLI (`~/.copilot/session-state/<uuid>/events.jsonl`), OpenCode (`~/.local/share/opencode/opencode.db`), Code Buddy (`~/.codebuddy/projects/<hash>/<sid>.jsonl` plus `<sid>/subagents/agent-*.jsonl`), and Kilo (`~/.local/share/kilo/kilo.db`, OpencodeParser subclass). Auto-discovered by LocalStore; frontend `AgentType` and upload constants gain entries for all four.
+- **Six new parsers**: GitHub Copilot CLI (`~/.copilot/session-state/<uuid>/events.jsonl`), OpenCode (`~/.local/share/opencode/opencode.db`), Code Buddy (`~/.codebuddy/projects/<hash>/<sid>.jsonl` plus `<sid>/subagents/agent-*.jsonl`), Kilo (`~/.local/share/kilo/kilo.db`, OpencodeParser subclass), Cursor, and Kiro. Auto-discovered by LocalStore; frontend `AgentType` and upload constants gain entries for all six.
 - **Sub-agent linkage** for the new parsers where the format records it: OpenCode/Kilo via `tool.state.metadata.sessionId` (primary) + regex on `state.output` (fallback) + `session.parent_id` reverse link; Code Buddy via `function_call_result.providerData.toolResult.renderer.value` JSON `taskId` (primary) + regex on `output.text` (fallback). Copilot's sub-agents have no separate trajectory file — the `subagent.started`/`subagent.completed` summary events fold onto the spawn `ToolCall.extra.subagent`.
 - **Code Buddy multimodal**: `image_blob_ref` content parts are read from disk (`~/.codebuddy/blobs/<hash>/<hash>.png`) and inlined as base64 on `ContentPart.source.base64` so the UI can render screenshots without filesystem-sandboxing concerns.
+- **Hermes parser**: `<skill_view>` / `<skill_call>` events tagged on parser output; the strict `\d{8}_\d{6}_[0-9a-f]+` session-id regex is replaced with a deny-list of non-session filenames so any other `.jsonl` stem is a session candidate.
+- **Compaction + skill detection** promoted to typed fields on `ToolCall` (`is_compaction`, `is_skill`); semantics unified across every parser. Skill activations now render through the unified `ToolCallBlock` pill (`Skill /<name>`) instead of a separate user-source step.
+- **Twelve new agent types** for the extension system (AMP, AUGMENT, AUTOCLAW, EASYCLAW, FACTORY, JUNIE, OB1, QCLAW, QODER, TRAE, TRAE_CN, WORKBUDDY). Corresponding `PLATFORMS` rows cite upstream filesystem-layout docs or `skills-manage` `db.rs`.
+- **`/api/extensions/agents` enriched**: each `AgentCapability` now carries `dirs_by_type` and `counts_by_type` so the frontend `syncTargets.get()` cache derives `Record<type, SyncTarget[]>` from one source. New `EXTENSION_TYPE_DIR_FIELD` map + `platform_dir_for(platform, type)` helper centralize the per-type dir lookup.
+- **Upload pipeline overhaul**: `services/upload/agents.py` becomes the per-agent registry with import-time drift checks; content-hash idempotency via the `X-Zip-Sha256` header lets the server skip body reads for already-imported zips; `to_friendly_error` maps `json.JSONDecodeError`, `sqlite3.DatabaseError`, `UnicodeDecodeError`, `FileNotFoundError`, and `PermissionError` to one-line summaries while preserving the raw text in collapsible details. Frontend wizard rebuilt around the registry with select-all / clear bulk actions and an "Already imported" amber result variant.
+- **CLI startup banner** with live progress spinner across parsing and index-build phases.
+- **Friction empty-state guidance** when no productivity tips are produced; tutorial close buttons added to personalization and friction panels.
+- **Frontend logo wordmark** replaces the text-only `VibeLens` brand; per-agent icons + session counts surface in filter dropdowns; session duration moves into the cost-pill tooltip; dashboard totals card renders duration as decimal hours.
+- **ToolCall + Result merged** into a single collapsible pill in the session view.
+- **`useClickOutside` hook**, `errorMessage` utility, named timing constants (`FRICTION_HIGHLIGHT_MS`, `SCROLL_RETRY_BASE_MS`, `SCROLL_INITIAL_DELAY_MS`), and `PERSONALIZATION_TAB_KEY` storage-key constant added to consolidate frontend duplication.
 
 ### Changed
 - **`ExtensionSource` enum collapsed into `AgentType`**: removes the duplicate 14-value enum and `CENTRAL` (which had no real users); every consumer now reads from `AgentType` directly. Affects `services/extensions/{platforms, catalog_resolver}.py`, `deps.py`, `schemas/extensions.py`, and the corresponding test files.
-- **Code Buddy CLI command echoes dropped**: `<command-name>`, `<local-command-stdout>`, `<system-reminder>`, etc. are detected via a regex pattern (mirrors `claude.py`) and dropped from the trajectory entirely rather than emitted as empty SYSTEM steps. Diagnostics records each drop as a skip.
-- **Index cache version bumped to v15**: forces a rebuild so existing v12 caches repopulate with the new agent types and per-step extras (editor_context, subagent metadata, etc.).
+- **Code Buddy CLI command echoes dropped**: `<command-name>`, `<local-command-stdout>`, `<system-reminder>`, etc. detected via regex (mirrors `claude.py`) and dropped rather than emitted as empty SYSTEM steps. Diagnostics records each drop as a skip.
+- **`BaseParser` refactored** for multi-session-per-file formats; the parser registry consolidates onto `ALL_PARSER_CLASSES` / `PARSERS_BY_AGENT_TYPE`, and `ingest/discovery.py` is deleted — parsers now self-declare allowed extensions and the index walk picks them up by file type.
+- **Index cache version bumped 11 → 19** across this cycle. Each bump forces a rebuild so existing caches repopulate with the new fields (multimodal blobs, typed `is_compaction` / `is_skill`, unified skill rendering); restart `vibelens serve` once after upgrade.
+- **Anonymizer hardened**: `redact_patterns` returns input unchanged when over a 1 MB cap (avoids catastrophic regex backtracking); `_transform_value` enforces a 100-frame recursion bound; `path_hasher` returns the original match on missing username instead of raising `KeyError`.
+- **Frontend duplication consolidated**: 3 dropdown click-outside handlers → `useClickOutside`; 25 error-message expressions → `errorMessage`; 4 maps for tab → mode → API → endpoint indirection collapsed onto a single `MODE_API_BASE`; 8 hardcoded `"vibelens-personalization-tab"` literals named; 3 magic timing numbers in `session-view.tsx` named.
+- **Spec documentation refreshed** across 14 files for accuracy and tighter writing; `spec-context-extractor-refactor.md` renamed to `spec-context.md` since the refactor it described has shipped.
+
+### Fixed
+- **Upload e2e reliability** across every supported agent: SQLite `*.db*` sidecar globs in zip discovery, parser-specific `ALLOWED_EXTENSIONS`, deterministic Cursor child step IDs (replaces `uuid4()` so dedup distinguishes replays), Hermes session-id deny-list, dedup that skips uploads with `sessions_parsed=0` or `errors>0`, and dedup-result reachability via `share_prior_upload_with_token` so cached responses aren't filtered out by the per-token visibility layer.
+- **Copilot sub-agent**: `first_message` and parent step ref were missing on direct file walks; now backfilled.
+- **Claude-web parser**: null-id `tool_use` / `tool_result` pairs collided on a single dict key — pair positionally via FIFO so all artifact tools survive; attachment-only human messages no longer drop (synthesise `[Attached: ...]` placeholder); `extracted_content` preserved on attachment dicts for downstream analytics.
+- **Session list filter switch**: switching agent / view mode left the previous expanded-project set and page index intact, leaving users on a fully collapsed list past the end of the new shorter list. Now resets both.
+- **Local extensions card**: `installed_in` agents render alphabetically rather than in filesystem-walk order.
+- **Frontend session view**: new sub-agents on expand now scroll into view; user / plan / sub-agent first-message previews truncate to one line; logo mark / wordmark gap tightened.
+- **Friction empty-state copy** polished.
+
+### CI
+- **PyPI and npm publish workflow made idempotent** on tag re-runs so a re-pushed tag doesn't double-publish or fail with a non-recoverable error.
 
 ## [1.0.7] - 2026-04-25
 
