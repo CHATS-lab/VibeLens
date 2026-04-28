@@ -46,8 +46,8 @@
 - **Personalization**: Turns your real sessions into reusable skills your agent can load.
 - **Productivity tips**: Spots where the agent got stuck or went off track, and tells you how to fix it.
 - **Session visualization**: Replays what actually happened, step by step.
-- **Multi-agent support**: Claude Code, Codex CLI, Gemini CLI, OpenClaw, Hermes with auto-detection
-- **Dashboard analytics**: Show usage heatmaps, cost breakdowns, and per-project stats
+- **Multi-agent support**: 11 local agents (Claude, Codex, Gemini, Cursor, Copilot, Kilo, Kiro, OpenCode, OpenClaw, Hermes, CodeBuddy).
+- **Dashboard analytics**: Show usage heatmaps, cost breakdowns, and per-project stats.
 
 > **Just want a look?** Try the [live demo](https://vibelens.chats-lab.org/). Nothing to install.
 
@@ -160,10 +160,17 @@ Full install guide and troubleshooting: [docs/INSTALL.md](docs/INSTALL.md).
 | Agent | Format | Data Location |
 |-------|--------|---------------|
 | **Claude Code** | JSONL | `~/.claude/projects/` |
-| **Codex CLI** | JSONL | `~/.codex/sessions/` |
+| **Codex CLI** | JSONL + SQLite | `~/.codex/sessions/` |
 | **Gemini CLI** | JSON | `~/.gemini/tmp/` |
+| **Cursor** | SQLite | `~/.cursor/chats/` |
+| **GitHub Copilot CLI** | JSONL | `~/.copilot/session-state/` |
+| **Kilo Code** | SQLite | `~/.local/share/kilo/` |
+| **Kiro** | JSONL + JSON | `~/.kiro/sessions/` |
+| **OpenCode** | SQLite | `~/.local/share/opencode/` |
 | **OpenClaw** | JSONL | `~/.openclaw/agents/` |
-| **Hermes** | JSONL | `~/.hermes/sessions/` |
+| **Hermes** | JSONL + SQLite | `~/.hermes/sessions/` |
+| **CodeBuddy** | JSONL | `~/.codebuddy/projects/` |
+| **Claude.ai (web)** | exported JSON | drag-and-drop upload |
 
 VibeLens auto-detects the agent format. Just point it at your session directory and it works.
 
