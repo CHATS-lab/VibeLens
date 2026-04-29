@@ -12,13 +12,13 @@ import json
 from pathlib import Path
 
 from vibelens.models.extension.hook import Hook
+from vibelens.models.extension.item import VALID_EXTENSION_NAME
 from vibelens.services.extensions.base_service import (
     DEFAULT_LINK_TYPE,
     BaseExtensionService,
     LinkType,
     SyncTarget,
 )
-from vibelens.storage.extension.base_store import VALID_EXTENSION_NAME
 from vibelens.storage.extension.hook_store import HookStore, serialize_hook
 from vibelens.utils.json import atomic_write_json
 from vibelens.utils.log import get_logger

@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from vibelens.storage.extension.base_store import VALID_EXTENSION_NAME
+from vibelens.models.extension.item import VALID_EXTENSION_NAME
 
 
 class Subagent(BaseModel):

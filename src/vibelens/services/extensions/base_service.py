@@ -4,10 +4,8 @@ import time
 from dataclasses import dataclass
 from typing import Generic, Literal, TypeVar
 
-from vibelens.storage.extension.base_store import (
-    VALID_EXTENSION_NAME,
-    BaseExtensionStore,
-)
+from vibelens.models.extension.item import VALID_EXTENSION_NAME
+from vibelens.storage.extension.base_store import BaseExtensionStore
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)

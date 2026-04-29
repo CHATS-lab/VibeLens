@@ -8,17 +8,15 @@ This base class factors the common parts and requires subclasses to
 supply the specifics via three template methods.
 """
 
-import re
 import shutil
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Generic, TypeVar
 
+from vibelens.models.extension.item import VALID_EXTENSION_NAME
 from vibelens.utils.log import get_logger
 
 logger = get_logger(__name__)
-
-VALID_EXTENSION_NAME = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 
 TItem = TypeVar("TItem")
 

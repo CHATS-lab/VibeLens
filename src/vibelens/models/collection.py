@@ -5,7 +5,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from vibelens.models.enums import AgentExtensionType
-from vibelens.storage.extension.base_store import VALID_EXTENSION_NAME
+from vibelens.models.extension.item import VALID_EXTENSION_NAME
 
 
 class ExtensionCollectionItem(BaseModel):

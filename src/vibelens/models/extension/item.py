@@ -1,8 +1,14 @@
 """Agent extension item model and type utilities."""
 
+import re
+
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from vibelens.models.enums import AgentExtensionType
+
+# Shared name validator for all extension types (skills, subagents, commands,
+# hooks, plugins). Kept here so models/ never has to import from storage/.
+VALID_EXTENSION_NAME = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 
 FILE_BASED_TYPES: set[AgentExtensionType] = {
     AgentExtensionType.SKILL,
