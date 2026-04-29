@@ -12,6 +12,7 @@ message, linked by ``tool_use_id``.  This two-message pairing requires
 a pre-scan to build the result map before constructing ToolCall objects.
 """
 
+import hashlib
 import re
 from collections import Counter, deque
 from datetime import datetime, timezone
@@ -1175,7 +1176,16 @@ def _make_enqueue_user_entry(entry: dict) -> dict:
         Synthetic user entry compatible with _parse_content() processing.
     """
     ts = entry.get("timestamp", "")
-    unique_id = f"enqueue-{ts}-{uuid4().hex[:8]}" if ts else f"enqueue-{uuid4()}"
+    session_id = entry.get("sessionId", "")
+    content_repr = coerce_to_string(entry.get("content", ""))
+    # Hash session+timestamp+content so re-parsing the same JSONL produces
+    # the same uuid (stable step_ids across runs). md5 is a fingerprint, not
+    # a security claim. Distinct enqueues at the same ts still get distinct
+    # ids; true duplicates collapse via _deduplicate_entries_by_uuid.
+    digest = hashlib.md5(
+        f"{session_id}|{ts}|{content_repr}".encode(), usedforsecurity=False
+    ).hexdigest()[:8]
+    unique_id = f"enqueue-{ts}-{digest}" if ts else f"enqueue-{digest}"
     return {
         "type": "user",
         "uuid": unique_id,

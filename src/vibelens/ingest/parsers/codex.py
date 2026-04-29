@@ -69,6 +69,7 @@ from vibelens.models.trajectories import (
 from vibelens.models.trajectories.content import ContentPart
 from vibelens.utils import (
     coerce_to_string,
+    deterministic_id,
     get_logger,
     normalize_timestamp,
     parse_iso_timestamp,
@@ -590,7 +591,14 @@ def _build_steps(
         # losing the position relative to other steps.
         if entry_type == "event_msg" and payload.get("type") == "context_compacted":
             _flush_pending(steps, state)
-            steps.append(make_compaction_step(step_id=str(uuid4()), timestamp=timestamp))
+            steps.append(
+                make_compaction_step(
+                    step_id=deterministic_id(
+                        "codex_compact", session_id, str(timestamp), str(len(steps))
+                    ),
+                    timestamp=timestamp,
+                )
+            )
 
     # Flush any trailing tool calls / thinking from the last agent turn.
     _flush_pending(steps, state)
@@ -639,7 +647,9 @@ def _handle_response_item(
             extra = {"status": status}
         steps.append(
             Step(
-                step_id=str(uuid4()),
+                step_id=deterministic_id(
+                    "codex_msg", session_id, role, str(timestamp), str(len(steps))
+                ),
                 source=source,
                 message=message_content,
                 model_name=(state.current_model or None) if role == "assistant" else None,

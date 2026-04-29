@@ -53,7 +53,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, ClassVar
-from uuid import uuid4
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
 from vibelens.ingest.parsers.base import BaseParser
@@ -70,7 +69,7 @@ from vibelens.models.trajectories import (
     Trajectory,
     TrajectoryRef,
 )
-from vibelens.utils import get_logger, parse_iso_timestamp
+from vibelens.utils import deterministic_id, get_logger, parse_iso_timestamp
 
 logger = get_logger(__name__)
 
@@ -313,9 +312,9 @@ class HermesParser(BaseParser):
         """Stage 3: build steps from jsonl or snapshot; canonicalize per-step models;
         attach state.db session totals to the last assistant step; override final_metrics."""
         if raw.records is not None:
-            steps, _, _ = _build_steps_from_jsonl(raw.records, diagnostics)
+            steps, _, _ = _build_steps_from_jsonl(raw.records, raw.session_id, diagnostics)
         else:
-            steps = _build_steps_from_snapshot(raw.snapshot, diagnostics)
+            steps = _build_steps_from_snapshot(raw.snapshot, raw.session_id, diagnostics)
         if not steps:
             return []
         for step in steps:
@@ -559,7 +558,7 @@ def _build_trajectory_extra(
 
 
 def _build_steps_from_jsonl(
-    records: list[dict], diagnostics: DiagnosticsCollector
+    records: list[dict], session_id: str, diagnostics: DiagnosticsCollector
 ) -> tuple[list[Step], str | None, list | None]:
     """Build Step objects from jsonl records.
 
@@ -572,7 +571,7 @@ def _build_steps_from_jsonl(
     session_tools = _session_meta_value(records, "tools")
 
     steps: list[Step] = []
-    for rec in records:
+    for idx, rec in enumerate(records):
         role = rec.get("role")
         if role in (None, "session_meta", "tool"):
             continue
@@ -580,18 +579,24 @@ def _build_steps_from_jsonl(
         if role == "user":
             steps.append(
                 Step(
-                    step_id=str(uuid4()),
+                    step_id=deterministic_id("hermes_user", session_id, str(idx)),
                     source=StepSource.USER,
                     message=rec.get("content", "") or "",
                     timestamp=timestamp,
                 )
             )
         elif role == "assistant":
-            steps.append(_build_assistant_step(rec, timestamp, session_model, tool_results_by_id))
+            steps.append(
+                _build_assistant_step(
+                    rec, timestamp, session_model, tool_results_by_id, session_id, idx
+                )
+            )
     return steps, session_model, session_tools if isinstance(session_tools, list) else None
 
 
-def _build_steps_from_snapshot(snapshot: dict, diagnostics: DiagnosticsCollector) -> list[Step]:
+def _build_steps_from_snapshot(
+    snapshot: dict, session_id: str, diagnostics: DiagnosticsCollector
+) -> list[Step]:
     """Build Step objects from a snapshot's ``messages`` array.
 
     Snapshot messages have no per-message timestamps; all steps share
@@ -615,14 +620,14 @@ def _build_steps_from_snapshot(snapshot: dict, diagnostics: DiagnosticsCollector
                 diagnostics.record_tool_result()
 
     steps: list[Step] = []
-    for msg in messages:
+    for idx, msg in enumerate(messages):
         if not isinstance(msg, dict):
             continue
         role = msg.get("role")
         if role == "user":
             steps.append(
                 Step(
-                    step_id=str(uuid4()),
+                    step_id=deterministic_id("hermes_user", session_id, str(idx)),
                     source=StepSource.USER,
                     message=msg.get("content", "") or "",
                     timestamp=fallback_ts,
@@ -630,7 +635,11 @@ def _build_steps_from_snapshot(snapshot: dict, diagnostics: DiagnosticsCollector
             )
             diagnostics.parsed_lines += 1
         elif role == "assistant":
-            steps.append(_build_assistant_step(msg, fallback_ts, session_model, tool_results_by_id))
+            steps.append(
+                _build_assistant_step(
+                    msg, fallback_ts, session_model, tool_results_by_id, session_id, idx
+                )
+            )
             diagnostics.parsed_lines += 1
         elif role == "tool":
             diagnostics.parsed_lines += 1
@@ -772,6 +781,8 @@ def _build_assistant_step(
     timestamp: datetime | None,
     session_model: str | None,
     tool_results_by_id: dict[str, dict],
+    session_id: str,
+    idx: int,
 ) -> Step:
     """Build a single assistant Step, including any tool calls and results."""
     raw_tool_calls = rec.get("tool_calls") or []
@@ -782,7 +793,7 @@ def _build_assistant_step(
     if finish_reason:
         step_extra["finish_reason"] = finish_reason
     return Step(
-        step_id=str(uuid4()),
+        step_id=deterministic_id("hermes_agent", session_id, str(idx)),
         source=StepSource.AGENT,
         message=rec.get("content", "") or "",
         reasoning_content=reasoning or None,
