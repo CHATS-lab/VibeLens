@@ -30,7 +30,6 @@ Capability vs Claude reference parser:
 import json
 import re
 from pathlib import Path
-from uuid import uuid4
 
 from vibelens.ingest.diagnostics import DiagnosticsCollector
 from vibelens.ingest.parsers.base import BaseParser
@@ -51,7 +50,7 @@ from vibelens.models.trajectories import (
     Trajectory,
 )
 from vibelens.models.trajectories.content import Base64Source, ContentPart
-from vibelens.utils import coerce_to_string, get_logger, normalize_timestamp
+from vibelens.utils import coerce_to_string, deterministic_id, get_logger, normalize_timestamp
 
 logger = get_logger(__name__)
 
@@ -159,7 +158,9 @@ class OpenClawParser(BaseParser):
     ) -> Trajectory | None:
         """Stage 2: pull session id / model / cwd from header events."""
         meta = _extract_session_meta(raw)
-        session_id = meta["session_id"] or file_path.stem or str(uuid4())
+        session_id = meta["session_id"] or file_path.stem or deterministic_id(
+            "openclaw_session", str(file_path.resolve())
+        )
         return Trajectory(
             session_id=session_id,
             agent=self.build_agent(model_name=meta["model"]),
@@ -196,7 +197,10 @@ class OpenClawParser(BaseParser):
 
             steps.append(
                 Step(
-                    step_id=entry.get("id", str(uuid4())),
+                    step_id=entry.get("id")
+                    or deterministic_id(
+                        "openclaw_msg", traj.session_id, role, str(len(steps))
+                    ),
                     source=source,
                     message=text,
                     reasoning_content=reasoning,
