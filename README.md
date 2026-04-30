@@ -184,7 +184,7 @@ VibeLens auto-detects all your agent directories.
 <table>
   <tr>
     <td width="50%">
-      <kbd><img src="figures/01-conversation.png" alt="Session Visualization" width="100%" /></kbd>
+      <kbd><img src="figures/01-session-visualization.png" alt="Session Visualization" width="100%" /></kbd>
       <p align="center"><b>Session Visualization</b><br>Step-by-step timeline with messages, tool calls, thinking blocks, and sub-agent spawns.</p>
     </td>
     <td width="50%">

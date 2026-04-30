@@ -184,7 +184,7 @@ VibeLens 会自动识别你的所有 Agent 目录。
 <table>
   <tr>
     <td width="50%">
-      <kbd><img src="figures/01-conversation.png" alt="会话可视化" width="100%" /></kbd>
+      <kbd><img src="figures/01-session-visualization.png" alt="会话可视化" width="100%" /></kbd>
       <p align="center"><b>会话可视化</b><br>逐步时间线，包含消息、工具调用、思考块和子 Agent 派生。</p>
     </td>
     <td width="50%">
