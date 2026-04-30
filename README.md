@@ -254,14 +254,20 @@ rm -rf ~/.vibelens
 
 VibeLens supports donating your agent session data to advance research on coding agent behavior. Donated sessions are collected by [CHATS-Lab](https://github.com/CHATS-lab) (Conversation, Human-AI Technology, and Safety Lab) at Northeastern University.
 
-To donate, upload your data, select the sessions you want to share, and click the **Donate Data** button.
+**How to donate**
+
+- **[Live demo](https://vibelens.chats-lab.org/)**: drag-and-drop a session file, preview it, then click **Donate Data**.
+- **Local install**: VibeLens auto-detects your existing sessions. Pick the ones you want to share, then click **Donate Data**.
+
+Northeastern University researchers are recruiting active AI coding agent users for a paid study (~20 min, up to $100).
+See [docs/HUMAN_STUDY.md](docs/HUMAN_STUDY.md) for details.
 
 ## Contributing
 
-Contributions are welcome! Please ensure code passes `ruff check` and `pytest` before submitting.
+Contributions are welcome!
 
-Northeastern University researchers are recruiting active AI coding agent users for a paid study (~20 min, up to $100). See [docs/HUMAN_STUDY.md](docs/HUMAN_STUDY.md) for details.
+1. **New parsers**: read [docs/spec/parsers/add-parser-skill.md](docs/spec/parsers/add-parser-skill.md) before writing code. Each existing parser's per-format spec lives alongside it in `docs/spec/parsers/<agent>.md`.
 
 ## License
 
-[MIT](LICENSE)
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
