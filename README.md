@@ -44,7 +44,7 @@
 
 ---
 
-**VibeLens** is an open-source tool that makes sense of your AI coding agent sessions. It reads your existing session logs (no integration needed), runs **local-first** (data stays on your machine), and supports **11 local agents** out of the box (Claude Code, Codex, Gemini, Cursor, [and more](#supported-agents)). Replay every session step-by-step, get **paste-ready CLAUDE.md actions** for friction patterns, distill recurring workflows into **reusable skills** your agent can load, and see exactly where your tokens went.
+**VibeLens** is an open-source tool that makes sense of your AI coding agent sessions. It reads your existing session logs (no integration needed), runs **local-first** (data stays on your machine), and supports **11 local agents** out of the box (Claude Code, Codex, Gemini, Cursor, [and more](#supported-agents)). Replay every session step-by-step, get **paste-ready CLAUDE.md actions** for productivity tips, and distill recurring workflows into **reusable skills** your agent can load.
 
 **Just want a look?** Try the [live demo](https://vibelens.chats-lab.org/). Nothing to install.
 
@@ -85,11 +85,13 @@ Prefer npm (Python also required):
 npx @chats-lab/vibelens serve
 ```
 
-Full install guide and troubleshooting: [docs/INSTALL.md](docs/INSTALL.md).
+Run `vibelens serve` to start it again.
 
-VibeLens opens on **http://localhost:12001** and your browser launches automatically. Already installed? Run `vibelens serve` to start it again.
+VibeLens opens on **http://localhost:12001** and your browser launches automatically.
 
 Change the port with `--port` (for example, `vibelens serve --port 8080`). Press `Ctrl+C` to stop.
+
+Full install guide and troubleshooting: [docs/INSTALL.md](docs/INSTALL.md).
 
 <details>
 <summary><b>Don't have uv or Python yet?</b></summary>
@@ -159,10 +161,10 @@ This happens when uv's tool bin directory isn't on your shell's `PATH`. The inst
 | Agent | Format | Data Location |
 |-------|--------|---------------|
 | **Claude Code** | JSONL | `~/.claude/projects/` |
-| **Codex CLI** | JSONL + SQLite | `~/.codex/sessions/` |
+| **Codex** | JSONL + SQLite | `~/.codex/sessions/` |
 | **Gemini CLI** | JSON | `~/.gemini/tmp/` |
 | **Cursor** | SQLite | `~/.cursor/chats/` |
-| **GitHub Copilot CLI** | JSONL | `~/.copilot/session-state/` |
+| **Copilot CLI** | JSONL | `~/.copilot/session-state/` |
 | **Kilo Code** | SQLite | `~/.local/share/kilo/` |
 | **Kiro** | JSONL + JSON | `~/.kiro/sessions/` |
 | **OpenCode** | SQLite | `~/.local/share/opencode/` |
