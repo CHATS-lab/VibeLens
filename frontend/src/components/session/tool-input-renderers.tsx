@@ -17,8 +17,6 @@ import type { ToolCall } from "../../types";
 import { MarkdownRenderer } from "../ui/markdown-renderer";
 import { CopyButton } from "../ui/copy-button";
 
-const WRITE_PREVIEW_MAX_CHARS = 500;
-
 const TOOL_PILL_BASE =
   "bg-slate-500/10 hover:bg-slate-500/15 text-slate-700 dark:text-slate-300 border-slate-400/25 dark:border-slate-500/20";
 
@@ -358,10 +356,6 @@ function WriteRenderer({
   content: string;
 }) {
   const lineCount = content ? content.split("\n").length : 0;
-  const previewContent =
-    content.length > WRITE_PREVIEW_MAX_CHARS
-      ? content.slice(0, WRITE_PREVIEW_MAX_CHARS) + "\n..."
-      : content;
 
   return (
     <div className="bg-panel/30 border border-default rounded-lg overflow-hidden">
@@ -371,8 +365,8 @@ function WriteRenderer({
         <span className="text-[10px] text-dimmed">{lineCount} lines</span>
       </div>
       {content && (
-        <pre className="p-3 overflow-x-auto text-[11px] font-mono text-secondary max-h-48 overflow-y-auto leading-relaxed">
-          {previewContent}
+        <pre className="p-3 overflow-x-auto text-[11px] font-mono text-secondary max-h-96 overflow-y-auto leading-relaxed">
+          {content}
         </pre>
       )}
     </div>
