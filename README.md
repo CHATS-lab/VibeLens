@@ -203,7 +203,7 @@ VibeLens auto-detects all your agent directories.
       <p align="center"><b>Productivity Tips</b><br>Detect friction patterns and get concrete suggestions to improve your workflow.</p>
     </td>
     <td width="50%">
-      <kbd><img src="figures/04-skill-retrieval.png" alt="Skill Recommendation" width="100%" /></kbd>
+      <kbd><img src="figures/04-skill-recommendation.png" alt="Skill Recommendation" width="100%" /></kbd>
       <p align="center"><b>Skill Recommendation</b><br>Match workflow patterns to pre-built skills from the catalog.</p>
     </td>
   </tr>

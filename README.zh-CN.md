@@ -203,7 +203,7 @@ VibeLens 会自动识别你的所有 Agent 目录。
       <p align="center"><b>效率提示</b><br>识别卡顿模式，给出具体的改进建议。</p>
     </td>
     <td width="50%">
-      <kbd><img src="figures/04-skill-retrieval.png" alt="技能推荐" width="100%" /></kbd>
+      <kbd><img src="figures/04-skill-recommendation.png" alt="技能推荐" width="100%" /></kbd>
       <p align="center"><b>技能推荐</b><br>把工作流模式匹配到目录中的现成技能。</p>
     </td>
   </tr>
