@@ -44,7 +44,7 @@
 
 ---
 
-**VibeLens** is an open-source tool that makes sense of your AI coding agent sessions. It reads your existing session logs (no integration needed), runs **local-first** (data stays on your machine), and supports **11 local agents** out of the box (Claude Code, Codex, Gemini, Cursor, [and more](#supported-agents)). Replay every session step-by-step, get **paste-ready CLAUDE.md actions** for productivity tips, and distill recurring workflows into **reusable skills** your agent can load.
+**VibeLens** is an open-source tool that visualize and analyze your AI agent sessions. It reads your existing session logs, and supports **11 local agents** out of the box (Claude Code, Codex, Gemini, Cursor, [and more](#supported-agents)). Analyze every session, get **paste-ready CLAUDE.md actions** for productivity tips, and distill recurring workflows into **reusable skills**.
 
 **Just want a look?** Try the [live demo](https://vibelens.chats-lab.org/). Nothing to install.
 
@@ -137,7 +137,9 @@ Official downloads: [python.org](https://www.python.org/downloads/) · [uv docs]
 <details>
 <summary><b><code>vibelens: command not found</code> after a uv install?</b></summary>
 
-This happens when uv's tool bin directory isn't on your shell's `PATH`. The installer tries to fix this automatically, but the change only takes effect in **new terminals**. Try one of:
+This happens when uv's tool bin directory isn't on your shell's `PATH`. The installer tries to fix this automatically, but the change only takes effect in **new terminals**.
+
+Try one of:
 
 1. **Open a new terminal** and run `vibelens serve` again.
 2. **Run the PATH fix manually**, then reopen your terminal:
@@ -173,7 +175,7 @@ This happens when uv's tool bin directory isn't on your shell's `PATH`. The inst
 | **CodeBuddy** | JSONL | `~/.codebuddy/projects/` |
 | **Claude.ai (web)** | exported JSON | drag-and-drop upload |
 
-VibeLens auto-detects the agent format.
+VibeLens auto-detects all your agent directories.
 
 ## Screenshots
 

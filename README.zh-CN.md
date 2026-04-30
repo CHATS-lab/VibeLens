@@ -44,7 +44,7 @@
 
 ---
 
-**VibeLens** 是一个开源工具，帮你看懂 AI 编程 Agent 的会话。它直接读取你已有的会话日志（无需任何集成），**本地优先**（数据不出你的电脑），开箱支持 **11 个本地 Agent**（Claude Code、Codex、Gemini、Cursor，[查看完整列表](#支持的-agent)）。一步步**回放每次会话**，把**效率提示**整理成可直接粘贴进 CLAUDE.md 的内容，把重复出现的工作流**沉淀成可加载的技能**让 Agent 加载。
+**VibeLens** 是一个开源工具，帮你可视化和分析 AI 编程 Agent 的会话。它直接读取你已有的会话日志，开箱支持 **11 个本地 Agent**（Claude Code、Codex、Gemini、Cursor，[查看完整列表](#支持的-agent)）。**分析每次会话**，把**效率提示**整理成可直接粘贴进 CLAUDE.md 的内容，把重复出现的工作流**沉淀成可加载的技能**。
 
 > **只想先看看**？[在线 Demo](https://vibelens.chats-lab.org/)，无需任何安装。
 
@@ -79,17 +79,17 @@ uv tool install vibelens && vibelens serve
 uvx vibelens serve
 ```
 
-习惯 npm（仍然需要 Python）：
+npm 命令安装（仍然需要 Python）：
 
 ```bash
 npx @chats-lab/vibelens serve
 ```
 
-跑 `vibelens serve` 就能再启动一次。
+后续直接使用 `vibelens serve` 启动。
 
-VibeLens 会监听 **http://localhost:12001**，并自动打开浏览器。
+浏览器输入 **http://localhost:12001**，正常情况下 VibeLens 会自行启动浏览器。
 
-想换端口，加 `--port` 即可（例如 `vibelens serve --port 8080`）。`Ctrl+C` 退出。
+使用 `--port` 参数换端口（例如 `vibelens serve --port 8080`）。`Ctrl+C` 退出。
 
 完整安装指南和故障排查：[docs/INSTALL.md](docs/INSTALL.md)。
 
@@ -137,7 +137,9 @@ winget install --id Python.Python.3.12 -e
 <details>
 <summary><b>用 uv 装完后提示 <code>vibelens: command not found</code>？</b></summary>
 
-这是因为 uv 工具的 bin 目录还不在你的 shell `PATH` 里。安装脚本会尝试自动补上，但只在**新开的终端窗口**里生效。可选的解决办法：
+这是因为 uv 工具的 bin 目录还不在你的 shell `PATH` 里。安装脚本会尝试自动补上，但只在**新开的终端窗口**里生效。
+
+解决办法：
 
 1. **新开一个终端**，再跑一次 `vibelens serve`。
 2. **手动跑一次 PATH 修复**，然后重开终端：
@@ -173,7 +175,7 @@ winget install --id Python.Python.3.12 -e
 | **CodeBuddy** | JSONL | `~/.codebuddy/projects/` |
 | **Claude.ai（网页版）** | 导出 JSON | 拖拽上传 |
 
-VibeLens 会自动识别 Agent 格式。
+VibeLens 会自动识别你的所有 Agent 目录。
 
 ## 截图
 
