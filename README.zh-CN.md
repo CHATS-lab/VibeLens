@@ -10,17 +10,22 @@
 </p>
 
 <p align="center">
-  <a href="https://pypi.org/project/vibelens/"><img src="https://img.shields.io/pypi/v/vibelens?color=%2334D058" alt="PyPI"></a>
-  <a href="https://pypi.org/project/vibelens/"><img src="https://img.shields.io/pypi/pyversions/vibelens" alt="Python"></a>
-  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License"></a>
-  <a href="https://vibelens.chats-lab.org/"><img src="https://img.shields.io/badge/demo-live-brightgreen" alt="Live Demo"></a>
+  <a href="https://pypi.org/project/vibelens/"><img src="https://img.shields.io/pypi/v/vibelens?style=for-the-badge&logo=pypi&logoColor=white" alt="PyPI"></a>
+  <a href="https://pypi.org/project/vibelens/"><img src="https://img.shields.io/pypi/pyversions/vibelens?style=for-the-badge&logo=python&logoColor=white&label=" alt="Python"></a>
+  <a href="https://www.npmjs.com/package/@chats-lab/vibelens"><img src="https://img.shields.io/npm/v/@chats-lab/vibelens?style=for-the-badge&logo=npm&logoColor=white&label=npm" alt="npm"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="License"></a>
+  <a href="https://vibelens.chats-lab.org/"><img src="https://img.shields.io/badge/Demo-live-brightgreen?style=for-the-badge&logo=google-chrome&logoColor=white" alt="Demo"></a>
 </p>
 
 <p align="center">
   <a href="https://vibelens.chats-lab.org/">在线体验</a> &middot;
   <a href="#快速开始">快速开始</a> &middot;
   <a href="#支持的-agent">支持的 Agent</a> &middot;
+  <a href="#截图">截图</a> &middot;
+  <a href="#数据捐赠">数据捐赠</a> &middot;
+  <a href="docs/HUMAN_STUDY.md">用户研究</a> &middot;
   <a href="https://pypi.org/project/vibelens/">PyPI</a> &middot;
+  <a href="https://www.npmjs.com/package/@chats-lab/vibelens">npm</a> &middot;
   <a href="CHANGELOG.md">更新日志</a>
 </p>
 
@@ -39,20 +44,7 @@
 
 ---
 
-**这些场景你熟悉吗**？
-
-- Agent 很强，但它不了解你。
-- 网上的 Agent 技能太多了，到底哪些适合自己的工作流？
-- Agent 反复犯同样的错误。
-- 跑了一组 Agent，根本不知道它们在干什么。
-
-**为什么用 VibeLens**：
-
-- **个性化**：把你真实的会话沉淀成可复用的技能，让 Agent 直接加载。
-- **效率提示**：找出 Agent 卡住或跑偏的地方，告诉你怎么修。
-- **会话可视化**：一步一步把实际发生的事情回放出来。
-- **多 Agent 支持**：覆盖 11 个本地 Agent（Claude、Codex、Gemini、Cursor、Copilot、Kilo、Kiro、OpenCode、OpenClaw、Hermes、CodeBuddy）。
-- **数据看板**：使用热力图、按模型的成本拆分、按项目的细分统计。
+**VibeLens** 是一个开源工具，帮你看懂 AI 编程 Agent 的会话。它直接读取你已有的会话日志（无需任何集成），**本地优先**（数据不出你的电脑），开箱支持 **11 个本地 Agent**（Claude Code、Codex、Gemini、Cursor，[查看完整列表](#支持的-agent)）。一步步**回放每次会话**，对每个卡顿/跑偏点给你**一段可直接粘贴进 CLAUDE.md 的修复**，把重复出现的工作流**沉淀成可加载的技能**，再清楚告诉你 token 都花到哪儿了。
 
 > **只想先看看**？打开[在线 Demo](https://vibelens.chats-lab.org/)，无需任何安装。
 
@@ -98,6 +90,8 @@ winget install --id Python.Python.3.12 -e
 ```
 
 官方下载：[python.org](https://www.python.org/downloads/) · [uv 文档](https://docs.astral.sh/uv/getting-started/installation/)
+
+---
 </details>
 
 跑这一行：
@@ -111,13 +105,33 @@ curl -LsSf https://raw.githubusercontent.com/CHATS-lab/VibeLens/main/install.sh 
 irm https://raw.githubusercontent.com/CHATS-lab/VibeLens/main/install.ps1 | iex
 ```
 
-装好之后，随时启动：
+已有 Python 3.10+：
 
 ```bash
-vibelens serve
+pip install vibelens && vibelens serve
 ```
 
-VibeLens 会监听 **http://localhost:12001**，并自动打开浏览器。
+已有 `uv`（安装）
+
+```bash
+uv tool install vibelens && vibelens serve
+```
+
+已有 `uv`（不安装）
+
+```bash
+uvx vibelens serve
+```
+
+习惯 npm（仍然需要 Python）：
+
+```bash
+npx @chats-lab/vibelens serve
+```
+
+完整安装指南和故障排查：[docs/INSTALL.md](docs/INSTALL.md)。
+
+VibeLens 会监听 **http://localhost:12001**，并自动打开浏览器。已经装过？直接跑 `vibelens serve` 再启动一次。
 
 想换端口，加 `--port` 即可（例如 `vibelens serve --port 8080`）。`Ctrl+C` 退出。
 
@@ -140,23 +154,6 @@ VibeLens 会监听 **http://localhost:12001**，并自动打开浏览器。
    ```bash
    uvx vibelens serve
    ```
-
-</details>
-
-<details>
-<summary><b>更喜欢手动安装？</b></summary>
-
-| 你的情况 | 命令 |
-|----------------|---------|
-| 已有 `uv` | `uv tool install vibelens && uv tool update-shell`（然后开新终端跑 `vibelens serve`） |
-| 已有 Python 3.10+ | `pip install vibelens && vibelens serve` |
-| 不想装，直接跑 | `uvx vibelens serve` |
-| 习惯用 npm（仍然需要 Python） | `npx @chats-lab/vibelens serve` |
-| 想参与开发 | [开发者环境](#开发者环境) |
-
-npm 包装层需要 Python 3.10+ 和已经安装好的 `vibelens` 包，它只是便利层，不是替代品。习惯全局装的话用 `npm install -g @chats-lab/vibelens`。
-
-完整安装指南和故障排查：[docs/INSTALL.md](docs/INSTALL.md)。
 
 </details>
 
@@ -236,11 +233,11 @@ uv run vibelens serve
 按当初的安装方式来：
 
 ```bash
-# 用 uv 装的（一行式安装走的就是这条路径，或者你自己跑了 `uv tool install`）
-uv tool uninstall vibelens
-
 # 用 pip 装的
 pip uninstall vibelens
+
+# 用 uv 装的（一行式安装走的就是这条路径，或者你自己跑了 `uv tool install`）
+uv tool uninstall vibelens
 
 # 用 npm 全局装的
 npm uninstall -g @chats-lab/vibelens

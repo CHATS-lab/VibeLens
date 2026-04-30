@@ -10,17 +10,22 @@
 </p>
 
 <p align="center">
-  <a href="https://pypi.org/project/vibelens/"><img src="https://img.shields.io/pypi/v/vibelens?color=%2334D058" alt="PyPI"></a>
-  <a href="https://pypi.org/project/vibelens/"><img src="https://img.shields.io/pypi/pyversions/vibelens" alt="Python"></a>
-  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License"></a>
-  <a href="https://vibelens.chats-lab.org/"><img src="https://img.shields.io/badge/demo-live-brightgreen" alt="Live Demo"></a>
+  <a href="https://pypi.org/project/vibelens/"><img src="https://img.shields.io/pypi/v/vibelens?style=for-the-badge&logo=pypi&logoColor=white" alt="PyPI"></a>
+  <a href="https://pypi.org/project/vibelens/"><img src="https://img.shields.io/pypi/pyversions/vibelens?style=for-the-badge&logo=python&logoColor=white&label=" alt="Python"></a>
+  <a href="https://www.npmjs.com/package/@chats-lab/vibelens"><img src="https://img.shields.io/npm/v/@chats-lab/vibelens?style=for-the-badge&logo=npm&logoColor=white&label=npm" alt="npm"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="License"></a>
+  <a href="https://vibelens.chats-lab.org/"><img src="https://img.shields.io/badge/Demo-live-brightgreen?style=for-the-badge&logo=google-chrome&logoColor=white" alt="Demo"></a>
 </p>
 
 <p align="center">
   <a href="https://vibelens.chats-lab.org/">Live Demo</a> &middot;
   <a href="#quick-start">Quick Start</a> &middot;
   <a href="#supported-agents">Supported Agents</a> &middot;
+  <a href="#screenshots">Screenshots</a> &middot;
+  <a href="#data-donation">Donate Data</a> &middot;
+  <a href="docs/HUMAN_STUDY.md">Human Study</a> &middot;
   <a href="https://pypi.org/project/vibelens/">PyPI</a> &middot;
+  <a href="https://www.npmjs.com/package/@chats-lab/vibelens">npm</a> &middot;
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
@@ -39,26 +44,52 @@
 
 ---
 
-**Sound familiar**?
+**VibeLens** is an open-source tool that makes sense of your AI coding agent sessions. It reads your existing session logs (no integration needed), runs **local-first** (data stays on your machine), and supports **11 local agents** out of the box (Claude Code, Codex, Gemini, Cursor, [and more](#supported-agents)). Replay every session step-by-step, get **paste-ready CLAUDE.md actions** for friction patterns, distill recurring workflows into **reusable skills** your agent can load, and see exactly where your tokens went.
 
-- Your agent is powerful, but it doesn't know you.
-- So many agent skills out there. Which ones actually fit your workflow?
-- Your agent keeps repeating the same mistakes.
-- Running an agent team but no idea what they're doing.
-
-**Why VibeLens**:
-
-- **Personalization**: Turns your real sessions into reusable skills your agent can load.
-- **Productivity tips**: Spots where the agent got stuck or went off track, and tells you how to fix it.
-- **Session visualization**: Replays what actually happened, step by step.
-- **Multi-agent support**: 11 local agents (Claude, Codex, Gemini, Cursor, Copilot, Kilo, Kiro, OpenCode, OpenClaw, Hermes, CodeBuddy).
-- **Dashboard analytics**: Show usage heatmaps, cost breakdowns, and per-project stats.
-
-> **Just want a look?** Try the [live demo](https://vibelens.chats-lab.org/). Nothing to install.
+**Just want a look?** Try the [live demo](https://vibelens.chats-lab.org/). Nothing to install.
 
 ## Quick Start
 
 **Requirement:** either [uv](https://docs.astral.sh/uv/) (preferred) or Python 3.10+.
+
+```bash
+# macOS / Linux. Paste into Terminal.
+curl -LsSf https://raw.githubusercontent.com/CHATS-lab/VibeLens/main/install.sh | sh
+```
+```powershell
+# Windows. Paste into PowerShell.
+irm https://raw.githubusercontent.com/CHATS-lab/VibeLens/main/install.ps1 | iex
+```
+
+Have Python 3.10+:
+
+```bash
+pip install vibelens && vibelens serve
+```
+
+Have `uv`:
+
+```bash
+uv tool install vibelens && vibelens serve
+```
+
+Run without installing:
+
+```bash
+uvx vibelens serve
+```
+
+Prefer npm (Python also required):
+
+```bash
+npx @chats-lab/vibelens serve
+```
+
+Full install guide and troubleshooting: [docs/INSTALL.md](docs/INSTALL.md).
+
+VibeLens opens on **http://localhost:12001** and your browser launches automatically. Already installed? Run `vibelens serve` to start it again.
+
+Change the port with `--port` (for example, `vibelens serve --port 8080`). Press `Ctrl+C` to stop.
 
 <details>
 <summary><b>Don't have uv or Python yet?</b></summary>
@@ -98,28 +129,8 @@ winget install --id Python.Python.3.12 -e
 ```
 
 Official downloads: [python.org](https://www.python.org/downloads/) · [uv docs](https://docs.astral.sh/uv/getting-started/installation/)
+
 </details>
-
-Run the one-liner:
-
-```bash
-# macOS / Linux. Paste into Terminal.
-curl -LsSf https://raw.githubusercontent.com/CHATS-lab/VibeLens/main/install.sh | sh
-```
-```powershell
-# Windows. Paste into PowerShell.
-irm https://raw.githubusercontent.com/CHATS-lab/VibeLens/main/install.ps1 | iex
-```
-
-After installation, start VibeLens any time with:
-
-```bash
-vibelens serve
-```
-
-VibeLens opens on **http://localhost:12001** and your browser launches automatically.
-
-Change it with `--port` (for example, `vibelens serve --port 8080`). Press `Ctrl+C` to stop.
 
 <details>
 <summary><b><code>vibelens: command not found</code> after a uv install?</b></summary>
@@ -140,23 +151,6 @@ This happens when uv's tool bin directory isn't on your shell's `PATH`. The inst
    ```bash
    uvx vibelens serve
    ```
-
-</details>
-
-<details>
-<summary><b>Prefer a manual install?</b></summary>
-
-| Your situation | Command |
-|----------------|---------|
-| Have `uv` | `uv tool install vibelens && uv tool update-shell` (then open a new terminal and run `vibelens serve`) |
-| Have Python 3.10+ | `pip install vibelens && vibelens serve` |
-| Want to run without installing | `uvx vibelens serve` |
-| Prefer the npm workflow (Python also required) | `npx @chats-lab/vibelens serve` |
-| Want to hack on VibeLens | [developer setup](#developer-setup) |
-
-The npm wrapper requires Python 3.10+ and an installed `vibelens` package. It's a convenience layer, not a replacement. Install globally with `npm install -g @chats-lab/vibelens` if you prefer.
-
-Full install guide and troubleshooting: [docs/INSTALL.md](docs/INSTALL.md).
 
 </details>
 
@@ -236,11 +230,11 @@ uv run vibelens serve
 Match the command to how you installed:
 
 ```bash
-# Installed with uv (one-liner picked this path, or you ran `uv tool install`)
-uv tool uninstall vibelens
-
 # Installed with pip
 pip uninstall vibelens
+
+# Installed with uv (one-liner picked this path, or you ran `uv tool install`)
+uv tool uninstall vibelens
 
 # Installed globally via npm
 npm uninstall -g @chats-lab/vibelens
