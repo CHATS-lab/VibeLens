@@ -107,6 +107,20 @@ class Trajectory(BaseModel):
             raise ValueError(f"session_id must not traverse directories: {value!r}")
         return value
 
+    @field_validator("agent", mode="before")
+    @classmethod
+    def coerce_agent_name(cls, value: Any) -> Any:
+        """Widen a bare ``agent="name"`` string into ``Agent(name="name")``.
+
+        Lets parsers for simple share formats pass just the agent name while
+        every reader still receives a full ``Agent`` object — no ``str`` leaks
+        into ``traj.agent.model_name`` / ``.name`` consumers. Dicts and Agent
+        instances pass through to pydantic's normal coercion.
+        """
+        if isinstance(value, str):
+            return Agent(name=value)
+        return value
+
     @model_validator(mode="after")
     def backfill_created_updated_at(self) -> "Trajectory":
         """Derive ``created_at`` / ``updated_at`` from step timestamps when not set."""
