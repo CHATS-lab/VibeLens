@@ -49,6 +49,7 @@ Capability vs Claude reference parser:
 
 import hashlib
 import json
+import re
 from collections import Counter
 from os.path import commonpath
 from pathlib import Path
@@ -110,6 +111,11 @@ _INLINE_SUBAGENT_TOOL_NAMES = frozenset({"codebase_investigator"})
 # Gemini's dedicated skill-activation tool. Activation only — reading SKILL.md
 # via run_shell_command/read_file does not count.
 _SKILL_TOOL_NAMES: frozenset[str] = frozenset({"activate_skill"})
+
+# run_shell_command results embed the process exit status as a standalone
+# "Exit Code: N" line inside functionResponse.response.output. We surface it as
+# structured ObservationResult.extra without splitting stdout/stderr.
+_EXIT_CODE_RE: re.Pattern[str] = re.compile(r"^Exit Code:\s*(-?\d+)\s*$", re.MULTILINE)
 
 
 class GeminiParser(BaseParser):
@@ -590,11 +596,13 @@ def _build_tool_calls_and_observation(
                 is_skill=True if tool_name in _SKILL_TOOL_NAMES else None,
             )
         )
+        tool_output = _extract_tool_output(tool.get("result", []))
         obs_results.append(
             ObservationResult(
                 source_call_id=tc_id,
-                content=_extract_tool_output(tool.get("result", [])),
+                content=tool_output,
                 is_error=tool.get("status") == "error",
+                extra=_extract_exit_code(tool_output),
             )
         )
 
@@ -773,3 +781,17 @@ def _extract_tool_output(result: list) -> str | None:
         if output:
             parts.append(output)
     return "\n".join(parts) if parts else None
+
+
+def _extract_exit_code(output: str | list[ContentPart] | None) -> dict[str, int] | None:
+    """Parse a shell ``Exit Code: N`` line into ``{"exit_code": N}`` metadata.
+
+    Only run_shell_command output carries this line; other tools return None so
+    ObservationResult.extra stays null for them.
+    """
+    if not isinstance(output, str):
+        return None
+    match = _EXIT_CODE_RE.search(output)
+    if match is None:
+        return None
+    return {"exit_code": int(match.group(1))}

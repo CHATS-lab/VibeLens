@@ -313,6 +313,51 @@ class TestFunctionCallPairing:
         assert len(turn3.tool_calls) == 1
         assert turn3.tool_calls[0].tool_call_id == "fc-last"
 
+    def test_tool_calls_before_first_agent_message_not_dropped(self, tmp_path: Path):
+        """Tool calls flushed before any agent message land on a synthetic leading step.
+
+        Codex can emit an opening burst of shell probes whose outputs arrive
+        before its first assistant ``message``. Previously these were dropped
+        because ``_flush_pending`` had no AGENT step to attach to. They must
+        now be preserved, with each ToolCall paired with its ObservationResult
+        in the same step so the Step pairing validator passes.
+        """
+        t = "2025-01-15T10:00:"
+        rollout = tmp_path / "rollout.jsonl"
+        _write_rollout(
+            rollout,
+            [
+                _meta_entry(),
+                _turn_context_entry(),
+                _user_msg_entry("do the thing"),
+                # Two tool calls + outputs BEFORE the first assistant message.
+                _function_call_entry(call_id="pre-1", name="shell", timestamp=f"{t}02Z"),
+                _function_call_output_entry(
+                    call_id="pre-1",
+                    output="Exit code: 0\nWall time: 0.10s\nOutput:\nok",
+                    timestamp=f"{t}03Z",
+                ),
+                _function_call_entry(call_id="pre-2", name="shell", timestamp=f"{t}04Z"),
+                _function_call_output_entry(
+                    call_id="pre-2",
+                    output="Exit code: 1\nWall time: 0.20s\nOutput:\nboom",
+                    timestamp=f"{t}05Z",
+                ),
+                # First assistant message arrives only now.
+                _assistant_msg_entry("here is the result", timestamp=f"{t}06Z"),
+            ],
+        )
+        traj = _parser.parse(rollout)[0]
+        agent_steps = [s for s in traj.steps if s.source == StepSource.AGENT]
+        leading = agent_steps[0]
+        assert leading.message == ""
+        call_ids = [tc.tool_call_id for tc in leading.tool_calls]
+        assert call_ids == ["pre-1", "pre-2"]
+        assert leading.observation is not None
+        obs_by_id = {r.source_call_id: r for r in leading.observation.results}
+        assert obs_by_id["pre-1"].is_error is False
+        assert obs_by_id["pre-2"].is_error is True
+
     def test_missing_output(self, tmp_path: Path):
         """function_call without matching output still creates the tool call."""
         rollout = tmp_path / "rollout.jsonl"

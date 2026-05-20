@@ -81,17 +81,31 @@ logger = get_logger(__name__)
 # instructions) since they are boilerplate and not user-facing conversation.
 RELEVANT_ROLES = {"user", "assistant"}
 
-# Cap the tool-result lookup map to avoid unbounded memory on huge sessions
-MAX_TOOL_RESULT_CACHE = 500
-
-# Matches the metadata prefix Codex prepends to tool outputs:
+# Matches the metadata prefix Codex prepends to ``function_call_output`` shell
+# results. Real Codex output spells the wall-time unit as the word
+# ``seconds`` / ``second`` (e.g. ``Wall time: 0 seconds``), not a bare ``s``,
+# so the unit alternation must accept all three. Large/streamed outputs also
+# insert an optional ``Total output lines: N`` line before ``Output:``.
+# Example:
 #   Exit code: 0
-#   Wall time: 1.23s
+#   Wall time: 1.23 seconds
+#   Total output lines: 42   (optional)
 #   Output:
 #   <actual output>
 _OUTPUT_PREFIX_RE = re.compile(
-    r"^Exit code:\s*(\d+)\nWall time:\s*([0-9.]+)s?\nOutput:\n", re.DOTALL
+    r"^Exit code:\s*(\d+)\n"
+    r"Wall time:\s*([0-9.]+)\s*(?:seconds?|s)?\n"
+    r"(?:Total output lines:\s*\d+\n)?"
+    r"Output:\n",
+    re.DOTALL,
 )
+
+# JSON key Codex uses for the ``custom_tool_call_output`` exit status. The
+# output is a JSON object ``{"output": "...", "metadata": {"exit_code": N}}``
+# rather than the plain-text ``Exit code:`` prefix used by shell tools.
+_CUSTOM_OUTPUT_METADATA_KEY = "metadata"
+_CUSTOM_OUTPUT_EXIT_CODE_KEY = "exit_code"
+_CUSTOM_OUTPUT_TEXT_KEY = "output"
 
 # Tool output types that carry results linked by call_id
 _TOOL_OUTPUT_TYPES = {"function_call_output", "custom_tool_call_output"}
@@ -590,7 +604,7 @@ def _build_steps(
         # as a synthetic SYSTEM step so the UI can render a boundary without
         # losing the position relative to other steps.
         if entry_type == "event_msg" and payload.get("type") == "context_compacted":
-            _flush_pending(steps, state)
+            _flush_pending(steps, state, session_id)
             steps.append(
                 make_compaction_step(
                     step_id=deterministic_id(
@@ -601,7 +615,7 @@ def _build_steps(
             )
 
     # Flush any trailing tool calls / thinking from the last agent turn.
-    _flush_pending(steps, state)
+    _flush_pending(steps, state, session_id)
     return steps
 
 
@@ -622,7 +636,7 @@ def _handle_response_item(
             return
         # A new message boundary: flush any tool calls / thinking buffered
         # from the preceding agent turn before creating the next step.
-        _flush_pending(steps, state)
+        _flush_pending(steps, state, session_id)
         message_content = _extract_message_content(payload)
         text_for_routing = (
             message_content
@@ -709,29 +723,36 @@ def _handle_response_item(
 def _collect_tool_outputs(
     entries: list[dict], diagnostics: DiagnosticsCollector | None = None
 ) -> OrderedDict[str, dict]:
-    """Build a bounded call_id -> result mapping from tool output entries.
+    """Build the full call_id -> result mapping from tool output entries.
 
-    Handles both ``function_call_output`` and ``custom_tool_call_output``.
-    Uses an OrderedDict bounded at MAX_TOOL_RESULT_CACHE entries.
+    Handles both ``function_call_output`` (plain-text ``Exit code:`` prefix)
+    and ``custom_tool_call_output`` (JSON with ``metadata.exit_code``).
+
+    Keeps ALL outputs: this is a two-pass parser and the second pass
+    (:func:`_handle_response_item`) looks up every call_id, so evicting the
+    oldest entries silently drops observations from long sessions. Correctness
+    wins over the memory micro-optimisation of bounding the map.
     """
     outputs: OrderedDict[str, dict] = OrderedDict()
     for entry in entries:
         if entry.get("type") != "response_item":
             continue
         payload = entry.get("payload", {})
-        if payload.get("type") not in _TOOL_OUTPUT_TYPES:
+        output_type = payload.get("type")
+        if output_type not in _TOOL_OUTPUT_TYPES:
             continue
         call_id = payload.get("call_id", "")
         if call_id:
             raw_output = coerce_to_string(payload.get("output", ""))
-            cleaned, has_error, metadata = _parse_structured_output(raw_output)
+            if output_type == "custom_tool_call_output":
+                cleaned, has_error, metadata = _parse_custom_tool_output(raw_output)
+            else:
+                cleaned, has_error, metadata = _parse_structured_output(raw_output)
             outputs[call_id] = {
                 "output": cleaned,
                 "is_error": has_error,
                 "metadata": metadata,
             }
-            if len(outputs) > MAX_TOOL_RESULT_CACHE:
-                outputs.popitem(last=False)
             if diagnostics:
                 diagnostics.record_tool_result()
     return outputs
@@ -923,28 +944,50 @@ def _build_step_extra(state: _CodexParseState) -> dict | None:
     return extra or None
 
 
-def _flush_pending(steps: list[Step], state: _CodexParseState) -> None:
-    """Attach pending tool calls, observations, and thinking to the last agent step."""
+def _flush_pending(steps: list[Step], state: _CodexParseState, session_id: str) -> None:
+    """Attach pending tool calls, observations, and thinking to the last agent step.
+
+    Codex can emit tool calls before its first assistant ``message`` entry
+    (e.g. an opening burst of shell_command probes whose results arrive
+    before any prose). When there is no preceding AGENT step to attach to,
+    we synthesise an empty-message leading AGENT step rather than dropping
+    the calls. Buffered ToolCalls and their paired ObservationResults always
+    move together into the same step, so the Step pairing validator (which
+    rejects an observation whose source_call_id has no matching call in the
+    step) is satisfied either way.
+    """
     if not state.pending_tools and not state.pending_thinking:
         return
-    for step in reversed(steps):
-        if step.source == StepSource.AGENT:
-            if state.pending_tools:
-                step.tool_calls.extend(state.pending_tools)
-            if state.pending_obs_results:
-                if step.observation is None:
-                    step.observation = Observation(results=[])
-                step.observation.results.extend(state.pending_obs_results)
-            if state.pending_thinking:
-                existing = step.reasoning_content or ""
-                new_thinking = "\n".join(state.pending_thinking)
-                step.reasoning_content = (
-                    f"{existing}\n{new_thinking}".strip() if existing else new_thinking
-                )
-            break
+    target = next((step for step in reversed(steps) if step.source == StepSource.AGENT), None)
+    if target is None:
+        target = Step(
+            step_id=deterministic_id("codex_lead", session_id, str(len(steps))),
+            source=StepSource.AGENT,
+            message="",
+            model_name=state.current_model or None,
+            extra=_build_step_extra(state),
+        )
+        steps.insert(0, target)
+    _attach_pending_to_step(target, state)
     state.pending_tools.clear()
     state.pending_obs_results.clear()
     state.pending_thinking.clear()
+
+
+def _attach_pending_to_step(step: Step, state: _CodexParseState) -> None:
+    """Move buffered tool calls, observations, and thinking onto ``step``."""
+    if state.pending_tools:
+        step.tool_calls.extend(state.pending_tools)
+    if state.pending_obs_results:
+        if step.observation is None:
+            step.observation = Observation(results=[])
+        step.observation.results.extend(state.pending_obs_results)
+    if state.pending_thinking:
+        existing = step.reasoning_content or ""
+        new_thinking = "\n".join(state.pending_thinking)
+        step.reasoning_content = (
+            f"{existing}\n{new_thinking}".strip() if existing else new_thinking
+        )
 
 
 def _attach_metrics_to_last_agent(steps: list[Step], metrics: Metrics) -> None:
@@ -1040,6 +1083,32 @@ def _parse_structured_output(raw: str) -> tuple[str, bool, dict | None]:
     cleaned = raw[match.end() :]
     metadata = {"exit_code": exit_code, "wall_time_sec": wall_time_sec}
     return cleaned, exit_code != 0, metadata
+
+
+def _parse_custom_tool_output(raw: str) -> tuple[str, bool, dict | None]:
+    """Parse a Codex ``custom_tool_call_output`` JSON payload.
+
+    Unlike shell ``function_call_output`` (a plain-text ``Exit code:`` prefix),
+    custom tools emit JSON ``{"output": "...", "metadata": {"exit_code": N}}``.
+    We surface the inner ``output`` text and derive ``is_error`` from a
+    non-zero ``metadata.exit_code``. Non-JSON or unexpected shapes fall back to
+    the raw string with no error flag, mirroring the plain-text passthrough.
+    """
+    if not raw:
+        return "", False, None
+    try:
+        parsed = orjson.loads(raw)
+    except orjson.JSONDecodeError:
+        return raw, False, None
+    if not isinstance(parsed, dict):
+        return raw, False, None
+    metadata = parsed.get(_CUSTOM_OUTPUT_METADATA_KEY)
+    metadata = metadata if isinstance(metadata, dict) else None
+    exit_code = metadata.get(_CUSTOM_OUTPUT_EXIT_CODE_KEY) if metadata else None
+    is_error = isinstance(exit_code, int) and exit_code != 0
+    text = parsed.get(_CUSTOM_OUTPUT_TEXT_KEY)
+    cleaned = text if isinstance(text, str) else raw
+    return cleaned, is_error, metadata
 
 
 def _parse_token_count(payload: dict) -> Metrics | None:

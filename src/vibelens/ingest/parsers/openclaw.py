@@ -260,10 +260,16 @@ def _collect_tool_results(message_entries: list[dict]) -> dict[str, dict]:
         tool_call_id = msg.get("toolCallId", "")
         if not tool_call_id:
             continue
+        details = msg.get("details") if isinstance(msg.get("details"), dict) else None
+        # OpenClaw read failures leave message-level ``isError`` false but record
+        # the failure in ``details.status``; treat either signal as an error.
+        is_error = bool(msg.get("isError", False)) or (
+            details is not None and details.get("status") == "error"
+        )
         results[tool_call_id] = {
             "output": coerce_to_string(msg.get("content", "")),
-            "is_error": bool(msg.get("isError", False)),
-            "details": msg.get("details") if isinstance(msg.get("details"), dict) else None,
+            "is_error": is_error,
+            "details": details,
         }
     return results
 

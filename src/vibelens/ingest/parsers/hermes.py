@@ -805,6 +805,30 @@ def _build_assistant_step(
     )
 
 
+def _result_is_error(content: str) -> bool:
+    """Detect tool failure from a Hermes tool-result payload.
+
+    Hermes stores the result as a JSON string (occasionally already a dict)
+    whose failure signal lives inside the payload, not on the message wrapper.
+    A non-zero/truthy ``exit_code``, a truthy ``error``, or ``status='error'``
+    each mark the call as failed. Non-dict payloads carry no error signal.
+    """
+    payload = content
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except (ValueError, TypeError):
+            return False
+    if not isinstance(payload, dict):
+        return False
+    exit_code = payload.get("exit_code")
+    if isinstance(exit_code, (int, float)) and exit_code != 0:
+        return True
+    if payload.get("error"):
+        return True
+    return payload.get("status") == "error"
+
+
 def _build_tool_calls_and_observation(
     raw_tool_calls: list, tool_results_by_id: dict[str, dict]
 ) -> tuple[list[ToolCall], Observation | None]:
@@ -834,9 +858,12 @@ def _build_tool_calls_and_observation(
         )
         result = tool_results_by_id.get(tool_call_id)
         if result is not None:
+            result_content = result.get("content", "") or ""
             results.append(
                 ObservationResult(
-                    source_call_id=tool_call_id, content=result.get("content", "") or ""
+                    source_call_id=tool_call_id,
+                    content=result_content,
+                    is_error=_result_is_error(result_content),
                 )
             )
     observation = Observation(results=results) if results else None

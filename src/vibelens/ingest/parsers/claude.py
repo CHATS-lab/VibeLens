@@ -1040,11 +1040,28 @@ def _decompose_raw_content(
     return message, reasoning_content, tool_calls, observation
 
 
+def _final_usage(group: list[dict]) -> dict | None:
+    """Return the authoritative ``message.usage`` for a streaming group.
+
+    Claude Code emits each assistant message as multiple JSONL chunks sharing
+    one message.id; only the final chunk carries the true output_tokens, while
+    earlier chunks hold a small placeholder. Prompt and cache token counts are
+    stable across chunks, so the last chunk's usage is correct wholesale. Scans
+    from the end to tolerate trailing chunks that omit usage.
+    """
+    for entry in reversed(group):
+        usage = entry.get("message", {}).get("usage")
+        if usage:
+            return usage
+    return None
+
+
 def _merge_entry_group(group: list[dict]) -> dict:
     """Merge a group of streaming chunks into a single pseudo-entry.
 
     Concatenates message.content lists from all entries in the group.
-    Uses the first entry's uuid, timestamp, and metadata as the base.
+    Uses the first entry's uuid, timestamp, and metadata as the base, but
+    takes message.usage from the final chunk (see :func:`_final_usage`).
 
     Args:
         group: One or more JSONL entries sharing the same message.id.
@@ -1068,6 +1085,13 @@ def _merge_entry_group(group: list[dict]) -> dict:
             all_content.append({"type": "text", "text": str(chunk_content)})
 
     merged_msg["content"] = all_content
+
+    # The first chunk's output_tokens is a placeholder; the final chunk holds
+    # the authoritative usage. Prompt/cache tokens are stable across chunks.
+    final_usage = _final_usage(group)
+    if final_usage is not None:
+        merged_msg["usage"] = final_usage
+
     merged["message"] = merged_msg
     return merged
 
