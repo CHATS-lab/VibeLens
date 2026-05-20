@@ -254,8 +254,7 @@ rm -rf ~/.vibelens
 
 VibeLens 支持把你的 Agent 会话数据捐赠出来，用于推动编程 Agent 行为方面的研究。捐赠数据由东北大学的 [CHATS-Lab](https://github.com/CHATS-lab)（Conversation, Human-AI Technology, and Safety Lab）收集。
 
-**怎么捐赠**
-
+**怎么捐赠?**
 - **[在线 Demo](https://vibelens.chats-lab.org/)**：拖拽上传会话文件，预览一下，然后点击 **Donate Data**。
 - **本地安装**：VibeLens 自动识别你已有的会话，选好想分享的部分，再点击 **Donate Data**。
 
