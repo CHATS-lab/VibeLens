@@ -22,8 +22,8 @@ from vibelens.services.extensions.platforms import (
 
 
 def test_platforms_count_matches_spec():
-    """27 = 11 pre-existing + 16 new (Aider intentionally excluded)."""
-    assert len(PLATFORMS) == 27
+    """26 platforms: Trae CN removed; Aider intentionally excluded."""
+    assert len(PLATFORMS) == 26
 
 
 def test_supported_types_are_consistent():
@@ -176,7 +176,6 @@ def test_amp_uses_xdg_paths():
     "agent, root_part",
     [
         (AgentType.TRAE, ".trae"),
-        (AgentType.TRAE_CN, ".trae-cn"),
         (AgentType.OB1, ".ob1"),
         (AgentType.QCLAW, ".qclaw"),
         (AgentType.EASYCLAW, ".easyclaw"),

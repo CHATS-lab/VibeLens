@@ -20,6 +20,7 @@ class AgentType(StrEnum):
     AUTOCLAW = "autoclaw"
     CLAUDE = "claude"
     CLAUDE_WEB = "claude_web"
+    CLINE = "cline"
     CODEBUDDY = "codebuddy"
     CODEX = "codex"
     COPILOT = "copilot"
@@ -33,6 +34,7 @@ class AgentType(StrEnum):
     KILO = "kilo"
     KIMI = "kimi"
     KIRO = "kiro"
+    MANUS = "manus"
     OB1 = "ob1"
     OPENCLAW = "openclaw"
     OPENCODE = "opencode"
@@ -41,7 +43,6 @@ class AgentType(StrEnum):
     QODER = "qoder"
     QWEN = "qwen"
     TRAE = "trae"
-    TRAE_CN = "trae-cn"
     WORKBUDDY = "workbuddy"
 
 

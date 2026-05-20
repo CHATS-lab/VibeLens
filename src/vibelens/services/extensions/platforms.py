@@ -429,14 +429,6 @@ def _build_platforms() -> dict[AgentType, AgentPlatform]:
             skills_dir=_home(".trae", "skills"),
             supported_types=frozenset({AgentExtensionType.SKILL}),
         ),
-        # Skills: skills-manage db.rs:681. Trae CN is the China-region build of
-        # Trae; docs.trae.cn does not publish on-disk paths.
-        AgentType.TRAE_CN: AgentPlatform(
-            source=AgentType.TRAE_CN,
-            root=_home(".trae-cn"),
-            skills_dir=_home(".trae-cn", "skills"),
-            supported_types=frozenset({AgentExtensionType.SKILL}),
-        ),
         # Skills: https://www.xmsumi.com/detail/2691, https://www.jieagi.com/aizixun/116.html
         # both confirm ~/.workbuddy/skills (overriding db.rs:869 which incorrectly
         # uses ~/.workbuddy/skills-marketplace/skills).

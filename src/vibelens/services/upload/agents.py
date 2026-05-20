@@ -275,6 +275,18 @@ UPLOAD_SPECS: dict[AgentType, UploadAgentSpec] = {
         source="external_export",
         user_facing=False,
     ),
+    AgentType.CLINE: UploadAgentSpec(
+        agent_type=AgentType.CLINE,
+        display_name="Cline",
+        source="external_export",
+        user_facing=False,
+    ),
+    AgentType.MANUS: UploadAgentSpec(
+        agent_type=AgentType.MANUS,
+        display_name="Manus",
+        source="external_export",
+        user_facing=False,
+    ),
     AgentType.KIMI: UploadAgentSpec(
         agent_type=AgentType.KIMI,
         display_name="Kimi",
@@ -352,12 +364,6 @@ UPLOAD_SPECS: dict[AgentType, UploadAgentSpec] = {
     AgentType.TRAE: UploadAgentSpec(
         agent_type=AgentType.TRAE,
         display_name="Trae",
-        source="external_export",
-        user_facing=False,
-    ),
-    AgentType.TRAE_CN: UploadAgentSpec(
-        agent_type=AgentType.TRAE_CN,
-        display_name="Trae CN",
         source="external_export",
         user_facing=False,
     ),
