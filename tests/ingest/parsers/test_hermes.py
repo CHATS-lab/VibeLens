@@ -163,8 +163,9 @@ def test_canonical_model_name_uses_llm_normalizer() -> None:
     assert _canonical_model_name("anthropic/claude-opus-4.7") == "claude-opus-4-7"
     assert _canonical_model_name("claude-opus-4.6") == "claude-opus-4-6"
     assert _canonical_model_name("claude-opus-4-7") == "claude-opus-4-7"
-    # "glm-5.1" starts with the known prefix "glm-5" so it normalises
-    assert _canonical_model_name("z-ai/glm-5.1") == "glm-5"
+    # A finer dotted version that is not itself a known model must NOT collapse
+    # onto its coarser base ("glm-5"); it falls back to the raw string instead.
+    assert _canonical_model_name("z-ai/glm-5.1") == "z-ai/glm-5.1"
     # Totally unknown model -> fall back to raw (no silent data loss)
     assert _canonical_model_name("brand-new-model-v1") == "brand-new-model-v1"
     assert _canonical_model_name(None) is None

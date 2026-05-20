@@ -127,6 +127,20 @@ def _strip_prefixes(raw_name: str) -> str:
     return name
 
 
+def _continues_with_finer_version(name: str, prefix: str) -> bool:
+    """True when ``name`` extends ``prefix`` with a finer dotted version.
+
+    A coarse prefix like ``gpt-5`` must not claim a distinct finer version such
+    as ``gpt-5.5`` (a different model, not a date or preview suffix of gpt-5).
+    Known finer versions already have their own earlier map entries; an unknown
+    one should fall through to ``None`` rather than be collapsed and mispriced
+    as the coarser model. Only a ``.<digit>`` continuation triggers this, so
+    ``-`` suffixes (dates, ``-mini``, ``-preview``) still match by prefix.
+    """
+    rest = name[len(prefix) :]
+    return len(rest) >= 2 and rest[0] == "." and rest[1].isdigit()
+
+
 def normalize_model_name(raw_name: str | None) -> str | None:
     """Normalize a raw model name to a canonical key.
 
@@ -153,6 +167,6 @@ def normalize_model_name(raw_name: str | None) -> str | None:
     name = _ANTHROPIC_DOT_VERSION_RE.sub(r"\1-\2", name)
 
     for prefix, canonical in _MODEL_PREFIX_MAP:
-        if name.startswith(prefix):
+        if name.startswith(prefix) and not _continues_with_finer_version(name, prefix):
             return canonical
     return None
